@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title or "FX Journal" }}</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f4f1ea;
+            --card: #ffffff;
+            --ink: #1f2a37;
+            --accent: #14532d;
+            --muted: #6b7280;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: Georgia, "Times New Roman", serif;
+            color: var(--ink);
+            background: radial-gradient(circle at top right, #e0efe5 0%, var(--bg) 50%);
+            min-height: 100vh;
+        }
+
+        main {
+            max-width: 760px;
+            margin: 4rem auto;
+            padding: 0 1rem;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid #d9dfd8;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(20, 83, 45, 0.08);
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: clamp(1.8rem, 3vw, 2.6rem);
+            color: var(--accent);
+        }
+
+        p { line-height: 1.6; }
+        .muted { color: var(--muted); }
+    </style>
+</head>
+<body>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
