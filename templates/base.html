@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ title or "FX Journal" }}</title>
     <style>
+        @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap");
+
         :root {
             color-scheme: light;
             --bg: #f4f1ea;
@@ -12,22 +14,160 @@
             --ink: #1f2a37;
             --accent: #14532d;
             --muted: #6b7280;
+            --font-ui: "Manrope", "Segoe UI", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+            --font-display: "Sora", "Manrope", "Segoe UI", sans-serif;
         }
 
         * { box-sizing: border-box; }
 
         body {
             margin: 0;
-            font-family: Georgia, "Times New Roman", serif;
+            font-family: var(--font-ui);
             color: var(--ink);
             background: radial-gradient(circle at top right, #e0efe5 0%, var(--bg) 50%);
             min-height: 100vh;
+        }
+
+        .dash-content {
+            animation: page-enter 920ms cubic-bezier(.22, .61, .36, 1) both;
+        }
+
+        body.has-reveal .reveal-item {
+            opacity: 0;
+            transform: translate3d(0, 18px, 0) scale(0.988);
+            filter: blur(1px);
+            transition:
+                opacity 960ms cubic-bezier(.22, .61, .36, 1),
+                transform 960ms cubic-bezier(.22, .61, .36, 1),
+                filter 820ms cubic-bezier(.22, .61, .36, 1);
+            transition-delay: var(--reveal-delay, 0ms);
+            will-change: opacity, transform;
+        }
+
+        body.has-reveal .reveal-item.reveal-row {
+            transform: translate3d(0, 10px, 0);
+            transition-duration: 780ms, 780ms, 640ms;
+        }
+
+        body.has-reveal .reveal-item.is-visible {
+            opacity: 1;
+            transform: translate3d(0, 0, 0) scale(1);
+            filter: blur(0);
+        }
+
+        .metric.is-visible,
+        .panel.is-visible {
+            animation: panel-breathe 14s ease-in-out 1.1s infinite;
+        }
+
+        .bg-wave {
+            animation: bg-shift 18s ease-in-out infinite;
+        }
+
+        .orb {
+            animation: orb-breathe 11s ease-in-out infinite;
+        }
+
+        .orb-a { animation-delay: 0s; }
+        .orb-b { animation-delay: 1.7s; }
+        .orb-c { animation-delay: 3.1s; }
+
+        @keyframes page-enter {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes card-enter {
+            from {
+                opacity: 0;
+                transform: translateY(14px) scale(0.985);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes panel-enter {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes panel-breathe {
+            0%, 100% {
+                box-shadow: 0 10px 28px rgba(15, 55, 36, 0.08);
+                border-color: #d4ded6;
+            }
+            50% {
+                box-shadow: 0 16px 34px rgba(15, 55, 36, 0.11);
+                border-color: #c9d8cd;
+            }
+        }
+
+        @keyframes row-enter {
+            from {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes bg-shift {
+            0%, 100% {
+                filter: saturate(1) brightness(1);
+            }
+            50% {
+                filter: saturate(1.08) brightness(1.03);
+            }
+        }
+
+        @keyframes orb-breathe {
+            0%, 100% {
+                opacity: 0.46;
+                filter: blur(2px) saturate(1);
+            }
+            50% {
+                opacity: 0.62;
+                filter: blur(2.6px) saturate(1.08);
+            }
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6 {
+            font-family: var(--font-display);
+            letter-spacing: -0.015em;
         }
 
         main {
             max-width: 760px;
             margin: 4rem auto;
             padding: 0 1rem;
+        }
+
+        body.auth-layout main {
+            max-width: none;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
         }
 
         .card {
@@ -46,11 +186,153 @@
 
         p { line-height: 1.6; }
         .muted { color: var(--muted); }
+
+        @media (prefers-reduced-motion: reduce) {
+            .dash-content,
+            .metric,
+            .panel,
+            tbody tr,
+            .bg-wave,
+            .orb {
+                animation: none !important;
+                transition: none !important;
+            }
+        }
     </style>
 </head>
-<body>
+<body class="{{ body_class or '' }}">
     <main>
         {% block content %}{% endblock %}
     </main>
+    <script>
+        (() => {
+            const scopes = document.querySelectorAll(".auth-shell, .dash-wrap");
+            if (!scopes.length) {
+                return;
+            }
+
+            scopes.forEach((scope) => {
+                const orbs = Array.from(scope.querySelectorAll(".orb"));
+                orbs.forEach((orb) => {
+                    const currentDepth = Number(orb.dataset.depth || 30);
+                    const depthJitter = 1 + (Math.random() * 0.28 - 0.14);
+                    orb.dataset.depth = (currentDepth * depthJitter).toFixed(2);
+                    orb.dataset.baseX = (Math.random() * 48 - 24).toFixed(2);
+                    orb.dataset.baseY = (Math.random() * 48 - 24).toFixed(2);
+                    orb.dataset.phaseShift = (Math.random() * 2.4 - 1.2).toFixed(2);
+                    orb.dataset.spin = (Math.random() * 2.4 - 1.2).toFixed(2);
+
+                    // Fully random spawn point each load, overriding class-anchored corners.
+                    orb.style.left = `${(Math.random() * 120 - 10).toFixed(2)}%`;
+                    orb.style.top = `${(Math.random() * 120 - 10).toFixed(2)}%`;
+                    orb.style.right = "auto";
+                    orb.style.bottom = "auto";
+                });
+
+                const bg = scope.querySelector(".bg-wave");
+                if (bg) {
+                    bg.dataset.baseX = (Math.random() * 28 - 14).toFixed(2);
+                    bg.dataset.baseY = (Math.random() * 28 - 14).toFixed(2);
+                    bg.dataset.scale = (1.08 + Math.random() * 0.08).toFixed(3);
+                }
+            });
+        })();
+    </script>
+    <script>
+        (() => {
+            const revealTargets = Array.from(
+                document.querySelectorAll(".metric, .panel, tbody tr, .login-card, .card")
+            );
+            if (!revealTargets.length) {
+                return;
+            }
+
+            const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            if (prefersReducedMotion) {
+                revealTargets.forEach((el) => el.classList.add("is-visible"));
+                return;
+            }
+
+            document.body.classList.add("has-reveal");
+
+            const groups = new Map();
+            revealTargets.forEach((el) => {
+                const key =
+                    el.closest("tbody") ||
+                    el.closest(".metric-grid") ||
+                    el.closest(".panel-grid") ||
+                    el.closest(".auth-shell") ||
+                    el.closest("main") ||
+                    document.body;
+                if (!groups.has(key)) {
+                    groups.set(key, []);
+                }
+                groups.get(key).push(el);
+            });
+
+            // Row-aware staggering: reveal by visual row first, then by column.
+            const setRevealDelays = () => {
+                groups.forEach((items) => {
+                    const sorted = items.slice().sort((a, b) => {
+                        const ra = a.getBoundingClientRect();
+                        const rb = b.getBoundingClientRect();
+                        if (Math.abs(ra.top - rb.top) > 2) {
+                            return ra.top - rb.top;
+                        }
+                        return ra.left - rb.left;
+                    });
+
+                    const rowAnchors = [];
+                    sorted.forEach((el) => {
+                        const rect = el.getBoundingClientRect();
+                        let rowIndex = rowAnchors.findIndex((top) => Math.abs(top - rect.top) < 24);
+                        if (rowIndex === -1) {
+                            rowAnchors.push(rect.top);
+                            rowIndex = rowAnchors.length - 1;
+                        }
+
+                        const colIndex = sorted
+                            .filter((candidate) => {
+                                const c = candidate.getBoundingClientRect();
+                                return Math.abs(c.top - rowAnchors[rowIndex]) < 24 && c.left < rect.left;
+                            })
+                            .length;
+
+                        const isTableRow = el.tagName === "TR";
+                        const delay = isTableRow
+                            ? rowIndex * 90
+                            : rowIndex * 240 + colIndex * 110;
+                        el.style.setProperty("--reveal-delay", `${Math.min(delay, 1600)}ms`);
+                    });
+                });
+            };
+
+            requestAnimationFrame(setRevealDelays);
+
+            const observer = new IntersectionObserver(
+                (entries) => {
+                    entries.forEach((entry) => {
+                        if (!entry.isIntersecting) {
+                            return;
+                        }
+                        entry.target.classList.add("is-visible");
+                        observer.unobserve(entry.target);
+                    });
+                },
+                {
+                    threshold: 0.12,
+                    rootMargin: "0px 0px -8% 0px",
+                }
+            );
+
+            revealTargets.forEach((el) => {
+                el.classList.add("reveal-item");
+                if (el.tagName === "TR") {
+                    el.classList.add("reveal-row");
+                }
+                observer.observe(el);
+            });
+        })();
+    </script>
 </body>
 </html>

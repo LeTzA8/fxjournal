@@ -1,9 +1,1253 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block content %}
-<section class="card">
-    <h1>FX Journal</h1>
-    <p>Your Flask app is running successfully.</p>
-    <p class="muted">Start editing <code>templates/index.html</code> and <code>app.py</code> to build your site.</p>
+<section class="dash-wrap">
+    <div class="bg-wave" aria-hidden="true"></div>
+    <div class="orb orb-a" data-depth="34" aria-hidden="true"></div>
+    <div class="orb orb-b" data-depth="24" aria-hidden="true"></div>
+    <div class="orb orb-c" data-depth="46" aria-hidden="true"></div>
+
+    <div class="dash-content">
+        <header class="dash-head">
+            <div class="crumb">Home / Dashboard</div>
+            <div class="head-row">
+                <div>
+                    <h1>Forex Performance Dashboard</h1>
+                    <p class="welcome">Welcome, {{ username }}.</p>
+                    <p class="subtitle">Track consistency, review execution, and spot edge drift early.</p>
+                </div>
+                <div class="head-actions">
+                    <form action="/logout" method="post">
+                        <button type="submit" class="logout-btn">Log Out</button>
+                    </form>
+                </div>
+            </div>
+        </header>
+
+        <section class="metric-grid">
+            <article class="metric">
+                <p class="metric-label">Win Rate</p>
+                <p class="metric-value">{{ '%.1f'|format(win_rate) }}%</p>
+                <p class="metric-note">{{ recent_trades|length }} trades shown</p>
+            </article>
+            <article class="metric">
+                <p class="metric-label">Net PnL (Week)</p>
+                <p class="metric-value">
+                    {% if net_pnl_week > 0 %}+{% endif %}${{ '%.2f'|format(net_pnl_week) }}
+                </p>
+                <p class="metric-note {% if net_pnl_week > 0 %}good{% elif net_pnl_week < 0 %}bad{% endif %}">
+                    {% if net_pnl_week > 0 %}Profitable week{% elif net_pnl_week < 0 %}Negative week{% else %}Flat week{% endif %}
+                </p>
+            </article>
+            <article class="metric">
+                <p class="metric-label">Trades This Month</p>
+                <p class="metric-value">{{ trades_this_month }}</p>
+                <p class="metric-note">Based on opened date</p>
+            </article>
+            <article class="metric">
+                <p class="metric-label">Avg R:R</p>
+                <p class="metric-value">
+                    {% if avg_rr is not none %}1 : {{ '%.2f'|format(avg_rr) }}{% else %}-{% endif %}
+                </p>
+                <p class="metric-note">Avg win / avg loss</p>
+            </article>
+        </section>
+
+        <section class="panel-grid">
+            <article class="panel trade-log">
+                <div class="panel-head">
+                    <h2>Trade Log</h2>
+                    <a href="/trades" class="trades-btn">View Trades</a>
+
+                </div>
+                <div class="table-controls">
+                    <div id="tradeFilters" class="filter-row">
+                        <select id="filterField" aria-label="Filter by">
+                            <option value="">No Filter</option>
+                            <option value="pair">Pair</option>
+                            <option value="date">Date</option>
+                            <option value="side">Side</option>
+                            <option value="status">Status</option>
+                        </select>
+
+                        <select id="pairFilter" class="filter-value" aria-label="Choose pair" hidden>
+                            <option value="">All Pairs</option>
+                        </select>
+
+                        <select id="dateFilter" class="filter-value" aria-label="Choose date" hidden>
+                            <option value="">All Dates</option>
+                        </select>
+
+                        <select id="sideFilter" class="filter-value" aria-label="Choose side" hidden>
+                            <option value="">All Sides</option>
+                            <option value="BUY">Buy</option>
+                            <option value="SELL">Sell</option>
+                        </select>
+
+                        <select id="statusFilter" class="filter-value" aria-label="Choose status" hidden>
+                            <option value="">All Status</option>
+                            <option value="Running">Running</option>
+                            <option value="Closed">Closed</option>
+                        </select>
+                        <button id="applyFilters" class="ghost-btn" type="button">Apply</button>
+                        <button id="clearFilters" class="ghost-btn" type="button">Clear</button>
+                    </div>
+                    <div class="sort-wrap">
+                        <label for="tradeSort">Sort</label>
+                        <select id="tradeSort" aria-label="Sort trades">
+                            <option value="date_desc">Date (Newest)</option>
+                            <option value="date_asc">Date (Oldest)</option>
+                            <option value="pnl_desc">PnL (High-Low)</option>
+                            <option value="pnl_asc">PnL (Low-High)</option>
+                            <option value="lot_desc">Lot Size (High-Low)</option>
+                            <option value="lot_asc">Lot Size (Low-High)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-shell">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Pair</th>
+                                <th>Side</th>
+                                <th>Entry</th>
+                                <th>Exit</th>
+                                <th>Lots</th>
+                                <th>PnL</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if recent_trades %}
+                            {% for trade in recent_trades %}
+                            <tr
+                                data-pair="{{ trade.symbol }}"
+                                data-side="{{ trade.side }}"
+                                data-status="{{ trade.status }}"
+                                data-date="{{ trade.date_value }}"
+                                data-pnl="{{ trade.pnl if trade.pnl is not none else '' }}"
+                                data-lot="{{ trade.lot_size }}"
+                            >
+                                <td>{{ trade.symbol }}</td>
+                                <td>
+                                    {% if trade.side == "SELL" %}
+                                    <span class="tag sell">Sell</span>
+                                    {% else %}
+                                    <span class="tag buy">Buy</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ '%.5f'|format(trade.entry_price) }}</td>
+                                <td>
+                                    {% if trade.exit_price is not none %}
+                                    {{ '%.5f'|format(trade.exit_price) }}
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                                <td>{{ '%.2f'|format(trade.lot_size) }}</td>
+                                <td>
+                                    {% if trade.pnl is none %}
+                                    <span class="muted">-</span>
+                                    {% elif trade.pnl > 0 %}
+                                    <span class="good">+{{ '%.2f'|format(trade.pnl) }}</span>
+                                    {% elif trade.pnl < 0 %}
+                                    <span class="bad">{{ '%.2f'|format(trade.pnl) }}</span>
+                                    {% else %}
+                                    <span class="muted">0.00</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ trade.date }}</td>
+                                <td>{{ trade.status }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% else %}
+                            <tr class="empty-row">
+                                <td colspan="8" class="muted">No trades yet. Add your first trade.</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel pnl-panel">
+                <div class="panel-head">
+                    <h2>PnL Graph</h2>
+                    <span class="soft">Recent closed trades</span>
+                </div>
+                <div class="line-chart-shell" id="pnlChartShell">
+                    <svg id="pnlLineChart" viewBox="0 0 600 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="PnL line chart">
+                        <defs>
+                            <linearGradient id="pnlStrokeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#2f8a58"></stop>
+                                <stop offset="100%" stop-color="#56b582"></stop>
+                            </linearGradient>
+                            <linearGradient id="pnlAreaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="rgba(47, 138, 88, 0.26)"></stop>
+                                <stop offset="100%" stop-color="rgba(47, 138, 88, 0.03)"></stop>
+                            </linearGradient>
+                        </defs>
+                        <g id="pnlGrid"></g>
+                        <path id="pnlArea" class="chart-area"></path>
+                        <path id="pnlGlow" class="chart-glow"></path>
+                        <path id="pnlPath" class="chart-path"></path>
+                        <line id="pnlZeroLine" class="zero-line" x1="0" x2="600" y1="0" y2="0" hidden></line>
+                        <g id="pnlPoints"></g>
+                    </svg>
+                    <div id="pnlTooltip" class="pnl-tooltip" hidden></div>
+                </div>
+                <div id="pnlXAxis" class="chart-x-axis"></div>
+                <script id="pnlChartData" type="application/json">{{ chart_points|tojson }}</script>
+                <p class="summary">
+                    Weekly result:
+                    <strong class="{% if net_pnl_week > 0 %}good{% elif net_pnl_week < 0 %}bad{% endif %}">
+                        {% if net_pnl_week > 0 %}+{% endif %}${{ '%.2f'|format(net_pnl_week) }}
+                    </strong>
+                </p>
+            </article>
+
+            <article class="panel sim-panel">
+                <div class="panel-head">
+                    <h2>Simulated Trade Chart</h2>
+                    <span class="soon">Coming Soon</span>
+                </div>
+                <div class="sim-chart" aria-hidden="true">
+                    <div class="scanline"></div>
+                    <svg viewBox="0 0 600 220" role="img">
+                        <path d="M0 160 L60 148 L120 154 L180 134 L240 142 L300 102 L360 118 L420 86 L480 98 L540 78 L600 90" />
+                    </svg>
+                </div>
+                <p class="soft">Planned: per-trade replay with entry, SL, TP, and execution notes overlay.</p>
+            </article>
+
+            <article class="panel notes-panel">
+                <div class="panel-head">
+                    <h2>Session Notes</h2>
+                    <button class="ghost-btn" type="button">Add Note</button>
+                </div>
+                <ul class="notes-list">
+                    <li>
+                        <strong>London open:</strong> Better patience on pullback entries, fewer impulsive market orders.
+                    </li>
+                    <li>
+                        <strong>NY overlap:</strong> Overtraded after first loss; add 10-minute reset rule.
+                    </li>
+                    <li>
+                        <strong>Risk:</strong> Keep max daily drawdown hard stop at 2R.
+                    </li>
+                </ul>
+            </article>
+        </section>
+    </div>
 </section>
+
+<style>
+    body {
+        background: #eef4ef;
+    }
+
+    main {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+    }
+
+    .dash-wrap {
+        position: relative;
+        min-height: 100vh;
+        width: 100%;
+        overflow: hidden;
+        isolation: isolate;
+        padding: clamp(0.9rem, 2vw, 1.5rem);
+        perspective: 1100px;
+    }
+
+    .dash-content {
+        position: relative;
+        z-index: 1;
+    }
+
+    .bg-wave {
+        position: absolute;
+        inset: -18%;
+        z-index: -3;
+        background:
+            radial-gradient(55% 50% at 20% 20%, rgba(146, 214, 173, 0.52) 0%, transparent 68%),
+            radial-gradient(45% 45% at 78% 68%, rgba(255, 207, 145, 0.48) 0%, transparent 70%),
+            linear-gradient(120deg, #eef4ef 0%, #deeee4 45%, #f4efe5 100%);
+        transition: transform 420ms cubic-bezier(.22, .61, .36, 1);
+        will-change: transform;
+    }
+
+    .orb {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(2px);
+        z-index: -1;
+        opacity: 0.55;
+        transition: transform 320ms cubic-bezier(.22, .61, .36, 1);
+        will-change: transform;
+    }
+
+    .orb-a {
+        width: 420px;
+        height: 420px;
+        top: -150px;
+        right: -120px;
+        background: radial-gradient(circle at 30% 30%, #8dc9a3 0%, #4f8b6f 65%, #2d5a46 100%);
+    }
+
+    .orb-b {
+        width: 320px;
+        height: 320px;
+        bottom: -140px;
+        left: -100px;
+        background: radial-gradient(circle at 65% 35%, #ffddb2 0%, #e4b474 60%, #b58343 100%);
+    }
+
+    .orb-c {
+        width: 260px;
+        height: 260px;
+        top: 38%;
+        left: 52%;
+        background: radial-gradient(circle at 35% 25%, #b7e3ef 0%, #7da8cb 58%, #4f6f9f 100%);
+        opacity: 0.42;
+    }
+
+    .dash-head {
+        margin-bottom: 1rem;
+    }
+
+    .crumb {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #5e7364;
+        font-weight: 700;
+        margin-bottom: 0.7rem;
+    }
+
+    .head-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    h1 {
+        margin: 0;
+        font-size: clamp(1.35rem, 2.3vw, 2rem);
+        color: #133f2a;
+    }
+
+    .subtitle {
+        margin: 0.38rem 0 0;
+        color: #5a6960;
+    }
+
+    .welcome {
+        margin: 0.45rem 0 0;
+        color: #2a5f43;
+        font-size: 0.95rem;
+        font-weight: 700;
+    }
+
+    .date-pill {
+        padding: 0.45rem 0.75rem;
+        border-radius: 999px;
+        border: 1px solid #ced8cf;
+        background: #f6faf7d9;
+        color: #305541;
+        font-weight: 600;
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+
+    .head-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+    }
+
+    .logout-btn {
+        border: 1px solid #d3b1ae;
+        background: #fff4f3;
+        color: #8d312d;
+        border-radius: 8px;
+        padding: 0.34rem 0.62rem;
+        font-weight: 700;
+        font-size: 0.72rem;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        cursor: pointer;
+    }
+
+    .logout-btn:hover {
+        background: #ffe9e7;
+    }
+
+    .trades-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #2d7f51;
+        background: linear-gradient(135deg, #2f8a58, #226b45);
+        color: #ffffff;
+        border-radius: 8px;
+        padding: 0.32rem 0.6rem;
+        font-weight: 700;
+        font-size: 0.72rem;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        text-decoration: none;
+        box-shadow: 0 4px 11px rgba(34, 107, 69, 0.2);
+        transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+    }
+
+    .trades-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 18px rgba(34, 107, 69, 0.3);
+        filter: brightness(1.03);
+    }
+
+    .trades-btn:active {
+        transform: translateY(0);
+    }
+
+    .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.8rem;
+        margin-bottom: 0.9rem;
+    }
+
+    .metric {
+        background: #ffffffbf;
+        border: 1px solid #d4dfd6;
+        border-radius: 14px;
+        padding: 0.85rem 0.9rem;
+        box-shadow: 0 8px 24px rgba(19, 63, 42, 0.08);
+    }
+
+    .metric-label {
+        margin: 0;
+        font-size: 0.8rem;
+        color: #5d6d63;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 700;
+    }
+
+    .metric-value {
+        margin: 0.35rem 0 0;
+        font-size: clamp(1.28rem, 2.1vw, 1.7rem);
+        color: #163f2c;
+        font-weight: 700;
+    }
+
+    .metric-note {
+        margin: 0.35rem 0 0;
+        color: #69786f;
+        font-size: 0.82rem;
+    }
+
+    .good { color: #1e7a42; }
+    .bad { color: #a63c36; }
+
+    .panel-grid {
+        display: grid;
+        grid-template-columns: 1.5fr 1fr;
+        gap: 0.8rem;
+    }
+
+    .panel {
+        background: #ffffffc9;
+        border: 1px solid #d4ded6;
+        border-radius: 14px;
+        padding: 0.9rem;
+        box-shadow: 0 10px 28px rgba(15, 55, 36, 0.08);
+    }
+
+    .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.8rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .table-controls {
+        display: grid;
+        gap: 0.55rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .filter-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.45rem;
+        align-items: center;
+    }
+
+    .filter-row select,
+    .sort-wrap select {
+        border: 1px solid #c6d4ca;
+        background: #f8fbf9;
+        color: #2f5642;
+        border-radius: 8px;
+        padding: 0.35rem 0.5rem;
+        font-size: 0.78rem;
+    }
+
+    .sort-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+    }
+
+    .sort-wrap label {
+        font-size: 0.78rem;
+        color: #4e6657;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    h2 {
+        margin: 0;
+        font-size: 1rem;
+        color: #17422e;
+    }
+
+    .soft {
+        color: #6d7b72;
+        font-size: 0.8rem;
+    }
+
+    .ghost-btn {
+        border: 1px solid #c6d4ca;
+        background: #f8fbf9;
+        color: #2f5642;
+        border-radius: 7px;
+        padding: 0.28rem 0.5rem;
+        font-weight: 600;
+        font-size: 0.72rem;
+        cursor: pointer;
+    }
+
+    .ghost-btn:hover {
+        background: #eff6f1;
+    }
+
+    .table-shell {
+        overflow-x: auto;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 620px;
+    }
+
+    th,
+    td {
+        text-align: left;
+        padding: 0.52rem 0.45rem;
+        border-bottom: 1px solid #e3ebe4;
+        font-size: 0.84rem;
+    }
+
+    th {
+        color: #52655a;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 0.72rem;
+    }
+
+    .tag {
+        display: inline-flex;
+        padding: 0.2rem 0.45rem;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .tag.buy {
+        background: #e3f7ea;
+        color: #1f7942;
+    }
+
+    .tag.sell {
+        background: #fdeaea;
+        color: #a5423c;
+    }
+
+    .hidden-row {
+        display: none;
+    }
+
+    .line-chart-shell {
+        position: relative;
+        width: calc(100% - 1.8rem);
+        margin-inline: auto;
+        height: auto;
+        aspect-ratio: 600 / 220;
+        border-radius: 10px;
+        border: 1px solid #d7e3d9;
+        background: linear-gradient(to top, #f3f9f4 0%, #fbfefc 100%);
+        overflow: hidden;
+    }
+
+    #pnlLineChart {
+        width: 100%;
+        height: 100%;
+        display: block;
+    }
+
+    .grid-line {
+        stroke: #dce8df;
+        stroke-width: 1;
+    }
+
+    .chart-area {
+        fill: url(#pnlAreaGradient);
+        opacity: 0;
+        animation: area-fade 3.6s ease forwards;
+    }
+
+    .chart-glow {
+        fill: none;
+        stroke: url(#pnlStrokeGradient);
+        stroke-width: 9;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        opacity: 0.2;
+        filter: blur(3px);
+        stroke-dasharray: 1200;
+        stroke-dashoffset: 1200;
+        animation: draw-line 4.4s cubic-bezier(.22, .61, .36, 1) forwards;
+    }
+
+    .chart-path {
+        fill: none;
+        stroke: url(#pnlStrokeGradient);
+        stroke-width: 3.4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-dasharray: 1200;
+        stroke-dashoffset: 1200;
+        animation: draw-line 4.4s cubic-bezier(.22, .61, .36, 1) forwards;
+    }
+
+    .zero-line {
+        stroke: #9fb3a7;
+        stroke-width: 1;
+        stroke-dasharray: 4 4;
+    }
+
+    .chart-point {
+        fill: #ffffff;
+        stroke-width: 2.4;
+        cursor: pointer;
+        transition: transform 150ms ease;
+        transform-origin: center;
+        opacity: 0;
+        animation: point-in 700ms ease forwards;
+    }
+
+    .chart-point.up {
+        stroke: #239456;
+    }
+
+    .chart-point.down {
+        stroke: #d45a52;
+    }
+
+    .chart-point:hover,
+    .chart-point:focus {
+        transform: scale(1.18);
+        outline: none;
+    }
+
+    .chart-x-axis {
+        position: relative;
+        height: 1.05rem;
+        margin-top: 0.35rem;
+        overflow: hidden;
+    }
+
+    .chart-x-axis .x-label {
+        position: absolute;
+        transform: translateX(-50%);
+        font-size: 0.7rem;
+        color: #64786c;
+        white-space: nowrap;
+        line-height: 1.05rem;
+    }
+
+    .chart-x-axis.dense .x-label {
+        font-size: 0.64rem;
+        color: #6d8074;
+    }
+
+    .pnl-tooltip {
+        position: absolute;
+        transform: translate(-50%, calc(-100% - 10px));
+        background: #1f2a24;
+        color: #f5f8f6;
+        padding: 0.24rem 0.4rem;
+        border-radius: 6px;
+        font-size: 0.7rem;
+        pointer-events: none;
+        white-space: nowrap;
+        box-shadow: 0 6px 14px rgba(12, 22, 17, 0.25);
+        z-index: 2;
+    }
+
+    .pnl-tooltip::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        bottom: -5px;
+        transform: translateX(-50%);
+        width: 8px;
+        height: 8px;
+        background: #1f2a24;
+        rotate: 45deg;
+    }
+
+    .summary {
+        margin: 0.6rem 0 0;
+        color: #52675b;
+        font-size: 0.88rem;
+    }
+
+    .sim-panel .soon {
+        color: #8f6a2c;
+        background: #ffefcb;
+        border: 1px solid #f0d799;
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .sim-chart {
+        position: relative;
+        height: 190px;
+        border-radius: 10px;
+        border: 1px solid #d8e3da;
+        background:
+            linear-gradient(rgba(37, 97, 63, 0.08) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(37, 97, 63, 0.08) 1px, transparent 1px),
+            #f8fcf9;
+        background-size: 22px 22px;
+        overflow: hidden;
+    }
+
+    .sim-chart svg {
+        width: 100%;
+        height: 100%;
+    }
+
+    .sim-chart path {
+        fill: none;
+        stroke: #1c8f4f;
+        stroke-width: 4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    .scanline {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: linear-gradient(to bottom, transparent, #3fb476, transparent);
+        box-shadow: 0 0 20px #3fb476;
+        animation: sweep 2.8s linear infinite;
+    }
+
+    .notes-list {
+        margin: 0;
+        padding-left: 1rem;
+        display: grid;
+        gap: 0.52rem;
+        color: #435549;
+    }
+
+    .notes-list li {
+        line-height: 1.4;
+        font-size: 0.86rem;
+    }
+
+    @keyframes sweep {
+        from { transform: translateX(-20px); }
+        to { transform: translateX(560px); }
+    }
+
+    @keyframes draw-line {
+        to { stroke-dashoffset: 0; }
+    }
+
+    @keyframes area-fade {
+        to { opacity: 1; }
+    }
+
+    @keyframes point-in {
+        from { opacity: 0; transform: scale(0.7); }
+        to { opacity: 1; transform: scale(1); }
+    }
+
+    @media (max-width: 1080px) {
+        .metric-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .panel-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .filter-row {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 700px) {
+        .dash-wrap {
+            padding: 0.9rem;
+        }
+
+        .head-row {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .head-actions {
+            width: 100%;
+            justify-content: space-between;
+        }
+
+        .sort-wrap {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .filter-row {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .orb,
+        .bg-wave,
+        .chart-glow,
+        .chart-area,
+        .chart-path,
+        .chart-point,
+        .scanline {
+            animation: none !important;
+            transition: none !important;
+        }
+    }
+</style>
+
+<script>
+(() => {
+    const chartShell = document.getElementById("pnlChartShell");
+    const svg = document.getElementById("pnlLineChart");
+    const grid = document.getElementById("pnlGrid");
+    const path = document.getElementById("pnlPath");
+    const glow = document.getElementById("pnlGlow");
+    const area = document.getElementById("pnlArea");
+    const pointsGroup = document.getElementById("pnlPoints");
+    const zeroLine = document.getElementById("pnlZeroLine");
+    const tooltip = document.getElementById("pnlTooltip");
+    const xAxis = document.getElementById("pnlXAxis");
+    const dataNode = document.getElementById("pnlChartData");
+
+    if (!chartShell || !svg || !grid || !path || !glow || !area || !pointsGroup || !zeroLine || !tooltip || !xAxis || !dataNode) {
+        return;
+    }
+
+    let chartData = [];
+    try {
+        chartData = JSON.parse(dataNode.textContent || "[]");
+    } catch {
+        chartData = [];
+    }
+
+    if (!Array.isArray(chartData) || !chartData.length) {
+        path.setAttribute("d", "");
+        area.setAttribute("d", "");
+        xAxis.innerHTML = '<span class="x-label" style="left: 50%;">-</span>';
+        return;
+    }
+
+    const w = 600;
+    const h = 220;
+    const pad = { t: 18, r: 42, b: 26, l: 42 };
+    const plotW = w - pad.l - pad.r;
+    const plotH = h - pad.t - pad.b;
+
+    const values = chartData.map((d) => Number(d.pnl)).filter((v) => Number.isFinite(v));
+    if (!values.length) {
+        return;
+    }
+
+    const minVRaw = Math.min(...values);
+    const maxVRaw = Math.max(...values);
+    const span = maxVRaw - minVRaw;
+    const minV = span === 0 ? minVRaw - 1 : minVRaw - span * 0.12;
+    const maxV = span === 0 ? maxVRaw + 1 : maxVRaw + span * 0.12;
+
+    const xFor = (i, n) => (n === 1 ? w / 2 : pad.l + (i / (n - 1)) * plotW);
+    const yFor = (v) => pad.t + ((maxV - v) / (maxV - minV)) * plotH;
+
+    const pts = chartData.map((d, i) => ({
+        x: xFor(i, chartData.length),
+        y: yFor(Number(d.pnl)),
+        label: d.label,
+        pnl: Number(d.pnl),
+    }));
+
+    const smoothPath = (points) => {
+        if (points.length === 1) {
+            return `M ${points[0].x} ${points[0].y}`;
+        }
+        const tension = 0.22;
+        let d = `M ${points[0].x} ${points[0].y}`;
+        for (let i = 0; i < points.length - 1; i += 1) {
+            const p0 = points[i - 1] || points[i];
+            const p1 = points[i];
+            const p2 = points[i + 1];
+            const p3 = points[i + 2] || p2;
+            const cp1x = p1.x + (p2.x - p0.x) * tension;
+            const cp1y = p1.y + (p2.y - p0.y) * tension;
+            const cp2x = p2.x - (p3.x - p1.x) * tension;
+            const cp2y = p2.y - (p3.y - p1.y) * tension;
+            d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+        }
+        return d;
+    };
+
+    grid.innerHTML = "";
+    for (let i = 0; i < 5; i += 1) {
+        const y = pad.t + (plotH / 4) * i;
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("class", "grid-line");
+        line.setAttribute("x1", String(pad.l));
+        line.setAttribute("x2", String(w - pad.r));
+        line.setAttribute("y1", String(y));
+        line.setAttribute("y2", String(y));
+        grid.appendChild(line);
+    }
+
+    const lineD = smoothPath(pts);
+    path.setAttribute("d", lineD);
+    glow.setAttribute("d", lineD);
+
+    const baseY = yFor(minV);
+    const areaD = `${lineD} L ${pts[pts.length - 1].x} ${baseY} L ${pts[0].x} ${baseY} Z`;
+    area.setAttribute("d", areaD);
+
+    if (minV <= 0 && maxV >= 0) {
+        const zy = yFor(0);
+        zeroLine.setAttribute("y1", String(zy));
+        zeroLine.setAttribute("y2", String(zy));
+        zeroLine.hidden = false;
+    } else {
+        zeroLine.hidden = true;
+    }
+
+    const getViewportTransform = () => {
+        const svgRect = svg.getBoundingClientRect();
+        const scale = Math.min(svgRect.width / w, svgRect.height / h);
+        const drawWidth = w * scale;
+        const drawHeight = h * scale;
+        const offsetX = (svgRect.width - drawWidth) / 2;
+        const offsetY = (svgRect.height - drawHeight) / 2;
+        return { svgRect, scale, offsetX, offsetY };
+    };
+
+    const setTooltip = (pt) => {
+        const shellRect = chartShell.getBoundingClientRect();
+        const { svgRect, scale, offsetX, offsetY } = getViewportTransform();
+        const xOffset = svgRect.left - shellRect.left + offsetX;
+        const yOffset = svgRect.top - shellRect.top + offsetY;
+        tooltip.textContent = `${pt.label}: ${pt.pnl >= 0 ? "+" : ""}${pt.pnl.toFixed(2)}`;
+        tooltip.hidden = false;
+        tooltip.style.left = `${xOffset + pt.x * scale}px`;
+        tooltip.style.top = `${yOffset + pt.y * scale}px`;
+    };
+
+    pointsGroup.innerHTML = "";
+    pts.forEach((pt, idx) => {
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("class", `chart-point ${pt.pnl >= 0 ? "up" : "down"}`);
+        circle.setAttribute("cx", String(pt.x));
+        circle.setAttribute("cy", String(pt.y));
+        circle.setAttribute("r", "4.6");
+        circle.setAttribute("tabindex", "0");
+        circle.setAttribute("aria-label", `${pt.label} ${pt.pnl}`);
+        circle.style.animationDelay = `${1300 + idx * 230}ms`;
+        circle.addEventListener("mouseenter", () => setTooltip(pt));
+        circle.addEventListener("focus", () => setTooltip(pt));
+        circle.addEventListener("mouseleave", () => { tooltip.hidden = true; });
+        circle.addEventListener("blur", () => { tooltip.hidden = true; });
+        pointsGroup.appendChild(circle);
+    });
+
+    const renderXAxis = () => {
+        xAxis.innerHTML = "";
+        const labelCount = chartData.length;
+        const labelStep = labelCount > 18 ? Math.ceil(labelCount / 8) : 1;
+        xAxis.classList.toggle("dense", labelStep > 1);
+        const { svgRect, scale, offsetX } = getViewportTransform();
+
+        pts.forEach((pt, idx) => {
+            const isEdge = idx === 0 || idx === pts.length - 1;
+            if (!isEdge && idx % labelStep !== 0) {
+                return;
+            }
+            const label = document.createElement("span");
+            label.className = "x-label";
+            label.textContent = chartData[idx].label;
+            const left = ((offsetX + pt.x * scale) / svgRect.width) * 100;
+            label.style.left = `${left}%`;
+            xAxis.appendChild(label);
+        });
+    };
+
+    renderXAxis();
+    window.addEventListener("resize", renderXAxis, { passive: true });
+})();
+</script>
+
+<script>
+(() => {
+    const shell = document.querySelector(".dash-wrap");
+    if (!shell || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        return;
+    }
+
+    const orbs = Array.from(shell.querySelectorAll(".orb"));
+    const bg = shell.querySelector(".bg-wave");
+    const state = { mx: 0, my: 0, scroll: 0 };
+    const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+
+    const onPointerMove = (event) => {
+        const rect = shell.getBoundingClientRect();
+        const nx = (event.clientX - rect.left) / rect.width - 0.5;
+        const ny = (event.clientY - rect.top) / rect.height - 0.5;
+        state.mx = clamp(nx, -0.5, 0.5);
+        state.my = clamp(ny, -0.5, 0.5);
+    };
+
+    const onScroll = () => {
+        state.scroll = window.scrollY || window.pageYOffset || 0;
+    };
+
+    window.addEventListener("mousemove", onPointerMove, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    const render = (ts) => {
+        const t = ts * 0.001;
+        const scrollShift = clamp(state.scroll / 900, -1.0, 1.0);
+
+        orbs.forEach((orb, index) => {
+            const depth = Number(orb.dataset.depth || 30);
+            const phase = index * 1.7 + Number(orb.dataset.phaseShift || 0);
+            const floatX = Math.sin(t * 0.38 + phase) * 16 + Math.sin(t * 0.16 + phase) * 6;
+            const floatY = Math.cos(t * 0.31 + phase) * 13 + Math.cos(t * 0.13 + phase) * 5;
+            const px = state.mx * depth * 0.85 + floatX + Number(orb.dataset.baseX || 0);
+            const py = state.my * depth * 0.72 + floatY + scrollShift * depth * 0.18 + Number(orb.dataset.baseY || 0);
+            const rz = state.mx * depth * 0.08 + Number(orb.dataset.spin || 0);
+            orb.style.transform = `translate3d(${px.toFixed(2)}px, ${py.toFixed(2)}px, 0) rotate(${rz.toFixed(2)}deg)`;
+        });
+
+        if (bg) {
+            const bx = state.mx * 16 + Math.sin(t * 0.14) * 10 + Number(bg.dataset.baseX || 0);
+            const by = state.my * 14 + scrollShift * 6 + Math.cos(t * 0.12) * 8 + Number(bg.dataset.baseY || 0);
+            const bgScale = Number(bg.dataset.scale || 1.12);
+            bg.style.transform = `translate3d(${bx.toFixed(2)}px, ${by.toFixed(2)}px, 0) scale(${bgScale})`;
+        }
+
+        requestAnimationFrame(render);
+    };
+
+    requestAnimationFrame(render);
+})();
+</script>
+
+<script>
+(() => {
+    const table = document.querySelector(".trade-log table");
+    if (!table) {
+        return;
+    }
+
+    const tbody = table.querySelector("tbody");
+    const rows = Array.from(tbody.querySelectorAll("tr:not(.empty-row)"));
+    if (!rows.length) {
+        return;
+    }
+
+    const filterField = document.getElementById("filterField");
+    const pairFilter = document.getElementById("pairFilter");
+    const dateFilter = document.getElementById("dateFilter");
+    const sideFilter = document.getElementById("sideFilter");
+    const statusFilter = document.getElementById("statusFilter");
+    const applyFiltersBtn = document.getElementById("applyFilters");
+    const clearFiltersBtn = document.getElementById("clearFilters");
+    const sortSelect = document.getElementById("tradeSort");
+    const valueSelects = {
+        pair: pairFilter,
+        date: dateFilter,
+        side: sideFilter,
+        status: statusFilter,
+    };
+
+    const noMatchRow = document.createElement("tr");
+    noMatchRow.className = "no-match-row hidden-row";
+    noMatchRow.innerHTML = '<td colspan="8" class="muted">No trades match current filters.</td>';
+    tbody.appendChild(noMatchRow);
+
+    const toUpper = (value) => (value || "").toString().trim().toUpperCase();
+    const toNumber = (value) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
+    };
+    const toDateMs = (value) => {
+        if (!value) return null;
+        const ms = Date.parse(value);
+        return Number.isFinite(ms) ? ms : null;
+    };
+    const unique = (items) => Array.from(new Set(items.filter(Boolean)));
+    const fillSelect = (select, values, allLabel) => {
+        if (!select) return;
+        select.innerHTML = "";
+        const allOption = document.createElement("option");
+        allOption.value = "";
+        allOption.textContent = allLabel;
+        select.appendChild(allOption);
+        values.forEach((value) => {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = value;
+            select.appendChild(option);
+        });
+    };
+
+    fillSelect(
+        pairFilter,
+        unique(rows.map((row) => toUpper(row.dataset.pair))).sort(),
+        "All Pairs"
+    );
+    fillSelect(
+        dateFilter,
+        unique(rows.map((row) => row.dataset.date)).sort((a, b) => b.localeCompare(a)),
+        "All Dates"
+    );
+
+    const updateValueControl = () => {
+        const active = filterField ? filterField.value : "";
+        Object.entries(valueSelects).forEach(([key, select]) => {
+            if (!select) return;
+            select.hidden = key !== active;
+        });
+    };
+
+    const getSortValue = (row, type) => {
+        if (type === "date") {
+            return toDateMs(row.dataset.date) ?? -Infinity;
+        }
+        if (type === "pnl") {
+            return toNumber(row.dataset.pnl) ?? -Infinity;
+        }
+        return toNumber(row.dataset.lot) ?? -Infinity;
+    };
+
+    const sortRows = () => {
+        const mode = sortSelect ? sortSelect.value : "date_desc";
+        const [field, order] = mode.split("_");
+        rows.sort((a, b) => {
+            const av = getSortValue(a, field);
+            const bv = getSortValue(b, field);
+            return order === "asc" ? av - bv : bv - av;
+        });
+        rows.forEach((row) => tbody.appendChild(row));
+    };
+
+    const applyFilters = () => {
+        const filterType = filterField ? filterField.value : "";
+        const rawValue = filterType && valueSelects[filterType] ? valueSelects[filterType].value : "";
+        const filterValue = toUpper(rawValue);
+
+        let visibleCount = 0;
+        rows.forEach((row) => {
+            let show = true;
+            if (filterType === "pair") {
+                show = !filterValue || toUpper(row.dataset.pair) === filterValue;
+            } else if (filterType === "date") {
+                show = !rawValue || row.dataset.date === rawValue;
+            } else if (filterType === "side") {
+                show = !filterValue || toUpper(row.dataset.side) === filterValue;
+            } else if (filterType === "status") {
+                show = !filterValue || toUpper(row.dataset.status) === filterValue;
+            }
+
+            row.classList.toggle("hidden-row", !show);
+            if (show) {
+                visibleCount += 1;
+            }
+        });
+
+        noMatchRow.classList.toggle("hidden-row", visibleCount !== 0);
+    };
+
+    const applyAll = () => {
+        sortRows();
+        applyFilters();
+    };
+
+    if (filterField) {
+        filterField.addEventListener("change", () => {
+            updateValueControl();
+            applyAll();
+        });
+    }
+
+    if (applyFiltersBtn) {
+        applyFiltersBtn.addEventListener("click", applyAll);
+    }
+
+    if (clearFiltersBtn) {
+        clearFiltersBtn.addEventListener("click", () => {
+            if (filterField) filterField.value = "";
+            Object.values(valueSelects).forEach((select) => {
+                if (select) {
+                    select.value = "";
+                }
+            });
+            updateValueControl();
+            applyAll();
+        });
+    }
+
+    if (sortSelect) {
+        sortSelect.addEventListener("change", applyAll);
+    }
+
+    updateValueControl();
+    applyAll();
+})();
+</script>
 {% endblock %}

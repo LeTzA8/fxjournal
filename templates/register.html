@@ -1,0 +1,314 @@
+﻿{% extends "base.html" %}
+
+{% block content %}
+<section class="auth-shell">
+    <div class="bg-wave" aria-hidden="true"></div>
+    <div class="orb orb-a" data-depth="34" aria-hidden="true"></div>
+    <div class="orb orb-b" data-depth="24" aria-hidden="true"></div>
+    <div class="orb orb-c" data-depth="46" aria-hidden="true"></div>
+    <div class="login-card">
+        <p class="eyebrow">FX Journal</p>
+        <h1>Create account</h1>
+        <p class="subtext">Register to start logging trades and reviewing your performance.</p>
+        {% if success %}
+        <p class="notice success">{{ success }}</p>
+        {% endif %}
+        {% if error %}
+        <p class="notice error">{{ error }}</p>
+        {% endif %}
+
+        <form action="/register" method="post" class="login-form">
+            <label for="username">Username</label>
+            <input id="username" name="username" type="text" placeholder="your_username" required>
+
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" placeholder="you@example.com" required>
+
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" placeholder="Create a password" required>
+
+            <button type="submit">Create Account</button>
+        </form>
+        <p class="switch-link">Already have an account? <a href="/login">Log in</a></p>
+    </div>
+</section>
+
+<style>
+    .auth-shell {
+        position: relative;
+        min-height: 100vh;
+        width: 100%;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        isolation: isolate;
+        padding: clamp(1rem, 3vw, 2rem);
+        perspective: 1100px;
+    }
+
+    .bg-wave {
+        position: absolute;
+        inset: -18%;
+        z-index: -3;
+        background:
+            radial-gradient(55% 50% at 20% 20%, rgba(146, 214, 173, 0.52) 0%, transparent 68%),
+            radial-gradient(45% 45% at 78% 68%, rgba(255, 207, 145, 0.48) 0%, transparent 70%),
+            linear-gradient(120deg, #eef4ef 0%, #deeee4 45%, #f4efe5 100%);
+        transition: transform 420ms cubic-bezier(.22, .61, .36, 1);
+        will-change: transform;
+    }
+
+    .orb {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(2px);
+        z-index: -1;
+        opacity: 0.55;
+        transition: transform 320ms cubic-bezier(.22, .61, .36, 1);
+        will-change: transform;
+    }
+
+    .orb-a {
+        width: 360px;
+        height: 360px;
+        top: -120px;
+        right: -80px;
+        background: radial-gradient(circle at 30% 30%, #8dc9a3 0%, #4f8b6f 65%, #2d5a46 100%);
+    }
+
+    .orb-b {
+        width: 280px;
+        height: 280px;
+        bottom: -120px;
+        left: -80px;
+        background: radial-gradient(circle at 65% 35%, #ffddb2 0%, #e4b474 60%, #b58343 100%);
+    }
+
+    .orb-c {
+        width: 220px;
+        height: 220px;
+        top: 36%;
+        left: 48%;
+        background: radial-gradient(circle at 35% 25%, #b7e3ef 0%, #7da8cb 58%, #4f6f9f 100%);
+        opacity: 0.46;
+    }
+
+    .login-card {
+        width: min(100%, 470px);
+        background: color-mix(in oklab, var(--card) 92%, #f2f8f5 8%);
+        border: 1px solid #cfd9d1;
+        border-radius: 16px;
+        padding: clamp(1.4rem, 2.4vw, 2rem);
+        box-shadow: 0 16px 40px rgba(20, 83, 45, 0.14);
+        backdrop-filter: blur(3px);
+        animation: card-in 700ms cubic-bezier(.2, .8, .2, 1);
+    }
+
+    .eyebrow {
+        margin: 0;
+        font-size: 0.75rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--accent);
+        font-weight: 700;
+    }
+
+    .login-card h1 {
+        margin: 0.35rem 0 0;
+        color: #123f29;
+        font-size: clamp(1.55rem, 2.8vw, 2.2rem);
+    }
+
+    .subtext {
+        margin-top: 0.55rem;
+        color: var(--muted);
+    }
+
+    .notice {
+        margin: 0.9rem 0 0;
+        padding: 0.6rem 0.75rem;
+        border-radius: 8px;
+        font-size: 0.92rem;
+        line-height: 1.4;
+    }
+
+    .notice.success {
+        background: #eaf8ef;
+        border: 1px solid #9fcead;
+        color: #17452f;
+    }
+
+    .notice.error {
+        background: #fff0ef;
+        border: 1px solid #e1b0ad;
+        color: #7a1f1a;
+    }
+
+    .switch-link {
+        margin: 0.9rem 0 0;
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.95rem;
+    }
+
+    .switch-link a {
+        color: #14532d;
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .switch-link a:hover {
+        text-decoration: underline;
+    }
+
+    .login-form {
+        margin-top: 1.2rem;
+        display: grid;
+        gap: 0.8rem;
+    }
+
+    .login-form label {
+        font-size: 0.9rem;
+        color: #214634;
+        font-weight: 600;
+    }
+
+    .login-form input {
+        width: 100%;
+        padding: 0.78rem 0.9rem;
+        border-radius: 10px;
+        border: 1px solid #b7c6bb;
+        background: #fbfdfa;
+        color: var(--ink);
+        font: inherit;
+        transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+    }
+
+    .login-form input:hover {
+        border-color: #93ae9f;
+    }
+
+    .login-form input:focus {
+        outline: none;
+        border-color: #1f6f46;
+        box-shadow: 0 0 0 4px rgba(31, 111, 70, 0.16);
+        transform: translateY(-1px);
+    }
+
+    .login-form button {
+        margin-top: 0.5rem;
+        padding: 0.85rem 1rem;
+        border: none;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #1f6f46, #14532d);
+        color: #ffffff;
+        font: inherit;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        cursor: pointer;
+        transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+    }
+
+    .login-form button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(20, 83, 45, 0.26);
+        filter: brightness(1.03);
+    }
+
+    .login-form button:active {
+        transform: translateY(0);
+    }
+
+    .login-form button:focus-visible {
+        outline: 3px solid #9ad4b1;
+        outline-offset: 2px;
+    }
+
+    @keyframes card-in {
+        from {
+            opacity: 0;
+            transform: translateY(16px) scale(0.985);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
+    @media (max-width: 540px) {
+        .auth-shell {
+            min-height: 100vh;
+        }
+
+        .login-card {
+            border-radius: 14px;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .orb,
+        .bg-wave,
+        .login-card,
+        .login-form input,
+        .login-form button {
+            animation: none !important;
+            transition: none !important;
+        }
+    }
+</style>
+<script>
+(() => {
+    const shell = document.querySelector(".auth-shell");
+    if (!shell || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        return;
+    }
+
+    const orbs = Array.from(shell.querySelectorAll(".orb"));
+    const bg = shell.querySelector(".bg-wave");
+    const state = { mx: 0, my: 0, scroll: 0 };
+    const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+
+    const onPointerMove = (event) => {
+        const rect = shell.getBoundingClientRect();
+        const nx = (event.clientX - rect.left) / rect.width - 0.5;
+        const ny = (event.clientY - rect.top) / rect.height - 0.5;
+        state.mx = clamp(nx, -0.5, 0.5);
+        state.my = clamp(ny, -0.5, 0.5);
+    };
+
+    const onScroll = () => {
+        state.scroll = window.scrollY || window.pageYOffset || 0;
+    };
+
+    window.addEventListener("mousemove", onPointerMove, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    const render = (ts) => {
+        const t = ts * 0.001;
+        const scrollShift = clamp(state.scroll / 900, -1.0, 1.0);
+
+        orbs.forEach((orb, index) => {
+            const depth = Number(orb.dataset.depth || 30);
+            const phase = index * 1.7 + Number(orb.dataset.phaseShift || 0);
+            const floatX = Math.sin(t * 0.38 + phase) * 16 + Math.sin(t * 0.16 + phase) * 6;
+            const floatY = Math.cos(t * 0.31 + phase) * 13 + Math.cos(t * 0.13 + phase) * 5;
+            const px = state.mx * depth * 0.85 + floatX + Number(orb.dataset.baseX || 0);
+            const py = state.my * depth * 0.72 + floatY + scrollShift * depth * 0.18 + Number(orb.dataset.baseY || 0);
+            const rz = state.mx * depth * 0.08 + Number(orb.dataset.spin || 0);
+            orb.style.transform = `translate3d(${px.toFixed(2)}px, ${py.toFixed(2)}px, 0) rotate(${rz.toFixed(2)}deg)`;
+        });
+
+        if (bg) {
+            const bx = state.mx * 16 + Math.sin(t * 0.14) * 10 + Number(bg.dataset.baseX || 0);
+            const by = state.my * 14 + scrollShift * 6 + Math.cos(t * 0.12) * 8 + Number(bg.dataset.baseY || 0);
+            const bgScale = Number(bg.dataset.scale || 1.12);
+            bg.style.transform = `translate3d(${bx.toFixed(2)}px, ${by.toFixed(2)}px, 0) scale(${bgScale})`;
+        }
+
+        requestAnimationFrame(render);
+    };
+
+    requestAnimationFrame(render);
+})();
+</script>
+{% endblock %}
