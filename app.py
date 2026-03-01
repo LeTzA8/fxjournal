@@ -70,16 +70,103 @@ def get_symbol_options(selected_symbol=None):
         options.insert(0, selected)
     return options
 
+
+INSTRUMENT_CONTRACT_SIZE = {
+    # Metals (common CFD conventions)
+    "XAUUSD": 100.0,
+    "XAGUSD": 5000.0,
+    # Indices (point value per lot; can vary by broker)
+    "US500": 1.0,
+    "NAS100": 1.0,
+    "US30": 1.0,
+}
+
+
+def normalize_symbol(symbol):
+    return "".join(ch for ch in (symbol or "").upper() if ch.isalnum())
+
+
+def is_fx_pair(symbol):
+    sym = normalize_symbol(symbol)
+    return len(sym) == 6 and sym.isalpha()
+
+
+def get_contract_size(symbol):
+    sym = normalize_symbol(symbol)
+    if sym in INSTRUMENT_CONTRACT_SIZE:
+        return INSTRUMENT_CONTRACT_SIZE[sym]
+    if is_fx_pair(sym):
+        return 100000.0
+    return 1.0
+
+
+def quote_to_usd_rate(symbol, reference_price):
+    sym = normalize_symbol(symbol)
+    if sym.endswith("USD"):
+        return 1.0
+
+    # USDXXX pairs can be inverted to convert quote currency to USD.
+    if is_fx_pair(sym) and sym.startswith("USD") and reference_price and reference_price > 0:
+        return 1.0 / reference_price
+
+    # Crosses like EURJPY need a separate conversion rate (not available here).
+    return None
+
+
+def calc_pnl_values(symbol, side, entry_price, exit_price, lot_size):
+    if entry_price is None or exit_price is None:
+        return None
+    if lot_size is None or lot_size <= 0:
+        return None
+
+    direction = 1.0 if (side or "").upper() == "BUY" else -1.0
+    contract_size = get_contract_size(symbol)
+    conversion_rate = quote_to_usd_rate(symbol, exit_price)
+    if conversion_rate is None:
+        return None
+
+    return direction * (exit_price - entry_price) * lot_size * contract_size * conversion_rate
+
+
+def derive_exit_price(symbol, side, entry_price, lot_size, pnl_value):
+    if entry_price is None or pnl_value is None:
+        return None
+    if lot_size is None or lot_size <= 0:
+        return None
+
+    direction = 1.0 if (side or "").upper() == "BUY" else -1.0
+    contract_size = get_contract_size(symbol)
+    units = lot_size * contract_size
+    if units <= 0:
+        return None
+
+    sym = normalize_symbol(symbol)
+
+    # Quote currency is USD -> linear solve.
+    if sym.endswith("USD"):
+        return entry_price + (pnl_value / (direction * units))
+
+    # USDXXX nonlinear solve:
+    # pnl = direction * (exit-entry) * units / exit
+    if is_fx_pair(sym) and sym.startswith("USD"):
+        k = pnl_value / (direction * units)
+        denom = 1.0 - k
+        if abs(denom) < 1e-9:
+            return None
+        candidate = entry_price / denom
+        return candidate if candidate > 0 else None
+
+    return None
+
+
 def calc_pnl(trade):
-    if trade.exit_price is None:
-        return None  # still open
-
-    diff = trade.exit_price - trade.entry_price
-    if trade.side == "SELL":
-        diff = -diff
-
-    # simple placeholder formula (adjust later)
-    return diff * 100000 * trade.lot_size
+    return calc_pnl_values(
+        symbol=trade.symbol,
+        side=trade.side,
+        entry_price=trade.entry_price,
+        exit_price=trade.exit_price,
+        lot_size=trade.lot_size,
+    )
 
 
 def resolve_pnl(trade):
@@ -342,16 +429,21 @@ def new_trade():
             opened_at = datetime.utcnow()
 
         if pnl is not None and exit_price is None:
-            exit_price = entry_price + (pnl / (100000 * lot_size)) * (1 if side == "BUY" else -1)
+            exit_price = derive_exit_price(
+                symbol=symbol,
+                side=side,
+                entry_price=entry_price,
+                lot_size=lot_size,
+                pnl_value=pnl,
+            )
         if pnl is None and exit_price is not None:
-            pnl = calc_pnl(Trade(
-                user_id=session["user_id"],
+            pnl = calc_pnl_values(
                 symbol=symbol,
                 side=side,
                 entry_price=entry_price,
                 exit_price=exit_price,
                 lot_size=lot_size,
-            ))
+            )
         trade = Trade(
             user_id=session["user_id"],
             symbol=symbol,
@@ -426,17 +518,20 @@ def edit_trade(trade_id):
             opened_at = trade.opened_at
 
         if pnl is not None and exit_price is None:
-            exit_price = entry_price + (pnl / (100000 * lot_size)) * (1 if side == "BUY" else -1)
+            exit_price = derive_exit_price(
+                symbol=symbol,
+                side=side,
+                entry_price=entry_price,
+                lot_size=lot_size,
+                pnl_value=pnl,
+            )
         if pnl is None and exit_price is not None:
-            pnl = calc_pnl(
-                Trade(
-                    user_id=session["user_id"],
-                    symbol=symbol,
-                    side=side,
-                    entry_price=entry_price,
-                    exit_price=exit_price,
-                    lot_size=lot_size,
-                )
+            pnl = calc_pnl_values(
+                symbol=symbol,
+                side=side,
+                entry_price=entry_price,
+                exit_price=exit_price,
+                lot_size=lot_size,
             )
 
         trade.symbol = symbol
