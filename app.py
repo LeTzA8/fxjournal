@@ -1,4 +1,5 @@
-﻿from datetime import datetime, timedelta
+﻿import os
+from datetime import datetime, timedelta
 
 from flask import Flask, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
@@ -7,8 +8,18 @@ from sqlalchemy.exc import OperationalError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "change-me-in-production"
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///FXJournal.db"
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-me-in-production")
+
+# Database URL placeholder flow:
+# 1) Set DATABASE_URL in your environment for Postgres
+# 2) If missing, fallback to local SQLite for development
+database_url = os.getenv("DATABASE_URL", "sqlite:///FXJournal.db")
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql+psycopg://", 1)
+elif database_url.startswith("postgresql://") and "+psycopg" not in database_url:
+    database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
