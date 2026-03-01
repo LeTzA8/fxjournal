@@ -1,6 +1,5 @@
 ﻿import os
 from datetime import datetime, timedelta
-
 from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
@@ -9,6 +8,7 @@ from sqlalchemy.exc import OperationalError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 load_dotenv()
+
 
 app = Flask(__name__)
 secret_key = os.getenv("SECRET_KEY")
@@ -113,6 +113,25 @@ def quote_to_usd_rate(symbol, reference_price):
     return None
 
 
+def get_pip_size(symbol):
+    sym = normalize_symbol(symbol)
+    if not is_fx_pair(sym):
+        return None
+    return 0.01 if sym.endswith("JPY") else 0.0001
+
+
+def calc_pips_values(symbol, side, entry_price, exit_price):
+    if entry_price is None or exit_price is None:
+        return None
+
+    pip_size = get_pip_size(symbol)
+    if not pip_size:
+        return None
+
+    direction = 1.0 if (side or "").upper() == "BUY" else -1.0
+    return direction * ((exit_price - entry_price) / pip_size)
+
+
 def calc_pnl_values(symbol, side, entry_price, exit_price, lot_size):
     if entry_price is None or exit_price is None:
         return None
@@ -173,6 +192,15 @@ def resolve_pnl(trade):
     if trade.pnl is not None:
         return trade.pnl
     return calc_pnl(trade)
+
+
+def resolve_pips(trade):
+    return calc_pips_values(
+        symbol=trade.symbol,
+        side=trade.side,
+        entry_price=trade.entry_price,
+        exit_price=trade.exit_price,
+    )
 
 
 class User(db.Model):
@@ -256,6 +284,7 @@ def home():
     recent_trades = []
     for trade in user_trades:
         pnl_value = resolve_pnl(trade)
+        pips_value = resolve_pips(trade)
         trade_date = trade.opened_at.strftime("%d %b %Y") if trade.opened_at else "-"
         trade_date_value = trade.opened_at.strftime("%Y-%m-%d") if trade.opened_at else ""
         recent_trades.append(
@@ -266,6 +295,7 @@ def home():
                 "exit_price": trade.exit_price,
                 "lot_size": trade.lot_size,
                 "pnl": pnl_value,
+                "pips": pips_value,
                 "date": trade_date,
                 "date_value": trade_date_value,
                 "status": "Closed" if trade.exit_price is not None else "Running",
@@ -392,12 +422,27 @@ def trades():
         db.session.rollback()
         user_trades = []
 
+    trade_rows = []
+    for trade in user_trades:
+        trade_rows.append(
+            {
+                "id": trade.id,
+                "symbol": trade.symbol,
+                "side": trade.side,
+                "entry_price": trade.entry_price,
+                "exit_price": trade.exit_price,
+                "lot_size": trade.lot_size,
+                "pnl": resolve_pnl(trade),
+                "pips": resolve_pips(trade),
+                "opened_at": trade.opened_at,
+            }
+        )
 
     return render_template(
         "trades.html",
         title="My Trades | FX Journal",
         username=username,
-        trades=user_trades,
+        trades=trade_rows,
     )
 
 @app.route("/trades/new", methods=["GET", "POST"])
@@ -477,6 +522,7 @@ def trade_detail(trade_id):
 
     trade = Trade.query.filter_by(id=trade_id, user_id=session["user_id"]).first_or_404()
     trade_pnl = resolve_pnl(trade)
+    trade_pips = resolve_pips(trade)
 
     return render_template(
         "trade_detail.html",
@@ -484,6 +530,7 @@ def trade_detail(trade_id):
         username=session.get("username", "User"),
         trade=trade,
         trade_pnl=trade_pnl,
+        trade_pips=trade_pips,
     )
 
 

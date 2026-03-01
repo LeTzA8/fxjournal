@@ -156,6 +156,11 @@
                                     {% else %}
                                     <span class="muted">0.00</span>
                                     {% endif %}
+                                    {% if trade.pips is not none %}
+                                    <span class="pip-note">
+                                        ({{ '%+.1f'|format(trade.pips) }} pips)
+                                    </span>
+                                    {% endif %}
                                 </td>
                                 <td>{{ trade.date }}</td>
                                 <td>{{ trade.status }}</td>
@@ -455,6 +460,13 @@
 
     .good { color: #1e7a42; }
     .bad { color: #a63c36; }
+    .pip-note {
+        display: block;
+        margin-top: 0.12rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #1f2a37;
+    }
 
     .panel-grid {
         display: grid;

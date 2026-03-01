@@ -48,6 +48,9 @@
                     <label for="pnl">PnL</label>
                     <input id="pnl" type="text" value="{% if trade_pnl is not none %}{{ '%.2f'|format(trade_pnl) }}{% else %}-{% endif %}" readonly>
 
+                    <label for="pips">Pips</label>
+                    <input id="pips" type="text" value="{% if trade_pips is not none %}{{ '%+.1f'|format(trade_pips) }} pips{% else %}-{% endif %}" readonly>
+
                     <label for="status">Status</label>
                     <input id="status" type="text" value="{% if trade and trade.exit_price is not none %}Closed{% else %}Running{% endif %}" readonly>
 
