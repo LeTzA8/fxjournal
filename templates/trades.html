@@ -90,6 +90,7 @@
                                 <td>{{ trade.opened_at.strftime('%d %b %Y') }}</td>
                                 <td>
                                     <div class="row-actions">
+                                        <a href="/trades/{{ trade.id }}" class="view-btn">View</a>
                                         <a href="/trades/{{ trade.id }}/edit" class="edit-btn">Edit</a>
                                         <form action="/trades/{{ trade.id }}/delete" method="post" class="delete-form">
                                             <button type="submit" class="delete-btn">Delete</button>
@@ -375,6 +376,7 @@
         gap: 0.4rem;
     }
 
+    .view-btn,
     .edit-btn,
     .delete-btn {
         display: inline-flex;
@@ -388,6 +390,16 @@
         text-transform: uppercase;
         text-decoration: none;
         cursor: pointer;
+    }
+
+    .view-btn {
+        border: 1px solid #c8d6de;
+        background: #f2f8fb;
+        color: #2e5a72;
+    }
+
+    .view-btn:hover {
+        background: #e8f3f9;
     }
 
     .edit-btn {

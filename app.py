@@ -316,6 +316,23 @@ def new_trade():
     )
 
 
+@app.route("/trades/<int:trade_id>")
+def trade_detail(trade_id):
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    trade = Trade.query.filter_by(id=trade_id, user_id=session["user_id"]).first_or_404()
+    trade_pnl = resolve_pnl(trade)
+
+    return render_template(
+        "trade_detail.html",
+        title="Trade Detail | FX Journal",
+        username=session.get("username", "User"),
+        trade=trade,
+        trade_pnl=trade_pnl,
+    )
+
+
 @app.route("/trades/<int:trade_id>/edit", methods=["GET", "POST"])
 def edit_trade(trade_id):
     if not session.get("user_id"):
