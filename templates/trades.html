@@ -30,6 +30,9 @@
                         <a href="/trades/new" class="new-trade-btn">New Trade</a>
                     </div>
                 </div>
+                {% if batch_delete_status and batch_delete_message %}
+                <p class="batch-alert {{ batch_delete_status }}" role="status" aria-live="polite">{{ batch_delete_message }}</p>
+                {% endif %}
                 <div class="table-controls">
                     <div id="tradeFilters" class="filter-row">
                         <select id="filterField" aria-label="Filter by">
@@ -74,6 +77,20 @@
                         </select>
                     </div>
                 </div>
+                {% if import_batches %}
+                <form action="/imports/delete" method="post" class="batch-delete-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label for="import_signature">Delete Imported Batch</label>
+                    <select id="import_signature" name="import_signature" required>
+                        {% for batch in import_batches %}
+                        <option value="{{ batch.signature }}">
+                            {{ batch.imported_at_label }} - {{ batch.trade_count }} trade{% if batch.trade_count != 1 %}s{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="batch-delete-btn">Delete Batch</button>
+                </form>
+                {% endif %}
                 <div class="table-shell">
                     <table>
                         <thead>
@@ -146,6 +163,7 @@
                                         <a href="/trades/{{ trade.id }}" class="view-btn">View</a>
                                         <a href="/trades/{{ trade.id }}/edit" class="edit-btn">Edit</a>
                                         <form action="/trades/{{ trade.id }}/delete" method="post" class="delete-form">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="delete-btn">Delete</button>
                                         </form>
                                     </div>
@@ -305,6 +323,7 @@
         grid-template-columns: 1fr;
         gap: 0.8rem;
         min-width: 0;
+        align-items: start;
     }
 
     .panel {
@@ -315,6 +334,13 @@
         box-shadow: 0 10px 28px rgba(15, 55, 36, 0.08);
         min-width: 0;
         max-width: 100%;
+    }
+
+    .trade-log {
+        display: flex;
+        flex-direction: column;
+        height: clamp(460px, 78vh, 920px);
+        min-height: 0;
     }
 
     .panel-head {
@@ -329,6 +355,77 @@
         display: grid;
         gap: 0.55rem;
         margin-bottom: 0.75rem;
+    }
+
+    .batch-alert {
+        margin: 0 0 0.65rem;
+        border-radius: 10px;
+        padding: 0.58rem 0.72rem;
+        font-size: 0.82rem;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+    }
+
+    .batch-alert.success {
+        border: 1px solid #b5dcc2;
+        background: #eaf8ef;
+        color: #1f7942;
+    }
+
+    .batch-alert.info {
+        border: 1px solid #bfd8e7;
+        background: #ecf7fd;
+        color: #2e5a72;
+    }
+
+    .batch-alert.error {
+        border: 1px solid #e6c1bf;
+        background: #fff1f0;
+        color: #943733;
+    }
+
+    .batch-delete-form {
+        display: grid;
+        grid-template-columns: max-content minmax(220px, 1fr) auto;
+        gap: 0.45rem;
+        align-items: center;
+        margin-bottom: 0.75rem;
+        min-width: 0;
+    }
+
+    .batch-delete-form label {
+        font-size: 0.76rem;
+        color: #4e6657;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .batch-delete-form select {
+        border: 1px solid #c6d4ca;
+        background: #f8fbf9;
+        color: #2f5642;
+        border-radius: 8px;
+        padding: 0.4rem 0.55rem;
+        font-size: 0.78rem;
+        min-width: 0;
+    }
+
+    .batch-delete-btn {
+        border: 1px solid #d6b4b2;
+        background: #fff3f2;
+        color: #943733;
+        border-radius: 8px;
+        padding: 0.38rem 0.62rem;
+        font-size: 0.76rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        cursor: pointer;
+    }
+
+    .batch-delete-btn:hover {
+        background: #ffe9e7;
     }
 
     .filter-row {
@@ -420,6 +517,13 @@
         overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior-x: contain;
+    }
+
+    .trade-log .table-shell {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: auto;
     }
 
     table {
@@ -543,6 +647,14 @@
     }
 
     @media (max-width: 1080px) {
+        .trade-log {
+            height: auto;
+        }
+
+        .trade-log .table-shell {
+            max-height: min(62vh, 620px);
+        }
+
         .filter-row {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
@@ -571,6 +683,10 @@
             grid-template-columns: 1fr;
         }
 
+        .batch-delete-form {
+            grid-template-columns: 1fr;
+        }
+
         .panel-head {
             flex-wrap: wrap;
             align-items: flex-start;
@@ -578,6 +694,10 @@
 
         .table-shell {
             margin-inline: -0.1rem;
+        }
+
+        .trade-log .table-shell {
+            max-height: min(56vh, 520px);
         }
 
         table {

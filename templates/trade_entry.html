@@ -23,12 +23,13 @@
                     </p>
                 </div>
                 <div class="head-actions">
+                    <a class="ghost-link" href="/">Back to Dashboard</a>
                     <a class="ghost-link" href="/trades">Back to Trades</a>
                 </div>
             </div>
         </header>
 
-        <section class="panel-grid">
+        <section class="panel-grid {% if form_mode == 'new' %}with-import{% endif %}">
             <article class="panel entry-panel">
                 <div class="panel-head">
                     <h2>Trade Details</h2>
@@ -36,6 +37,7 @@
                 </div>
 
                 <form action="{{ form_action }}" method="post" class="trade-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label for="symbol">Pair</label>
                     <select id="symbol" name="symbol" required>
                         {% set selected_symbol = trade.symbol if trade else symbol_options[0] %}
@@ -80,6 +82,43 @@
                     </div>
                 </form>
             </article>
+
+            {% if form_mode == "new" %}
+            <article class="panel import-panel">
+                <div class="panel-head">
+                    <h2>Import from MetaTrader 5</h2>
+                    <span class="soft">XLSX Upload</span>
+                </div>
+
+                {% if import_status and import_message %}
+                <p class="import-alert {{ import_status }}">{{ import_message }}</p>
+                {% endif %}
+
+                <form action="/import" method="post" enctype="multipart/form-data" class="import-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label for="mt5_file">MT5 Excel File</label>
+                    <div id="mt5Dropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload MT5 xlsx file" aria-controls="mt5_file">
+                        <p class="dropzone-title">Drag and drop your MT5 .xlsx file here</p>
+                        <p class="dropzone-sub">or tap to browse</p>
+                        <input
+                            id="mt5_file"
+                            name="mt5_file"
+                            class="file-input"
+                            type="file"
+                            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            required
+                        >
+                        <p id="mt5FileName" class="dropzone-file"></p>
+                    </div>
+                    <p class="import-help">
+                        Upload a MetaTrader 5 report exported as <code>.xlsx</code>. The parser and DB import step will be added next.
+                    </p>
+                    <div class="form-actions">
+                        <button type="submit" class="submit-btn">Upload XLSX</button>
+                    </div>
+                </form>
+            </article>
+            {% endif %}
         </section>
     </div>
 </section>
@@ -223,8 +262,17 @@
         display: grid;
         grid-template-columns: 1fr;
         gap: 0.8rem;
+        align-items: start;
         justify-items: center;
         min-width: 0;
+    }
+
+    .panel-grid.with-import {
+        grid-template-columns: minmax(0, 760px) minmax(0, 520px);
+        justify-content: center;
+        justify-items: center;
+        align-items: center;
+        gap: 1rem;
     }
 
     .panel {
@@ -239,9 +287,18 @@
     }
 
     .entry-panel {
-        width: min(100%, 760px);
-        margin: 0 auto;
+        width: 100%;
+        margin: 0;
         min-width: 0;
+        align-self: center;
+    }
+
+    .import-panel {
+        width: 100%;
+        margin: 0;
+        min-width: 0;
+        max-width: 520px;
+        align-self: center;
     }
 
     .panel-head {
@@ -273,7 +330,25 @@
         min-width: 0;
     }
 
+    .import-form {
+        display: grid;
+        gap: 0.7rem;
+        min-width: 0;
+    }
+
+    .import-form > * {
+        min-width: 0;
+    }
+
     .trade-form label {
+        font-size: 0.84rem;
+        font-weight: 700;
+        color: #294c3a;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .import-form label {
         font-size: 0.84rem;
         font-weight: 700;
         color: #294c3a;
@@ -296,9 +371,102 @@
         transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
     }
 
+    .import-form input[type="file"] {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        border: 1px dashed #9fb9a9;
+        background: #f7fcf8;
+        border-radius: 10px;
+        padding: 0.68rem 0.75rem;
+        color: #1f2a37;
+        font: inherit;
+    }
+
+    .dropzone {
+        position: relative;
+        border: 1px dashed #9fb9a9;
+        background: #f7fcf8;
+        border-radius: 10px;
+        padding: 1rem 0.8rem;
+        text-align: center;
+        transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+        cursor: pointer;
+    }
+
+    .dropzone:hover,
+    .dropzone.drag-over,
+    .dropzone:focus-within {
+        border-color: #2b7d50;
+        background: #eef8f2;
+        box-shadow: 0 0 0 4px rgba(43, 125, 80, 0.12);
+    }
+
+    .dropzone-title {
+        margin: 0;
+        font-size: 0.86rem;
+        font-weight: 700;
+        color: #204735;
+    }
+
+    .dropzone-sub {
+        margin: 0.28rem 0 0;
+        font-size: 0.78rem;
+        color: #587064;
+    }
+
+    .dropzone-file {
+        margin: 0.42rem 0 0;
+        font-size: 0.76rem;
+        font-weight: 700;
+        color: #2f5642;
+        word-break: break-word;
+    }
+
+    .file-input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+    }
+
     .trade-form input[type="date"] {
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+
+    .import-help {
+        margin: 0;
+        color: #5b6f62;
+        font-size: 0.82rem;
+    }
+
+    .import-alert {
+        margin: 0 0 0.7rem;
+        border-radius: 10px;
+        padding: 0.58rem 0.72rem;
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+
+    .import-alert.success {
+        border: 1px solid #b5dcc2;
+        background: #eaf8ef;
+        color: #1f7942;
+    }
+
+    .import-alert.info {
+        border: 1px solid #bfd8e7;
+        background: #ecf7fd;
+        color: #2e5a72;
+    }
+
+    .import-alert.error {
+        border: 1px solid #e6c1bf;
+        background: #fff1f0;
+        color: #943733;
     }
 
     .trade-form textarea {
@@ -355,6 +523,12 @@
 
     .ghost-btn:hover {
         background: #eff6f1;
+    }
+
+    @media (max-width: 980px) {
+        .panel-grid.with-import {
+            grid-template-columns: 1fr;
+        }
     }
 
     @media (max-width: 700px) {
@@ -438,6 +612,90 @@
     };
 
     requestAnimationFrame(render);
+})();
+</script>
+
+<script>
+(() => {
+    const dropzone = document.getElementById("mt5Dropzone");
+    const fileInput = document.getElementById("mt5_file");
+    const fileName = document.getElementById("mt5FileName");
+    if (!dropzone || !fileInput || !fileName) {
+        return;
+    }
+
+    const setFileName = (file) => {
+        fileName.textContent = file ? `Selected: ${file.name}` : "";
+    };
+
+    const setInvalid = (message) => {
+        fileInput.setCustomValidity(message || "");
+        if (message) {
+            fileInput.reportValidity();
+        }
+    };
+
+    fileInput.addEventListener("change", () => {
+        const file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+        if (!file) {
+            setFileName(null);
+            setInvalid("");
+            return;
+        }
+        if (!file.name.toLowerCase().endsWith(".xlsx")) {
+            setFileName(null);
+            fileInput.value = "";
+            setInvalid("Please select an .xlsx file.");
+            return;
+        }
+        setInvalid("");
+        setFileName(file);
+    });
+
+    ["dragenter", "dragover"].forEach((eventName) => {
+        dropzone.addEventListener(eventName, (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            dropzone.classList.add("drag-over");
+        });
+    });
+
+    ["dragleave", "dragend", "drop"].forEach((eventName) => {
+        dropzone.addEventListener(eventName, (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            dropzone.classList.remove("drag-over");
+        });
+    });
+
+    dropzone.addEventListener("drop", (event) => {
+        const file = event.dataTransfer && event.dataTransfer.files ? event.dataTransfer.files[0] : null;
+        if (!file) {
+            return;
+        }
+        if (!file.name.toLowerCase().endsWith(".xlsx")) {
+            fileInput.value = "";
+            setFileName(null);
+            setInvalid("Please drop an .xlsx file.");
+            return;
+        }
+        setInvalid("");
+        try {
+            const transfer = new DataTransfer();
+            transfer.items.add(file);
+            fileInput.files = transfer.files;
+        } catch {
+            // Some browsers may block programmatic assignment; fallback keeps filename hint.
+        }
+        setFileName(file);
+    });
+
+    dropzone.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            fileInput.click();
+        }
+    });
 })();
 </script>
 {% endblock %}
