@@ -37,7 +37,12 @@
 
                 <form action="{{ form_action }}" method="post" class="trade-form">
                     <label for="symbol">Pair</label>
-                    <input id="symbol" name="symbol" type="text" placeholder="e.g. EURUSD" value="{{ trade.symbol if trade else '' }}" required>
+                    <select id="symbol" name="symbol" required>
+                        {% set selected_symbol = trade.symbol if trade else symbol_options[0] %}
+                        {% for symbol in symbol_options %}
+                        <option value="{{ symbol }}" {% if selected_symbol == symbol %}selected{% endif %}>{{ symbol }}</option>
+                        {% endfor %}
+                    </select>
 
                     <label for="side">Side</label>
                     <select id="side" name="side" required>

@@ -28,7 +28,50 @@
                     <h2>All Trades</h2>
                     <div class="table-actions">
                         <a href="/trades/new" class="new-trade-btn">New Trade</a>
-                        <button class="ghost-btn" type="button">Filter</button>
+                    </div>
+                </div>
+                <div class="table-controls">
+                    <div id="tradeFilters" class="filter-row">
+                        <select id="filterField" aria-label="Filter by">
+                            <option value="">No Filter</option>
+                            <option value="pair">Pair</option>
+                            <option value="date">Date</option>
+                            <option value="side">Side</option>
+                            <option value="status">Status</option>
+                        </select>
+
+                        <select id="pairFilter" class="filter-value" aria-label="Choose pair" hidden>
+                            <option value="">All Pairs</option>
+                        </select>
+
+                        <select id="dateFilter" class="filter-value" aria-label="Choose date" hidden>
+                            <option value="">All Dates</option>
+                        </select>
+
+                        <select id="sideFilter" class="filter-value" aria-label="Choose side" hidden>
+                            <option value="">All Sides</option>
+                            <option value="BUY">Buy</option>
+                            <option value="SELL">Sell</option>
+                        </select>
+
+                        <select id="statusFilter" class="filter-value" aria-label="Choose status" hidden>
+                            <option value="">All Status</option>
+                            <option value="Running">Running</option>
+                            <option value="Closed">Closed</option>
+                        </select>
+                        <button id="applyFilters" class="ghost-btn" type="button">Apply</button>
+                        <button id="clearFilters" class="ghost-btn" type="button">Clear</button>
+                    </div>
+                    <div class="sort-wrap">
+                        <label for="tradeSort">Sort</label>
+                        <select id="tradeSort" aria-label="Sort trades">
+                            <option value="date_desc">Date (Newest)</option>
+                            <option value="date_asc">Date (Oldest)</option>
+                            <option value="pnl_desc">PnL (High-Low)</option>
+                            <option value="pnl_asc">PnL (Low-High)</option>
+                            <option value="lot_desc">Lot Size (High-Low)</option>
+                            <option value="lot_asc">Lot Size (Low-High)</option>
+                        </select>
                     </div>
                 </div>
                 <div class="table-shell">
@@ -49,7 +92,16 @@
                         <tbody>
                             {% if trades %}
                             {% for trade in trades %}
-                            <tr>
+                            {% set trade_status = "Closed" if trade.exit_price is not none else "Running" %}
+                            {% set trade_date_value = trade.opened_at.strftime('%Y-%m-%d') if trade.opened_at else "" %}
+                            <tr
+                                data-pair="{{ trade.symbol }}"
+                                data-side="{{ trade.side }}"
+                                data-status="{{ trade_status }}"
+                                data-date="{{ trade_date_value }}"
+                                data-pnl="{{ trade.pnl if trade.pnl is not none else '' }}"
+                                data-lot="{{ trade.lot_size }}"
+                            >
                                 <td>{{ trade.symbol }}</td>
                                 <td>
                                     {% if trade.side == "SELL" %}
@@ -81,13 +133,9 @@
                                     {% endif %}
                                 </td>
                                 <td>
-                                    {% if trade.exit_price is not none %}
-                                    Closed
-                                    {% else %}
-                                    Running
-                                    {% endif %}
+                                    {{ trade_status }}
                                 </td>
-                                <td>{{ trade.opened_at.strftime('%d %b %Y') }}</td>
+                                <td>{{ trade.opened_at.strftime('%d %b %Y') if trade.opened_at else '-' }}</td>
                                 <td>
                                     <div class="row-actions">
                                         <a href="/trades/{{ trade.id }}" class="view-btn">View</a>
@@ -269,6 +317,43 @@
         margin-bottom: 0.75rem;
     }
 
+    .table-controls {
+        display: grid;
+        gap: 0.55rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .filter-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.45rem;
+        align-items: center;
+    }
+
+    .filter-row select,
+    .sort-wrap select {
+        border: 1px solid #c6d4ca;
+        background: #f8fbf9;
+        color: #2f5642;
+        border-radius: 8px;
+        padding: 0.35rem 0.5rem;
+        font-size: 0.78rem;
+    }
+
+    .sort-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+    }
+
+    .sort-wrap label {
+        font-size: 0.78rem;
+        color: #4e6657;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
     h2 {
         margin: 0;
         font-size: 1rem;
@@ -366,6 +451,10 @@
         color: #a5423c;
     }
 
+    .hidden-row {
+        display: none;
+    }
+
     .good { color: #1e7a42; }
     .bad { color: #a63c36; }
     .muted { color: #6b7280; }
@@ -433,6 +522,12 @@
         font-style: italic;
     }
 
+    @media (max-width: 1080px) {
+        .filter-row {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
     @media (max-width: 700px) {
         .dash-wrap {
             padding: 0.9rem;
@@ -445,6 +540,15 @@
 
         .head-actions {
             width: 100%;
+        }
+
+        .sort-wrap {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .filter-row {
+            grid-template-columns: 1fr;
         }
     }
 
@@ -510,6 +614,170 @@
     };
 
     requestAnimationFrame(render);
+})();
+</script>
+
+<script>
+(() => {
+    const table = document.querySelector(".trade-log table");
+    if (!table) {
+        return;
+    }
+
+    const tbody = table.querySelector("tbody");
+    const rows = Array.from(tbody.querySelectorAll("tr:not(.empty-row)"));
+    if (!rows.length) {
+        return;
+    }
+
+    const filterField = document.getElementById("filterField");
+    const pairFilter = document.getElementById("pairFilter");
+    const dateFilter = document.getElementById("dateFilter");
+    const sideFilter = document.getElementById("sideFilter");
+    const statusFilter = document.getElementById("statusFilter");
+    const applyFiltersBtn = document.getElementById("applyFilters");
+    const clearFiltersBtn = document.getElementById("clearFilters");
+    const sortSelect = document.getElementById("tradeSort");
+    const valueSelects = {
+        pair: pairFilter,
+        date: dateFilter,
+        side: sideFilter,
+        status: statusFilter,
+    };
+
+    const noMatchRow = document.createElement("tr");
+    noMatchRow.className = "no-match-row hidden-row";
+    noMatchRow.innerHTML = '<td colspan="9" class="muted">No trades match current filters.</td>';
+    tbody.appendChild(noMatchRow);
+
+    const toUpper = (value) => (value || "").toString().trim().toUpperCase();
+    const toNumber = (value) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
+    };
+    const toDateMs = (value) => {
+        if (!value) return null;
+        const ms = Date.parse(value);
+        return Number.isFinite(ms) ? ms : null;
+    };
+    const unique = (items) => Array.from(new Set(items.filter(Boolean)));
+    const fillSelect = (select, values, allLabel) => {
+        if (!select) return;
+        select.innerHTML = "";
+        const allOption = document.createElement("option");
+        allOption.value = "";
+        allOption.textContent = allLabel;
+        select.appendChild(allOption);
+        values.forEach((value) => {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = value;
+            select.appendChild(option);
+        });
+    };
+
+    fillSelect(
+        pairFilter,
+        unique(rows.map((row) => toUpper(row.dataset.pair))).sort(),
+        "All Pairs"
+    );
+    fillSelect(
+        dateFilter,
+        unique(rows.map((row) => row.dataset.date)).sort((a, b) => b.localeCompare(a)),
+        "All Dates"
+    );
+
+    const updateValueControl = () => {
+        const active = filterField ? filterField.value : "";
+        Object.entries(valueSelects).forEach(([key, select]) => {
+            if (!select) return;
+            select.hidden = key !== active;
+        });
+    };
+
+    const getSortValue = (row, type) => {
+        if (type === "date") {
+            return toDateMs(row.dataset.date) ?? -Infinity;
+        }
+        if (type === "pnl") {
+            return toNumber(row.dataset.pnl) ?? -Infinity;
+        }
+        return toNumber(row.dataset.lot) ?? -Infinity;
+    };
+
+    const sortRows = () => {
+        const mode = sortSelect ? sortSelect.value : "date_desc";
+        const [field, order] = mode.split("_");
+        rows.sort((a, b) => {
+            const av = getSortValue(a, field);
+            const bv = getSortValue(b, field);
+            return order === "asc" ? av - bv : bv - av;
+        });
+        rows.forEach((row) => tbody.appendChild(row));
+    };
+
+    const applyFilters = () => {
+        const filterType = filterField ? filterField.value : "";
+        const rawValue = filterType && valueSelects[filterType] ? valueSelects[filterType].value : "";
+        const filterValue = toUpper(rawValue);
+
+        let visibleCount = 0;
+        rows.forEach((row) => {
+            let show = true;
+            if (filterType === "pair") {
+                show = !filterValue || toUpper(row.dataset.pair) === filterValue;
+            } else if (filterType === "date") {
+                show = !rawValue || row.dataset.date === rawValue;
+            } else if (filterType === "side") {
+                show = !filterValue || toUpper(row.dataset.side) === filterValue;
+            } else if (filterType === "status") {
+                show = !filterValue || toUpper(row.dataset.status) === filterValue;
+            }
+
+            row.classList.toggle("hidden-row", !show);
+            if (show) {
+                visibleCount += 1;
+            }
+        });
+
+        noMatchRow.classList.toggle("hidden-row", visibleCount !== 0);
+    };
+
+    const applyAll = () => {
+        sortRows();
+        applyFilters();
+    };
+
+    if (filterField) {
+        filterField.addEventListener("change", () => {
+            updateValueControl();
+            applyAll();
+        });
+    }
+
+    if (applyFiltersBtn) {
+        applyFiltersBtn.addEventListener("click", applyAll);
+    }
+
+    if (clearFiltersBtn) {
+        clearFiltersBtn.addEventListener("click", () => {
+            if (filterField) filterField.value = "";
+            Object.values(valueSelects).forEach((select) => {
+                if (select) {
+                    select.value = "";
+                }
+            });
+            updateValueControl();
+            applyAll();
+        });
+    }
+
+    if (sortSelect) {
+        sortSelect.addEventListener("change", applyAll);
+    }
+
+    updateValueControl();
+    applyAll();
 })();
 </script>
 {% endblock %}

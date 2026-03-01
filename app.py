@@ -1,14 +1,21 @@
 ﻿import os
 from datetime import datetime, timedelta
 
+from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, request, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_
 from sqlalchemy.exc import OperationalError
 from werkzeug.security import check_password_hash, generate_password_hash
 
+load_dotenv()
+
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "change-me-in-production")
+secret_key = os.getenv("SECRET_KEY")
+if not secret_key:
+    # Non-hardcoded fallback for local runs if .env is missing.
+    secret_key = os.urandom(32).hex()
+app.config["SECRET_KEY"] = secret_key
 
 # Database URL placeholder flow:
 # 1) Set DATABASE_URL in your environment for Postgres
@@ -22,6 +29,46 @@ elif database_url.startswith("postgresql://") and "+psycopg" not in database_url
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
+
+BASE_SYMBOL_OPTIONS = [
+    "EURUSD",
+    "GBPUSD",
+    "USDJPY",
+    "AUDUSD",
+    "USDCAD",
+    "USDCHF",
+    "NZDUSD",
+    "EURJPY",
+    "GBPJPY",
+    "AUDJPY",
+    "CADJPY",
+    "CHFJPY",
+    "NZDJPY",
+    "EURGBP",
+    "EURCHF",
+    "GBPCHF",
+    "EURAUD",
+    "GBPAUD",
+    "EURCAD",
+    "GBPCAD",
+    "AUDCAD",
+    "AUDNZD",
+    "EURNZD",
+    "GBPNZD",
+    "XAUUSD",
+    "XAGUSD",
+    "US500",
+    "NAS100",
+    "US30",
+]
+
+
+def get_symbol_options(selected_symbol=None):
+    options = list(BASE_SYMBOL_OPTIONS)
+    selected = (selected_symbol or "").strip().upper()
+    if selected and selected not in options:
+        options.insert(0, selected)
+    return options
 
 def calc_pnl(trade):
     if trade.exit_price is None:
@@ -272,7 +319,10 @@ def new_trade():
         return redirect(url_for("login"))
 
     if request.method == "POST":
+        allowed_symbols = set(get_symbol_options())
         symbol = request.form.get("symbol", "").strip().upper()
+        if symbol not in allowed_symbols:
+            return redirect(url_for("new_trade"))
         side = request.form.get("side", "BUY").strip().upper()
         entry_price = float(request.form.get("entry_price", 0.0))
         exit_price = request.form.get("exit_price", "").strip()
@@ -321,6 +371,7 @@ def new_trade():
         "trade_entry.html",
         title="New Trade | FX Journal",
         username=session.get("username", "User"),
+        symbol_options=get_symbol_options(),
         trade=None,
         form_action=url_for("new_trade"),
         form_mode="new",
@@ -352,7 +403,10 @@ def edit_trade(trade_id):
     trade = Trade.query.filter_by(id=trade_id, user_id=session["user_id"]).first_or_404()
 
     if request.method == "POST":
+        allowed_symbols = set(get_symbol_options(trade.symbol))
         symbol = request.form.get("symbol", "").strip().upper()
+        if symbol not in allowed_symbols:
+            return redirect(url_for("edit_trade", trade_id=trade.id))
         side = request.form.get("side", "BUY").strip().upper()
         entry_price = float(request.form.get("entry_price", 0.0))
         exit_price = request.form.get("exit_price", "").strip()
@@ -401,6 +455,7 @@ def edit_trade(trade_id):
         "trade_entry.html",
         title="Edit Trade | FX Journal",
         username=session.get("username", "User"),
+        symbol_options=get_symbol_options(trade.symbol),
         trade=trade,
         form_action=url_for("edit_trade", trade_id=trade.id),
         form_mode="edit",

@@ -12,6 +12,8 @@ ENV/
 # Flask instance/config
 instance/
 .webassets-cache
+.env
+.env.local
 
 # Databases and large local data
 *.db
