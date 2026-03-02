@@ -1,4 +1,5 @@
 ﻿import os
+import random
 import re
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
@@ -6,6 +7,7 @@ from dotenv import load_dotenv
 from flask import Flask, redirect, render_template, request, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from openpyxl import load_workbook
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
@@ -25,6 +27,16 @@ def env_bool(name, default=False):
     if value is None:
         return default
     return value.strip().lower() in TRUE_VALUES
+
+
+def env_int(name, default):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value.strip())
+    except (TypeError, ValueError):
+        return default
 
 
 def is_local_dev_environment():
@@ -79,6 +91,9 @@ limiter = Limiter(
     storage_uri=os.getenv("RATELIMIT_STORAGE_URI", "memory://"),
 )
 limiter.init_app(app)
+
+TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
+TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
 
 BASE_SYMBOL_OPTIONS = [
     # Major FX
@@ -582,6 +597,232 @@ def resolve_pips(trade):
     )
 
 
+def build_dashboard_insight(user_trades, closed_trades):
+    total_trades = len(user_trades)
+    total_closed = len(closed_trades)
+    insights = []
+
+    symbol_counts = {}
+    for trade in user_trades:
+        symbol = (trade.symbol or "").strip().upper()
+        if not symbol:
+            continue
+        symbol_counts[symbol] = symbol_counts.get(symbol, 0) + 1
+    if symbol_counts:
+        top_symbol, top_count = max(symbol_counts.items(), key=lambda item: (item[1], item[0]))
+        top_share = (top_count / max(sum(symbol_counts.values()), 1)) * 100
+        insights.append(
+            {
+                "title": "Most Traded Pair",
+                "body": (
+                    f"{top_symbol} is your most traded pair with {top_count} trades "
+                    f"({top_share:.0f}% of your journal)."
+                ),
+            }
+        )
+
+    if total_closed >= 3:
+        total_wins = sum(1 for _, pnl in closed_trades if pnl > 0)
+        overall_win_rate = (total_wins / total_closed) * 100
+
+        pair_stats = {}
+        for trade, pnl in closed_trades:
+            symbol = (trade.symbol or "").strip().upper()
+            if not symbol:
+                continue
+            if symbol not in pair_stats:
+                pair_stats[symbol] = {"count": 0, "wins": 0, "pnl_sum": 0.0}
+            pair_stats[symbol]["count"] += 1
+            pair_stats[symbol]["pnl_sum"] += float(pnl)
+            if pnl > 0:
+                pair_stats[symbol]["wins"] += 1
+
+        eligible_pairs = [
+            (symbol, stats) for symbol, stats in pair_stats.items() if stats["count"] >= 2
+        ]
+        if eligible_pairs:
+            best_pair, best_stats = max(
+                eligible_pairs,
+                key=lambda item: (item[1]["wins"] / item[1]["count"], item[1]["count"]),
+            )
+            pair_win_rate = (best_stats["wins"] / best_stats["count"]) * 100
+            pair_avg_pnl = best_stats["pnl_sum"] / best_stats["count"]
+            if pair_win_rate > overall_win_rate:
+                win_rate_delta = pair_win_rate - overall_win_rate
+                insights.append(
+                    {
+                        "title": "Pair Edge",
+                        "body": (
+                            f"You perform {win_rate_delta:.1f}% better on {best_pair} by win rate "
+                            f"({pair_win_rate:.1f}% vs {overall_win_rate:.1f}% overall)."
+                        ),
+                    }
+                )
+            insights.append(
+                {
+                    "title": "Pair Efficiency",
+                    "body": (
+                        f"Your average closed-trade result on {best_pair} is "
+                        f"{pair_avg_pnl:+.2f} across {best_stats['count']} trades."
+                    ),
+                }
+            )
+
+    if total_closed >= 4:
+        side_stats = {"BUY": {"count": 0, "pnl_sum": 0.0}, "SELL": {"count": 0, "pnl_sum": 0.0}}
+        for trade, pnl in closed_trades:
+            side = (trade.side or "").strip().upper()
+            if side not in side_stats:
+                continue
+            side_stats[side]["count"] += 1
+            side_stats[side]["pnl_sum"] += float(pnl)
+
+        buy_count = side_stats["BUY"]["count"]
+        sell_count = side_stats["SELL"]["count"]
+        if buy_count >= 2 and sell_count >= 2:
+            buy_avg = side_stats["BUY"]["pnl_sum"] / buy_count
+            sell_avg = side_stats["SELL"]["pnl_sum"] / sell_count
+            if abs(buy_avg - sell_avg) >= 0.01:
+                better_side = "BUY" if buy_avg > sell_avg else "SELL"
+                better_avg = buy_avg if buy_avg > sell_avg else sell_avg
+                weaker_side = "SELL" if better_side == "BUY" else "BUY"
+                weaker_avg = sell_avg if better_side == "BUY" else buy_avg
+                insights.append(
+                    {
+                        "title": "Directional Bias",
+                        "body": (
+                            f"{better_side} setups outperform {weaker_side} "
+                            f"({better_avg:+.2f} vs {weaker_avg:+.2f} average PnL per closed trade)."
+                        ),
+                    }
+                )
+
+    if total_closed >= 6:
+        day_totals = {}
+        for trade, pnl in closed_trades:
+            if not trade.opened_at:
+                continue
+            day_key = trade.opened_at.strftime("%Y-%m-%d")
+            if day_key not in day_totals:
+                day_totals[day_key] = {"pnl_sum": 0.0, "count": 0}
+            day_totals[day_key]["pnl_sum"] += float(pnl)
+            day_totals[day_key]["count"] += 1
+
+        if day_totals:
+            trades_on_losing_days = sum(
+                data["count"] for data in day_totals.values() if data["pnl_sum"] < 0
+            )
+            trades_on_non_losing_days = sum(
+                data["count"] for data in day_totals.values() if data["pnl_sum"] >= 0
+            )
+            total_day_trades = trades_on_losing_days + trades_on_non_losing_days
+            if (
+                total_day_trades > 0
+                and trades_on_losing_days > trades_on_non_losing_days
+            ):
+                losing_day_ratio = (trades_on_losing_days / total_day_trades) * 100
+                insights.append(
+                    {
+                        "title": "Risk Pattern",
+                        "body": (
+                            f"{losing_day_ratio:.0f}% of your trades happen on net-losing days. "
+                            "Consider reducing frequency after early losses."
+                        ),
+                    }
+                )
+
+    if total_trades == 0:
+        return {
+            "title": "No Data Yet",
+            "body": "Add your first trade to unlock personalized performance insights.",
+        }
+    if not insights:
+        return {
+            "title": "Developing Edge",
+            "body": (
+                f"You've logged {total_trades} trades so far. "
+                "As more closed trades accumulate, your insights will become more specific."
+            ),
+        }
+    return random.choice(insights)
+
+
+def get_public_base_url():
+    configured_base = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if configured_base:
+        return configured_base
+    return request.host_url.rstrip("/")
+
+
+def build_external_url(path_or_url):
+    if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
+        return path_or_url
+    return f"{get_public_base_url()}{path_or_url}"
+
+
+def get_token_serializer():
+    token_salt = os.getenv("TOKEN_SALT", "fxjournal-token-salt")
+    return URLSafeTimedSerializer(app.config["SECRET_KEY"], salt=token_salt)
+
+
+def generate_auth_token(email, purpose):
+    serializer = get_token_serializer()
+    return serializer.dumps(
+        {
+            "email": (email or "").strip().lower(),
+            "purpose": purpose,
+        }
+    )
+
+
+def verify_auth_token(token, purpose, max_age_seconds):
+    serializer = get_token_serializer()
+    try:
+        payload = serializer.loads(token, max_age=max_age_seconds)
+    except (SignatureExpired, BadSignature):
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("purpose") != purpose:
+        return None
+
+    email = str(payload.get("email", "")).strip().lower()
+    return email or None
+
+
+def send_email_placeholder(to_email, subject, text_body):
+    provider = os.getenv("EMAIL_PROVIDER", "placeholder").strip().lower()
+    sender = os.getenv("EMAIL_FROM", "noreply@example.com").strip()
+    send_enabled = env_bool("EMAIL_SEND_ENABLED", False)
+    api_key = os.getenv("EMAIL_API_KEY", "").strip()
+
+    if provider == "console" or not send_enabled:
+        app.logger.info(
+            "Email placeholder (console/disabled) -> to=%s from=%s subject=%s",
+            to_email,
+            sender,
+            subject,
+        )
+        app.logger.info("Email body:\n%s", text_body)
+        return {"sent": False, "mode": "placeholder"}
+
+    if not api_key:
+        app.logger.warning(
+            "EMAIL_SEND_ENABLED is true but EMAIL_API_KEY is missing. Using placeholder mode."
+        )
+        app.logger.info("Email body:\n%s", text_body)
+        return {"sent": False, "mode": "missing_api_key"}
+
+    # Provider integration placeholder:
+    # Add your provider client/request here (Resend, SendGrid, SES, etc).
+    app.logger.warning(
+        "Email provider '%s' is configured but integration is not implemented yet.", provider
+    )
+    app.logger.info("Email body:\n%s", text_body)
+    return {"sent": False, "mode": "not_implemented"}
+
+
 class User(db.Model):
     __tablename__ = "users"
 
@@ -589,6 +830,8 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
+    email_verified = db.Column(db.Boolean, nullable=False, default=False)
+    verification_sent_at = db.Column(db.DateTime, nullable=True)
     trades = db.relationship("Trade", backref="user", lazy=True)
 
 
@@ -643,8 +886,31 @@ def ensure_trades_table_columns():
         )
 
 
+def ensure_users_table_columns():
+    table_name = User.__tablename__
+    inspector = inspect(db.engine)
+    if table_name not in inspector.get_table_names():
+        return
+
+    existing_columns = {col["name"] for col in inspector.get_columns(table_name)}
+    statements = []
+    if "email_verified" not in existing_columns:
+        statements.append(
+            f"ALTER TABLE {table_name} ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+    if "verification_sent_at" not in existing_columns:
+        statements.append(
+            f"ALTER TABLE {table_name} ADD COLUMN verification_sent_at TIMESTAMP"
+        )
+
+    with db.engine.begin() as connection:
+        for stmt in statements:
+            connection.execute(text(stmt))
+
+
 with app.app_context():
     db.create_all()
+    ensure_users_table_columns()
     ensure_trades_table_columns()
 
 
@@ -757,6 +1023,7 @@ def home():
     avg_win = (sum(p for _, p in closed if p > 0) / wins) if wins else 0
     avg_loss = (abs(sum(p for _, p in closed if p < 0)) / losses) if losses else 0
     avg_rr = (avg_win / avg_loss) if avg_loss else None
+    account_pnl_total = sum(pnl for _, pnl in closed)
 
     recent_trades = []
     for trade in user_trades:
@@ -780,15 +1047,27 @@ def home():
         )
 
     chart_points = []
-    closed_recent = list(reversed(closed[:30]))
-    if closed_recent:
-        for trade, pnl in closed_recent:
-            chart_points.append(
-                {
-                    "label": trade.opened_at.strftime("%d %b"),
-                    "pnl": round(float(pnl), 2),
-                }
-            )
+    closed_for_equity = sorted(
+        closed,
+        key=lambda item: (
+            item[0].opened_at or datetime.min,
+            item[0].id or 0,
+        ),
+    )
+    running_equity = 0.0
+    daily_equity_points = {}
+    for trade, pnl in closed_for_equity:
+        running_equity += float(pnl)
+        if not trade.opened_at:
+            continue
+        day_key = trade.opened_at.strftime("%Y-%m-%d")
+        daily_equity_points[day_key] = {
+            "date": day_key,
+            "label": trade.opened_at.strftime("%d %b"),
+            "equity": round(running_equity, 2),
+        }
+    chart_points = list(daily_equity_points.values())
+    dashboard_insight = build_dashboard_insight(user_trades, closed)
 
     return render_template(
         "index.html",
@@ -796,10 +1075,12 @@ def home():
         username=username,
         win_rate=win_rate,
         net_pnl_week=net_pnl_week,
+        account_pnl_total=account_pnl_total,
         trades_this_month=trades_this_month,
         avg_rr=avg_rr,
         recent_trades=recent_trades,
         chart_points=chart_points,
+        dashboard_insight=dashboard_insight,
     )
 
 
@@ -813,7 +1094,15 @@ def login():
     if session.get("user_id"):
         return redirect(url_for("home"))
 
-    created = request.args.get("created") == "1"
+    verified = request.args.get("verified") == "1"
+    reset_done = request.args.get("reset") == "1"
+    success_message = request.args.get("success", "").strip()
+
+    if not success_message:
+        if reset_done:
+            success_message = "Password reset successful. Please log in."
+        elif verified:
+            success_message = "Email verified. You can now log in."
 
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
@@ -821,6 +1110,14 @@ def login():
 
         user = User.query.filter_by(email=email).first()
         if user and check_password_hash(user.password, password):
+            if env_bool("REQUIRE_EMAIL_VERIFICATION", True) and not user.email_verified:
+                return render_template(
+                    "login.html",
+                    title="Login | FX Journal",
+                    body_class="auth-layout",
+                    error="Please verify your email before logging in.",
+                    success=success_message,
+                )
             session["user_id"] = user.id
             session["username"] = user.username
             return redirect(url_for("home"))
@@ -830,13 +1127,13 @@ def login():
             title="Login | FX Journal",
             body_class="auth-layout",
             error="Invalid email or password.",
-            success="Account created. Please log in." if created else None,
+            success=success_message,
         )
     return render_template(
         "login.html",
         title="Login | FX Journal",
         body_class="auth-layout",
-        success="Account created. Please log in." if created else None,
+        success=success_message,
     )
 
 
@@ -844,6 +1141,12 @@ def login():
 def register():
     if session.get("user_id"):
         return redirect(url_for("home"))
+
+    created = request.args.get("created") == "1"
+    success_message = request.args.get("success", "").strip()
+    verify_link = request.args.get("verify_link", "").strip()
+    if not success_message and created:
+        success_message = "Verification email sent. Please verify your email before logging in."
 
     if request.method == "POST":
         username = request.form.get("username", "").strip()
@@ -856,6 +1159,8 @@ def register():
                 title="Register | FX Journal",
                 body_class="auth-layout",
                 error="All fields are required.",
+                success=success_message or None,
+                verify_link=verify_link,
             )
 
         existing_user = User.query.filter(
@@ -867,18 +1172,244 @@ def register():
                 title="Register | FX Journal",
                 body_class="auth-layout",
                 error="Username or email already exists.",
+                success=success_message or None,
+                verify_link=verify_link,
             )
 
         hashed_password = generate_password_hash(password)
-        user = User(username=username, email=email, password=hashed_password)
+        user = User(
+            username=username,
+            email=email,
+            password=hashed_password,
+            email_verified=False,
+            verification_sent_at=datetime.utcnow(),
+        )
         db.session.add(user)
         db.session.commit()
-        return redirect(url_for("login", created="1"))
+
+        verify_token = generate_auth_token(email=email, purpose=TOKEN_PURPOSE_VERIFY_EMAIL)
+        verify_link = build_external_url(
+            url_for("verify_email_token", token=verify_token)
+        )
+        email_subject = "Verify your FX Journal email"
+        email_body = (
+            f"Hi {username},\n\n"
+            "Thanks for registering.\n"
+            "Verify your email by opening this link:\n"
+            f"{verify_link}\n\n"
+            "If you did not create this account, you can ignore this email."
+        )
+        email_result = send_email_placeholder(email, email_subject, email_body)
+
+        register_kwargs = {"created": "1"}
+        if is_local_dev_environment() and not email_result.get("sent"):
+            register_kwargs["verify_link"] = verify_link
+        return redirect(url_for("register", **register_kwargs))
 
     return render_template(
         "register.html",
         title="Register | FX Journal",
         body_class="auth-layout",
+        success=success_message or None,
+        verify_link=verify_link,
+    )
+
+
+@app.route("/verify-email/resend", methods=["GET", "POST"])
+@limiter.limit(
+    "5 per minute;20 per hour",
+    methods=["POST"],
+    error_message="Too many attempts. Please wait and try again.",
+)
+def resend_verification_email():
+    success = ""
+    error = ""
+    debug_verify_link = ""
+
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        generic_success = (
+            "If this email exists, a verification link has been sent."
+        )
+        if not email:
+            error = "Email is required."
+        else:
+            user = User.query.filter_by(email=email).first()
+            if user and not user.email_verified:
+                verify_token = generate_auth_token(
+                    email=user.email,
+                    purpose=TOKEN_PURPOSE_VERIFY_EMAIL,
+                )
+                verify_link = build_external_url(
+                    url_for("verify_email_token", token=verify_token)
+                )
+                email_subject = "Verify your FX Journal email"
+                email_body = (
+                    f"Hi {user.username},\n\n"
+                    "You requested a new verification link.\n"
+                    f"{verify_link}\n\n"
+                    "If you did not request this, you can ignore this email."
+                )
+                email_result = send_email_placeholder(user.email, email_subject, email_body)
+                user.verification_sent_at = datetime.utcnow()
+                db.session.commit()
+                if is_local_dev_environment() and not email_result.get("sent"):
+                    debug_verify_link = verify_link
+            success = generic_success
+
+    return render_template(
+        "resend_verification.html",
+        title="Resend Verification | FX Journal",
+        body_class="auth-layout",
+        success=success or None,
+        error=error or None,
+        debug_verify_link=debug_verify_link,
+    )
+
+
+@app.route("/verify-email/<token>")
+def verify_email_token(token):
+    max_age_seconds = env_int("EMAIL_VERIFY_TOKEN_MAX_AGE_SECONDS", 86400)
+    email = verify_auth_token(
+        token=token,
+        purpose=TOKEN_PURPOSE_VERIFY_EMAIL,
+        max_age_seconds=max_age_seconds,
+    )
+    if not email:
+        return redirect(
+            url_for(
+                "login",
+                success="Verification link is invalid or expired. Request a new one.",
+            )
+        )
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return redirect(url_for("login", success="Verification completed. Please log in."))
+
+    if not user.email_verified:
+        user.email_verified = True
+        db.session.commit()
+
+    return redirect(url_for("login", verified="1"))
+
+
+@app.route("/password/forgot", methods=["GET", "POST"])
+@limiter.limit(
+    "5 per minute;20 per hour",
+    methods=["POST"],
+    error_message="Too many attempts. Please wait and try again.",
+)
+def forgot_password():
+    success = ""
+    error = ""
+    debug_reset_link = ""
+
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        generic_success = (
+            "If this email exists, a password reset link has been sent."
+        )
+        if not email:
+            error = "Email is required."
+        else:
+            user = User.query.filter_by(email=email).first()
+            if user:
+                reset_token = generate_auth_token(
+                    email=user.email,
+                    purpose=TOKEN_PURPOSE_PASSWORD_RESET,
+                )
+                reset_link = build_external_url(
+                    url_for("reset_password_token", token=reset_token)
+                )
+                email_subject = "Reset your FX Journal password"
+                email_body = (
+                    f"Hi {user.username},\n\n"
+                    "You requested a password reset.\n"
+                    "Open this link to set a new password:\n"
+                    f"{reset_link}\n\n"
+                    "If you did not request this, you can ignore this email."
+                )
+                email_result = send_email_placeholder(user.email, email_subject, email_body)
+                if is_local_dev_environment() and not email_result.get("sent"):
+                    debug_reset_link = reset_link
+            success = generic_success
+
+    return render_template(
+        "forgot_password.html",
+        title="Forgot Password | FX Journal",
+        body_class="auth-layout",
+        success=success or None,
+        error=error or None,
+        debug_reset_link=debug_reset_link,
+    )
+
+
+@app.route("/password/reset/<token>", methods=["GET", "POST"])
+def reset_password_token(token):
+    max_age_seconds = env_int("PASSWORD_RESET_TOKEN_MAX_AGE_SECONDS", 3600)
+    email = verify_auth_token(
+        token=token,
+        purpose=TOKEN_PURPOSE_PASSWORD_RESET,
+        max_age_seconds=max_age_seconds,
+    )
+    if not email:
+        return render_template(
+            "reset_password.html",
+            title="Reset Password | FX Journal",
+            body_class="auth-layout",
+            error="Reset link is invalid or expired.",
+            token_valid=False,
+        )
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return render_template(
+            "reset_password.html",
+            title="Reset Password | FX Journal",
+            body_class="auth-layout",
+            error="Reset link is invalid or expired.",
+            token_valid=False,
+        )
+
+    if request.method == "POST":
+        new_password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        if not new_password or not confirm_password:
+            return render_template(
+                "reset_password.html",
+                title="Reset Password | FX Journal",
+                body_class="auth-layout",
+                error="Both password fields are required.",
+                token_valid=True,
+            )
+        if new_password != confirm_password:
+            return render_template(
+                "reset_password.html",
+                title="Reset Password | FX Journal",
+                body_class="auth-layout",
+                error="Passwords do not match.",
+                token_valid=True,
+            )
+        if len(new_password) < 8:
+            return render_template(
+                "reset_password.html",
+                title="Reset Password | FX Journal",
+                body_class="auth-layout",
+                error="Password must be at least 8 characters.",
+                token_valid=True,
+            )
+
+        user.password = generate_password_hash(new_password)
+        db.session.commit()
+        return redirect(url_for("login", reset="1"))
+
+    return render_template(
+        "reset_password.html",
+        title="Reset Password | FX Journal",
+        body_class="auth-layout",
+        token_valid=True,
     )
 
 
@@ -886,6 +1417,145 @@ def register():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/account", methods=["GET", "POST"])
+def account():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user = User.query.filter_by(id=session["user_id"]).first_or_404()
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        current_password = request.form.get("current_password", "")
+        new_password = request.form.get("new_password", "")
+        confirm_new_password = request.form.get("confirm_new_password", "")
+
+        if not username or not email:
+            return redirect(
+                url_for(
+                    "account",
+                    account_status="error",
+                    account_message="Username and email are required.",
+                )
+            )
+
+        conflicting_user = User.query.filter(
+            User.id != user.id,
+            or_(User.username == username, User.email == email),
+        ).first()
+        if conflicting_user:
+            return redirect(
+                url_for(
+                    "account",
+                    account_status="error",
+                    account_message="Username or email is already in use.",
+                )
+            )
+
+        password_update_requested = any(
+            [current_password, new_password, confirm_new_password]
+        )
+        if password_update_requested:
+            if not all([current_password, new_password, confirm_new_password]):
+                return redirect(
+                    url_for(
+                        "account",
+                        account_status="error",
+                        account_message="To change password, fill current, new, and confirm fields.",
+                    )
+                )
+            if not check_password_hash(user.password, current_password):
+                return redirect(
+                    url_for(
+                        "account",
+                        account_status="error",
+                        account_message="Current password is incorrect.",
+                    )
+                )
+            if new_password != confirm_new_password:
+                return redirect(
+                    url_for(
+                        "account",
+                        account_status="error",
+                        account_message="New password and confirmation do not match.",
+                    )
+                )
+            if len(new_password) < 8:
+                return redirect(
+                    url_for(
+                        "account",
+                        account_status="error",
+                        account_message="New password must be at least 8 characters.",
+                    )
+                )
+            user.password = generate_password_hash(new_password)
+
+        username_changed = user.username != username
+        user.username = username
+        user.email = email
+
+        try:
+            db.session.commit()
+        except OperationalError:
+            db.session.rollback()
+            return redirect(
+                url_for(
+                    "account",
+                    account_status="error",
+                    account_message="Could not save account changes. Please try again.",
+                )
+            )
+
+        if username_changed:
+            session["username"] = username
+
+        success_message = "Account details updated."
+        if password_update_requested:
+            success_message = "Account details and password updated."
+        return redirect(
+            url_for(
+                "account",
+                account_status="success",
+                account_message=success_message,
+            )
+        )
+
+    account_status = request.args.get("account_status", "").strip().lower()
+    account_message = request.args.get("account_message", "").strip()
+    if account_status not in {"success", "error", "info"}:
+        account_status = ""
+    if not account_message:
+        account_status = ""
+
+    total_trades = Trade.query.filter_by(user_id=user.id).count()
+    closed_trades = (
+        Trade.query.filter_by(user_id=user.id)
+        .filter(Trade.exit_price.isnot(None))
+        .count()
+    )
+    imported_trades = (
+        Trade.query.filter_by(user_id=user.id)
+        .filter(Trade.import_signature.isnot(None))
+        .count()
+    )
+
+    return render_template(
+        "account.html",
+        title="My Account | FX Journal",
+        username=session.get("username", "User"),
+        account_user=user,
+        email_verified=bool(user.email_verified),
+        account_status=account_status,
+        account_message=account_message,
+        total_trades=total_trades,
+        closed_trades=closed_trades,
+        running_trades=max(total_trades - closed_trades, 0),
+        imported_trades=imported_trades,
+    )
+
 
 @app.route("/trades")
 def trades():

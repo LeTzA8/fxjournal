@@ -9,7 +9,7 @@
 
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb">Home / Trades / Trade Detail</div>
+            <div class="crumb"><a href="/">Dashboard</a> / Trades / Trade Detail</div>
             <div class="head-row">
                 <div>
                     <h1>Trade Details</h1>
@@ -18,6 +18,7 @@
                 </div>
                 <div class="head-actions">
                     <a class="ghost-link" href="/trades">Back to Trades</a>
+                    <a class="ghost-link" href="/account">Account</a>
                 </div>
             </div>
         </header>
@@ -168,6 +169,16 @@
         color: #5e7364;
         font-weight: 700;
         margin-bottom: 0.7rem;
+    }
+
+    .crumb a {
+        color: inherit;
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+    }
+
+    .crumb a:hover {
+        border-bottom-color: currentColor;
     }
 
     .head-row {

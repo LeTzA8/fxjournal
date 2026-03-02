@@ -9,7 +9,7 @@
 
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb">Home / Dashboard</div>
+            <div class="crumb"><a href="/">Dashboard</a></div>
             <div class="head-row">
                 <div>
                     <h1>Forex Performance Dashboard</h1>
@@ -17,6 +17,7 @@
                     <p class="subtitle">Track consistency, review execution, and spot edge drift early.</p>
                 </div>
                 <div class="head-actions">
+                    <a href="/account" class="account-btn">Account</a>
                     <form action="/logout" method="post">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="logout-btn">Log Out</button>
@@ -179,11 +180,19 @@
 
             <article class="panel pnl-panel">
                 <div class="panel-head">
-                    <h2>PnL Graph</h2>
-                    <span class="soft">Recent closed trades</span>
+                    <h2>Equity Curve</h2>
+                    <div class="chart-range">
+                        <label for="equityRange">Range</label>
+                        <select id="equityRange" aria-label="Equity chart range">
+                            <option value="7" selected>7D</option>
+                            <option value="14">14D</option>
+                            <option value="21">21D</option>
+                            <option value="month">Month</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="line-chart-shell" id="pnlChartShell">
-                    <svg id="pnlLineChart" viewBox="0 0 600 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="PnL line chart">
+                    <svg id="pnlLineChart" viewBox="0 0 600 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Account equity curve chart">
                         <defs>
                             <linearGradient id="pnlStrokeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
                                 <stop offset="0%" stop-color="#2f8a58"></stop>
@@ -206,25 +215,23 @@
                 <div id="pnlXAxis" class="chart-x-axis"></div>
                 <script id="pnlChartData" type="application/json">{{ chart_points|tojson }}</script>
                 <p class="summary">
-                    Weekly result:
-                    <strong class="{% if net_pnl_week > 0 %}good{% elif net_pnl_week < 0 %}bad{% endif %}">
-                        {% if net_pnl_week > 0 %}+{% endif %}${{ '%.2f'|format(net_pnl_week) }}
+                    Overall account PnL:
+                    <strong class="{% if account_pnl_total > 0 %}good{% elif account_pnl_total < 0 %}bad{% endif %}">
+                        {% if account_pnl_total > 0 %}+{% endif %}${{ '%.2f'|format(account_pnl_total) }}
                     </strong>
                 </p>
             </article>
 
-            <article class="panel sim-panel">
+            <article class="panel insights-panel">
                 <div class="panel-head">
-                    <h2>Simulated Trade Chart</h2>
-                    <span class="soon">Coming Soon</span>
+                    <h2>Insights</h2>
+                    <span class="soft">Auto-generated</span>
                 </div>
-                <div class="sim-chart" aria-hidden="true">
-                    <div class="scanline"></div>
-                    <svg viewBox="0 0 600 220" role="img">
-                        <path d="M0 160 L60 148 L120 154 L180 134 L240 142 L300 102 L360 118 L420 86 L480 98 L540 78 L600 90" />
-                    </svg>
+                <div class="insight-content">
+                    <p class="insight-title">{{ dashboard_insight.title }}</p>
+                    <p class="insight-body">{{ dashboard_insight.body }}</p>
                 </div>
-                <p class="soft">Planned: per-trade replay with entry, SL, TP, and execution notes overlay.</p>
+                <p class="insight-note">Refresh the dashboard for another insight.</p>
             </article>
 
             <article class="panel notes-panel">
@@ -243,6 +250,20 @@
                         <strong>Risk:</strong> Keep max daily drawdown hard stop at 2R.
                     </li>
                 </ul>
+            </article>
+
+            <article class="panel sim-panel">
+                <div class="panel-head">
+                    <h2>Simulated Trade Chart</h2>
+                    <span class="soon">Coming Soon</span>
+                </div>
+                <div class="sim-chart" aria-hidden="true">
+                    <div class="scanline"></div>
+                    <svg viewBox="0 0 600 220" role="img">
+                        <path d="M0 160 L60 148 L120 154 L180 134 L240 142 L300 102 L360 118 L420 86 L480 98 L540 78 L600 90" />
+                    </svg>
+                </div>
+                <p class="soft">Planned: per-trade replay with entry, SL, TP, and execution notes overlay.</p>
             </article>
         </section>
     </div>
@@ -335,6 +356,16 @@
         margin-bottom: 0.7rem;
     }
 
+    .crumb a {
+        color: inherit;
+        text-decoration: none;
+        border-bottom: 1px solid transparent;
+    }
+
+    .crumb a:hover {
+        border-bottom-color: currentColor;
+    }
+
     .head-row {
         display: flex;
         align-items: center;
@@ -375,6 +406,27 @@
         display: flex;
         align-items: center;
         gap: 0.55rem;
+    }
+
+    .head-actions form {
+        margin: 0;
+    }
+
+    .account-btn {
+        border: 1px solid #c6d4ca;
+        background: #f8fbf9cc;
+        color: #2f5642;
+        border-radius: 8px;
+        padding: 0.34rem 0.62rem;
+        font-weight: 700;
+        font-size: 0.72rem;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        text-decoration: none;
+    }
+
+    .account-btn:hover {
+        background: #eef7f2;
     }
 
     .logout-btn {
@@ -473,6 +525,11 @@
     .panel-grid {
         display: grid;
         grid-template-columns: 1.5fr 1fr;
+        grid-template-areas:
+            "trade pnl"
+            "trade insights"
+            "trade notes"
+            "trade sim";
         gap: 0.8rem;
         min-width: 0;
         align-items: start;
@@ -489,6 +546,7 @@
     }
 
     .trade-log {
+        grid-area: trade;
         display: flex;
         flex-direction: column;
         height: clamp(420px, 72vh, 760px);
@@ -503,10 +561,23 @@
     }
 
     .pnl-panel {
+        grid-area: pnl;
         display: flex;
         flex-direction: column;
         height: clamp(340px, 54vh, 520px);
         min-height: 0;
+    }
+
+    .insights-panel {
+        grid-area: insights;
+    }
+
+    .notes-panel {
+        grid-area: notes;
+    }
+
+    .sim-panel {
+        grid-area: sim;
     }
 
     .panel-head {
@@ -563,6 +634,30 @@
     .soft {
         color: #6d7b72;
         font-size: 0.8rem;
+    }
+
+    .chart-range {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .chart-range label {
+        font-size: 0.72rem;
+        color: #4e6657;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .chart-range select {
+        border: 1px solid #c6d4ca;
+        background: #f8fbf9;
+        color: #2f5642;
+        border-radius: 8px;
+        padding: 0.28rem 0.46rem;
+        font-size: 0.76rem;
+        min-width: 78px;
     }
 
     .ghost-btn {
@@ -702,25 +797,42 @@
     .chart-point {
         fill: #ffffff;
         stroke-width: 2.4;
-        cursor: pointer;
+        cursor: default;
         transition: transform 150ms ease;
         transform-origin: center;
+    }
+
+    .chart-point.drawdown-marker {
+        fill: #fff6ed;
+        stroke: #c05621;
+        cursor: pointer;
+    }
+
+    .chart-point.hover-marker {
+        fill: #ecfdf5;
+        stroke: #1f7942;
         opacity: 0;
-        animation: point-in 700ms ease forwards;
+        pointer-events: none;
+        transition: opacity 120ms ease;
     }
 
-    .chart-point.up {
-        stroke: #239456;
+    .chart-point.hover-marker.is-active {
+        opacity: 1;
     }
 
-    .chart-point.down {
-        stroke: #d45a52;
-    }
-
-    .chart-point:hover,
-    .chart-point:focus {
+    .chart-point.drawdown-marker:hover,
+    .chart-point.drawdown-marker:focus {
         transform: scale(1.18);
         outline: none;
+    }
+
+    .drawdown-label {
+        fill: #9a3412;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        pointer-events: none;
     }
 
     .chart-x-axis {
@@ -774,6 +886,38 @@
         margin: 0.6rem 0 0;
         color: #52675b;
         font-size: 0.88rem;
+    }
+
+    .insight-content {
+        border: 1px solid #d7e3d9;
+        border-radius: 10px;
+        background: linear-gradient(155deg, #f5fbf6 0%, #fdfefc 100%);
+        padding: 0.7rem 0.75rem;
+    }
+
+    .insight-title {
+        margin: 0;
+        font-size: 0.84rem;
+        font-weight: 800;
+        color: #1f4e36;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .insight-body {
+        margin: 0.45rem 0 0;
+        color: #3f574a;
+        font-size: 0.86rem;
+        line-height: 1.45;
+    }
+
+    .insight-note {
+        margin: 0.55rem 0 0;
+        color: #617568;
+        font-size: 0.74rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-weight: 700;
     }
 
     .sim-panel .soon {
@@ -862,6 +1006,12 @@
 
         .panel-grid {
             grid-template-columns: 1fr;
+            grid-template-areas:
+                "trade"
+                "pnl"
+                "insights"
+                "notes"
+                "sim";
         }
 
         .trade-log,
@@ -943,6 +1093,7 @@
     const tooltip = document.getElementById("pnlTooltip");
     const xAxis = document.getElementById("pnlXAxis");
     const dataNode = document.getElementById("pnlChartData");
+    const rangeSelect = document.getElementById("equityRange");
 
     if (!chartShell || !svg || !grid || !path || !glow || !area || !pointsGroup || !zeroLine || !tooltip || !xAxis || !dataNode) {
         return;
@@ -968,26 +1119,14 @@
     const plotW = w - pad.l - pad.r;
     const plotH = h - pad.t - pad.b;
 
-    const values = chartData.map((d) => Number(d.pnl)).filter((v) => Number.isFinite(v));
-    if (!values.length) {
-        return;
-    }
-
-    const minVRaw = Math.min(...values);
-    const maxVRaw = Math.max(...values);
-    const span = maxVRaw - minVRaw;
-    const minV = span === 0 ? minVRaw - 1 : minVRaw - span * 0.12;
-    const maxV = span === 0 ? maxVRaw + 1 : maxVRaw + span * 0.12;
-
-    const xFor = (i, n) => (n === 1 ? w / 2 : pad.l + (i / (n - 1)) * plotW);
-    const yFor = (v) => pad.t + ((maxV - v) / (maxV - minV)) * plotH;
-
-    const pts = chartData.map((d, i) => ({
-        x: xFor(i, chartData.length),
-        y: yFor(Number(d.pnl)),
-        label: d.label,
-        pnl: Number(d.pnl),
-    }));
+    const toEquity = (point) => {
+        const equityValue = Number(point.equity);
+        if (Number.isFinite(equityValue)) {
+            return equityValue;
+        }
+        const legacyPnlValue = Number(point.pnl);
+        return Number.isFinite(legacyPnlValue) ? legacyPnlValue : null;
+    };
 
     const smoothPath = (points) => {
         if (points.length === 1) {
@@ -1009,35 +1148,6 @@
         return d;
     };
 
-    grid.innerHTML = "";
-    for (let i = 0; i < 5; i += 1) {
-        const y = pad.t + (plotH / 4) * i;
-        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-        line.setAttribute("class", "grid-line");
-        line.setAttribute("x1", String(pad.l));
-        line.setAttribute("x2", String(w - pad.r));
-        line.setAttribute("y1", String(y));
-        line.setAttribute("y2", String(y));
-        grid.appendChild(line);
-    }
-
-    const lineD = smoothPath(pts);
-    path.setAttribute("d", lineD);
-    glow.setAttribute("d", lineD);
-
-    const baseY = yFor(minV);
-    const areaD = `${lineD} L ${pts[pts.length - 1].x} ${baseY} L ${pts[0].x} ${baseY} Z`;
-    area.setAttribute("d", areaD);
-
-    if (minV <= 0 && maxV >= 0) {
-        const zy = yFor(0);
-        zeroLine.setAttribute("y1", String(zy));
-        zeroLine.setAttribute("y2", String(zy));
-        zeroLine.hidden = false;
-    } else {
-        zeroLine.hidden = true;
-    }
-
     const getViewportTransform = () => {
         const svgRect = svg.getBoundingClientRect();
         const scale = Math.min(svgRect.width / w, svgRect.height / h);
@@ -1048,37 +1158,25 @@
         return { svgRect, scale, offsetX, offsetY };
     };
 
-    const setTooltip = (pt) => {
+    const setTooltip = (pt, dateText) => {
         const shellRect = chartShell.getBoundingClientRect();
         const { svgRect, scale, offsetX, offsetY } = getViewportTransform();
         const xOffset = svgRect.left - shellRect.left + offsetX;
         const yOffset = svgRect.top - shellRect.top + offsetY;
-        tooltip.textContent = `${pt.label}: ${pt.pnl >= 0 ? "+" : ""}${pt.pnl.toFixed(2)}`;
+        const sign = pt.equity > 0 ? "+" : pt.equity < 0 ? "-" : "";
+        tooltip.textContent = `${dateText}: ${sign}$${Math.abs(pt.equity).toFixed(2)}`;
         tooltip.hidden = false;
         tooltip.style.left = `${xOffset + pt.x * scale}px`;
         tooltip.style.top = `${yOffset + pt.y * scale}px`;
     };
 
-    pointsGroup.innerHTML = "";
-    pts.forEach((pt, idx) => {
-        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        circle.setAttribute("class", `chart-point ${pt.pnl >= 0 ? "up" : "down"}`);
-        circle.setAttribute("cx", String(pt.x));
-        circle.setAttribute("cy", String(pt.y));
-        circle.setAttribute("r", "4.6");
-        circle.setAttribute("tabindex", "0");
-        circle.setAttribute("aria-label", `${pt.label} ${pt.pnl}`);
-        circle.style.animationDelay = `${1300 + idx * 230}ms`;
-        circle.addEventListener("mouseenter", () => setTooltip(pt));
-        circle.addEventListener("focus", () => setTooltip(pt));
-        circle.addEventListener("mouseleave", () => { tooltip.hidden = true; });
-        circle.addEventListener("blur", () => { tooltip.hidden = true; });
-        pointsGroup.appendChild(circle);
-    });
+    const hideTooltip = () => {
+        tooltip.hidden = true;
+    };
 
-    const renderXAxis = () => {
+    const renderXAxis = (pts, labels) => {
         xAxis.innerHTML = "";
-        const labelCount = chartData.length;
+        const labelCount = pts.length;
         const labelStep = labelCount > 18 ? Math.ceil(labelCount / 8) : 1;
         xAxis.classList.toggle("dense", labelStep > 1);
         const { svgRect, scale, offsetX } = getViewportTransform();
@@ -1090,15 +1188,246 @@
             }
             const label = document.createElement("span");
             label.className = "x-label";
-            label.textContent = chartData[idx].label;
+            label.textContent = labels[idx];
             const left = ((offsetX + pt.x * scale) / svgRect.width) * 100;
             label.style.left = `${left}%`;
             xAxis.appendChild(label);
         });
     };
 
-    renderXAxis();
-    window.addEventListener("resize", renderXAxis, { passive: true });
+    const normalizedPoints = chartData
+        .map((d, idx) => {
+            const equity = toEquity(d);
+            if (!Number.isFinite(equity)) {
+                return null;
+            }
+
+            let dateObj = null;
+            const rawDate = (d && typeof d.date === "string") ? d.date.trim() : "";
+            if (rawDate) {
+                const parsed = new Date(`${rawDate}T00:00:00`);
+                if (Number.isFinite(parsed.getTime())) {
+                    dateObj = parsed;
+                }
+            }
+            if (!dateObj) {
+                const fallback = new Date();
+                fallback.setHours(0, 0, 0, 0);
+                fallback.setDate(fallback.getDate() - (chartData.length - idx - 1));
+                dateObj = fallback;
+            }
+
+            const label = d.label || dateObj.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+            return {
+                date: dateObj,
+                dateKey: dateObj.toISOString().slice(0, 10),
+                label,
+                equity,
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.date - b.date);
+
+    if (!normalizedPoints.length) {
+        return;
+    }
+
+    let renderedPoints = [];
+    let hoverPoint = null;
+
+    const hideHoverPoint = () => {
+        if (hoverPoint) {
+            hoverPoint.hidden = true;
+            hoverPoint.classList.remove("is-active");
+        }
+        hideTooltip();
+    };
+
+    const findMaxDrawdown = (points) => {
+        if (points.length < 2) {
+            return null;
+        }
+
+        let peak = points[0].equity;
+        let maxDrawdown = 0;
+        let troughIndex = 0;
+
+        for (let i = 1; i < points.length; i += 1) {
+            if (points[i].equity > peak) {
+                peak = points[i].equity;
+            }
+            const drawdown = peak - points[i].equity;
+            if (drawdown > maxDrawdown) {
+                maxDrawdown = drawdown;
+                troughIndex = i;
+            }
+        }
+
+        if (maxDrawdown <= 0) {
+            return null;
+        }
+
+        return {
+            troughIndex,
+            amount: maxDrawdown,
+        };
+    };
+
+    const showNearestHoverPoint = (clientX) => {
+        if (!hoverPoint || !renderedPoints.length) {
+            return;
+        }
+
+        const { svgRect, scale, offsetX } = getViewportTransform();
+        const rawSvgX = (clientX - svgRect.left - offsetX) / scale;
+        const svgX = Math.max(pad.l, Math.min(w - pad.r, rawSvgX));
+
+        let nearest = renderedPoints[0];
+        for (let i = 1; i < renderedPoints.length; i += 1) {
+            if (Math.abs(renderedPoints[i].x - svgX) < Math.abs(nearest.x - svgX)) {
+                nearest = renderedPoints[i];
+            }
+        }
+
+        hoverPoint.hidden = false;
+        hoverPoint.classList.add("is-active");
+        hoverPoint.setAttribute("cx", String(nearest.x));
+        hoverPoint.setAttribute("cy", String(nearest.y));
+        setTooltip(nearest, nearest.dateKey);
+    };
+
+    const pointsForRange = () => {
+        const rangeValue = rangeSelect ? rangeSelect.value : "7";
+        const latestDate = normalizedPoints[normalizedPoints.length - 1].date;
+        const startDate = new Date(latestDate);
+        if (rangeValue === "month") {
+            startDate.setDate(1);
+        } else {
+            const days = Number.parseInt(rangeValue, 10);
+            const validDays = Number.isFinite(days) && days > 0 ? days : 7;
+            startDate.setDate(startDate.getDate() - validDays + 1);
+        }
+
+        const filtered = normalizedPoints.filter((point) => point.date >= startDate);
+        return filtered.length ? filtered : normalizedPoints.slice(-Math.min(7, normalizedPoints.length));
+    };
+
+    const renderChart = () => {
+        const points = pointsForRange();
+        const values = points.map((p) => p.equity);
+        const minVRaw = Math.min(...values);
+        const maxVRaw = Math.max(...values);
+        const span = maxVRaw - minVRaw;
+        const minV = span === 0 ? minVRaw - 1 : minVRaw - span * 0.12;
+        const maxV = span === 0 ? maxVRaw + 1 : maxVRaw + span * 0.12;
+        const xFor = (i, n) => (n === 1 ? w / 2 : pad.l + (i / (n - 1)) * plotW);
+        const yFor = (v) => pad.t + ((maxV - v) / (maxV - minV)) * plotH;
+
+        const pts = points.map((point, i) => ({
+            x: xFor(i, points.length),
+            y: yFor(point.equity),
+            equity: point.equity,
+            label: point.label,
+            dateKey: point.dateKey,
+        }));
+
+        grid.innerHTML = "";
+        for (let i = 0; i < 5; i += 1) {
+            const y = pad.t + (plotH / 4) * i;
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("class", "grid-line");
+            line.setAttribute("x1", String(pad.l));
+            line.setAttribute("x2", String(w - pad.r));
+            line.setAttribute("y1", String(y));
+            line.setAttribute("y2", String(y));
+            grid.appendChild(line);
+        }
+
+        const lineD = smoothPath(pts);
+        path.setAttribute("d", lineD);
+        glow.setAttribute("d", lineD);
+
+        const baseY = yFor(minV);
+        const areaD = `${lineD} L ${pts[pts.length - 1].x} ${baseY} L ${pts[0].x} ${baseY} Z`;
+        area.setAttribute("d", areaD);
+
+        if (minV <= 0 && maxV >= 0) {
+            const zy = yFor(0);
+            zeroLine.setAttribute("y1", String(zy));
+            zeroLine.setAttribute("y2", String(zy));
+            zeroLine.hidden = false;
+        } else {
+            zeroLine.hidden = true;
+        }
+
+        pointsGroup.innerHTML = "";
+
+        const maxDrawdown = findMaxDrawdown(pts);
+        if (maxDrawdown) {
+            const troughPoint = pts[maxDrawdown.troughIndex];
+            const drawdownMarker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            drawdownMarker.setAttribute("class", "chart-point drawdown-marker");
+            drawdownMarker.setAttribute("cx", String(troughPoint.x));
+            drawdownMarker.setAttribute("cy", String(troughPoint.y));
+            drawdownMarker.setAttribute("r", "5.4");
+            drawdownMarker.setAttribute("tabindex", "0");
+            drawdownMarker.setAttribute(
+                "aria-label",
+                `Max drawdown point ${troughPoint.dateKey} drawdown ${maxDrawdown.amount.toFixed(2)}`
+            );
+            drawdownMarker.addEventListener("mouseenter", () => {
+                setTooltip(troughPoint, `${troughPoint.dateKey} Max DD`);
+            });
+            drawdownMarker.addEventListener("focus", () => {
+                setTooltip(troughPoint, `${troughPoint.dateKey} Max DD`);
+            });
+            drawdownMarker.addEventListener("mouseleave", hideTooltip);
+            drawdownMarker.addEventListener("blur", hideTooltip);
+            pointsGroup.appendChild(drawdownMarker);
+
+            const ddLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            ddLabel.setAttribute("class", "drawdown-label");
+            ddLabel.setAttribute("x", String(troughPoint.x + 8));
+            ddLabel.setAttribute("y", String(Math.max(pad.t + 12, troughPoint.y - 8)));
+            ddLabel.textContent = "MDD";
+            pointsGroup.appendChild(ddLabel);
+        }
+
+        hoverPoint = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        hoverPoint.setAttribute("class", "chart-point hover-marker");
+        hoverPoint.setAttribute("r", "4.8");
+        hoverPoint.hidden = true;
+        pointsGroup.appendChild(hoverPoint);
+
+        renderedPoints = pts;
+
+        renderXAxis(pts, points.map((point) => point.label));
+        hideHoverPoint();
+    };
+
+    svg.addEventListener("pointermove", (event) => {
+        showNearestHoverPoint(event.clientX);
+    });
+    svg.addEventListener("pointerdown", (event) => {
+        showNearestHoverPoint(event.clientX);
+    });
+    svg.addEventListener("pointerleave", hideHoverPoint);
+    svg.addEventListener("pointercancel", hideHoverPoint);
+    chartShell.addEventListener("mouseleave", hideHoverPoint);
+
+    renderChart();
+    if (rangeSelect) {
+        rangeSelect.addEventListener("change", () => {
+            renderChart();
+        });
+    }
+    window.addEventListener(
+        "resize",
+        () => {
+            renderChart();
+        },
+        { passive: true }
+    );
 })();
 </script>
 

@@ -241,7 +241,7 @@
     <script>
         (() => {
             const revealTargets = Array.from(
-                document.querySelectorAll(".metric, .panel, tbody tr, .login-card, .card")
+                document.querySelectorAll(".metric, .panel, .login-card, .card")
             );
             if (!revealTargets.length) {
                 return;
@@ -270,7 +270,6 @@
                 groups.get(key).push(el);
             });
 
-            // Row-aware staggering: reveal by visual row first, then by column.
             const setRevealDelays = () => {
                 groups.forEach((items) => {
                     const sorted = items.slice().sort((a, b) => {
@@ -298,10 +297,7 @@
                             })
                             .length;
 
-                        const isTableRow = el.tagName === "TR";
-                        const delay = isTableRow
-                            ? rowIndex * 90
-                            : rowIndex * 240 + colIndex * 110;
+                        const delay = rowIndex * 240 + colIndex * 110;
                         el.style.setProperty("--reveal-delay", `${Math.min(delay, 1600)}ms`);
                     });
                 });
@@ -327,9 +323,6 @@
 
             revealTargets.forEach((el) => {
                 el.classList.add("reveal-item");
-                if (el.tagName === "TR") {
-                    el.classList.add("reveal-row");
-                }
                 observer.observe(el);
             });
         })();
