@@ -1608,9 +1608,6 @@ def account():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         email = request.form.get("email", "").strip().lower()
-        current_password = request.form.get("current_password", "")
-        new_password = request.form.get("new_password", "")
-        confirm_new_password = request.form.get("confirm_new_password", "")
 
         if not username or not email:
             return redirect(
@@ -1634,44 +1631,6 @@ def account():
                 )
             )
 
-        password_update_requested = any(
-            [current_password, new_password, confirm_new_password]
-        )
-        if password_update_requested:
-            if not all([current_password, new_password, confirm_new_password]):
-                return redirect(
-                    url_for(
-                        "account",
-                        account_status="error",
-                        account_message="To change password, fill current, new, and confirm fields.",
-                    )
-                )
-            if not check_password_hash(user.password, current_password):
-                return redirect(
-                    url_for(
-                        "account",
-                        account_status="error",
-                        account_message="Current password is incorrect.",
-                    )
-                )
-            if new_password != confirm_new_password:
-                return redirect(
-                    url_for(
-                        "account",
-                        account_status="error",
-                        account_message="New password and confirmation do not match.",
-                    )
-                )
-            if len(new_password) < 8:
-                return redirect(
-                    url_for(
-                        "account",
-                        account_status="error",
-                        account_message="New password must be at least 8 characters.",
-                    )
-                )
-            user.password = generate_password_hash(new_password)
-
         username_changed = user.username != username
         user.username = username
         user.email = email
@@ -1691,19 +1650,22 @@ def account():
         if username_changed:
             session["username"] = username
 
-        success_message = "Account details updated."
-        if password_update_requested:
-            success_message = "Account details and password updated."
         return redirect(
             url_for(
                 "account",
                 account_status="success",
-                account_message=success_message,
+                account_message="Account details updated.",
             )
         )
 
     account_status = request.args.get("account_status", "").strip().lower()
     account_message = request.args.get("account_message", "").strip()
+    debug_reset_link = request.args.get("debug_reset_link", "").strip()
+    if not (
+        debug_reset_link.startswith("http://")
+        or debug_reset_link.startswith("https://")
+    ):
+        debug_reset_link = ""
     if account_status not in {"success", "error", "info"}:
         account_status = ""
     if not account_message:
@@ -1733,7 +1695,43 @@ def account():
         closed_trades=closed_trades,
         running_trades=max(total_trades - closed_trades, 0),
         imported_trades=imported_trades,
+        debug_reset_link=debug_reset_link or None,
     )
+
+
+@app.route("/account/password-reset-email", methods=["POST"])
+@limiter.limit(
+    "5 per minute;20 per hour",
+    methods=["POST"],
+    error_message="Too many attempts. Please wait and try again.",
+)
+def account_password_reset_email():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user = User.query.filter_by(id=session["user_id"]).first_or_404()
+    reset_token = generate_auth_token(
+        email=user.email,
+        purpose=TOKEN_PURPOSE_PASSWORD_RESET,
+    )
+    reset_link = build_external_url(url_for("reset_password_token", token=reset_token))
+    email_subject = "Reset your FX Journal password"
+    email_body = (
+        f"Hi {user.username},\n\n"
+        "You requested a password reset.\n"
+        "Open this link to set a new password:\n"
+        f"{reset_link}\n\n"
+        "If you did not request this, you can ignore this email."
+    )
+    email_result = send_email_placeholder(user.email, email_subject, email_body)
+
+    kwargs = {
+        "account_status": "info",
+        "account_message": "If email sending is configured, a password reset link was sent to your account email.",
+    }
+    if is_local_dev_environment() and not email_result.get("sent"):
+        kwargs["debug_reset_link"] = reset_link
+    return redirect(url_for("account", **kwargs))
 
 
 @app.route("/trades")

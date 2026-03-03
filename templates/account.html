@@ -114,39 +114,23 @@
                         autocomplete="email"
                     >
 
-                    <p class="helper-note">Password fields are optional. Fill all 3 only when changing your password.</p>
-
-                    <label for="current_password">Current Password</label>
-                    <input
-                        id="current_password"
-                        name="current_password"
-                        type="password"
-                        autocomplete="current-password"
-                    >
-
-                    <label for="new_password">New Password</label>
-                    <input
-                        id="new_password"
-                        name="new_password"
-                        type="password"
-                        minlength="8"
-                        autocomplete="new-password"
-                    >
-
-                    <label for="confirm_new_password">Confirm New Password</label>
-                    <input
-                        id="confirm_new_password"
-                        name="confirm_new_password"
-                        type="password"
-                        minlength="8"
-                        autocomplete="new-password"
-                    >
-
                     <div class="form-actions">
                         <button type="submit" class="submit-btn">Save Changes</button>
                         <button type="reset" class="ghost-btn" aria-label="Reset account form">Reset</button>
                     </div>
                 </form>
+
+                <hr class="section-divider">
+                <h3 class="section-title">Password Reset</h3>
+                <p class="helper-note">Use email link reset instead of entering passwords here.</p>
+                <p class="helper-note">Reset link will be sent to <strong>{{ account_user.email }}</strong>.</p>
+                <form action="/account/password-reset-email" method="post" class="password-reset-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="submit-btn">Email Password Reset Link</button>
+                </form>
+                {% if debug_reset_link %}
+                <p class="helper-note">Local link: <a href="{{ debug_reset_link }}">Reset Password</a></p>
+                {% endif %}
             </article>
         </section>
     </div>
@@ -423,6 +407,22 @@
         margin: 0.12rem 0 0.1rem;
         color: #5b6f62;
         font-size: 0.8rem;
+    }
+
+    .section-divider {
+        border: 0;
+        border-top: 1px solid #d9e4dc;
+        margin: 0.8rem 0 0.7rem;
+    }
+
+    .section-title {
+        margin: 0 0 0.35rem;
+        font-size: 0.95rem;
+        color: #17422e;
+    }
+
+    .password-reset-form {
+        margin-top: 0.5rem;
     }
 
     .account-alert {
