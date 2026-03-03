@@ -1,11 +1,7 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 
 {% block content %}
 <section class="dash-wrap">
-    <div class="bg-wave" aria-hidden="true"></div>
-    <div class="orb orb-a" data-depth="34" aria-hidden="true"></div>
-    <div class="orb orb-b" data-depth="24" aria-hidden="true"></div>
-    <div class="orb orb-c" data-depth="46" aria-hidden="true"></div>
 
     <div class="dash-content">
         <header class="dash-head">
@@ -150,55 +146,7 @@
         position: relative;
         z-index: 1;
     }
-
-    .bg-wave {
-        position: absolute;
-        inset: -18%;
-        z-index: -3;
-        background:
-            radial-gradient(55% 50% at 20% 20%, rgba(146, 214, 173, 0.52) 0%, transparent 68%),
-            radial-gradient(45% 45% at 78% 68%, rgba(255, 207, 145, 0.48) 0%, transparent 70%),
-            linear-gradient(120deg, #eef4ef 0%, #deeee4 45%, #f4efe5 100%);
-        transition: transform 420ms cubic-bezier(.22, .61, .36, 1);
-        will-change: transform;
-    }
-
-    .orb {
-        position: absolute;
-        border-radius: 50%;
-        filter: blur(2px);
-        z-index: -1;
-        opacity: 0.55;
-        transition: transform 320ms cubic-bezier(.22, .61, .36, 1);
-        will-change: transform;
-    }
-
-    .orb-a {
-        width: 420px;
-        height: 420px;
-        top: -150px;
-        right: -120px;
-        background: radial-gradient(circle at 30% 30%, #8dc9a3 0%, #4f8b6f 65%, #2d5a46 100%);
-    }
-
-    .orb-b {
-        width: 320px;
-        height: 320px;
-        bottom: -140px;
-        left: -100px;
-        background: radial-gradient(circle at 65% 35%, #ffddb2 0%, #e4b474 60%, #b58343 100%);
-    }
-
-    .orb-c {
-        width: 260px;
-        height: 260px;
-        top: 38%;
-        left: 52%;
-        background: radial-gradient(circle at 35% 25%, #b7e3ef 0%, #7da8cb 58%, #4f6f9f 100%);
-        opacity: 0.42;
-    }
-
-    .dash-head {
+.dash-head {
         margin-bottom: 1rem;
     }
 
@@ -560,71 +508,7 @@
             font-size: 16px;
         }
     }
-
-    @media (prefers-reduced-motion: reduce) {
-        .orb,
-        .bg-wave {
-            animation: none !important;
-            transition: none !important;
-        }
-    }
 </style>
-
-<script>
-(() => {
-    const shell = document.querySelector(".dash-wrap");
-    if (!shell || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        return;
-    }
-
-    const orbs = Array.from(shell.querySelectorAll(".orb"));
-    const bg = shell.querySelector(".bg-wave");
-    const state = { mx: 0, my: 0, scroll: 0 };
-    const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-
-    const onPointerMove = (event) => {
-        const rect = shell.getBoundingClientRect();
-        const nx = (event.clientX - rect.left) / rect.width - 0.5;
-        const ny = (event.clientY - rect.top) / rect.height - 0.5;
-        state.mx = clamp(nx, -0.5, 0.5);
-        state.my = clamp(ny, -0.5, 0.5);
-    };
-
-    const onScroll = () => {
-        state.scroll = window.scrollY || window.pageYOffset || 0;
-    };
-
-    window.addEventListener("mousemove", onPointerMove, { passive: true });
-    window.addEventListener("scroll", onScroll, { passive: true });
-
-    const render = (ts) => {
-        const t = ts * 0.001;
-        const scrollShift = clamp(state.scroll / 900, -1.0, 1.0);
-
-        orbs.forEach((orb, index) => {
-            const depth = Number(orb.dataset.depth || 30);
-            const phase = index * 1.7 + Number(orb.dataset.phaseShift || 0);
-            const floatX = Math.sin(t * 0.38 + phase) * 16 + Math.sin(t * 0.16 + phase) * 6;
-            const floatY = Math.cos(t * 0.31 + phase) * 13 + Math.cos(t * 0.13 + phase) * 5;
-            const px = state.mx * depth * 0.85 + floatX + Number(orb.dataset.baseX || 0);
-            const py = state.my * depth * 0.72 + floatY + scrollShift * depth * 0.18 + Number(orb.dataset.baseY || 0);
-            const rz = state.mx * depth * 0.08 + Number(orb.dataset.spin || 0);
-            orb.style.transform = `translate3d(${px.toFixed(2)}px, ${py.toFixed(2)}px, 0) rotate(${rz.toFixed(2)}deg)`;
-        });
-
-        if (bg) {
-            const bx = state.mx * 16 + Math.sin(t * 0.14) * 10 + Number(bg.dataset.baseX || 0);
-            const by = state.my * 14 + scrollShift * 6 + Math.cos(t * 0.12) * 8 + Number(bg.dataset.baseY || 0);
-            const bgScale = Number(bg.dataset.scale || 1.12);
-            bg.style.transform = `translate3d(${bx.toFixed(2)}px, ${by.toFixed(2)}px, 0) scale(${bgScale})`;
-        }
-
-        requestAnimationFrame(render);
-    };
-
-    requestAnimationFrame(render);
-})();
-</script>
 
 <script>
 (() => {
@@ -710,3 +594,5 @@
 })();
 </script>
 {% endblock %}
+
+

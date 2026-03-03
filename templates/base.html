@@ -4,18 +4,56 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ title or "FX Journal" }}</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='tab-logo.png', v='1') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='tab-logo.png', v='1') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='tab-logo.png', v='1') }}">
+    <script>
+        (() => {
+            const storageKey = "fxj-theme";
+            const forcedTheme = "dark";
+            try {
+                document.documentElement.setAttribute("data-theme", forcedTheme);
+                localStorage.setItem(storageKey, forcedTheme);
+            } catch (_error) {
+                document.documentElement.setAttribute("data-theme", forcedTheme);
+            }
+        })();
+    </script>
     <style>
         @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap");
 
         :root {
             color-scheme: light;
-            --bg: #f4f1ea;
+            --bg: #f8fafc;
+            --bg-spot: #e8edff;
             --card: #ffffff;
-            --ink: #1f2a37;
-            --accent: #14532d;
+            --surface: #f8fafc;
+            --border: #e5e7eb;
+            --ink: #111827;
+            --accent: #4f46e5;
+            --accent-hover: #4338ca;
             --muted: #6b7280;
+            --good: #16a34a;
+            --bad: #dc2626;
+            --veil-opacity: 0.9;
             --font-ui: "Manrope", "Segoe UI", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
             --font-display: "Sora", "Manrope", "Segoe UI", sans-serif;
+        }
+
+        :root[data-theme="dark"] {
+            color-scheme: dark;
+            --bg: #0b0f14;
+            --bg-spot: #111827;
+            --card: #111827;
+            --surface: #0f1722;
+            --border: #1f2937;
+            --ink: #f8fafc;
+            --accent: #4f46e5;
+            --accent-hover: #4338ca;
+            --muted: #94a3b8;
+            --good: #22c55e;
+            --bad: #ef4444;
+            --veil-opacity: 0.99;
         }
 
         * { box-sizing: border-box; }
@@ -24,8 +62,26 @@
             margin: 0;
             font-family: var(--font-ui);
             color: var(--ink);
-            background: radial-gradient(circle at top right, #e0efe5 0%, var(--bg) 50%);
+            background: transparent;
             min-height: 100vh;
+            position: relative;
+            isolation: isolate;
+        }
+
+        .darkveil-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -2;
+            pointer-events: none;
+            opacity: 0;
+            filter: saturate(1.05) contrast(1.02);
+            transition: opacity 260ms ease;
+        }
+
+        body.veil-ready .darkveil-canvas {
+            opacity: var(--veil-opacity);
         }
 
         .dash-content {
@@ -37,16 +93,16 @@
             transform: translate3d(0, 18px, 0) scale(0.988);
             filter: blur(1px);
             transition:
-                opacity 960ms cubic-bezier(.22, .61, .36, 1),
-                transform 960ms cubic-bezier(.22, .61, .36, 1),
-                filter 820ms cubic-bezier(.22, .61, .36, 1);
+                opacity 420ms cubic-bezier(.22, .61, .36, 1),
+                transform 420ms cubic-bezier(.22, .61, .36, 1),
+                filter 320ms cubic-bezier(.22, .61, .36, 1);
             transition-delay: var(--reveal-delay, 0ms);
             will-change: opacity, transform;
         }
 
         body.has-reveal .reveal-item.reveal-row {
             transform: translate3d(0, 10px, 0);
-            transition-duration: 780ms, 780ms, 640ms;
+            transition-duration: 360ms, 360ms, 300ms;
         }
 
         body.has-reveal .reveal-item.is-visible {
@@ -59,20 +115,7 @@
         .panel.is-visible {
             animation: panel-breathe 14s ease-in-out 1.1s infinite;
         }
-
-        .bg-wave {
-            animation: bg-shift 18s ease-in-out infinite;
-        }
-
-        .orb {
-            animation: orb-breathe 11s ease-in-out infinite;
-        }
-
-        .orb-a { animation-delay: 0s; }
-        .orb-b { animation-delay: 1.7s; }
-        .orb-c { animation-delay: 3.1s; }
-
-        @keyframes page-enter {
+@keyframes page-enter {
             from {
                 opacity: 0;
                 transform: translateY(10px);
@@ -107,12 +150,12 @@
 
         @keyframes panel-breathe {
             0%, 100% {
-                box-shadow: 0 10px 28px rgba(15, 55, 36, 0.08);
-                border-color: #d4ded6;
+                box-shadow: 0 10px 28px rgba(2, 6, 23, 0.14);
+                border-color: var(--border);
             }
             50% {
-                box-shadow: 0 16px 34px rgba(15, 55, 36, 0.11);
-                border-color: #c9d8cd;
+                box-shadow: 0 16px 34px rgba(2, 6, 23, 0.2);
+                border-color: color-mix(in srgb, var(--border) 86%, var(--accent) 14%);
             }
         }
 
@@ -124,26 +167,6 @@
             to {
                 opacity: 1;
                 transform: translateY(0);
-            }
-        }
-
-        @keyframes bg-shift {
-            0%, 100% {
-                filter: saturate(1) brightness(1);
-            }
-            50% {
-                filter: saturate(1.08) brightness(1.03);
-            }
-        }
-
-        @keyframes orb-breathe {
-            0%, 100% {
-                opacity: 0.46;
-                filter: blur(2px) saturate(1);
-            }
-            50% {
-                opacity: 0.62;
-                filter: blur(2.6px) saturate(1.08);
             }
         }
 
@@ -161,6 +184,8 @@
             max-width: 760px;
             margin: 4rem auto;
             padding: 0 1rem;
+            position: relative;
+            z-index: 1;
         }
 
         body.auth-layout main {
@@ -170,12 +195,131 @@
             min-height: 100vh;
         }
 
+        .site-header {
+            position: sticky;
+            top: 0.45rem;
+            z-index: 1200;
+            border: none;
+            background: transparent;
+            box-shadow: none;
+        }
+
+        .site-header-inner {
+            width: min(1200px, 100%);
+            margin: 0 auto;
+            min-height: 68px;
+            padding: 0.48rem clamp(0.75rem, 1.4vw, 1.2rem);
+            display: grid;
+            grid-template-columns: minmax(180px, 1fr) auto minmax(220px, 1fr);
+            align-items: center;
+            gap: 0.9rem;
+            flex-wrap: nowrap;
+            border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+            border-radius: 16px;
+            background: color-mix(in srgb, var(--card) 30%, transparent);
+            backdrop-filter: blur(8px) saturate(1.05);
+            -webkit-backdrop-filter: blur(8px) saturate(1.05);
+            box-shadow: 0 8px 20px rgba(2, 6, 23, 0.1);
+        }
+
+        .site-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.55rem;
+            text-decoration: none;
+            color: var(--ink);
+            min-width: 0;
+            justify-self: start;
+        }
+
+        .site-brand-logo {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            object-fit: cover;
+            border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+            background: color-mix(in srgb, var(--surface) 88%, transparent);
+            flex: 0 0 auto;
+        }
+
+        .site-brand-text {
+            font-weight: 800;
+            letter-spacing: 0.01em;
+            font-family: var(--font-display);
+            font-size: 1.02rem;
+            white-space: nowrap;
+        }
+
+        .site-nav {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.42rem;
+            flex-wrap: wrap;
+            justify-self: center;
+        }
+
+        .site-nav-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid transparent;
+            border-radius: 999px;
+            min-height: 38px;
+            padding: 0 0.82rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-decoration: none;
+            color: var(--muted);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            line-height: 1;
+        }
+
+        .site-nav-link:hover,
+        .site-nav-link.active {
+            color: var(--accent);
+            border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+            background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+        }
+
+        .site-header-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.52rem;
+            margin-left: 0;
+            flex-wrap: wrap;
+            justify-self: end;
+        }
+
+        .site-header-actions form {
+            margin: 0;
+        }
+
+        body.app-layout main {
+            max-width: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        body.app-layout .theme-fab {
+            display: none;
+        }
+
+        body.app-layout .head-actions {
+            display: none !important;
+        }
+
+        body.app-layout .crumb {
+            display: none !important;
+        }
+
         .card {
             background: var(--card);
-            border: 1px solid #d9dfd8;
+            border: 1px solid var(--border);
             border-radius: 12px;
             padding: 2rem;
-            box-shadow: 0 10px 30px rgba(20, 83, 45, 0.08);
+            box-shadow: 0 10px 30px rgba(2, 6, 23, 0.14);
         }
 
         h1 {
@@ -191,51 +335,839 @@
             .dash-content,
             .metric,
             .panel,
-            tbody tr,
-            .bg-wave,
-            .orb {
+            tbody tr {
                 animation: none !important;
                 transition: none !important;
             }
         }
+
+        @media (max-width: 840px) {
+            .site-header-inner {
+                gap: 0.55rem;
+                min-height: 62px;
+                grid-template-columns: 1fr auto;
+                grid-template-areas:
+                    "brand actions"
+                    "nav nav";
+            }
+
+            .site-brand { grid-area: brand; }
+            .site-nav {
+                grid-area: nav;
+                justify-content: flex-start;
+                width: 100%;
+            }
+
+            .site-header-actions {
+                grid-area: actions;
+                justify-self: end;
+            }
+
+            .site-brand-logo {
+                width: 40px;
+                height: 40px;
+            }
+        }
     </style>
 </head>
-<body class="{{ body_class or '' }}">
+{% set _is_auth_layout = (body_class or '') == 'auth-layout' %}
+{% set _show_app_header = session.get('user_id') and not _is_auth_layout %}
+<body class="{{ body_class or '' }}{% if _show_app_header %} app-layout{% endif %}">
+    <canvas id="darkVeilCanvas" class="darkveil-canvas" aria-hidden="true"></canvas>
+    {% if _show_app_header %}
+    <header class="site-header" role="banner">
+        <div class="site-header-inner">
+            <a href="/" class="site-brand" aria-label="Go to dashboard">
+                <img
+                    src="{{ url_for('static', filename='site-logo.png') }}"
+                    alt="FX Journal Logo"
+                    class="site-brand-logo"
+                >
+                <span class="site-brand-text">FX Journal</span>
+            </a>
+            <nav class="site-nav" aria-label="Primary">
+                <a href="/" class="site-nav-link {% if request.path == '/' %}active{% endif %}">Dashboard</a>
+                <a href="/trades" class="site-nav-link {% if request.path.startswith('/trades') or request.path.startswith('/import') or request.path.startswith('/imports') %}active{% endif %}">Trades</a>
+                <a href="/account" class="site-nav-link {% if request.path.startswith('/account') %}active{% endif %}">Account</a>
+            </nav>
+            <div class="site-header-actions">
+                <form action="/logout" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="logout-btn">Log Out</button>
+                </form>
+            </div>
+        </div>
+    </header>
+    {% endif %}
     <main>
         {% block content %}{% endblock %}
     </main>
+    <style>
+        body,
+        body.auth-layout,
+        body.auth-layout main {
+            color: var(--ink);
+            background: transparent !important;
+        }
+
+        .card,
+        .panel,
+        .metric,
+        .login-card {
+            background: color-mix(in srgb, var(--card) 94%, transparent) !important;
+            color: var(--ink) !important;
+            border-color: var(--border) !important;
+            box-shadow: 0 10px 30px rgba(2, 6, 23, 0.16) !important;
+        }
+
+        .profile-row,
+        .table-shell,
+        .line-chart-shell,
+        .sim-chart {
+            background: color-mix(in srgb, var(--surface) 88%, transparent) !important;
+            border-color: var(--border) !important;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        h6,
+        label,
+        legend,
+        .metric-value,
+        .profile-row dd,
+        .crumb,
+        .subtitle,
+        .welcome,
+        .eyebrow,
+        dt,
+        dd,
+        th,
+        td {
+            color: var(--ink) !important;
+        }
+
+        .muted,
+        .soft,
+        .helper-note,
+        .metric-label,
+        .metric-note,
+        .switch-link,
+        .subtext,
+        .summary {
+            color: var(--muted) !important;
+        }
+
+        a,
+        .switch-link a,
+        .crumb a {
+            color: var(--accent) !important;
+        }
+
+        input,
+        select,
+        textarea {
+            border-color: var(--border) !important;
+            background: var(--surface) !important;
+            color: var(--ink) !important;
+        }
+
+        input[type="file"]::file-selector-button,
+        input[type="file"]::-webkit-file-upload-button {
+            border: 1px solid var(--accent) !important;
+            background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
+            color: #ffffff !important;
+            border-radius: 8px;
+            padding: 0.45rem 0.7rem;
+            cursor: pointer;
+        }
+
+        input::placeholder,
+        textarea::placeholder {
+            color: color-mix(in srgb, var(--muted) 88%, transparent) !important;
+        }
+
+        .account-btn,
+        .ghost-btn,
+        .ghost-link {
+            border-color: var(--border) !important;
+            background: color-mix(in srgb, var(--surface) 92%, transparent) !important;
+            color: var(--ink) !important;
+        }
+
+        .account-btn:hover,
+        .ghost-btn:hover,
+        .ghost-link:hover {
+            background: color-mix(in srgb, var(--surface) 80%, var(--accent) 20%) !important;
+        }
+
+        .submit-btn,
+        .trades-btn,
+        .login-form button {
+            border-color: var(--accent) !important;
+            background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
+            color: #ffffff !important;
+        }
+
+        .logout-btn {
+            border-color: color-mix(in srgb, var(--bad) 55%, var(--border)) !important;
+            background: color-mix(in srgb, var(--bad) 18%, var(--card)) !important;
+            color: var(--bad) !important;
+        }
+
+        .site-header .theme-toggle-btn,
+        .site-header .logout-btn {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            min-height: 38px !important;
+            height: 38px !important;
+            border-radius: 999px !important;
+            padding: 0 0.9rem !important;
+            font-size: 0.72rem !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.04em !important;
+            text-transform: uppercase !important;
+            line-height: 1 !important;
+        }
+
+        .site-header .theme-toggle-btn {
+            border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)) !important;
+            background: color-mix(in srgb, var(--accent) 12%, var(--card)) !important;
+            color: var(--accent) !important;
+        }
+
+        .site-header .theme-toggle-btn:hover {
+            background: color-mix(in srgb, var(--accent) 20%, var(--card)) !important;
+        }
+
+        .site-header .logout-btn {
+            border-color: color-mix(in srgb, var(--bad) 55%, var(--border)) !important;
+            background: color-mix(in srgb, var(--bad) 16%, var(--card)) !important;
+            color: var(--bad) !important;
+        }
+
+        .notice.success,
+        .account-alert.success {
+            border-color: color-mix(in srgb, var(--good) 50%, var(--border)) !important;
+            background: color-mix(in srgb, var(--good) 16%, var(--card)) !important;
+            color: var(--good) !important;
+        }
+
+        .notice.error,
+        .account-alert.error {
+            border-color: color-mix(in srgb, var(--bad) 50%, var(--border)) !important;
+            background: color-mix(in srgb, var(--bad) 16%, var(--card)) !important;
+            color: var(--bad) !important;
+        }
+
+        .account-alert.info {
+            border-color: color-mix(in srgb, var(--accent) 50%, var(--border)) !important;
+            background: color-mix(in srgb, var(--accent) 14%, var(--card)) !important;
+            color: var(--accent) !important;
+        }
+
+        /* Centralized theme mapping for legacy per-template classes. */
+        .section-title,
+        .dropzone-title,
+        .theme-label,
+        .x-label,
+        .block-note {
+            color: var(--ink) !important;
+        }
+
+        .dropzone-sub,
+        .import-help {
+            color: var(--muted) !important;
+        }
+
+        .dropzone,
+        .import-panel,
+        .entry-panel,
+        .edit-panel {
+            border-color: var(--border) !important;
+            background: color-mix(in srgb, var(--surface) 90%, transparent) !important;
+        }
+
+        .dropzone:hover,
+        .dropzone:focus-within {
+            border-color: var(--accent) !important;
+            background: color-mix(in srgb, var(--surface) 84%, var(--accent) 16%) !important;
+        }
+
+        .dropzone-file {
+            color: var(--accent) !important;
+        }
+
+        button:not(.theme-fab),
+        [type="submit"]:not(.theme-fab),
+        .submit-btn,
+        .new-trade-btn,
+        .trades-btn,
+        .theme-toggle-btn {
+            border: 1px solid var(--accent) !important;
+            background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
+            color: #ffffff !important;
+        }
+
+        .ghost-btn,
+        .ghost-link,
+        .account-btn {
+            border-color: var(--border) !important;
+            background: color-mix(in srgb, var(--surface) 92%, transparent) !important;
+            color: var(--ink) !important;
+        }
+
+        .ghost-btn:hover,
+        .ghost-link:hover,
+        .account-btn:hover {
+            border-color: var(--accent) !important;
+            background: color-mix(in srgb, var(--surface) 84%, var(--accent) 16%) !important;
+            color: var(--accent) !important;
+        }
+
+        .logout-btn,
+        .delete-btn,
+        .batch-delete-btn {
+            border-color: color-mix(in srgb, var(--bad) 55%, var(--border)) !important;
+            background: color-mix(in srgb, var(--bad) 16%, var(--card)) !important;
+            color: var(--bad) !important;
+        }
+
+        .row-actions .view-btn {
+            border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)) !important;
+            background: color-mix(in srgb, var(--accent) 12%, var(--card)) !important;
+            color: var(--accent) !important;
+        }
+
+        .row-actions .view-btn:hover {
+            background: color-mix(in srgb, var(--accent) 20%, var(--card)) !important;
+        }
+
+        .row-actions .edit-btn {
+            border: 1px solid var(--border) !important;
+            background: color-mix(in srgb, var(--surface) 94%, transparent) !important;
+            color: var(--ink) !important;
+        }
+
+        .row-actions .edit-btn:hover {
+            border-color: var(--accent) !important;
+            background: color-mix(in srgb, var(--surface) 84%, var(--accent) 16%) !important;
+            color: var(--accent) !important;
+        }
+
+        .notice,
+        .account-alert,
+        .batch-alert,
+        .import-alert {
+            border-width: 1px !important;
+            border-style: solid !important;
+        }
+
+        .notice.success,
+        .account-alert.success,
+        .batch-alert.success,
+        .import-alert.success {
+            border-color: color-mix(in srgb, var(--good) 50%, var(--border)) !important;
+            background: color-mix(in srgb, var(--good) 16%, var(--card)) !important;
+            color: var(--good) !important;
+        }
+
+        .notice.error,
+        .account-alert.error,
+        .batch-alert.error,
+        .import-alert.error {
+            border-color: color-mix(in srgb, var(--bad) 50%, var(--border)) !important;
+            background: color-mix(in srgb, var(--bad) 16%, var(--card)) !important;
+            color: var(--bad) !important;
+        }
+
+        .notice.info,
+        .account-alert.info,
+        .batch-alert.info,
+        .import-alert.info {
+            border-color: color-mix(in srgb, var(--accent) 50%, var(--border)) !important;
+            background: color-mix(in srgb, var(--accent) 14%, var(--card)) !important;
+            color: var(--accent) !important;
+        }
+
+        .good { color: var(--good) !important; }
+        .bad { color: var(--bad) !important; }
+        .pip-note { color: color-mix(in srgb, var(--ink) 86%, var(--muted) 14%) !important; }
+
+        .soon {
+            border-color: color-mix(in srgb, var(--accent) 45%, var(--border)) !important;
+            background: color-mix(in srgb, var(--accent) 14%, var(--card)) !important;
+            color: var(--accent) !important;
+        }
+
+        table thead th,
+        table tbody td {
+            border-color: var(--border) !important;
+        }
+
+        .tag.buy {
+            background: color-mix(in srgb, var(--good) 20%, var(--card)) !important;
+            color: var(--good) !important;
+            border-color: color-mix(in srgb, var(--good) 45%, var(--border)) !important;
+        }
+
+        .tag.sell {
+            background: color-mix(in srgb, var(--bad) 20%, var(--card)) !important;
+            color: var(--bad) !important;
+            border-color: color-mix(in srgb, var(--bad) 45%, var(--border)) !important;
+        }
+
+        .insight-content {
+            border-color: var(--border) !important;
+            background:
+                linear-gradient(
+                    145deg,
+                    color-mix(in srgb, var(--surface) 94%, transparent) 0%,
+                    color-mix(in srgb, var(--accent) 10%, var(--surface)) 100%
+                ) !important;
+        }
+
+        .insight-title { color: var(--accent) !important; }
+        .insight-body { color: var(--ink) !important; }
+        .insight-note { color: var(--muted) !important; }
+
+        .notes-list,
+        .notes-list li {
+            color: var(--ink) !important;
+            background: transparent !important;
+            box-shadow: none !important;
+        }
+
+        .notes-list li strong { color: var(--accent) !important; }
+
+        .chart-point.drawdown-marker {
+            fill: color-mix(in srgb, var(--card) 92%, transparent) !important;
+            stroke: #ef4444 !important;
+        }
+
+        .drawdown-label { fill: #ef4444 !important; }
+
+        .chart-point.hover-marker {
+            fill: color-mix(in srgb, var(--card) 88%, transparent) !important;
+            stroke: var(--accent) !important;
+        }
+
+        .theme-fab {
+            position: fixed;
+            right: 0.9rem;
+            top: 0.9rem;
+            z-index: 1002;
+            border: 1px solid var(--border);
+            background: color-mix(in srgb, var(--card) 90%, transparent);
+            color: var(--ink);
+            border-radius: 999px;
+            padding: 0.5rem 0.8rem;
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(2, 6, 23, 0.25);
+            backdrop-filter: blur(6px);
+        }
+
+        .theme-fab:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .theme-fab:focus-visible {
+            outline: 3px solid color-mix(in srgb, var(--accent) 55%, #ffffff);
+            outline-offset: 2px;
+        }
+
+        .darkveil-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -2;
+            pointer-events: none;
+            opacity: 0;
+            filter: saturate(1.05) contrast(1.02);
+            transition: opacity 260ms ease;
+        }
+
+        body.veil-ready .darkveil-canvas {
+            opacity: var(--veil-opacity);
+        }
+
+        main {
+            position: relative;
+            z-index: 1;
+        }
+    </style>
     <script>
         (() => {
-            const scopes = document.querySelectorAll(".auth-shell, .dash-wrap");
-            if (!scopes.length) {
+            const storageKey = "fxj-theme";
+            const root = document.documentElement;
+            const validThemes = new Set(["dark"]);
+
+            const syncChartPalette = (theme) => {
+                const isDark = theme === "dark";
+                const strokeA = "#4F46E5";
+                const strokeB = "#4338CA";
+                const areaA = isDark ? "rgba(79, 70, 229, 0.32)" : "rgba(79, 70, 229, 0.24)";
+                const areaB = isDark ? "rgba(79, 70, 229, 0.04)" : "rgba(79, 70, 229, 0.03)";
+
+                const strokeStops = document.querySelectorAll("#pnlStrokeGradient stop");
+                if (strokeStops.length >= 2) {
+                    strokeStops[0].setAttribute("stop-color", strokeA);
+                    strokeStops[1].setAttribute("stop-color", strokeB);
+                }
+
+                const areaStops = document.querySelectorAll("#pnlAreaGradient stop");
+                if (areaStops.length >= 2) {
+                    areaStops[0].setAttribute("stop-color", areaA);
+                    areaStops[1].setAttribute("stop-color", areaB);
+                }
+            };
+
+            const getTheme = () => {
+                const current = root.getAttribute("data-theme");
+                return validThemes.has(current) ? current : "dark";
+            };
+
+            const setTheme = (theme) => {
+                const nextTheme = validThemes.has(theme) ? theme : "dark";
+                root.setAttribute("data-theme", nextTheme);
+                try {
+                    localStorage.setItem(storageKey, nextTheme);
+                } catch (_error) {}
+                syncChartPalette(nextTheme);
+                window.dispatchEvent(
+                    new CustomEvent("fxj:themechange", { detail: { theme: nextTheme } })
+                );
+            };
+
+            const toggleTheme = () => {
+                setTheme(getTheme() === "dark" ? "light" : "dark");
+            };
+
+            const getThemeLabel = (theme) => (theme === "dark" ? "Light Mode" : "Dark Mode");
+
+            const syncToggleButton = (button) => {
+                if (!button) {
+                    return;
+                }
+                const theme = getTheme();
+                const isDark = theme === "dark";
+                button.textContent = getThemeLabel(theme);
+                button.setAttribute("aria-pressed", String(isDark));
+            };
+
+            const bindToggle = (button) => {
+                if (!button || button.dataset.themeBound === "1") {
+                    return;
+                }
+                button.dataset.themeBound = "1";
+                syncToggleButton(button);
+                button.addEventListener("click", () => {
+                    toggleTheme();
+                    syncToggleButton(button);
+                });
+            };
+
+            window.fxjTheme = {
+                getTheme,
+                setTheme,
+                toggleTheme,
+                bindToggle,
+            };
+
+            document.querySelectorAll("[data-theme-toggle]").forEach(bindToggle);
+            syncChartPalette(getTheme());
+            window.addEventListener("fxj:themechange", () => {
+                document.querySelectorAll("[data-theme-toggle]").forEach(syncToggleButton);
+            });
+        })();
+    </script>
+    <script>
+        (() => {
+            const canvas = document.getElementById("darkVeilCanvas");
+            if (!canvas) {
                 return;
             }
 
-            scopes.forEach((scope) => {
-                const orbs = Array.from(scope.querySelectorAll(".orb"));
-                orbs.forEach((orb) => {
-                    const currentDepth = Number(orb.dataset.depth || 30);
-                    const depthJitter = 1 + (Math.random() * 0.28 - 0.14);
-                    orb.dataset.depth = (currentDepth * depthJitter).toFixed(2);
-                    orb.dataset.baseX = (Math.random() * 48 - 24).toFixed(2);
-                    orb.dataset.baseY = (Math.random() * 48 - 24).toFixed(2);
-                    orb.dataset.phaseShift = (Math.random() * 2.4 - 1.2).toFixed(2);
-                    orb.dataset.spin = (Math.random() * 2.4 - 1.2).toFixed(2);
+            const ctx = canvas.getContext("2d", { alpha: true });
+            if (!ctx) {
+                return;
+            }
 
-                    // Fully random spawn point each load, overriding class-anchored corners.
-                    orb.style.left = `${(Math.random() * 120 - 10).toFixed(2)}%`;
-                    orb.style.top = `${(Math.random() * 120 - 10).toFixed(2)}%`;
-                    orb.style.right = "auto";
-                    orb.style.bottom = "auto";
+            const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+            let rafId = 0;
+            let width = 0;
+            let height = 0;
+            let dpr = 1;
+            let didFirstFrame = false;
+
+            const getTheme = () =>
+                document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+
+            const resize = () => {
+                dpr = Math.min(window.devicePixelRatio || 1, 2);
+                width = Math.max(window.innerWidth, 1);
+                height = Math.max(window.innerHeight, 1);
+                canvas.width = Math.floor(width * dpr);
+                canvas.height = Math.floor(height * dpr);
+                canvas.style.width = `${width}px`;
+                canvas.style.height = `${height}px`;
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            };
+
+            const lerp = (a, b, t) => a + (b - a) * t;
+
+            const mixColor = (a, b, t, alpha) => {
+                const r = Math.round(lerp(a[0], b[0], t));
+                const g = Math.round(lerp(a[1], b[1], t));
+                const bVal = Math.round(lerp(a[2], b[2], t));
+                return `rgba(${r}, ${g}, ${bVal}, ${alpha})`;
+            };
+
+            const strokeRibbonFamily = (time, palette, spec) => {
+                const lanes = spec.lanes;
+                const laneCenter = (lanes - 1) * 0.5;
+                for (let i = 0; i < lanes; i += 1) {
+                    const laneT = lanes > 1 ? i / (lanes - 1) : 0.5;
+                    const laneOffset = (i - laneCenter) * spec.spacing;
+                    const phase = time * spec.speed + spec.phase + i * spec.lanePhase;
+
+                    const x0 = -width * 0.12;
+                    const x3 = width * 1.12;
+                    const c1x = width * (0.28 + Math.sin(phase * 0.27) * 0.06 + spec.curveBias);
+                    const c2x = width * (0.72 + Math.cos(phase * 0.23) * 0.07 - spec.curveBias);
+
+                    const y0 = height * spec.y0 + Math.sin(phase * 0.74 + 0.2) * height * spec.swingA + laneOffset;
+                    const y1 = height * spec.y1 + Math.cos(phase * 0.59 + 1.2) * height * spec.swingB + laneOffset * 0.5;
+                    const y2 = height * spec.y2 + Math.sin(phase * 0.67 + 2.1) * height * spec.swingC - laneOffset * 0.38;
+                    const y3 = height * spec.y3 + Math.cos(phase * 0.81 + 0.8) * height * spec.swingD - laneOffset * 0.92;
+
+                    ctx.save();
+                    ctx.globalCompositeOperation = "lighter";
+                    ctx.filter = `blur(${spec.glowBlur}px)`;
+                    ctx.strokeStyle = mixColor(palette.a, palette.b, laneT, spec.glowAlpha);
+                    ctx.lineWidth = spec.glowWidth;
+                    ctx.lineCap = "round";
+                    ctx.beginPath();
+                    ctx.moveTo(x0, y0);
+                    ctx.bezierCurveTo(c1x, y1, c2x, y2, x3, y3);
+                    ctx.stroke();
+                    ctx.restore();
+
+                    ctx.save();
+                    ctx.globalCompositeOperation = "lighter";
+                    ctx.filter = "none";
+                    ctx.strokeStyle = mixColor(palette.a, palette.b, laneT, spec.coreAlpha);
+                    ctx.lineWidth = spec.coreWidth;
+                    ctx.lineCap = "round";
+                    ctx.beginPath();
+                    ctx.moveTo(x0, y0);
+                    ctx.bezierCurveTo(c1x, y1, c2x, y2, x3, y3);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            };
+
+            const drawDarkVeil = (time) => {
+                const bg = ctx.createLinearGradient(0, 0, 0, height);
+                bg.addColorStop(0, "#050713");
+                bg.addColorStop(0.55, "#0A0C20");
+                bg.addColorStop(1, "#1B0630");
+                ctx.fillStyle = bg;
+                ctx.fillRect(0, 0, width, height);
+
+                const wash = ctx.createRadialGradient(
+                    width * 0.62,
+                    height * 0.72,
+                    0,
+                    width * 0.62,
+                    height * 0.72,
+                    Math.max(width, height) * 0.78
+                );
+                wash.addColorStop(0, "rgba(99, 55, 210, 0.32)");
+                wash.addColorStop(0.5, "rgba(47, 24, 116, 0.18)");
+                wash.addColorStop(1, "rgba(0, 0, 0, 0)");
+                ctx.fillStyle = wash;
+                ctx.fillRect(0, 0, width, height);
+
+                const primaryPalette = { a: [160, 140, 255], b: [90, 120, 255] };
+                const secondaryPalette = { a: [130, 92, 238], b: [106, 72, 210] };
+
+                strokeRibbonFamily(time, primaryPalette, {
+                    lanes: 5,
+                    spacing: 12,
+                    speed: 0.86,
+                    phase: 0.4,
+                    lanePhase: 0.22,
+                    y0: 0.39,
+                    y1: 0.54,
+                    y2: 0.46,
+                    y3: 0.74,
+                    swingA: 0.028,
+                    swingB: 0.072,
+                    swingC: 0.058,
+                    swingD: 0.05,
+                    curveBias: 0.0,
+                    glowBlur: 15,
+                    glowWidth: Math.max(28, width * 0.016),
+                    glowAlpha: 0.2,
+                    coreWidth: Math.max(2.2, width * 0.0018),
+                    coreAlpha: 0.9,
                 });
 
-                const bg = scope.querySelector(".bg-wave");
-                if (bg) {
-                    bg.dataset.baseX = (Math.random() * 28 - 14).toFixed(2);
-                    bg.dataset.baseY = (Math.random() * 28 - 14).toFixed(2);
-                    bg.dataset.scale = (1.08 + Math.random() * 0.08).toFixed(3);
+                strokeRibbonFamily(time, secondaryPalette, {
+                    lanes: 4,
+                    spacing: 16,
+                    speed: 0.72,
+                    phase: 2.0,
+                    lanePhase: 0.27,
+                    y0: 0.84,
+                    y1: 0.52,
+                    y2: 0.38,
+                    y3: 0.05,
+                    swingA: 0.04,
+                    swingB: 0.08,
+                    swingC: 0.06,
+                    swingD: 0.045,
+                    curveBias: 0.05,
+                    glowBlur: 18,
+                    glowWidth: Math.max(24, width * 0.014),
+                    glowAlpha: 0.13,
+                    coreWidth: Math.max(1.6, width * 0.0014),
+                    coreAlpha: 0.55,
+                });
+            };
+
+            const drawLightVeil = (time) => {
+                const bg = ctx.createLinearGradient(0, 0, 0, height);
+                bg.addColorStop(0, "#FFFFFF");
+                bg.addColorStop(0.62, "#FCFCFF");
+                bg.addColorStop(1, "#F4F0FF");
+                ctx.fillStyle = bg;
+                ctx.fillRect(0, 0, width, height);
+
+                const wash = ctx.createRadialGradient(
+                    width * 0.22,
+                    height * 0.12,
+                    0,
+                    width * 0.22,
+                    height * 0.12,
+                    Math.max(width, height) * 0.92
+                );
+                wash.addColorStop(0, "rgba(167, 139, 250, 0.16)");
+                wash.addColorStop(0.5, "rgba(129, 140, 248, 0.08)");
+                wash.addColorStop(1, "rgba(255, 255, 255, 0)");
+                ctx.fillStyle = wash;
+                ctx.fillRect(0, 0, width, height);
+
+                const wash2 = ctx.createRadialGradient(
+                    width * 0.82,
+                    height * 0.84,
+                    0,
+                    width * 0.82,
+                    height * 0.84,
+                    Math.max(width, height) * 0.72
+                );
+                wash2.addColorStop(0, "rgba(196, 181, 253, 0.17)");
+                wash2.addColorStop(0.56, "rgba(167, 139, 250, 0.08)");
+                wash2.addColorStop(1, "rgba(255, 255, 255, 0)");
+                ctx.fillStyle = wash2;
+                ctx.fillRect(0, 0, width, height);
+
+                const primaryPalette = { a: [167, 139, 250], b: [129, 140, 248] };
+                const secondaryPalette = { a: [196, 181, 253], b: [167, 139, 250] };
+
+                strokeRibbonFamily(time, primaryPalette, {
+                    lanes: 4,
+                    spacing: 9,
+                    speed: 0.8,
+                    phase: 0.35,
+                    lanePhase: 0.2,
+                    y0: 0.37,
+                    y1: 0.53,
+                    y2: 0.46,
+                    y3: 0.67,
+                    swingA: 0.015,
+                    swingB: 0.046,
+                    swingC: 0.04,
+                    swingD: 0.03,
+                    curveBias: -0.01,
+                    glowBlur: 8,
+                    glowWidth: Math.max(12, width * 0.008),
+                    glowAlpha: 0.14,
+                    coreWidth: Math.max(1.3, width * 0.00105),
+                    coreAlpha: 0.68,
+                });
+
+                strokeRibbonFamily(time, secondaryPalette, {
+                    lanes: 3,
+                    spacing: 12,
+                    speed: 0.66,
+                    phase: 2.2,
+                    lanePhase: 0.24,
+                    y0: 0.82,
+                    y1: 0.55,
+                    y2: 0.39,
+                    y3: 0.13,
+                    swingA: 0.022,
+                    swingB: 0.05,
+                    swingC: 0.04,
+                    swingD: 0.03,
+                    curveBias: 0.06,
+                    glowBlur: 9,
+                    glowWidth: Math.max(9, width * 0.0065),
+                    glowAlpha: 0.08,
+                    coreWidth: Math.max(1.1, width * 0.0009),
+                    coreAlpha: 0.38,
+                });
+            };
+
+            const drawFrame = (timeMs) => {
+                const time = timeMs * 0.001;
+                const isDark = getTheme() === "dark";
+                ctx.clearRect(0, 0, width, height);
+                if (isDark) {
+                    drawDarkVeil(time);
+                } else {
+                    drawLightVeil(time);
                 }
-            });
+                if (!didFirstFrame) {
+                    didFirstFrame = true;
+                    document.body.classList.add("veil-ready");
+                }
+                if (!prefersReducedMotion.matches) {
+                    rafId = requestAnimationFrame(drawFrame);
+                }
+            };
+
+            const render = () => {
+                cancelAnimationFrame(rafId);
+                drawFrame(performance.now());
+            };
+
+            const onMotionPreferenceChange = () => {
+                render();
+            };
+
+            resize();
+            render();
+
+            window.addEventListener("resize", resize, { passive: true });
+            window.addEventListener("resize", render, { passive: true });
+            window.addEventListener("fxj:themechange", render);
+            if (typeof prefersReducedMotion.addEventListener === "function") {
+                prefersReducedMotion.addEventListener("change", onMotionPreferenceChange);
+            } else if (typeof prefersReducedMotion.addListener === "function") {
+                prefersReducedMotion.addListener(onMotionPreferenceChange);
+            }
         })();
     </script>
     <script>
@@ -297,8 +1229,8 @@
                             })
                             .length;
 
-                        const delay = rowIndex * 240 + colIndex * 110;
-                        el.style.setProperty("--reveal-delay", `${Math.min(delay, 1600)}ms`);
+                        const fastDelay = rowIndex * 90 + colIndex * 45;
+                        el.style.setProperty("--reveal-delay", `${Math.min(fastDelay, 360)}ms`);
                     });
                 });
             };
@@ -329,3 +1261,5 @@
     </script>
 </body>
 </html>
+
+
