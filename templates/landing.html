@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="landing-wrap">
+    <div class="landing-auth-links">
+        <a href="{{ url_for('login') }}" class="ghost-btn">Log In</a>
+        <a href="{{ url_for('register') }}" class="submit-btn">Register</a>
+    </div>
+    <article class="landing-card card">
+        <p class="eyebrow">Forex Journal</p>
+        <h1>Track every trade. Improve your edge.</h1>
+        <p class="muted lead">
+            FX Journal helps you log trades, review execution quality, and monitor equity performance with clear stats and fast workflows.
+        </p>
+
+        <div class="landing-actions">
+            {% if user_logged_in %}
+            <a href="{{ url_for('home') }}" class="submit-btn">Open Dashboard</a>
+            <a href="{{ url_for('trades') }}" class="ghost-btn">Trade Log</a>
+            {% else %}
+            <a href="{{ url_for('register') }}" class="submit-btn">Get Started</a>
+            {% endif %}
+        </div>
+    </article>
+</section>
+
+<style>
+    body.landing-layout main {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+    }
+
+    .landing-wrap {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: clamp(1rem, 4vw, 3rem);
+        position: relative;
+    }
+
+    .landing-card {
+        width: min(760px, 100%);
+        padding: clamp(1.25rem, 3vw, 2rem);
+        text-align: left;
+        backdrop-filter: blur(5px);
+    }
+
+    .landing-card h1 {
+        margin-bottom: 0.7rem;
+    }
+
+    .landing-card .lead {
+        margin: 0 0 1.2rem;
+        max-width: 56ch;
+    }
+
+    .landing-actions {
+        display: flex;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+    }
+
+    .landing-actions a {
+        text-decoration: none;
+    }
+
+    .landing-auth-links {
+        position: absolute;
+        top: clamp(0.9rem, 2vw, 1.2rem);
+        right: clamp(0.9rem, 2vw, 1.2rem);
+        display: inline-flex;
+        gap: 0.48rem;
+        z-index: 2;
+    }
+
+    .landing-actions .submit-btn,
+    .landing-actions .ghost-btn,
+    .landing-auth-links .submit-btn,
+    .landing-auth-links .ghost-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        border-radius: 999px !important;
+        padding: 0 1rem !important;
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    @media (max-width: 700px) {
+        .landing-auth-links {
+            position: static;
+            justify-self: end;
+            margin-bottom: 0.8rem;
+            width: 100%;
+            justify-content: flex-end;
+        }
+
+        .landing-wrap {
+            align-content: start;
+        }
+    }
+</style>
+{% endblock %}

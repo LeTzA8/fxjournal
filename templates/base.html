@@ -371,13 +371,14 @@
     </style>
 </head>
 {% set _is_auth_layout = (body_class or '') == 'auth-layout' %}
-{% set _show_app_header = session.get('user_id') and not _is_auth_layout %}
+{% set _is_landing_layout = (body_class or '') == 'landing-layout' %}
+{% set _show_app_header = session.get('user_id') and not _is_auth_layout and not _is_landing_layout %}
 <body class="{{ body_class or '' }}{% if _show_app_header %} app-layout{% endif %}">
     <canvas id="darkVeilCanvas" class="darkveil-canvas" aria-hidden="true"></canvas>
     {% if _show_app_header %}
     <header class="site-header" role="banner">
         <div class="site-header-inner">
-            <a href="/" class="site-brand" aria-label="Go to dashboard">
+            <a href="{{ url_for('home') }}" class="site-brand" aria-label="Go to dashboard">
                 <img
                     src="{{ url_for('static', filename='site-logo.png') }}"
                     alt="FX Journal Logo"
@@ -386,12 +387,12 @@
                 <span class="site-brand-text">FX Journal</span>
             </a>
             <nav class="site-nav" aria-label="Primary">
-                <a href="/" class="site-nav-link {% if request.path == '/' %}active{% endif %}">Dashboard</a>
-                <a href="/trades" class="site-nav-link {% if request.path.startswith('/trades') or request.path.startswith('/import') or request.path.startswith('/imports') %}active{% endif %}">Trades</a>
-                <a href="/account" class="site-nav-link {% if request.path.startswith('/account') %}active{% endif %}">Account</a>
+                <a href="{{ url_for('home') }}" class="site-nav-link {% if request.path == '/dashboard' %}active{% endif %}">Dashboard</a>
+                <a href="{{ url_for('trades') }}" class="site-nav-link {% if request.path.startswith('/dashboard/trades') or request.path.startswith('/dashboard/import') or request.path.startswith('/dashboard/imports') %}active{% endif %}">Trades</a>
+                <a href="{{ url_for('account') }}" class="site-nav-link {% if request.path.startswith('/account') %}active{% endif %}">Account</a>
             </nav>
             <div class="site-header-actions">
-                <form action="/logout" method="post">
+                <form action="{{ url_for('logout') }}" method="post">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="logout-btn">Log Out</button>
                 </form>

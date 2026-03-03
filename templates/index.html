@@ -5,7 +5,7 @@
 
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb"><a href="/">Dashboard</a></div>
+            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a></div>
             <div class="head-row">
                 <div>
                     <h1>Forex Performance Dashboard</h1>
@@ -13,8 +13,8 @@
                     <p class="subtitle">Track consistency, review execution, and spot edge drift early.</p>
                 </div>
                 <div class="head-actions">
-                    <a href="/account" class="account-btn">Account</a>
-                    <form action="/logout" method="post">
+                    <a href="{{ url_for('account') }}" class="account-btn">Account</a>
+                    <form action="{{ url_for('logout') }}" method="post">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="logout-btn">Log Out</button>
                     </form>
@@ -55,7 +55,7 @@
             <article class="panel trade-log">
                 <div class="panel-head">
                     <h2>Trade Log</h2>
-                    <a href="/trades" class="trades-btn">View/Add Trades</a>
+                    <a href="{{ url_for('trades') }}" class="trades-btn">View/Add Trades</a>
 
                 </div>
                 <div class="table-controls">

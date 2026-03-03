@@ -1084,6 +1084,16 @@ def handle_rate_limit(_error):
 
 
 @app.route("/")
+def landing():
+    return render_template(
+        "landing.html",
+        title="FX Journal",
+        body_class="landing-layout",
+        user_logged_in=bool(session.get("user_id")),
+    )
+
+
+@app.route("/dashboard")
 def home():
     if not session.get("user_id"):
         return redirect(url_for("login"))
@@ -1734,7 +1744,7 @@ def account_password_reset_email():
     return redirect(url_for("account", **kwargs))
 
 
-@app.route("/trades")
+@app.route("/dashboard/trades")
 def trades():
     if not session.get("user_id"):
         return redirect(url_for("login"))
@@ -1809,7 +1819,7 @@ def trades():
         batch_delete_message=batch_delete_message,
     )
 
-@app.route("/trades/new", methods=["GET", "POST"])
+@app.route("/dashboard/trades/new", methods=["GET", "POST"])
 def new_trade():
     if not session.get("user_id"):
         return redirect(url_for("login"))
@@ -1888,7 +1898,7 @@ def new_trade():
     )
 
 
-@app.route("/import", methods=["POST"])
+@app.route("/dashboard/import", methods=["POST"])
 def import_mt5_trades():
     if not session.get("user_id"):
         return redirect(url_for("login"))
@@ -2108,7 +2118,7 @@ def import_mt5_trades():
         )
 
 
-@app.route("/trades/<int:trade_id>")
+@app.route("/dashboard/trades/<int:trade_id>")
 def trade_detail(trade_id):
     if not session.get("user_id"):
         return redirect(url_for("login"))
@@ -2127,7 +2137,7 @@ def trade_detail(trade_id):
     )
 
 
-@app.route("/trades/<int:trade_id>/edit", methods=["GET", "POST"])
+@app.route("/dashboard/trades/<int:trade_id>/edit", methods=["GET", "POST"])
 def edit_trade(trade_id):
     if not session.get("user_id"):
         return redirect(url_for("login"))
@@ -2197,7 +2207,7 @@ def edit_trade(trade_id):
     )
 
 
-@app.route("/trades/<int:trade_id>/delete", methods=["POST"])
+@app.route("/dashboard/trades/<int:trade_id>/delete", methods=["POST"])
 def delete_trade(trade_id):
     if not session.get("user_id"):
         return redirect(url_for("login"))
@@ -2208,7 +2218,7 @@ def delete_trade(trade_id):
     return redirect(url_for("trades"))
 
 
-@app.route("/imports/delete", methods=["POST"])
+@app.route("/dashboard/imports/delete", methods=["POST"])
 def delete_import_batch():
     if not session.get("user_id"):
         return redirect(url_for("login"))

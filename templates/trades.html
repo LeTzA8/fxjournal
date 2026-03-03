@@ -5,7 +5,7 @@
 
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb"><a href="/">Dashboard</a> / Trade Log</div>
+            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Trade Log</div>
             <div class="head-row">
                 <div>
                     <h1>Trade Log</h1>
@@ -13,8 +13,8 @@
                     <p class="subtitle">Review all executed and running trades in one place.</p>
                 </div>
                 <div class="head-actions">
-                    <a class="ghost-link" href="/">Back to Dashboard</a>
-                    <a class="ghost-link" href="/account">Account</a>
+                    <a class="ghost-link" href="{{ url_for('home') }}">Back to Dashboard</a>
+                    <a class="ghost-link" href="{{ url_for('account') }}">Account</a>
                 </div>
             </div>
         </header>
@@ -24,7 +24,7 @@
                 <div class="panel-head">
                     <h2>All Trades</h2>
                     <div class="table-actions">
-                        <a href="/trades/new" class="new-trade-btn">New Trade</a>
+                        <a href="{{ url_for('new_trade') }}" class="new-trade-btn">New Trade</a>
                     </div>
                 </div>
                 {% if batch_delete_status and batch_delete_message %}
@@ -75,7 +75,7 @@
                     </div>
                 </div>
                 {% if import_batches %}
-                <form action="/imports/delete" method="post" class="batch-delete-form">
+                <form action="{{ url_for('delete_import_batch') }}" method="post" class="batch-delete-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label for="import_signature">Delete Imported Batch</label>
                     <select id="import_signature" name="import_signature" required>
@@ -157,9 +157,9 @@
                                 <td>{{ trade.opened_at.strftime('%d %b %Y') if trade.opened_at else '-' }}</td>
                                 <td>
                                     <div class="row-actions">
-                                        <a href="/trades/{{ trade.id }}" class="view-btn">View</a>
-                                        <a href="/trades/{{ trade.id }}/edit" class="edit-btn">Edit</a>
-                                        <form action="/trades/{{ trade.id }}/delete" method="post" class="delete-form">
+                                        <a href="{{ url_for('trade_detail', trade_id=trade.id) }}" class="view-btn">View</a>
+                                        <a href="{{ url_for('edit_trade', trade_id=trade.id) }}" class="edit-btn">Edit</a>
+                                        <form action="{{ url_for('delete_trade', trade_id=trade.id) }}" method="post" class="delete-form">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="delete-btn">Delete</button>
                                         </form>

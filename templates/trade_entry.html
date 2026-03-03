@@ -5,7 +5,7 @@
 
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb"><a href="/">Dashboard</a> / Trades / {% if form_mode == 'edit' %}Edit Trade{% else %}New Manual Entry{% endif %}</div>
+            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Trades / {% if form_mode == 'edit' %}Edit Trade{% else %}New Manual Entry{% endif %}</div>
             <div class="head-row">
                 <div>
                     <h1>{% if form_mode == 'edit' %}Edit Trade{% else %}Manual Trade Entry{% endif %}</h1>
@@ -19,9 +19,9 @@
                     </p>
                 </div>
                 <div class="head-actions">
-                    <a class="ghost-link" href="/">Back to Dashboard</a>
-                    <a class="ghost-link" href="/trades">Back to Trades</a>
-                    <a class="ghost-link" href="/account">Account</a>
+                    <a class="ghost-link" href="{{ url_for('home') }}">Back to Dashboard</a>
+                    <a class="ghost-link" href="{{ url_for('trades') }}">Back to Trades</a>
+                    <a class="ghost-link" href="{{ url_for('account') }}">Account</a>
                 </div>
             </div>
         </header>
@@ -91,7 +91,7 @@
                 <p class="import-alert {{ import_status }}">{{ import_message }}</p>
                 {% endif %}
 
-                <form action="/import" method="post" enctype="multipart/form-data" class="import-form">
+                <form action="{{ url_for('import_mt5_trades') }}" method="post" enctype="multipart/form-data" class="import-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label for="mt5_file">MT5 Excel File</label>
                     <div id="mt5Dropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload MT5 xlsx file" aria-controls="mt5_file">
