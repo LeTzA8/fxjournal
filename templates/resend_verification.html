@@ -8,8 +8,8 @@
     <div class="orb orb-c" data-depth="46" aria-hidden="true"></div>
     <div class="login-card">
         <p class="eyebrow">FX Journal</p>
-        <h1>Resend verification</h1>
-        <p class="subtext">Enter your account email and we will send a new verification link.</p>
+        <h1>Verify your email</h1>
+        <p class="subtext">Check your inbox and click the verification link to activate your account.</p>
         {% if success %}
         <p class="notice success">{{ success }}</p>
         {% endif %}
@@ -17,16 +17,16 @@
         <p class="notice error">{{ error }}</p>
         {% endif %}
 
-        <form action="/verify-email/resend" method="post" class="login-form">
+        <form action="/verify-email/pending" method="post" class="login-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label for="email">Email</label>
-            <input id="email" name="email" type="email" placeholder="you@example.com" required>
-            <button type="submit">Send Verification Link</button>
+            <input id="email" type="email" value="{{ pending_email }}" readonly aria-readonly="true">
+            <button type="submit">Resend Verification Email</button>
         </form>
         {% if debug_verify_link %}
         <p class="switch-link">Local link: <a href="{{ debug_verify_link }}">Verify Email</a></p>
         {% endif %}
-        <p class="switch-link"><a href="/login">Back to login</a></p>
+        <p class="switch-link">Wrong email? <a href="/register">Register again</a></p>
     </div>
 </section>
 

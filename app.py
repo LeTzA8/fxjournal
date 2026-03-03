@@ -1,6 +1,7 @@
 ﻿import os
 import random
 import re
+import secrets
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 from dotenv import load_dotenv
@@ -94,6 +95,8 @@ limiter.init_app(app)
 
 TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
+TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
+PENDING_REGISTRATIONS = {}
 
 BASE_SYMBOL_OPTIONS = [
     # Major FX
@@ -775,6 +778,17 @@ def generate_auth_token(email, purpose):
     )
 
 
+def generate_pending_registration_token(registration_id, email):
+    serializer = get_token_serializer()
+    return serializer.dumps(
+        {
+            "registration_id": str(registration_id or "").strip(),
+            "email": (email or "").strip().lower(),
+            "purpose": TOKEN_PURPOSE_PENDING_REGISTRATION,
+        }
+    )
+
+
 def verify_auth_token(token, purpose, max_age_seconds):
     serializer = get_token_serializer()
     try:
@@ -791,13 +805,76 @@ def verify_auth_token(token, purpose, max_age_seconds):
     return email or None
 
 
-def send_email_placeholder(to_email, subject, text_body):
+def verify_pending_registration_token(token, max_age_seconds):
+    serializer = get_token_serializer()
+    try:
+        payload = serializer.loads(token, max_age=max_age_seconds)
+    except (SignatureExpired, BadSignature):
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("purpose") != TOKEN_PURPOSE_PENDING_REGISTRATION:
+        return None
+
+    registration_id = str(payload.get("registration_id", "")).strip()
+    email = str(payload.get("email", "")).strip().lower()
+    if not registration_id or not email:
+        return None
+    return {"registration_id": registration_id, "email": email}
+
+
+def cleanup_pending_registrations(max_age_seconds):
+    now = datetime.utcnow()
+    expired = []
+    for registration_id, item in PENDING_REGISTRATIONS.items():
+        created_at = item.get("created_at")
+        if not isinstance(created_at, datetime):
+            expired.append(registration_id)
+            continue
+        age = (now - created_at).total_seconds()
+        if age > max_age_seconds:
+            expired.append(registration_id)
+    for registration_id in expired:
+        PENDING_REGISTRATIONS.pop(registration_id, None)
+
+
+def create_pending_registration(username, email, password_hash):
+    expiry_seconds = env_int("EMAIL_VERIFY_TOKEN_MAX_AGE_SECONDS", 86400)
+    cleanup_pending_registrations(expiry_seconds)
+
+    registration_id = secrets.token_urlsafe(24)
+    PENDING_REGISTRATIONS[registration_id] = {
+        "username": username,
+        "email": email,
+        "password_hash": password_hash,
+        "created_at": datetime.utcnow(),
+    }
+    return registration_id
+
+
+def get_pending_registration(registration_id):
+    if not registration_id:
+        return None
+    return PENDING_REGISTRATIONS.get(registration_id)
+
+
+def pop_pending_registration(registration_id):
+    if not registration_id:
+        return None
+    return PENDING_REGISTRATIONS.pop(registration_id, None)
+
+
+def send_email_placeholder(to_email, subject, text_body, html_body=None):
     provider = os.getenv("EMAIL_PROVIDER", "placeholder").strip().lower()
     sender = os.getenv("EMAIL_FROM", "noreply@example.com").strip()
     send_enabled = env_bool("EMAIL_SEND_ENABLED", False)
-    api_key = os.getenv("EMAIL_API_KEY", "").strip()
+    api_key = (
+        os.getenv("RESEND_API_KEY", "").strip()
+        or os.getenv("EMAIL_API_KEY", "").strip()
+    )
 
-    if provider == "console" or not send_enabled:
+    if provider in {"console", "placeholder"} or not send_enabled:
         app.logger.info(
             "Email placeholder (console/disabled) -> to=%s from=%s subject=%s",
             to_email,
@@ -809,15 +886,46 @@ def send_email_placeholder(to_email, subject, text_body):
 
     if not api_key:
         app.logger.warning(
-            "EMAIL_SEND_ENABLED is true but EMAIL_API_KEY is missing. Using placeholder mode."
+            "EMAIL_SEND_ENABLED is true but RESEND_API_KEY/EMAIL_API_KEY is missing. Using placeholder mode."
         )
         app.logger.info("Email body:\n%s", text_body)
         return {"sent": False, "mode": "missing_api_key"}
 
-    # Provider integration placeholder:
-    # Add your provider client/request here (Resend, SendGrid, SES, etc).
+    if provider == "resend":
+        try:
+            import resend
+        except ImportError:
+            app.logger.warning("Resend SDK is not installed. Falling back to placeholder logging.")
+            app.logger.info("Email body:\n%s", text_body)
+            return {"sent": False, "mode": "missing_resend_sdk"}
+
+        html_payload = html_body
+        if not html_payload:
+            safe_text = (
+                text_body.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\n", "<br>")
+            )
+            html_payload = f"<div>{safe_text}</div>"
+
+        try:
+            resend.api_key = api_key
+            payload = {
+                "from": sender,
+                "to": [to_email],
+                "subject": subject,
+                "html": html_payload,
+            }
+            response = resend.Emails.send(payload)
+            return {"sent": True, "mode": "resend", "response": response}
+        except Exception as exc:
+            app.logger.warning("Resend send failed: %s", exc)
+            app.logger.info("Email body:\n%s", text_body)
+            return {"sent": False, "mode": "resend_error"}
+
     app.logger.warning(
-        "Email provider '%s' is configured but integration is not implemented yet.", provider
+        "Email provider '%s' is configured but integration is not implemented.", provider
     )
     app.logger.info("Email body:\n%s", text_body)
     return {"sent": False, "mode": "not_implemented"}
@@ -961,14 +1069,14 @@ def handle_large_upload(_error):
 @app.errorhandler(429)
 def handle_rate_limit(_error):
     if request.path == "/login":
-        created = request.args.get("created") == "1"
+        success_message = request.args.get("success", "").strip()
         return (
             render_template(
                 "login.html",
                 title="Login | FX Journal",
                 body_class="auth-layout",
                 error="Too many login attempts. Please wait a minute and try again.",
-                success="Account created. Please log in." if created else None,
+                success=success_message or None,
             ),
             429,
         )
@@ -1142,11 +1250,7 @@ def register():
     if session.get("user_id"):
         return redirect(url_for("home"))
 
-    created = request.args.get("created") == "1"
-    success_message = request.args.get("success", "").strip()
-    verify_link = request.args.get("verify_link", "").strip()
-    if not success_message and created:
-        success_message = "Verification email sent. Please verify your email before logging in."
+    error_message = request.args.get("error", "").strip()
 
     if request.method == "POST":
         username = request.form.get("username", "").strip()
@@ -1159,8 +1263,6 @@ def register():
                 title="Register | FX Journal",
                 body_class="auth-layout",
                 error="All fields are required.",
-                success=success_message or None,
-                verify_link=verify_link,
             )
 
         existing_user = User.query.filter(
@@ -1172,22 +1274,20 @@ def register():
                 title="Register | FX Journal",
                 body_class="auth-layout",
                 error="Username or email already exists.",
-                success=success_message or None,
-                verify_link=verify_link,
             )
 
         hashed_password = generate_password_hash(password)
-        user = User(
+        registration_id = create_pending_registration(
             username=username,
             email=email,
-            password=hashed_password,
-            email_verified=False,
-            verification_sent_at=datetime.utcnow(),
+            password_hash=hashed_password,
         )
-        db.session.add(user)
-        db.session.commit()
+        session["pending_registration_id"] = registration_id
 
-        verify_token = generate_auth_token(email=email, purpose=TOKEN_PURPOSE_VERIFY_EMAIL)
+        verify_token = generate_pending_registration_token(
+            registration_id=registration_id,
+            email=email,
+        )
         verify_link = build_external_url(
             url_for("verify_email_token", token=verify_token)
         )
@@ -1201,75 +1301,149 @@ def register():
         )
         email_result = send_email_placeholder(email, email_subject, email_body)
 
-        register_kwargs = {"created": "1"}
+        verify_kwargs = {"sent": "1"}
         if is_local_dev_environment() and not email_result.get("sent"):
-            register_kwargs["verify_link"] = verify_link
-        return redirect(url_for("register", **register_kwargs))
+            verify_kwargs["verify_link"] = verify_link
+        return redirect(url_for("verify_email_pending", **verify_kwargs))
 
     return render_template(
         "register.html",
         title="Register | FX Journal",
         body_class="auth-layout",
-        success=success_message or None,
-        verify_link=verify_link,
+        error=error_message or None,
     )
 
 
-@app.route("/verify-email/resend", methods=["GET", "POST"])
+@app.route("/verify-email/pending", methods=["GET", "POST"])
 @limiter.limit(
     "5 per minute;20 per hour",
     methods=["POST"],
     error_message="Too many attempts. Please wait and try again.",
 )
-def resend_verification_email():
-    success = ""
+def verify_email_pending():
+    pending_id = session.get("pending_registration_id", "").strip()
+    pending = get_pending_registration(pending_id)
+    if not pending:
+        return redirect(
+            url_for(
+                "register",
+                error="Verification session expired. Please register again.",
+            )
+        )
+
+    success = (
+        "Verification email sent. Please check your inbox."
+        if request.args.get("sent") == "1"
+        else ""
+    )
     error = ""
-    debug_verify_link = ""
+    debug_verify_link = request.args.get("verify_link", "").strip()
 
     if request.method == "POST":
-        email = request.form.get("email", "").strip().lower()
-        generic_success = (
-            "If this email exists, a verification link has been sent."
+        verify_token = generate_pending_registration_token(
+            registration_id=pending_id,
+            email=pending["email"],
         )
-        if not email:
-            error = "Email is required."
-        else:
-            user = User.query.filter_by(email=email).first()
-            if user and not user.email_verified:
-                verify_token = generate_auth_token(
-                    email=user.email,
-                    purpose=TOKEN_PURPOSE_VERIFY_EMAIL,
-                )
-                verify_link = build_external_url(
-                    url_for("verify_email_token", token=verify_token)
-                )
-                email_subject = "Verify your FX Journal email"
-                email_body = (
-                    f"Hi {user.username},\n\n"
-                    "You requested a new verification link.\n"
-                    f"{verify_link}\n\n"
-                    "If you did not request this, you can ignore this email."
-                )
-                email_result = send_email_placeholder(user.email, email_subject, email_body)
-                user.verification_sent_at = datetime.utcnow()
-                db.session.commit()
-                if is_local_dev_environment() and not email_result.get("sent"):
-                    debug_verify_link = verify_link
-            success = generic_success
+        verify_link = build_external_url(
+            url_for("verify_email_token", token=verify_token)
+        )
+        email_subject = "Verify your FX Journal email"
+        email_body = (
+            f"Hi {pending['username']},\n\n"
+            "You requested a new verification link.\n"
+            f"{verify_link}\n\n"
+            "If you did not request this, you can ignore this email."
+        )
+        email_result = send_email_placeholder(
+            pending["email"],
+            email_subject,
+            email_body,
+        )
+        success = "Verification email sent. Please check your inbox."
+        if is_local_dev_environment() and not email_result.get("sent"):
+            debug_verify_link = verify_link
 
     return render_template(
         "resend_verification.html",
-        title="Resend Verification | FX Journal",
+        title="Verify Email | FX Journal",
         body_class="auth-layout",
+        pending_email=pending["email"],
         success=success or None,
         error=error or None,
         debug_verify_link=debug_verify_link,
     )
 
 
+@app.route("/verify-email/resend", methods=["GET"])
+def resend_verification_email_alias():
+    return redirect(url_for("verify_email_pending"))
+
+
 @app.route("/verify-email/<token>")
 def verify_email_token(token):
     max_age_seconds = env_int("EMAIL_VERIFY_TOKEN_MAX_AGE_SECONDS", 86400)
+    pending_payload = verify_pending_registration_token(
+        token=token,
+        max_age_seconds=max_age_seconds,
+    )
+    if pending_payload:
+        registration_id = pending_payload["registration_id"]
+        pending = get_pending_registration(registration_id)
+        if not pending:
+            return redirect(
+                url_for(
+                    "register",
+                    error="Verification link is invalid or expired. Please register again.",
+                )
+            )
+
+        if pending["email"] != pending_payload["email"]:
+            pop_pending_registration(registration_id)
+            if session.get("pending_registration_id") == registration_id:
+                session.pop("pending_registration_id", None)
+            return redirect(
+                url_for(
+                    "register",
+                    error="Verification payload mismatch. Please register again.",
+                )
+            )
+
+        existing_user = User.query.filter(
+            or_(User.username == pending["username"], User.email == pending["email"])
+        ).first()
+        if existing_user:
+            pop_pending_registration(registration_id)
+            if session.get("pending_registration_id") == registration_id:
+                session.pop("pending_registration_id", None)
+            if (
+                existing_user.username == pending["username"]
+                and existing_user.email == pending["email"]
+                and existing_user.email_verified
+            ):
+                return redirect(url_for("login", verified="1"))
+            return redirect(
+                url_for(
+                    "register",
+                    error="Username or email is no longer available. Please register again.",
+                )
+            )
+
+        user = User(
+            username=pending["username"],
+            email=pending["email"],
+            password=pending["password_hash"],
+            email_verified=True,
+            verification_sent_at=datetime.utcnow(),
+        )
+        db.session.add(user)
+        db.session.commit()
+
+        pop_pending_registration(registration_id)
+        if session.get("pending_registration_id") == registration_id:
+            session.pop("pending_registration_id", None)
+
+        return redirect(url_for("login", verified="1"))
+
     email = verify_auth_token(
         token=token,
         purpose=TOKEN_PURPOSE_VERIFY_EMAIL,
@@ -1278,14 +1452,19 @@ def verify_email_token(token):
     if not email:
         return redirect(
             url_for(
-                "login",
-                success="Verification link is invalid or expired. Request a new one.",
+                "register",
+                error="Verification link is invalid or expired. Please register again.",
             )
         )
 
     user = User.query.filter_by(email=email).first()
     if not user:
-        return redirect(url_for("login", success="Verification completed. Please log in."))
+        return redirect(
+            url_for(
+                "register",
+                error="Verification link is invalid or expired. Please register again.",
+            )
+        )
 
     if not user.email_verified:
         user.email_verified = True

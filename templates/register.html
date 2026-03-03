@@ -30,10 +30,6 @@
 
             <button type="submit">Create Account</button>
         </form>
-        {% if verify_link %}
-        <p class="switch-link">Local verification link: <a href="{{ verify_link }}">Verify Email</a></p>
-        {% endif %}
-        <p class="switch-link">Need another verification email? <a href="/verify-email/resend">Resend verification</a></p>
         <p class="switch-link">Already have an account? <a href="/login">Log in</a></p>
     </div>
 </section>
