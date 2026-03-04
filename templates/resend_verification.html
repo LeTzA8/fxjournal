@@ -28,22 +28,24 @@
 
 <style>
     .auth-shell { position: relative; min-height: 100vh; width: 100%; display: grid; place-items: center; overflow: hidden; isolation: isolate; padding: clamp(1rem, 3vw, 2rem); perspective: 1100px; }
-.login-card { width: min(100%, 470px); background: color-mix(in oklab, var(--card) 92%, #f2f8f5 8%); border: 1px solid #cfd9d1; border-radius: 16px; padding: clamp(1.4rem, 2.4vw, 2rem); box-shadow: 0 16px 40px rgba(20, 83, 45, 0.14); backdrop-filter: blur(3px); }
-    .eyebrow { margin: 0; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
-    .login-card h1 { margin: 0.35rem 0 0; color: #123f29; font-size: clamp(1.55rem, 2.8vw, 2.2rem); }
-    .subtext { margin-top: 0.55rem; color: var(--muted); }
+.login-card { width: min(100%, 470px); border: 1px solid #cfd9d1; border-radius: 16px; padding: clamp(1.4rem, 2.4vw, 2rem); box-shadow: 0 16px 40px rgba(20, 83, 45, 0.14); backdrop-filter: blur(3px); }
+    .eyebrow { margin: 0; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700; }
+    .login-card h1 { margin: 0.35rem 0 0; font-size: clamp(1.55rem, 2.8vw, 2.2rem); }
+    .subtext { margin-top: 0.55rem; }
     .notice { margin: 0.9rem 0 0; padding: 0.6rem 0.75rem; border-radius: 8px; font-size: 0.92rem; line-height: 1.4; }
-    .notice.success { background: #eaf8ef; border: 1px solid #9fcead; color: #17452f; }
-    .notice.error { background: #fff0ef; border: 1px solid #e1b0ad; color: #7a1f1a; }
-    .switch-link { margin: 0.9rem 0 0; text-align: center; color: var(--muted); font-size: 0.95rem; }
-    .switch-link a { color: #14532d; font-weight: 700; text-decoration: none; }
+    .notice.success { border: 1px solid #9fcead; }
+    .notice.error { border: 1px solid #e1b0ad; }
+    .switch-link { margin: 0.9rem 0 0; text-align: center; font-size: 0.95rem; }
+    .switch-link a { font-weight: 700; text-decoration: none; }
     .switch-link a:hover { text-decoration: underline; }
     .login-form { margin-top: 1.2rem; display: grid; gap: 0.8rem; }
-    .login-form label { font-size: 0.9rem; color: #214634; font-weight: 600; }
-    .login-form input { width: 100%; padding: 0.78rem 0.9rem; border-radius: 10px; border: 1px solid #b7c6bb; background: #fbfdfa; color: var(--ink); font: inherit; }
-    .login-form button { margin-top: 0.5rem; padding: 0.85rem 1rem; border: none; border-radius: 10px; background: linear-gradient(135deg, #1f6f46, #14532d); color: #ffffff; font: inherit; font-weight: 700; cursor: pointer; }
+    .login-form label { font-size: 0.9rem; font-weight: 600; }
+    .login-form input { width: 100%; padding: 0.78rem 0.9rem; border-radius: 10px; border: 1px solid #b7c6bb;  font: inherit; }
+    .login-form button { margin-top: 0.5rem; padding: 0.85rem 1rem; border: none; border-radius: 10px;  font: inherit; font-weight: 700; cursor: pointer; }
     .login-form button:hover { filter: brightness(1.03); }
 </style>
 {% endblock %}
+
+
 
 

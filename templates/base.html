@@ -721,6 +721,35 @@
             border-color: color-mix(in srgb, var(--bad) 45%, var(--border)) !important;
         }
 
+        .date-pill {
+            border-color: color-mix(in srgb, var(--border) 82%, transparent) !important;
+            background: color-mix(in srgb, var(--surface) 92%, transparent) !important;
+            color: color-mix(in srgb, var(--ink) 82%, var(--muted) 18%) !important;
+        }
+
+        .chart-x-axis .x-label {
+            color: var(--muted) !important;
+        }
+
+        .pnl-tooltip {
+            border: 1px solid color-mix(in srgb, var(--border) 78%, transparent) !important;
+            background: color-mix(in srgb, var(--card) 94%, transparent) !important;
+            color: var(--ink) !important;
+        }
+
+        .pnl-tooltip::after {
+            background: color-mix(in srgb, var(--card) 94%, transparent) !important;
+        }
+
+        .scanline {
+            background: linear-gradient(
+                to bottom,
+                transparent,
+                color-mix(in srgb, var(--accent) 62%, transparent),
+                transparent
+            ) !important;
+        }
+
         .insight-content {
             border-color: var(--border) !important;
             background:

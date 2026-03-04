@@ -120,394 +120,224 @@
     </div>
 </section>
 
-<style>
-    body {
-        background: #eef4ef;
-    }
-
-    main {
-        max-width: none;
+<style>main { max-width: none;
         margin: 0;
         padding: 0;
-        min-height: 100vh;
-    }
+        min-height: 100vh; }
 
-    .dash-wrap {
-        position: relative;
+    .dash-wrap { position: relative;
         min-height: 100vh;
         width: 100%;
         overflow: hidden;
         isolation: isolate;
         padding: clamp(0.9rem, 2vw, 1.5rem);
-        perspective: 1100px;
-    }
+        perspective: 1100px; }
 
-    .dash-content {
-        position: relative;
-        z-index: 1;
-    }
-.dash-head {
-        margin-bottom: 1rem;
-    }
+    .dash-content { position: relative;
+        z-index: 1; }
+.dash-head { margin-bottom: 1rem; }
 
-    .crumb {
-        font-size: 0.78rem;
+    .crumb { font-size: 0.78rem;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #5e7364;
-        font-weight: 700;
-        margin-bottom: 0.7rem;
-    }
+        letter-spacing: 0.08em; font-weight: 700;
+        margin-bottom: 0.7rem; }
 
-    .crumb a {
-        color: inherit;
-        text-decoration: none;
-        border-bottom: 1px solid transparent;
-    }
+    .crumb a { text-decoration: none;
+        border-bottom: 1px solid transparent; }
 
-    .crumb a:hover {
-        border-bottom-color: currentColor;
-    }
+    .crumb a:hover { border-bottom-color: currentColor; }
 
-    .head-row {
-        display: flex;
+    .head-row { display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 1rem;
-    }
+        gap: 1rem; }
 
-    h1 {
-        margin: 0;
-        font-size: clamp(1.35rem, 2.3vw, 2rem);
-        color: #133f2a;
-    }
+    h1 { margin: 0;
+        font-size: clamp(1.35rem, 2.3vw, 2rem); }
 
-    .subtitle {
-        margin: 0.38rem 0 0;
-        color: #5a6960;
-    }
+    .subtitle { margin: 0.38rem 0 0; }
 
-    .welcome {
-        margin: 0.45rem 0 0;
-        color: #2a5f43;
-        font-size: 0.95rem;
-        font-weight: 700;
-    }
+    .welcome { margin: 0.45rem 0 0; font-size: 0.95rem;
+        font-weight: 700; }
 
-    .head-actions {
-        display: flex;
+    .head-actions { display: flex;
         align-items: center;
-        gap: 0.55rem;
-    }
+        gap: 0.55rem; }
 
-    .ghost-link {
-        border: 1px solid #c6d4ca;
-        background: #f8fbf9cc;
-        color: #2f5642;
-        border-radius: 10px;
+    .ghost-link { border: 1px solid #c6d4ca;  border-radius: 10px;
         padding: 0.45rem 0.75rem;
         font-weight: 700;
         font-size: 0.78rem;
         letter-spacing: 0.03em;
         text-transform: uppercase;
-        text-decoration: none;
-    }
-
-    .ghost-link:hover {
-        background: #eef7f2;
-    }
-
-    .panel-grid {
-        display: grid;
+        text-decoration: none; }
+.panel-grid { display: grid;
         grid-template-columns: 1fr;
         gap: 0.8rem;
         align-items: start;
         justify-items: center;
-        min-width: 0;
-    }
+        min-width: 0; }
 
-    .panel-grid.with-import {
-        grid-template-columns: minmax(0, 760px) minmax(0, 520px);
+    .panel-grid.with-import { grid-template-columns: minmax(0, 760px) minmax(0, 520px);
         justify-content: center;
         justify-items: center;
         align-items: center;
-        gap: 1rem;
-    }
+        gap: 1rem; }
 
-    .panel {
-        background: #ffffffc9;
-        border: 1px solid #d4ded6;
+    .panel { border: 1px solid #d4ded6;
         border-radius: 14px;
         padding: 0.9rem;
         box-shadow: 0 10px 28px rgba(15, 55, 36, 0.08);
         max-width: 760px;
         min-width: 0;
-        width: 100%;
-    }
+        width: 100%; }
 
-    .entry-panel {
-        width: 100%;
+    .entry-panel { width: 100%;
         margin: 0;
         min-width: 0;
-        align-self: center;
-    }
+        align-self: center; }
 
-    .import-panel {
-        width: 100%;
+    .import-panel { width: 100%;
         margin: 0;
         min-width: 0;
         max-width: 520px;
-        align-self: center;
-    }
+        align-self: center; }
 
-    .panel-head {
-        display: flex;
+    .panel-head { display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 0.8rem;
-        margin-bottom: 0.75rem;
-    }
+        margin-bottom: 0.75rem; }
 
-    h2 {
-        margin: 0;
-        font-size: 1rem;
-        color: #17422e;
-    }
+    h2 { margin: 0;
+        font-size: 1rem; }
 
-    .soft {
-        color: #6d7b72;
-        font-size: 0.8rem;
-    }
+    .soft { font-size: 0.8rem; }
 
-    .trade-form {
-        display: grid;
+    .trade-form { display: grid;
         gap: 0.7rem;
-        min-width: 0;
-    }
+        min-width: 0; }
 
-    .trade-form > * {
-        min-width: 0;
-    }
+    .trade-form > * { min-width: 0; }
 
-    .import-form {
-        display: grid;
+    .import-form { display: grid;
         gap: 0.7rem;
-        min-width: 0;
-    }
+        min-width: 0; }
 
-    .import-form > * {
-        min-width: 0;
-    }
+    .import-form > * { min-width: 0; }
 
-    .trade-form label {
-        font-size: 0.84rem;
-        font-weight: 700;
-        color: #294c3a;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-    }
+    .trade-form label { font-size: 0.84rem;
+        font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.04em; }
 
-    .import-form label {
-        font-size: 0.84rem;
-        font-weight: 700;
-        color: #294c3a;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-    }
+    .import-form label { font-size: 0.84rem;
+        font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.04em; }
 
     .trade-form input,
     .trade-form select,
-    .trade-form textarea {
-        width: 100%;
+    .trade-form textarea { width: 100%;
         max-width: 100%;
         min-width: 0;
-        border: 1px solid #c7d5cb;
-        background: #fbfdfb;
-        border-radius: 10px;
-        padding: 0.68rem 0.75rem;
-        color: #1f2a37;
-        font: inherit;
-        transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
-    }
+        border: 1px solid #c7d5cb; border-radius: 10px;
+        padding: 0.68rem 0.75rem; font: inherit;
+        transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
 
-    .import-form input[type="file"] {
-        width: 100%;
+    .import-form input[type="file"] { width: 100%;
         max-width: 100%;
         min-width: 0;
-        border: 1px dashed #9fb9a9;
-        background: #f7fcf8;
-        border-radius: 10px;
-        padding: 0.68rem 0.75rem;
-        color: #1f2a37;
-        font: inherit;
-    }
+        border: 1px dashed #9fb9a9; border-radius: 10px;
+        padding: 0.68rem 0.75rem; font: inherit; }
 
-    .dropzone {
-        position: relative;
-        border: 1px dashed #9fb9a9;
-        background: #f7fcf8;
-        border-radius: 10px;
+    .dropzone { position: relative;
+        border: 1px dashed #9fb9a9; border-radius: 10px;
         padding: 1rem 0.8rem;
         text-align: center;
         transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
-        cursor: pointer;
-    }
+        cursor: pointer; }
 
     .dropzone:hover,
     .dropzone.drag-over,
-    .dropzone:focus-within {
-        border-color: #2b7d50;
-        background: #eef8f2;
-        box-shadow: 0 0 0 4px rgba(43, 125, 80, 0.12);
-    }
+    .dropzone:focus-within { border-color: #2b7d50; box-shadow: 0 0 0 4px rgba(43, 125, 80, 0.12); }
 
-    .dropzone-title {
-        margin: 0;
+    .dropzone-title { margin: 0;
         font-size: 0.86rem;
-        font-weight: 700;
-        color: #204735;
-    }
+        font-weight: 700; }
 
-    .dropzone-sub {
-        margin: 0.28rem 0 0;
-        font-size: 0.78rem;
-        color: #587064;
-    }
+    .dropzone-sub { margin: 0.28rem 0 0;
+        font-size: 0.78rem; }
 
-    .dropzone-file {
-        margin: 0.42rem 0 0;
+    .dropzone-file { margin: 0.42rem 0 0;
         font-size: 0.76rem;
-        font-weight: 700;
-        color: #2f5642;
-        word-break: break-word;
-    }
+        font-weight: 700; word-break: break-word; }
 
-    .file-input {
-        position: absolute;
+    .file-input { position: absolute;
         inset: 0;
         width: 100%;
         height: 100%;
         opacity: 0;
-        cursor: pointer;
-    }
+        cursor: pointer; }
 
-    .trade-form input[type="date"] {
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
+    .trade-form input[type="date"] { overflow: hidden;
+        text-overflow: ellipsis; }
 
-    .import-help {
-        margin: 0;
-        color: #5b6f62;
-        font-size: 0.82rem;
-    }
+    .import-help { margin: 0; font-size: 0.82rem; }
 
-    .import-alert {
-        margin: 0 0 0.7rem;
+    .import-alert { margin: 0 0 0.7rem;
         border-radius: 10px;
         padding: 0.58rem 0.72rem;
         font-size: 0.82rem;
-        font-weight: 700;
-    }
+        font-weight: 700; }
 
-    .import-alert.success {
-        border: 1px solid #b5dcc2;
-        background: #eaf8ef;
-        color: #1f7942;
-    }
+    .import-alert.success { border: 1px solid #b5dcc2; }
 
-    .import-alert.info {
-        border: 1px solid #bfd8e7;
-        background: #ecf7fd;
-        color: #2e5a72;
-    }
+    .import-alert.info { border: 1px solid #bfd8e7; }
 
-    .import-alert.error {
-        border: 1px solid #e6c1bf;
-        background: #fff1f0;
-        color: #943733;
-    }
+    .import-alert.error { border: 1px solid #e6c1bf; }
 
-    .trade-form textarea {
-        resize: vertical;
-        min-height: 96px;
-    }
+    .trade-form textarea { resize: vertical;
+        min-height: 96px; }
 
     .trade-form input:focus,
     .trade-form select:focus,
-    .trade-form textarea:focus {
-        outline: none;
+    .trade-form textarea:focus { outline: none;
         border-color: #2b7d50;
         box-shadow: 0 0 0 4px rgba(43, 125, 80, 0.15);
-        transform: translateY(-1px);
-    }
+        transform: translateY(-1px); }
 
-    .form-actions {
-        display: flex;
+    .form-actions { display: flex;
         gap: 0.55rem;
-        margin-top: 0.3rem;
-    }
+        margin-top: 0.3rem; }
 
-    .submit-btn {
-        border: 1px solid #2d7f51;
-        background: linear-gradient(135deg, #2f8a58, #226b45);
-        color: #ffffff;
-        border-radius: 10px;
+    .submit-btn { border: 1px solid #2d7f51;  border-radius: 10px;
         padding: 0.55rem 0.9rem;
         font-weight: 700;
         font-size: 0.8rem;
         letter-spacing: 0.03em;
         text-transform: uppercase;
         cursor: pointer;
-        box-shadow: 0 5px 14px rgba(34, 107, 69, 0.22);
-    }
+        box-shadow: 0 5px 14px rgba(34, 107, 69, 0.22); }
 
-    .submit-btn:hover {
-        filter: brightness(1.03);
-        transform: translateY(-1px);
-    }
+    .submit-btn:hover { filter: brightness(1.03);
+        transform: translateY(-1px); }
 
-    .ghost-btn {
-        border: 1px solid #c6d4ca;
-        background: #f8fbf9;
-        color: #2f5642;
-        border-radius: 10px;
+    .ghost-btn { border: 1px solid #c6d4ca;  border-radius: 10px;
         padding: 0.55rem 0.9rem;
         font-weight: 700;
         font-size: 0.8rem;
         letter-spacing: 0.03em;
         text-transform: uppercase;
-        cursor: pointer;
-    }
+        cursor: pointer; }
+@media (max-width: 980px) { .panel-grid.with-import { grid-template-columns: 1fr; } }
 
-    .ghost-btn:hover {
-        background: #eff6f1;
-    }
+    @media (max-width: 700px) { .dash-wrap { padding: 0.9rem; }
 
-    @media (max-width: 980px) {
-        .panel-grid.with-import {
-            grid-template-columns: 1fr;
-        }
-    }
+        .head-row { flex-direction: column;
+            align-items: flex-start; }
 
-    @media (max-width: 700px) {
-        .dash-wrap {
-            padding: 0.9rem;
-        }
+        .panel { max-width: none; }
 
-        .head-row {
-            flex-direction: column;
-            align-items: flex-start;
-        }
-
-        .panel {
-            max-width: none;
-        }
-
-        .trade-form input[type="date"] {
-            font-size: 16px;
-        }
-    }
+        .trade-form input[type="date"] { font-size: 16px; } }
 </style>
 
 <script>
@@ -594,5 +424,8 @@
 })();
 </script>
 {% endblock %}
+
+
+
 
 
