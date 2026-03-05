@@ -1,7 +1,5 @@
 # FX Journal
 
-#### Video Demo: <URL HERE>
-
 #### Description:
 
 FX Journal is a full-stack web application designed to help traders journal and visualize trading performance in a clean and structured way. The app supports account-based access, per-user trade history, and performance tracking backed by PostgreSQL.
