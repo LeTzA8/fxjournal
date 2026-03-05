@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="dash-wrap">
+    <div class="dash-content">
+        <header class="dash-head">
+            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Trade Accounts</div>
+            <div class="head-row">
+                <div>
+                    <h1>Trade Accounts</h1>
+                    <p class="welcome">Welcome, {{ username }}.</p>
+                    <p class="subtitle">Manage your account list here, then switch quickly from Trades.</p>
+                </div>
+                <div class="head-actions">
+                    <a class="ghost-link" href="{{ url_for('trades') }}">Back to Trades</a>
+                    <a class="ghost-link" href="{{ url_for('home') }}">Dashboard</a>
+                </div>
+            </div>
+        </header>
+
+        {% if trade_account_status and trade_account_message %}
+        <p class="account-alert {{ trade_account_status }}" role="status" aria-live="polite">{{ trade_account_message }}</p>
+        {% endif %}
+
+        <section class="panel-grid">
+            <article class="panel accounts-panel">
+                <div class="panel-head">
+                    <h2>Current Accounts</h2>
+                    <span class="soft">{{ account_rows|length }} total</span>
+                </div>
+
+                {% if account_rows %}
+                <div class="account-list">
+                    {% for trade_account in account_rows %}
+                    <article class="account-card {% if active_trade_account and trade_account.id == active_trade_account.id %}active{% endif %}">
+                        <div class="account-card-head">
+                            <div>
+                                <p class="account-name">{{ trade_account.name }}</p>
+                                {% if trade_account.external_account_id %}
+                                <p class="account-meta">External ID: {{ trade_account.external_account_id }}</p>
+                                {% else %}
+                                <p class="account-meta">No external account ID</p>
+                                {% endif %}
+                            </div>
+                            <div class="chip-wrap">
+                                {% if active_trade_account and trade_account.id == active_trade_account.id %}
+                                <span class="chip">Active</span>
+                                {% endif %}
+                                {% if trade_account.is_default %}
+                                <span class="chip default">Default</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="inline-actions">
+                            {% if not (active_trade_account and trade_account.id == active_trade_account.id) %}
+                            <form action="{{ url_for('switch_trade_account') }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="trade_account_id" value="{{ trade_account.id }}">
+                                <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+                                <button type="submit" class="ghost-btn">Switch</button>
+                            </form>
+                            {% endif %}
+                            {% if not trade_account.is_default %}
+                            <form action="{{ url_for('set_default_trade_account', trade_account_id=trade_account.id) }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+                                <button type="submit" class="ghost-btn">Set Default</button>
+                            </form>
+                            {% endif %}
+                            <a
+                                href="{{ url_for('trade_accounts', edit_id=trade_account.id) }}#editor"
+                                class="ghost-link btn-link"
+                            >Edit</a>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="helper-note">No accounts yet. Create your first one in the panel on the right.</p>
+                {% endif %}
+            </article>
+
+            <article id="editor" class="panel create-panel">
+                <div class="panel-head">
+                    <h2>{% if edit_target %}Edit Account{% else %}Create Account{% endif %}</h2>
+                    <span class="soft">{% if edit_target %}Selected{% else %}New{% endif %}</span>
+                </div>
+
+                {% if edit_target %}
+                <form action="{{ url_for('update_trade_account', trade_account_id=edit_target.id) }}" method="post" class="create-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+
+                    <label for="trade_account_name">Account Name</label>
+                    <input
+                        id="trade_account_name"
+                        name="trade_account_name"
+                        type="text"
+                        required
+                        maxlength="80"
+                        value="{{ edit_target.name }}"
+                    >
+
+                    <label for="external_account_id">External ID (optional)</label>
+                    <input
+                        id="external_account_id"
+                        name="external_account_id"
+                        type="text"
+                        maxlength="80"
+                        value="{{ edit_target.external_account_id or '' }}"
+                        placeholder="Optional broker/prop account ID"
+                    >
+
+                    <div class="inline-actions">
+                        <button type="submit" class="submit-btn">Save Changes</button>
+                        <a href="{{ url_for('trade_accounts') }}" class="ghost-link btn-link">Cancel</a>
+                    </div>
+                </form>
+                {% else %}
+                <form action="{{ url_for('create_trade_account') }}" method="post" class="create-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+
+                    <label for="trade_account_name">Account Name</label>
+                    <input
+                        id="trade_account_name"
+                        name="trade_account_name"
+                        type="text"
+                        required
+                        maxlength="80"
+                        placeholder="e.g. FTMO Challenge, Personal Live"
+                    >
+
+                    <label for="external_account_id">External ID (optional)</label>
+                    <input
+                        id="external_account_id"
+                        name="external_account_id"
+                        type="text"
+                        maxlength="80"
+                        placeholder="Optional broker/prop account ID"
+                    >
+
+                    <label class="toggle-row" for="set_as_default">
+                        <input id="set_as_default" name="set_as_default" type="checkbox" value="1">
+                        Set as default account
+                    </label>
+
+                    <button type="submit" class="submit-btn">Create Account</button>
+                </form>
+                {% endif %}
+
+                <hr class="section-divider">
+                <p class="helper-note">Tip: Use distinct names like <strong>Live</strong>, <strong>Demo</strong>, or <strong>Challenge</strong> for clarity.</p>
+            </article>
+        </section>
+    </div>
+</section>
+
+<style>
+    main { max-width: none;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh; }
+
+    .dash-wrap { position: relative;
+        min-height: 100vh;
+        width: 100%;
+        overflow: hidden;
+        isolation: isolate;
+        padding: clamp(0.9rem, 2vw, 1.5rem); }
+
+    .dash-content { position: relative;
+        z-index: 1; }
+
+    .dash-head { margin-bottom: 0.9rem; }
+
+    .crumb { font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+        margin-bottom: 0.7rem; }
+
+    .crumb a { text-decoration: none;
+        border-bottom: 1px solid transparent; }
+
+    .crumb a:hover { border-bottom-color: currentColor; }
+
+    .head-row { display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem; }
+
+    h1 { margin: 0;
+        font-size: clamp(1.35rem, 2.3vw, 2rem); }
+
+    .subtitle { margin: 0.38rem 0 0; }
+
+    .welcome { margin: 0.45rem 0 0;
+        font-size: 0.95rem;
+        font-weight: 700; }
+
+    .head-actions { display: flex;
+        align-items: center;
+        gap: 0.55rem; }
+
+    .ghost-link { border: 1px solid #c6d4ca;
+        border-radius: 10px;
+        padding: 0.45rem 0.75rem;
+        font-weight: 700;
+        font-size: 0.78rem;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        text-decoration: none; }
+
+    .account-alert { margin: 0 0 0.75rem;
+        border-radius: 10px;
+        padding: 0.58rem 0.72rem;
+        font-size: 0.82rem;
+        font-weight: 700; }
+
+    .account-alert.success { border: 1px solid #b5dcc2; }
+    .account-alert.info { border: 1px solid #bfd8e7; }
+    .account-alert.error { border: 1px solid #e6c1bf; }
+
+    .panel-grid { display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
+        gap: 0.8rem;
+        align-items: start; }
+
+    .panel { border: 1px solid #d4ded6;
+        border-radius: 14px;
+        padding: 0.9rem;
+        box-shadow: 0 10px 28px rgba(15, 55, 36, 0.08); }
+
+    .panel-head { display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.55rem;
+        margin-bottom: 0.7rem; }
+
+    h2 { margin: 0;
+        font-size: 1rem; }
+
+    .soft { font-size: 0.78rem; }
+
+    .account-list { display: grid;
+        gap: 0.58rem; }
+
+    .account-card { border: 1px solid #dfe8e1;
+        border-radius: 12px;
+        padding: 0.66rem;
+        display: grid;
+        gap: 0.56rem; }
+
+    .account-card.active { border-color: #3f9a69;
+        background: color-mix(in srgb, #3f9a69 14%, transparent);
+        box-shadow: 0 0 0 2px color-mix(in srgb, #3f9a69 28%, transparent); }
+
+    .account-card.active .account-name { color: #2e8a5b; }
+
+    .account-card-head { display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.7rem;
+        flex-wrap: wrap; }
+
+    .account-name { margin: 0;
+        font-size: 0.92rem;
+        font-weight: 800; }
+
+    .account-meta { margin: 0.2rem 0 0;
+        font-size: 0.78rem; }
+
+    .chip-wrap { display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex-wrap: wrap; }
+
+    .chip { border: 1px solid #8bc8a5;
+        border-radius: 999px;
+        padding: 0.24rem 0.52rem;
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        background: color-mix(in srgb, #3f9a69 16%, transparent);
+        color: #1f6b46; }
+
+    .chip.default { border-color: #d49e2f;
+        background: color-mix(in srgb, #f3b84a 24%, transparent);
+        color: #8a5a00; }
+
+    .inline-actions { display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        flex-wrap: wrap; }
+
+    .create-form { display: grid;
+        gap: 0.62rem; }
+
+    .create-form label { font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em; }
+
+    .create-form input[type="text"] { border: 1px solid #c7d5cb;
+        border-radius: 10px;
+        padding: 0.58rem 0.66rem;
+        font: inherit; }
+
+    .toggle-row { display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.78rem;
+        text-transform: none !important;
+        letter-spacing: 0 !important; }
+
+    .toggle-row input { width: auto; }
+
+    .submit-btn { border: 1px solid #2d7f51;
+        border-radius: 10px;
+        padding: 0.5rem 0.8rem;
+        font-weight: 700;
+        font-size: 0.78rem;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        cursor: pointer;
+        box-shadow: 0 5px 14px rgba(34, 107, 69, 0.22); }
+
+    .ghost-btn { border: 1px solid #c6d4ca;
+        border-radius: 10px;
+        padding: 0.46rem 0.72rem;
+        font-weight: 700;
+        font-size: 0.74rem;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        cursor: pointer; }
+
+    .btn-link { display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        padding: 0.46rem 0.72rem;
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        text-decoration: none; }
+
+    .section-divider { border: 0;
+        border-top: 1px solid #d9e4dc;
+        margin: 0.9rem 0 0.8rem; }
+
+    .helper-note { margin: 0;
+        font-size: 0.8rem; }
+
+    @media (max-width: 1120px) {
+        .panel-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 700px) {
+        .dash-wrap { padding: 0.9rem; }
+
+        .head-row { flex-direction: column;
+            align-items: flex-start; }
+
+        .head-actions { width: 100%;
+            flex-wrap: wrap; }
+
+    }
+</style>
+{% endblock %}

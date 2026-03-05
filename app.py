@@ -3,9 +3,9 @@ import random
 import re
 import secrets
 from datetime import datetime, timedelta
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, g, redirect, render_template, request, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -763,6 +763,29 @@ def build_external_url(path_or_url):
     return f"{get_public_base_url()}{path_or_url}"
 
 
+def get_safe_internal_next(default_endpoint):
+    next_path = request.form.get("next", "").strip()
+    if next_path.startswith("/") and not next_path.startswith("//"):
+        return next_path
+    return url_for(default_endpoint)
+
+
+def append_query_params(path, **params):
+    parsed = urlsplit(path)
+    existing = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    for key, value in params.items():
+        existing[key] = value
+    return urlunsplit(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            urlencode(existing),
+            parsed.fragment,
+        )
+    )
+
+
 def get_token_serializer():
     token_salt = os.getenv("TOKEN_SALT", "fxjournal-token-salt")
     return URLSafeTimedSerializer(app.config["SECRET_KEY"], salt=token_salt)
@@ -940,7 +963,19 @@ class User(db.Model):
     password = db.Column(db.String(255), nullable=False)
     email_verified = db.Column(db.Boolean, nullable=False, default=False)
     verification_sent_at = db.Column(db.DateTime, nullable=True)
+    trade_accounts = db.relationship("TradeAccount", backref="user", lazy=True)
     trades = db.relationship("Trade", backref="user", lazy=True)
+
+
+class TradeAccount(db.Model):
+    __tablename__ = "trade_accounts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    name = db.Column(db.String(80), nullable=False, default="Main Account")
+    external_account_id = db.Column(db.String(80), nullable=True)
+    is_default = db.Column(db.Boolean, nullable=False, default=False)
+    trades = db.relationship("Trade", backref="trade_account", lazy=True)
 
 
 class Trade(db.Model):
@@ -948,6 +983,12 @@ class Trade(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    trade_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trade_accounts.id"),
+        nullable=True,
+        index=True,
+    )
     symbol = db.Column(db.String(20), nullable=False, default="EURUSD")
     side = db.Column(db.String(10), nullable=False, default="BUY")
     entry_price = db.Column(db.Float, nullable=False, default=0.0)
@@ -976,10 +1017,20 @@ def ensure_trades_table_columns():
         statements.append(
             f"ALTER TABLE {table_name} ADD COLUMN import_signature VARCHAR(80)"
         )
+    if "trade_account_id" not in existing_columns:
+        statements.append(
+            f"ALTER TABLE {table_name} ADD COLUMN trade_account_id INTEGER"
+        )
 
     with db.engine.begin() as connection:
         for stmt in statements:
             connection.execute(text(stmt))
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_trades_user_trade_account "
+                f"ON {table_name} (user_id, trade_account_id)"
+            )
+        )
         connection.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS ix_trades_user_mt5_position "
@@ -990,6 +1041,52 @@ def ensure_trades_table_columns():
             text(
                 "CREATE INDEX IF NOT EXISTS ix_trades_user_import_signature "
                 f"ON {table_name} (user_id, import_signature)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_trades_user_account_mt5_position "
+                f"ON {table_name} (user_id, trade_account_id, mt5_position)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_trades_user_account_import_signature "
+                f"ON {table_name} (user_id, trade_account_id, import_signature)"
+            )
+        )
+
+
+def ensure_trade_accounts_table_columns():
+    table_name = TradeAccount.__tablename__
+    inspector = inspect(db.engine)
+    if table_name not in inspector.get_table_names():
+        return
+
+    existing_columns = {col["name"] for col in inspector.get_columns(table_name)}
+    statements = []
+    if "external_account_id" not in existing_columns:
+        statements.append(
+            f"ALTER TABLE {table_name} ADD COLUMN external_account_id VARCHAR(80)"
+        )
+    if "is_default" not in existing_columns:
+        statements.append(
+            f"ALTER TABLE {table_name} ADD COLUMN is_default BOOLEAN NOT NULL DEFAULT FALSE"
+        )
+
+    with db.engine.begin() as connection:
+        for stmt in statements:
+            connection.execute(text(stmt))
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_trade_accounts_user_name "
+                f"ON {table_name} (user_id, name)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_trade_accounts_user_external "
+                f"ON {table_name} (user_id, external_account_id)"
             )
         )
 
@@ -1016,10 +1113,118 @@ def ensure_users_table_columns():
             connection.execute(text(stmt))
 
 
+def get_user_trade_accounts(user_id):
+    return (
+        TradeAccount.query.filter_by(user_id=user_id)
+        .order_by(TradeAccount.is_default.desc(), TradeAccount.id.asc())
+        .all()
+    )
+
+
+def ensure_trade_account_for_user(user_id):
+    changed = False
+    accounts = (
+        TradeAccount.query.filter_by(user_id=user_id)
+        .order_by(TradeAccount.id.asc())
+        .all()
+    )
+    if not accounts:
+        default_account = TradeAccount(
+            user_id=user_id,
+            name="Main Account",
+            is_default=True,
+        )
+        db.session.add(default_account)
+        db.session.flush()
+        accounts = [default_account]
+        changed = True
+
+    if not any(account.is_default for account in accounts):
+        accounts[0].is_default = True
+        changed = True
+
+    return accounts, changed
+
+
+def ensure_trade_accounts_backfill():
+    changed = False
+    user_rows = db.session.query(User.id).all()
+
+    for (user_id,) in user_rows:
+        accounts, account_changed = ensure_trade_account_for_user(user_id)
+        if account_changed:
+            changed = True
+
+        default_account = next((account for account in accounts if account.is_default), None)
+        if default_account is None:
+            default_account = accounts[0]
+
+        linked = Trade.query.filter_by(user_id=user_id, trade_account_id=None).update(
+            {"trade_account_id": default_account.id},
+            synchronize_session=False,
+        )
+        if linked:
+            changed = True
+
+    if changed:
+        db.session.commit()
+
+
+def normalize_trade_account_name(value):
+    return " ".join(str(value or "").strip().split())
+
+
+def resolve_active_trade_account(user_id, requested_account_id=None):
+    accounts, changed = ensure_trade_account_for_user(user_id)
+    if changed:
+        db.session.commit()
+        accounts = get_user_trade_accounts(user_id)
+
+    if requested_account_id is not None:
+        try:
+            requested_id = int(str(requested_account_id).strip())
+        except (TypeError, ValueError):
+            requested_id = None
+        if requested_id is not None:
+            requested_match = next(
+                (account for account in accounts if account.id == requested_id),
+                None,
+            )
+            if requested_match:
+                session["active_trade_account_id"] = requested_match.id
+                return requested_match, accounts
+
+    try:
+        active_id = int(str(session.get("active_trade_account_id", "")).strip())
+    except (TypeError, ValueError):
+        active_id = None
+    active_account = next(
+        (account for account in accounts if account.id == active_id),
+        None,
+    )
+    if not active_account:
+        active_account = next(
+            (account for account in accounts if account.is_default),
+            accounts[0],
+        )
+        session["active_trade_account_id"] = active_account.id
+    return active_account, accounts
+
+
+def get_active_trade_account_for_user(user_id):
+    active_account = getattr(g, "active_trade_account", None)
+    if active_account and active_account.user_id == user_id:
+        return active_account
+    active_account, _accounts = resolve_active_trade_account(user_id)
+    return active_account
+
+
 with app.app_context():
     db.create_all()
     ensure_users_table_columns()
+    ensure_trade_accounts_table_columns()
     ensure_trades_table_columns()
+    ensure_trade_accounts_backfill()
 
 
 def _is_same_origin(url_value):
@@ -1027,6 +1232,20 @@ def _is_same_origin(url_value):
     if parsed.scheme not in {"http", "https"}:
         return False
     return parsed.netloc == request.host
+
+
+@app.before_request
+def load_trade_account_context():
+    g.active_trade_account = None
+    g.user_trade_accounts = []
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+
+    active_account, accounts = resolve_active_trade_account(user_id)
+    g.active_trade_account = active_account
+    g.user_trade_accounts = accounts
+    return None
 
 
 @app.before_request
@@ -1043,6 +1262,14 @@ def enforce_same_origin_for_authenticated_posts():
     if not origin and referer and not _is_same_origin(referer):
         return "Forbidden", 403
     return None
+
+
+@app.context_processor
+def inject_trade_account_context():
+    return {
+        "active_trade_account": getattr(g, "active_trade_account", None),
+        "header_trade_accounts": getattr(g, "user_trade_accounts", []),
+    }
 
 
 @app.after_request
@@ -1100,10 +1327,14 @@ def home():
 
     username = session.get("username", "User")
     user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
 
     try:
         user_trades = (
-            Trade.query.filter_by(user_id=user_id)
+            Trade.query.filter_by(
+                user_id=user_id,
+                trade_account_id=active_trade_account.id,
+            )
             .order_by(Trade.opened_at.desc())
             .all()
         )
@@ -1238,6 +1469,8 @@ def login():
                 )
             session["user_id"] = user.id
             session["username"] = user.username
+            active_account, _accounts = resolve_active_trade_account(user.id)
+            session["active_trade_account_id"] = active_account.id
             return redirect(url_for("home"))
 
         return render_template(
@@ -1706,6 +1939,8 @@ def account():
         running_trades=max(total_trades - closed_trades, 0),
         imported_trades=imported_trades,
         debug_reset_link=debug_reset_link or None,
+        user_trade_accounts=getattr(g, "user_trade_accounts", []),
+        active_trade_account=getattr(g, "active_trade_account", None),
     )
 
 
@@ -1744,6 +1979,390 @@ def account_password_reset_email():
     return redirect(url_for("account", **kwargs))
 
 
+@app.route("/account/trade-accounts/switch", methods=["POST"])
+def switch_trade_account():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    requested_account_id = request.form.get("trade_account_id", "").strip()
+    _active, _accounts = resolve_active_trade_account(
+        session["user_id"],
+        requested_account_id=requested_account_id,
+    )
+    next_path = request.form.get("next", "").strip()
+    if next_path.startswith("/") and not next_path.startswith("//"):
+        return redirect(next_path)
+    return redirect(request.referrer or url_for("home"))
+
+
+@app.route("/account/trade-accounts", methods=["POST"])
+@limiter.limit(
+    "6 per minute;30 per hour",
+    methods=["POST"],
+    error_message="Too many trade account actions. Please wait and try again.",
+)
+def create_trade_account():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    account_name = normalize_trade_account_name(request.form.get("trade_account_name"))
+    external_account_id = normalize_trade_account_name(
+        request.form.get("external_account_id")
+    )
+
+    if not account_name:
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="Trade account name is required.",
+            )
+        )
+    if len(account_name) > 80:
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="Trade account name must be 80 characters or less.",
+            )
+        )
+    if external_account_id and len(external_account_id) > 80:
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="External account ID must be 80 characters or less.",
+            )
+        )
+
+    existing_accounts = get_user_trade_accounts(user_id)
+    lowered_name = account_name.lower()
+    if any(normalize_trade_account_name(account.name).lower() == lowered_name for account in existing_accounts):
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="A trade account with that name already exists.",
+            )
+        )
+
+    lowered_external = external_account_id.lower()
+    if external_account_id and any(
+        normalize_trade_account_name(account.external_account_id).lower() == lowered_external
+        for account in existing_accounts
+        if account.external_account_id
+    ):
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="That external account ID is already linked.",
+            )
+        )
+
+    wants_default = request.form.get("set_as_default", "").strip().lower() in TRUE_VALUES
+    is_default = wants_default or not existing_accounts
+    if is_default:
+        for account in existing_accounts:
+            account.is_default = False
+
+    new_account = TradeAccount(
+        user_id=user_id,
+        name=account_name,
+        external_account_id=external_account_id or None,
+        is_default=is_default,
+    )
+    db.session.add(new_account)
+    db.session.commit()
+
+    session["active_trade_account_id"] = new_account.id
+    return redirect(
+        append_query_params(
+            get_safe_internal_next("trade_accounts"),
+            trade_account_status="success",
+            trade_account_message=f"Trade account '{new_account.name}' added.",
+        )
+    )
+
+
+@app.route("/account/trade-accounts/<int:trade_account_id>/default", methods=["POST"])
+def set_default_trade_account(trade_account_id):
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    selected = TradeAccount.query.filter_by(
+        id=trade_account_id,
+        user_id=user_id,
+    ).first()
+    if not selected:
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="Trade account not found.",
+            )
+        )
+
+    TradeAccount.query.filter_by(user_id=user_id).update(
+        {"is_default": False},
+        synchronize_session=False,
+    )
+    selected.is_default = True
+    db.session.commit()
+    session["active_trade_account_id"] = selected.id
+
+    return redirect(
+        append_query_params(
+            get_safe_internal_next("trade_accounts"),
+            trade_account_status="info",
+            trade_account_message=f"Default trade account set to '{selected.name}'.",
+        )
+    )
+
+
+@app.route("/account/trade-accounts/<int:trade_account_id>/update", methods=["POST"])
+def update_trade_account(trade_account_id):
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    account = TradeAccount.query.filter_by(id=trade_account_id, user_id=user_id).first()
+    if not account:
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="Trade account not found.",
+            )
+        )
+
+    account_name = normalize_trade_account_name(request.form.get("trade_account_name"))
+    external_account_id = normalize_trade_account_name(
+        request.form.get("external_account_id")
+    )
+
+    if not account_name:
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="Trade account name is required.",
+            )
+        )
+    if len(account_name) > 80:
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="Trade account name must be 80 characters or less.",
+            )
+        )
+    if external_account_id and len(external_account_id) > 80:
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="External account ID must be 80 characters or less.",
+            )
+        )
+
+    existing_accounts = get_user_trade_accounts(user_id)
+    lowered_name = account_name.lower()
+    for existing in existing_accounts:
+        if existing.id == account.id:
+            continue
+        if normalize_trade_account_name(existing.name).lower() == lowered_name:
+            return redirect(
+                append_query_params(
+                    get_safe_internal_next("trade_accounts"),
+                    trade_account_status="error",
+                    trade_account_message="A trade account with that name already exists.",
+                )
+            )
+
+    lowered_external = external_account_id.lower()
+    if external_account_id:
+        for existing in existing_accounts:
+            if existing.id == account.id or not existing.external_account_id:
+                continue
+            if normalize_trade_account_name(existing.external_account_id).lower() == lowered_external:
+                return redirect(
+                    append_query_params(
+                        get_safe_internal_next("trade_accounts"),
+                        trade_account_status="error",
+                        trade_account_message="That external account ID is already linked.",
+                    )
+                )
+
+    account.name = account_name
+    account.external_account_id = external_account_id or None
+    db.session.commit()
+    return redirect(
+        append_query_params(
+            get_safe_internal_next("trade_accounts"),
+            trade_account_status="success",
+            trade_account_message=f"Trade account '{account.name}' updated.",
+        )
+    )
+
+
+@app.route("/feedback", methods=["GET", "POST"])
+@limiter.limit(
+    "3 per minute;20 per day",
+    methods=["POST"],
+    error_message="Too many feedback submissions. Please wait and try again later.",
+)
+def feedback():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user = User.query.filter_by(id=session["user_id"]).first_or_404()
+    feedback_subject = ""
+    feedback_body = ""
+
+    if request.method == "POST":
+        feedback_subject = request.form.get("subject", "").strip()
+        feedback_body = request.form.get("message", "").strip()
+
+        if not feedback_subject or not feedback_body:
+            return (
+                render_template(
+                    "feedback.html",
+                    title="Feedback | FX Journal",
+                    username=session.get("username", "User"),
+                    feedback_status="error",
+                    feedback_message="Subject and message are required.",
+                    feedback_subject=feedback_subject,
+                    feedback_body=feedback_body,
+                    account_user=user,
+                ),
+                400,
+            )
+
+        if len(feedback_subject) > 120:
+            return (
+                render_template(
+                    "feedback.html",
+                    title="Feedback | FX Journal",
+                    username=session.get("username", "User"),
+                    feedback_status="error",
+                    feedback_message="Subject must be 120 characters or less.",
+                    feedback_subject=feedback_subject,
+                    feedback_body=feedback_body,
+                    account_user=user,
+                ),
+                400,
+            )
+
+        if len(feedback_body) > 5000:
+            return (
+                render_template(
+                    "feedback.html",
+                    title="Feedback | FX Journal",
+                    username=session.get("username", "User"),
+                    feedback_status="error",
+                    feedback_message="Message must be 5000 characters or less.",
+                    feedback_subject=feedback_subject,
+                    feedback_body=feedback_body,
+                    account_user=user,
+                ),
+                400,
+            )
+
+        feedback_to_email = os.getenv("FEEDBACK_TO_EMAIL", "").strip().lower()
+        if not feedback_to_email:
+            app.logger.warning(
+                "Feedback submit blocked: FEEDBACK_TO_EMAIL is not configured."
+            )
+            return (
+                render_template(
+                    "feedback.html",
+                    title="Feedback | FX Journal",
+                    username=session.get("username", "User"),
+                    feedback_status="error",
+                    feedback_message=(
+                        "Feedback email destination is not configured yet."
+                    ),
+                    feedback_subject=feedback_subject,
+                    feedback_body=feedback_body,
+                    account_user=user,
+                ),
+                500,
+            )
+
+        submitted_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        requester_ip = (
+            request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            or request.remote_addr
+            or "-"
+        )
+        email_subject = f"[FX Journal Feedback] {feedback_subject}"
+        email_body = (
+            "New feedback submission\n\n"
+            f"Submitted at: {submitted_at}\n"
+            f"Username: {user.username}\n"
+            f"User ID: {user.id}\n"
+            f"Account email: {user.email}\n"
+            f"Client IP: {requester_ip}\n"
+            f"Subject: {feedback_subject}\n\n"
+            "Message:\n"
+            f"{feedback_body}\n"
+        )
+        email_result = send_email_placeholder(
+            feedback_to_email,
+            email_subject,
+            email_body,
+        )
+
+        if email_result.get("sent"):
+            return redirect(
+                url_for(
+                    "feedback",
+                    feedback_status="success",
+                    feedback_message="Feedback sent. Thank you for sharing it.",
+                )
+            )
+
+        if is_local_dev_environment():
+            return redirect(
+                url_for(
+                    "feedback",
+                    feedback_status="info",
+                    feedback_message=(
+                        "Feedback captured in server logs. Email delivery is disabled in this environment."
+                    ),
+                )
+            )
+
+        return redirect(
+            url_for(
+                "feedback",
+                feedback_status="info",
+                feedback_message="Feedback received, but email delivery is currently unavailable.",
+            )
+        )
+
+    feedback_status = request.args.get("feedback_status", "").strip().lower()
+    feedback_message = request.args.get("feedback_message", "").strip()
+    if feedback_status not in {"success", "error", "info"}:
+        feedback_status = ""
+    if not feedback_message:
+        feedback_status = ""
+
+    return render_template(
+        "feedback.html",
+        title="Feedback | FX Journal",
+        username=session.get("username", "User"),
+        feedback_status=feedback_status,
+        feedback_message=feedback_message,
+        feedback_subject=feedback_subject,
+        feedback_body=feedback_body,
+        account_user=user,
+    )
+
+
 @app.route("/dashboard/trades")
 def trades():
     if not session.get("user_id"):
@@ -1751,9 +2370,13 @@ def trades():
 
     username = session.get("username", "User")
     user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
     try:
         user_trades = (
-            Trade.query.filter_by(user_id=user_id)
+            Trade.query.filter_by(
+                user_id=user_id,
+                trade_account_id=active_trade_account.id,
+            )
             .order_by(Trade.opened_at.desc())
             .all()
         )
@@ -1779,10 +2402,16 @@ def trades():
 
     batch_delete_status = request.args.get("batch_delete_status", "").strip().lower()
     batch_delete_message = request.args.get("batch_delete_message", "").strip()
+    trade_account_status = request.args.get("trade_account_status", "").strip().lower()
+    trade_account_message = request.args.get("trade_account_message", "").strip()
     if batch_delete_status not in {"success", "error", "info"}:
         batch_delete_status = ""
     if not batch_delete_message:
         batch_delete_status = ""
+    if trade_account_status not in {"success", "error", "info"}:
+        trade_account_status = ""
+    if not trade_account_message:
+        trade_account_status = ""
 
     import_batch_map = {}
     for trade in user_trades:
@@ -1817,12 +2446,52 @@ def trades():
         import_batches=import_batches,
         batch_delete_status=batch_delete_status,
         batch_delete_message=batch_delete_message,
+        trade_account_status=trade_account_status,
+        trade_account_message=trade_account_message,
+    )
+
+
+@app.route("/dashboard/trade-accounts")
+def trade_accounts():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    account_rows = get_user_trade_accounts(user_id)
+    edit_id_raw = request.args.get("edit_id", "").strip()
+    edit_target = None
+    if edit_id_raw:
+        try:
+            edit_id = int(edit_id_raw)
+        except ValueError:
+            edit_id = None
+        if edit_id is not None:
+            edit_target = next((account for account in account_rows if account.id == edit_id), None)
+    trade_account_status = request.args.get("trade_account_status", "").strip().lower()
+    trade_account_message = request.args.get("trade_account_message", "").strip()
+    if trade_account_status not in {"success", "error", "info"}:
+        trade_account_status = ""
+    if not trade_account_message:
+        trade_account_status = ""
+
+    return render_template(
+        "trade_accounts.html",
+        title="Trade Accounts | FX Journal",
+        username=session.get("username", "User"),
+        account_rows=account_rows,
+        edit_target=edit_target,
+        active_trade_account=active_trade_account,
+        trade_account_status=trade_account_status,
+        trade_account_message=trade_account_message,
     )
 
 @app.route("/dashboard/trades/new", methods=["GET", "POST"])
 def new_trade():
     if not session.get("user_id"):
         return redirect(url_for("login"))
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
 
     if request.method == "POST":
         allowed_symbols = set(get_symbol_options())
@@ -1864,7 +2533,8 @@ def new_trade():
                 lot_size=lot_size,
             )
         trade = Trade(
-            user_id=session["user_id"],
+            user_id=user_id,
+            trade_account_id=active_trade_account.id,
             symbol=symbol,
             side=side,
             entry_price=entry_price,
@@ -1902,6 +2572,8 @@ def new_trade():
 def import_mt5_trades():
     if not session.get("user_id"):
         return redirect(url_for("login"))
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
 
     uploaded_file = request.files.get("mt5_file")
     if not uploaded_file or not uploaded_file.filename:
@@ -1935,7 +2607,6 @@ def import_mt5_trades():
                 )
             )
 
-        user_id = session["user_id"]
         allowed_symbols = set(BASE_SYMBOL_OPTIONS)
         failed_symbols = set()
         validation_skipped = 0
@@ -1951,7 +2622,10 @@ def import_mt5_trades():
         existing_positions = {
             pos
             for (pos,) in db.session.query(Trade.mt5_position)
-            .filter_by(user_id=user_id)
+            .filter_by(
+                user_id=user_id,
+                trade_account_id=active_trade_account.id,
+            )
             .filter(Trade.mt5_position.isnot(None))
             .all()
             if pos
@@ -2019,6 +2693,7 @@ def import_mt5_trades():
             insert_batch.append(
                 Trade(
                     user_id=user_id,
+                    trade_account_id=active_trade_account.id,
                     symbol=symbol,
                     mt5_position=mt5_position,
                     import_signature=import_signature,
@@ -2122,8 +2797,14 @@ def import_mt5_trades():
 def trade_detail(trade_id):
     if not session.get("user_id"):
         return redirect(url_for("login"))
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
 
-    trade = Trade.query.filter_by(id=trade_id, user_id=session["user_id"]).first_or_404()
+    trade = Trade.query.filter_by(
+        id=trade_id,
+        user_id=user_id,
+        trade_account_id=active_trade_account.id,
+    ).first_or_404()
     trade_pnl = resolve_pnl(trade)
     trade_pips = resolve_pips(trade)
 
@@ -2141,8 +2822,14 @@ def trade_detail(trade_id):
 def edit_trade(trade_id):
     if not session.get("user_id"):
         return redirect(url_for("login"))
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
 
-    trade = Trade.query.filter_by(id=trade_id, user_id=session["user_id"]).first_or_404()
+    trade = Trade.query.filter_by(
+        id=trade_id,
+        user_id=user_id,
+        trade_account_id=active_trade_account.id,
+    ).first_or_404()
 
     if request.method == "POST":
         allowed_symbols = set(get_symbol_options(trade.symbol))
@@ -2211,8 +2898,14 @@ def edit_trade(trade_id):
 def delete_trade(trade_id):
     if not session.get("user_id"):
         return redirect(url_for("login"))
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
 
-    trade = Trade.query.filter_by(id=trade_id, user_id=session["user_id"]).first_or_404()
+    trade = Trade.query.filter_by(
+        id=trade_id,
+        user_id=user_id,
+        trade_account_id=active_trade_account.id,
+    ).first_or_404()
     db.session.delete(trade)
     db.session.commit()
     return redirect(url_for("trades"))
@@ -2222,6 +2915,8 @@ def delete_trade(trade_id):
 def delete_import_batch():
     if not session.get("user_id"):
         return redirect(url_for("login"))
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
 
     import_signature = request.form.get("import_signature", "").strip()
     if not import_signature:
@@ -2235,7 +2930,8 @@ def delete_import_batch():
 
     deleted = (
         Trade.query.filter_by(
-            user_id=session["user_id"],
+            user_id=user_id,
+            trade_account_id=active_trade_account.id,
             import_signature=import_signature,
         ).delete(synchronize_session=False)
     )

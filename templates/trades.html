@@ -30,6 +30,34 @@
                 {% if batch_delete_status and batch_delete_message %}
                 <p class="batch-alert {{ batch_delete_status }}" role="status" aria-live="polite">{{ batch_delete_message }}</p>
                 {% endif %}
+                {% if trade_account_status and trade_account_message %}
+                <p class="batch-alert {{ trade_account_status }}" role="status" aria-live="polite">{{ trade_account_message }}</p>
+                {% endif %}
+                {% if header_trade_accounts %}
+                <section class="trade-account-switcher" aria-label="Trade account switcher">
+                    <form action="{{ url_for('switch_trade_account') }}" method="post" class="trade-account-switcher-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ url_for('trades') }}">
+                        <label for="tradeAccountSwitcher">Trade Account</label>
+                        <select
+                            id="tradeAccountSwitcher"
+                            name="trade_account_id"
+                            aria-label="Select trade account"
+                            onchange="this.form.submit()"
+                        >
+                            {% for trade_account in header_trade_accounts %}
+                            <option
+                                value="{{ trade_account.id }}"
+                                {% if active_trade_account and trade_account.id == active_trade_account.id %}selected{% endif %}
+                            >
+                                {{ trade_account.name }}{% if trade_account.is_default %} (Default){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </form>
+                    <a href="{{ url_for('trade_accounts') }}" class="new-trade-btn">Manage Accounts</a>
+                </section>
+                {% endif %}
                 <div class="table-controls">
                     <div id="tradeFilters" class="filter-row">
                         <select id="filterField" aria-label="Filter by">
@@ -272,6 +300,33 @@
 
     .batch-alert.error { border: 1px solid #e6c1bf; }
 
+    .trade-account-switcher { border: 1px solid #d7e2d9;
+        border-radius: 12px;
+        padding: 0.72rem;
+        margin: 0 0 0.75rem;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 0.6rem;
+        flex-wrap: wrap; }
+
+    .trade-account-switcher-form { display: grid;
+        gap: 0.34rem;
+        min-width: min(420px, 100%); }
+
+    .trade-account-switcher-form label { font-size: 0.76rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.06em; }
+
+    .trade-account-switcher-form select { min-height: 44px;
+        border: 1px solid #2d7f51;
+        border-radius: 12px;
+        padding: 0.48rem 0.7rem;
+        font-size: 0.88rem;
+        font-weight: 800;
+        letter-spacing: 0.02em; }
+
     .batch-delete-form { display: grid;
         grid-template-columns: max-content minmax(220px, 1fr) auto;
         gap: 0.45rem;
@@ -428,6 +483,8 @@
             align-items: flex-start; }
 
         .filter-row { grid-template-columns: 1fr; }
+
+        .trade-account-switcher-form { min-width: 100%; }
 
         .batch-delete-form { grid-template-columns: 1fr; }
 

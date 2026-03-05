@@ -54,9 +54,13 @@
         <section class="panel-grid">
             <article class="panel trade-log">
                 <div class="panel-head">
-                    <h2>Trade Log</h2>
+                    <div class="panel-title-wrap">
+                        <h2>Trade Log</h2>
+                        {% if active_trade_account %}
+                        <p class="panel-account-note">Account: <strong>{{ active_trade_account.name }}</strong></p>
+                        {% endif %}
+                    </div>
                     <a href="{{ url_for('trades') }}" class="trades-btn">View/Add Trades</a>
-
                 </div>
                 <div class="table-controls">
                     <div id="tradeFilters" class="filter-row">
@@ -304,6 +308,15 @@
 
     .welcome { margin: 0.45rem 0 0; font-size: 0.95rem;
         font-weight: 700; }
+
+    .panel-title-wrap { display: grid;
+        gap: 0.18rem; }
+
+    .panel-account-note { margin: 0;
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase; }
 
     .date-pill { padding: 0.45rem 0.75rem;
         border-radius: 999px;

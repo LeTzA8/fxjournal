@@ -80,6 +80,12 @@ Users can update profile data (username/email), review account stats, and trigge
 
 ---
 
+### Feedback (`/feedback`)
+
+Signed-in users can submit product feedback from a dedicated form. Submissions are emailed via the configured email provider (Resend when enabled).
+
+---
+
 ## Route Map (`app.py`)
 
 | Method(s) | Route | Purpose |
@@ -96,6 +102,7 @@ Users can update profile data (username/email), review account stats, and trigge
 | `POST` | `/logout` | Logout current session |
 | `GET`, `POST` | `/account` | Account profile and updates |
 | `POST` | `/account/password-reset-email` | Send reset email from account page |
+| `GET`, `POST` | `/feedback` | Submit product feedback email |
 | `GET` | `/dashboard/trades` | Trades list |
 | `GET`, `POST` | `/dashboard/trades/new` | Create trade |
 | `POST` | `/dashboard/import` | Import MT5 `.xlsx` trades |

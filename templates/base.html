@@ -296,6 +296,28 @@
             margin: 0;
         }
 
+        .header-account-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 38px;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+            background: color-mix(in srgb, var(--accent) 12%, var(--card));
+            color: var(--accent);
+            padding: 0 0.9rem;
+            font-size: 0.74rem;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            text-decoration: none;
+            line-height: 1;
+        }
+
+        .header-account-link:hover {
+            background: color-mix(in srgb, var(--accent) 20%, var(--card));
+        }
+
         body.app-layout main {
             max-width: none;
             margin: 0;
@@ -389,9 +411,12 @@
             <nav class="site-nav" aria-label="Primary">
                 <a href="{{ url_for('home') }}" class="site-nav-link {% if request.path == '/dashboard' %}active{% endif %}">Dashboard</a>
                 <a href="{{ url_for('trades') }}" class="site-nav-link {% if request.path.startswith('/dashboard/trades') or request.path.startswith('/dashboard/import') or request.path.startswith('/dashboard/imports') %}active{% endif %}">Trades</a>
-                <a href="{{ url_for('account') }}" class="site-nav-link {% if request.path.startswith('/account') %}active{% endif %}">Account</a>
+                <a href="{{ url_for('feedback') }}" class="site-nav-link {% if request.path.startswith('/feedback') %}active{% endif %}">Feedback</a>
             </nav>
             <div class="site-header-actions">
+                <a href="{{ url_for('account') }}" class="header-account-link">
+                    Account
+                </a>
                 <form action="{{ url_for('logout') }}" method="post">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="logout-btn">Log Out</button>
@@ -532,6 +557,24 @@
             letter-spacing: 0.04em !important;
             text-transform: uppercase !important;
             line-height: 1 !important;
+        }
+
+        .site-header .header-account-link {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            min-height: 38px !important;
+            height: 38px !important;
+            border-radius: 999px !important;
+            padding: 0 0.9rem !important;
+            font-size: 0.72rem !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.04em !important;
+            text-transform: uppercase !important;
+            line-height: 1 !important;
+            border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)) !important;
+            background: color-mix(in srgb, var(--accent) 12%, var(--card)) !important;
+            color: var(--accent) !important;
         }
 
         .site-header .theme-toggle-btn {
