@@ -98,6 +98,26 @@ TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
 PENDING_REGISTRATIONS = {}
 LEGAL_LAST_UPDATED = "March 6, 2026"
+DEFAULT_ALLOWED_SIGNUP_EMAIL_DOMAINS = {
+    "gmail.com",
+    "outlook.com",
+    "hotmail.com",
+    "live.com",
+    "msn.com",
+    "yahoo.com",
+    "yahoo.co.uk",
+    "yahoo.ca",
+    "ymail.com",
+    "icloud.com",
+    "me.com",
+    "mac.com",
+    "aol.com",
+    "proton.me",
+    "protonmail.com",
+    "pm.me",
+    "gmx.com",
+    "mail.com",
+}
 
 BASE_SYMBOL_OPTIONS = [
     # Major FX
@@ -762,6 +782,28 @@ def build_external_url(path_or_url):
     if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
         return path_or_url
     return f"{get_public_base_url()}{path_or_url}"
+
+
+def get_allowed_signup_email_domains():
+    raw = os.getenv("ALLOWED_SIGNUP_EMAIL_DOMAINS", "").strip()
+    if not raw:
+        return DEFAULT_ALLOWED_SIGNUP_EMAIL_DOMAINS
+    parsed = {
+        part.strip().lower()
+        for part in raw.split(",")
+        if part and part.strip()
+    }
+    return parsed or DEFAULT_ALLOWED_SIGNUP_EMAIL_DOMAINS
+
+
+def is_allowed_signup_email_domain(email):
+    candidate = (email or "").strip().lower()
+    if "@" not in candidate:
+        return False
+    domain = candidate.rsplit("@", 1)[1].strip()
+    if not domain:
+        return False
+    return domain in get_allowed_signup_email_domains()
 
 
 def get_safe_internal_next(default_endpoint):
@@ -1554,6 +1596,17 @@ def register():
                 title="Register | FX Journal",
                 body_class="auth-layout",
                 error="All fields are required.",
+            )
+
+        if not is_allowed_signup_email_domain(email):
+            return render_template(
+                "register.html",
+                title="Register | FX Journal",
+                body_class="auth-layout",
+                error=(
+                    "Please use a common email provider "
+                    "(for example Gmail, Outlook, Yahoo, iCloud, or Proton)."
+                ),
             )
 
         if not accepted_legal:
