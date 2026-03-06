@@ -1220,6 +1220,21 @@ def get_active_trade_account_for_user(user_id):
     return active_account
 
 
+def purge_expired_unverified_users():
+    max_age_seconds = env_int("EMAIL_VERIFY_TOKEN_MAX_AGE_SECONDS", 86400)
+    cutoff = datetime.utcnow() - timedelta(seconds=max_age_seconds)
+    deleted_count = (
+        User.query.filter(
+            User.email_verified.is_(False),
+            User.verification_sent_at.isnot(None),
+            User.verification_sent_at < cutoff,
+        ).delete(synchronize_session=False)
+    )
+    if deleted_count:
+        db.session.commit()
+    return deleted_count
+
+
 with app.app_context():
     db.create_all()
     ensure_users_table_columns()
@@ -1233,6 +1248,16 @@ def _is_same_origin(url_value):
     if parsed.scheme not in {"http", "https"}:
         return False
     return parsed.netloc == request.host
+
+
+@app.before_request
+def cleanup_expired_unverified_accounts():
+    purge_expired_unverified_users()
+
+    pending_email = session.get("pending_verify_email", "").strip().lower()
+    if pending_email and not User.query.filter_by(email=pending_email).first():
+        session.pop("pending_verify_email", None)
+    return None
 
 
 @app.before_request
@@ -1693,8 +1718,6 @@ def verify_email_pending():
             if user.email_verified:
                 session.pop("pending_verify_email", None)
                 return redirect(url_for("login", verified="1"))
-            user.verification_sent_at = datetime.utcnow()
-            db.session.commit()
             verify_token = generate_auth_token(
                 pending_email,
                 TOKEN_PURPOSE_VERIFY_EMAIL,
