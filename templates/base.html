@@ -318,6 +318,59 @@
             background: color-mix(in srgb, var(--accent) 20%, var(--card));
         }
 
+        .site-footer {
+            position: relative;
+            z-index: 1;
+            padding: 0 1rem 1rem;
+            margin: 0 auto;
+        }
+
+        .site-footer-inner {
+            width: min(1200px, 100%);
+            margin: 0 auto;
+            border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+            border-radius: 14px;
+            background: color-mix(in srgb, var(--card) 48%, transparent);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            box-shadow: 0 8px 24px rgba(2, 6, 23, 0.12);
+            padding: 0.8rem 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .site-footer-copy {
+            margin: 0;
+            color: var(--muted);
+            font-size: 0.82rem;
+            font-weight: 600;
+        }
+
+        .site-footer-nav {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.85rem;
+            flex-wrap: wrap;
+        }
+
+        .site-footer-nav a {
+            color: var(--accent);
+            font-size: 0.82rem;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .site-footer-nav a:hover {
+            text-decoration: underline;
+        }
+
+        body.auth-layout .site-footer {
+            padding-top: 1rem;
+        }
+
         body.app-layout main {
             max-width: none;
             margin: 0;
@@ -389,6 +442,10 @@
                 width: 40px;
                 height: 40px;
             }
+
+            .site-footer-inner {
+                padding: 0.75rem 0.85rem;
+            }
         }
     </style>
 </head>
@@ -428,6 +485,15 @@
     <main>
         {% block content %}{% endblock %}
     </main>
+    <footer class="site-footer" role="contentinfo">
+        <div class="site-footer-inner">
+            <p class="site-footer-copy">FX Journal</p>
+            <nav class="site-footer-nav" aria-label="Legal">
+                <a href="{{ url_for('privacy_policy') }}">Privacy Policy</a>
+                <a href="{{ url_for('terms_and_conditions') }}">Terms and Conditions</a>
+            </nav>
+        </div>
+    </footer>
     <style>
         body,
         body.auth-layout,
@@ -1334,5 +1400,4 @@
     </script>
 </body>
 </html>
-
 

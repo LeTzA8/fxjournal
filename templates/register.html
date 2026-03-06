@@ -24,6 +24,16 @@
             <label for="password">Password</label>
             <input id="password" name="password" type="password" placeholder="Create a password" required>
 
+            <label class="legal-consent">
+                <input id="accept_legal" name="accept_legal" type="checkbox" required>
+                <span>
+                    I agree to the
+                    <a href="{{ url_for('terms_and_conditions') }}" target="_blank" rel="noopener">Terms and Conditions</a>
+                    and
+                    <a href="{{ url_for('privacy_policy') }}" target="_blank" rel="noopener">Privacy Policy</a>.
+                </span>
+            </label>
+
             <button type="submit">Create Account</button>
         </form>
         <p class="switch-link">Already have an account? <a href="/login">Log in</a></p>
@@ -93,6 +103,31 @@
         box-shadow: 0 0 0 4px rgba(31, 111, 70, 0.16);
         transform: translateY(-1px); }
 
+    .legal-consent {
+        display: flex;
+        gap: 0.55rem;
+        align-items: flex-start;
+        margin-top: 0.2rem;
+        font-size: 0.87rem;
+        line-height: 1.45;
+    }
+
+    .legal-consent input[type="checkbox"] {
+        margin-top: 0.15rem;
+        width: 1rem;
+        height: 1rem;
+        flex: 0 0 auto;
+    }
+
+    .legal-consent a {
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .legal-consent a:hover {
+        text-decoration: underline;
+    }
+
     .login-form button { margin-top: 0.5rem;
         padding: 0.85rem 1rem;
         border: none;
@@ -126,7 +161,6 @@
             transition: none !important; } }
 </style>
 {% endblock %}
-
 
 
 

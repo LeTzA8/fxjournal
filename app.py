@@ -97,6 +97,7 @@ TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
 PENDING_REGISTRATIONS = {}
+LEGAL_LAST_UPDATED = "March 6, 2026"
 
 BASE_SYMBOL_OPTIONS = [
     # Major FX
@@ -1320,6 +1321,26 @@ def landing():
     )
 
 
+@app.route("/privacy")
+@app.route("/privacy-policy")
+def privacy_policy():
+    return render_template(
+        "privacy_policy.html",
+        title="Privacy Policy | FX Journal",
+        last_updated=LEGAL_LAST_UPDATED,
+    )
+
+
+@app.route("/terms")
+@app.route("/terms-and-conditions")
+def terms_and_conditions():
+    return render_template(
+        "terms_and_conditions.html",
+        title="Terms and Conditions | FX Journal",
+        last_updated=LEGAL_LAST_UPDATED,
+    )
+
+
 @app.route("/dashboard")
 def home():
     if not session.get("user_id"):
@@ -1499,6 +1520,7 @@ def register():
         username = request.form.get("username", "").strip()
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
+        accepted_legal = request.form.get("accept_legal") == "on"
 
         if not username or not email or not password:
             return render_template(
@@ -1506,6 +1528,14 @@ def register():
                 title="Register | FX Journal",
                 body_class="auth-layout",
                 error="All fields are required.",
+            )
+
+        if not accepted_legal:
+            return render_template(
+                "register.html",
+                title="Register | FX Journal",
+                body_class="auth-layout",
+                error="You must accept the Terms and Conditions and Privacy Policy.",
             )
 
         existing_user = User.query.filter(
