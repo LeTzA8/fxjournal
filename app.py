@@ -13,7 +13,7 @@ from openpyxl import load_workbook
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import inspect, or_, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -1481,6 +1481,7 @@ def login():
         user = User.query.filter_by(email=email).first()
         if user and check_password_hash(user.password, password):
             if env_bool("REQUIRE_EMAIL_VERIFICATION", True) and not user.email_verified:
+                session["pending_verify_email"] = user.email
                 return render_template(
                     "login.html",
                     title="Login | FX Journal",
@@ -1542,6 +1543,32 @@ def register():
             or_(User.username == username, User.email == email)
         ).first()
         if existing_user:
+            if existing_user.email == email and not existing_user.email_verified:
+                session["pending_verify_email"] = existing_user.email
+                session.pop("pending_registration_id", None)
+                verify_token = generate_auth_token(
+                    existing_user.email,
+                    TOKEN_PURPOSE_VERIFY_EMAIL,
+                )
+                verify_link = build_external_url(
+                    url_for("verify_email_token", token=verify_token)
+                )
+                email_subject = "Verify your FX Journal email"
+                email_body = (
+                    f"Hi {existing_user.username},\n\n"
+                    "You requested a new verification link.\n"
+                    f"{verify_link}\n\n"
+                    "If you did not request this, you can ignore this email."
+                )
+                email_result = send_email_placeholder(
+                    existing_user.email,
+                    email_subject,
+                    email_body,
+                )
+                verify_kwargs = {"sent": "1"}
+                if is_local_dev_environment() and not email_result.get("sent"):
+                    verify_kwargs["verify_link"] = verify_link
+                return redirect(url_for("verify_email_pending", **verify_kwargs))
             return render_template(
                 "register.html",
                 title="Register | FX Journal",
@@ -1550,29 +1577,43 @@ def register():
             )
 
         hashed_password = generate_password_hash(password)
-        registration_id = create_pending_registration(
+        user = User(
             username=username,
             email=email,
-            password_hash=hashed_password,
+            password=hashed_password,
+            email_verified=False,
+            verification_sent_at=datetime.utcnow(),
         )
-        session["pending_registration_id"] = registration_id
+        db.session.add(user)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return render_template(
+                "register.html",
+                title="Register | FX Journal",
+                body_class="auth-layout",
+                error="Username or email already exists.",
+            )
 
-        verify_token = generate_pending_registration_token(
-            registration_id=registration_id,
-            email=email,
+        session["pending_verify_email"] = user.email
+        session.pop("pending_registration_id", None)
+        verify_token = generate_auth_token(
+            user.email,
+            TOKEN_PURPOSE_VERIFY_EMAIL,
         )
         verify_link = build_external_url(
             url_for("verify_email_token", token=verify_token)
         )
         email_subject = "Verify your FX Journal email"
         email_body = (
-            f"Hi {username},\n\n"
+            f"Hi {user.username},\n\n"
             "Thanks for registering.\n"
             "Verify your email by opening this link:\n"
             f"{verify_link}\n\n"
             "If you did not create this account, you can ignore this email."
         )
-        email_result = send_email_placeholder(email, email_subject, email_body)
+        email_result = send_email_placeholder(user.email, email_subject, email_body)
 
         verify_kwargs = {"sent": "1"}
         if is_local_dev_environment() and not email_result.get("sent"):
@@ -1594,15 +1635,36 @@ def register():
     error_message="Too many attempts. Please wait and try again.",
 )
 def verify_email_pending():
-    pending_id = session.get("pending_registration_id", "").strip()
-    pending = get_pending_registration(pending_id)
-    if not pending:
-        return redirect(
-            url_for(
-                "register",
-                error="Verification session expired. Please register again.",
+    pending_email = session.get("pending_verify_email", "").strip().lower()
+    pending_username = ""
+    pending_id = ""
+    pending = None
+    using_legacy_pending = False
+
+    if pending_email:
+        user = User.query.filter_by(email=pending_email).first()
+        if not user:
+            session.pop("pending_verify_email", None)
+            pending_email = ""
+        elif user.email_verified:
+            session.pop("pending_verify_email", None)
+            return redirect(url_for("login", verified="1"))
+        else:
+            pending_username = user.username
+
+    if not pending_email:
+        pending_id = session.get("pending_registration_id", "").strip()
+        pending = get_pending_registration(pending_id)
+        if not pending:
+            return redirect(
+                url_for(
+                    "register",
+                    error="Verification session expired. Please register again.",
+                )
             )
-        )
+        pending_email = pending["email"]
+        pending_username = pending["username"]
+        using_legacy_pending = True
 
     success = (
         "Verification email sent. Please check your inbox."
@@ -1613,22 +1675,42 @@ def verify_email_pending():
     debug_verify_link = request.args.get("verify_link", "").strip()
 
     if request.method == "POST":
-        verify_token = generate_pending_registration_token(
-            registration_id=pending_id,
-            email=pending["email"],
-        )
+        if using_legacy_pending:
+            verify_token = generate_pending_registration_token(
+                registration_id=pending_id,
+                email=pending_email,
+            )
+        else:
+            user = User.query.filter_by(email=pending_email).first()
+            if not user:
+                session.pop("pending_verify_email", None)
+                return redirect(
+                    url_for(
+                        "register",
+                        error="Verification session expired. Please register again.",
+                    )
+                )
+            if user.email_verified:
+                session.pop("pending_verify_email", None)
+                return redirect(url_for("login", verified="1"))
+            user.verification_sent_at = datetime.utcnow()
+            db.session.commit()
+            verify_token = generate_auth_token(
+                pending_email,
+                TOKEN_PURPOSE_VERIFY_EMAIL,
+            )
         verify_link = build_external_url(
             url_for("verify_email_token", token=verify_token)
         )
         email_subject = "Verify your FX Journal email"
         email_body = (
-            f"Hi {pending['username']},\n\n"
+            f"Hi {pending_username},\n\n"
             "You requested a new verification link.\n"
             f"{verify_link}\n\n"
             "If you did not request this, you can ignore this email."
         )
         email_result = send_email_placeholder(
-            pending["email"],
+            pending_email,
             email_subject,
             email_body,
         )
@@ -1640,7 +1722,7 @@ def verify_email_pending():
         "resend_verification.html",
         title="Verify Email | FX Journal",
         body_class="auth-layout",
-        pending_email=pending["email"],
+        pending_email=pending_email,
         success=success or None,
         error=error or None,
         debug_verify_link=debug_verify_link,
@@ -1742,6 +1824,9 @@ def verify_email_token(token):
     if not user.email_verified:
         user.email_verified = True
         db.session.commit()
+
+    if session.get("pending_verify_email", "").strip().lower() == email:
+        session.pop("pending_verify_email", None)
 
     return redirect(url_for("login", verified="1"))
 
