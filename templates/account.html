@@ -127,10 +127,33 @@
                 {% if debug_reset_link %}
                 <p class="helper-note">Local link: <a href="{{ debug_reset_link }}">Reset Password</a></p>
                 {% endif %}
+
                 <hr class="section-divider">
-                <h3 class="section-title">Trade Accounts</h3>
-                <p class="helper-note">Switch active account from the Trade Accounts section on the Trades page.</p>
-                <p class="helper-note">Create and manage trade accounts from the <a href="{{ url_for('trades') }}">Trades page</a>.</p>
+                <h3 class="section-title danger-title">Delete Account</h3>
+                <p class="helper-note danger-note">
+                    This permanently deletes your user profile, all trade accounts, and all trades. This action cannot be undone.
+                </p>
+                <form action="{{ url_for('delete_account') }}" method="post" class="delete-account-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label for="delete_confirmation">
+                        Type <strong>DELETE</strong> to confirm
+                    </label>
+                    <input
+                        id="delete_confirmation"
+                        name="delete_confirmation"
+                        type="text"
+                        placeholder="DELETE"
+                        required
+                        autocomplete="off"
+                    >
+                    <label class="delete-check">
+                        <input id="delete_acknowledge" name="delete_acknowledge" type="checkbox" required>
+                        <span>I understand this is permanent and cannot be undone.</span>
+                    </label>
+                    <div class="form-actions">
+                        <button type="submit" class="logout-btn delete-btn">Delete My Account</button>
+                    </div>
+                </form>
             </article>
         </section>
     </div>
@@ -267,6 +290,60 @@
 
     .password-reset-form { margin-top: 0.5rem; }
 
+    .delete-account-form {
+        margin-top: 0.55rem;
+        display: grid;
+        gap: 0.62rem;
+    }
+
+    .delete-account-form label {
+        font-size: 0.82rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .delete-account-form input[type="text"] {
+        width: 100%;
+        border: 1px solid #d9b9b7;
+        border-radius: 10px;
+        padding: 0.66rem 0.72rem;
+        font: inherit;
+        transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+    }
+
+    .delete-account-form input[type="text"]:focus {
+        outline: none;
+        border-color: #c44f48;
+        box-shadow: 0 0 0 4px rgba(196, 79, 72, 0.15);
+        transform: translateY(-1px);
+    }
+
+    .delete-check {
+        display: flex;
+        gap: 0.55rem;
+        align-items: flex-start;
+        font-size: 0.82rem;
+        font-weight: 600;
+        text-transform: none !important;
+        letter-spacing: 0 !important;
+    }
+
+    .delete-check input[type="checkbox"] {
+        margin-top: 0.18rem;
+        width: 1rem;
+        height: 1rem;
+        flex: 0 0 auto;
+    }
+
+    .danger-title {
+        color: #d66b66;
+    }
+
+    .danger-note {
+        color: #e3a6a2;
+    }
+
     .account-alert { margin: 0 0 0.7rem;
         border-radius: 10px;
         padding: 0.58rem 0.72rem;
@@ -321,8 +398,5 @@
 </style>
 
 {% endblock %}
-
-
-
 
 

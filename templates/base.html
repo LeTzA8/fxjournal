@@ -20,7 +20,7 @@
         })();
     </script>
     <style>
-        @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap");
+        @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap");
 
         :root {
             color-scheme: light;
@@ -38,6 +38,7 @@
             --veil-opacity: 0.9;
             --font-ui: "Manrope", "Segoe UI", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
             --font-display: "Sora", "Manrope", "Segoe UI", sans-serif;
+            --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
         }
 
         :root[data-theme="dark"] {
@@ -195,6 +196,112 @@
             min-height: 100vh;
         }
 
+        .auth-topbar {
+            position: absolute;
+            top: clamp(0.8rem, 2vw, 1.15rem);
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+            width: min(980px, calc(100% - 1.5rem));
+            min-height: 56px;
+            padding: 0.42rem 0.7rem;
+            border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+            border-radius: 14px;
+            background: color-mix(in srgb, var(--card) 32%, transparent);
+            backdrop-filter: blur(8px) saturate(1.05);
+            -webkit-backdrop-filter: blur(8px) saturate(1.05);
+            box-shadow: 0 8px 20px rgba(2, 6, 23, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.7rem;
+        }
+
+        .auth-topbar-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.52rem;
+            text-decoration: none;
+            color: var(--ink) !important;
+            font-family: var(--font-display);
+            font-size: 0.98rem;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+            min-width: 0;
+        }
+
+        .auth-topbar-brand span {
+            color: var(--ink) !important;
+        }
+
+        .auth-topbar-logo {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+            object-fit: cover;
+            background: color-mix(in srgb, var(--surface) 84%, transparent);
+            flex: 0 0 auto;
+        }
+
+        .auth-topbar-links {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.42rem;
+            flex-wrap: wrap;
+        }
+
+        .auth-topbar-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 34px;
+            padding: 0 0.8rem;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            text-decoration: none;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            line-height: 1;
+        }
+
+        .auth-topbar-link.ghost {
+            color: var(--muted);
+            border-color: color-mix(in srgb, var(--border) 58%, transparent);
+            background: color-mix(in srgb, var(--surface) 76%, transparent);
+        }
+
+        .auth-topbar-link.ghost:hover {
+            color: var(--accent);
+            border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+            background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+        }
+
+        .auth-topbar-link.primary {
+            color: var(--accent);
+            border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+            background: color-mix(in srgb, var(--accent) 12%, var(--card));
+        }
+
+        .auth-topbar-link.primary:hover {
+            background: color-mix(in srgb, var(--accent) 20%, var(--card));
+        }
+
+        @media (max-width: 620px) {
+            .auth-topbar {
+                width: calc(100% - 1rem);
+                padding: 0.4rem 0.55rem;
+            }
+
+            .auth-topbar-brand span {
+                display: none;
+            }
+        }
+
         .site-header {
             position: sticky;
             top: 0.45rem;
@@ -248,6 +355,7 @@
             font-family: var(--font-display);
             font-size: 1.02rem;
             white-space: nowrap;
+            color: var(--ink);
         }
 
         .site-nav {
@@ -1400,4 +1508,3 @@
     </script>
 </body>
 </html>
-
