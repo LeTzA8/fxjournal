@@ -22,6 +22,7 @@ from auth_account import (
 from ai_service import (
     AIConfigError,
     AIRequestError,
+    get_latest_trade_week_period,
     get_weekly_dashboard_period,
     maybe_generate_weekly_dashboard_advice,
 )
@@ -182,6 +183,14 @@ limiter.init_app(app)
 TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
 LEGAL_LAST_UPDATED = "March 8, 2026"
+CONTACT_CATEGORY_CHOICES = (
+    "Feedback",
+    "Bug Report",
+    "Privacy / Data Issue",
+    "Account / Access Issue",
+    "General Enquiry",
+    "Other",
+)
 
 
 def get_trade_size_label(account_type):
@@ -732,9 +741,9 @@ def home():
     dashboard_insight = build_dashboard_insight(user_trades, closed)
     weekly_ai_review = None
     weekly_ai_generated_at_label = ""
-    weekly_ai_next_refresh_label = ""
+    weekly_ai_period_label = ""
     weekly_ai_empty_message = (
-        "Your weekly AI review appears once there are trades in the latest completed week for this account. If last week's review was missed, it will still generate on your next dashboard visit."
+        "Your weekly AI review appears once this account has an eligible trade week. It uses the most recent eligible week with trades for the active account."
     )
 
     try:
@@ -744,11 +753,17 @@ def home():
             prompt_filename="dashboard_advice.txt",
         )
         weekly_ai_review = weekly_ai_result.get("record")
-        weekly_period = weekly_ai_result.get("period") or get_weekly_dashboard_period()
+        weekly_period = weekly_ai_result.get("period") or get_latest_trade_week_period(
+            user_id=user_id,
+            trade_account_id=active_trade_account.id if active_trade_account else None,
+        )
     except (AIConfigError, AIRequestError, OSError, ValueError) as exc:
         db.session.rollback()
         app.logger.warning("Weekly AI review unavailable: %s", exc)
-        weekly_period = get_weekly_dashboard_period()
+        weekly_period = get_latest_trade_week_period(
+            user_id=user_id,
+            trade_account_id=active_trade_account.id if active_trade_account else None,
+        ) or get_weekly_dashboard_period()
         weekly_ai_empty_message = "Weekly AI review is temporarily unavailable."
 
     if weekly_ai_review and weekly_ai_review.generated_at:
@@ -756,10 +771,13 @@ def home():
         if generated_local is not None:
             weekly_ai_generated_at_label = generated_local.strftime("%d %b %Y %H:%M")
 
-    next_refresh_local = to_display_timezone(weekly_period.get("next_eligible_at_utc"), timezone_name)
-    if next_refresh_local is not None:
-        weekly_ai_next_refresh_label = (
-            f"{next_refresh_local.strftime('%a %d %b %Y %H:%M')} {timezone_name}"
+    period_end_local = to_display_timezone(
+        weekly_period.get("period_end_utc") if weekly_period else None,
+        timezone_name,
+    )
+    if period_end_local is not None:
+        weekly_ai_period_label = (
+            f"{period_end_local.strftime('%a %d %b %Y %H:%M')} {timezone_name}"
         )
 
     return render_template(
@@ -779,7 +797,7 @@ def home():
         dashboard_insight=dashboard_insight,
         weekly_ai_review=weekly_ai_review,
         weekly_ai_generated_at_label=weekly_ai_generated_at_label,
-        weekly_ai_next_refresh_label=weekly_ai_next_refresh_label,
+        weekly_ai_period_label=weekly_ai_period_label,
         weekly_ai_empty_message=weekly_ai_empty_message,
     )
 
@@ -1441,85 +1459,113 @@ def delete_all_trade_accounts():
     )
 
 
+@app.route("/contact", methods=["GET", "POST"])
 @app.route("/feedback", methods=["GET", "POST"])
 @limiter.limit(
     "3 per minute;20 per day",
     methods=["POST"],
-    error_message="Too many feedback submissions. Please wait and try again later.",
+    error_message="Too many contact submissions. Please wait and try again later.",
 )
-def feedback():
+def contact():
     if not session.get("user_id"):
         return redirect(url_for("login"))
 
     user = User.query.filter_by(id=session["user_id"]).first_or_404()
-    feedback_subject = ""
-    feedback_body = ""
+    contact_subject = ""
+    contact_category = CONTACT_CATEGORY_CHOICES[0]
+    contact_body = ""
 
     if request.method == "POST":
-        feedback_subject = request.form.get("subject", "").strip()
-        feedback_body = request.form.get("message", "").strip()
+        contact_subject = request.form.get("subject", "").strip()
+        contact_category = request.form.get("category", "").strip()
+        contact_body = request.form.get("message", "").strip()
 
-        if not feedback_subject or not feedback_body:
+        if contact_category not in CONTACT_CATEGORY_CHOICES:
             return (
                 render_template(
-                    "feedback.html",
-                    title="Feedback | FX Journal",
+                    "contact.html",
+                    title="Contact | FX Journal",
                     username=session.get("username", "User"),
-                    feedback_status="error",
-                    feedback_message="Subject and message are required.",
-                    feedback_subject=feedback_subject,
-                    feedback_body=feedback_body,
+                    contact_status="error",
+                    contact_message="Please choose a valid contact category.",
+                    contact_subject=contact_subject,
+                    contact_category=contact_category or CONTACT_CATEGORY_CHOICES[0],
+                    contact_body=contact_body,
+                    contact_category_choices=CONTACT_CATEGORY_CHOICES,
                     account_user=user,
                 ),
                 400,
             )
 
-        if len(feedback_subject) > 120:
+        if not contact_subject or not contact_body:
             return (
                 render_template(
-                    "feedback.html",
-                    title="Feedback | FX Journal",
+                    "contact.html",
+                    title="Contact | FX Journal",
                     username=session.get("username", "User"),
-                    feedback_status="error",
-                    feedback_message="Subject must be 120 characters or less.",
-                    feedback_subject=feedback_subject,
-                    feedback_body=feedback_body,
+                    contact_status="error",
+                    contact_message="Subject and message are required.",
+                    contact_subject=contact_subject,
+                    contact_category=contact_category,
+                    contact_body=contact_body,
+                    contact_category_choices=CONTACT_CATEGORY_CHOICES,
                     account_user=user,
                 ),
                 400,
             )
 
-        if len(feedback_body) > 5000:
+        if len(contact_subject) > 120:
             return (
                 render_template(
-                    "feedback.html",
-                    title="Feedback | FX Journal",
+                    "contact.html",
+                    title="Contact | FX Journal",
                     username=session.get("username", "User"),
-                    feedback_status="error",
-                    feedback_message="Message must be 5000 characters or less.",
-                    feedback_subject=feedback_subject,
-                    feedback_body=feedback_body,
+                    contact_status="error",
+                    contact_message="Subject must be 120 characters or less.",
+                    contact_subject=contact_subject,
+                    contact_category=contact_category,
+                    contact_body=contact_body,
+                    contact_category_choices=CONTACT_CATEGORY_CHOICES,
                     account_user=user,
                 ),
                 400,
             )
 
-        feedback_to_email = os.getenv("FEEDBACK_TO_EMAIL", "").strip().lower()
-        if not feedback_to_email:
+        if len(contact_body) > 5000:
+            return (
+                render_template(
+                    "contact.html",
+                    title="Contact | FX Journal",
+                    username=session.get("username", "User"),
+                    contact_status="error",
+                    contact_message="Message must be 5000 characters or less.",
+                    contact_subject=contact_subject,
+                    contact_category=contact_category,
+                    contact_body=contact_body,
+                    contact_category_choices=CONTACT_CATEGORY_CHOICES,
+                    account_user=user,
+                ),
+                400,
+            )
+
+        contact_to_email = os.getenv("FEEDBACK_TO_EMAIL", "").strip().lower()
+        if not contact_to_email:
             app.logger.warning(
-                "Feedback submit blocked: FEEDBACK_TO_EMAIL is not configured."
+                "Contact submit blocked: FEEDBACK_TO_EMAIL is not configured."
             )
             return (
                 render_template(
-                    "feedback.html",
-                    title="Feedback | FX Journal",
+                    "contact.html",
+                    title="Contact | FX Journal",
                     username=session.get("username", "User"),
-                    feedback_status="error",
-                    feedback_message=(
-                        "Feedback email destination is not configured yet."
+                    contact_status="error",
+                    contact_message=(
+                        "Contact email destination is not configured yet."
                     ),
-                    feedback_subject=feedback_subject,
-                    feedback_body=feedback_body,
+                    contact_subject=contact_subject,
+                    contact_category=contact_category,
+                    contact_body=contact_body,
+                    contact_category_choices=CONTACT_CATEGORY_CHOICES,
                     account_user=user,
                 ),
                 500,
@@ -1531,20 +1577,21 @@ def feedback():
             or request.remote_addr
             or "-"
         )
-        email_subject = f"[FX Journal Feedback] {feedback_subject}"
+        email_subject = f"[FX Journal Contact] [{contact_category}] {contact_subject}"
         email_body = (
-            "New feedback submission\n\n"
+            "New contact submission\n\n"
             f"Submitted at: {submitted_at}\n"
             f"Username: {user.username}\n"
             f"User ID: {user.id}\n"
             f"Account email: {user.email}\n"
             f"Client IP: {requester_ip}\n"
-            f"Subject: {feedback_subject}\n\n"
+            f"Category: {contact_category}\n"
+            f"Subject: {contact_subject}\n\n"
             "Message:\n"
-            f"{feedback_body}\n"
+            f"{contact_body}\n"
         )
         email_result = send_email_placeholder(
-            feedback_to_email,
+            contact_to_email,
             email_subject,
             email_body,
         )
@@ -1552,46 +1599,54 @@ def feedback():
         if email_result.get("sent"):
             return redirect(
                 url_for(
-                    "feedback",
-                    feedback_status="success",
-                    feedback_message="Feedback sent. Thank you for sharing it.",
+                    "contact",
+                    contact_status="success",
+                    contact_message="Message sent. I will review it as soon as possible.",
                 )
             )
 
         if is_local_dev_environment():
             return redirect(
                 url_for(
-                    "feedback",
-                    feedback_status="info",
-                    feedback_message=(
-                        "Feedback captured in server logs. Email delivery is disabled in this environment."
+                    "contact",
+                    contact_status="info",
+                    contact_message=(
+                        "Message captured in server logs. Email delivery is disabled in this environment."
                     ),
                 )
             )
 
         return redirect(
             url_for(
-                "feedback",
-                feedback_status="info",
-                feedback_message="Feedback received, but email delivery is currently unavailable.",
+                "contact",
+                contact_status="info",
+                contact_message="Message received, but email delivery is currently unavailable.",
             )
         )
 
-    feedback_status = request.args.get("feedback_status", "").strip().lower()
-    feedback_message = request.args.get("feedback_message", "").strip()
-    if feedback_status not in {"success", "error", "info"}:
-        feedback_status = ""
-    if not feedback_message:
-        feedback_status = ""
+    contact_status = (
+        request.args.get("contact_status", "").strip().lower()
+        or request.args.get("feedback_status", "").strip().lower()
+    )
+    contact_message = (
+        request.args.get("contact_message", "").strip()
+        or request.args.get("feedback_message", "").strip()
+    )
+    if contact_status not in {"success", "error", "info"}:
+        contact_status = ""
+    if not contact_message:
+        contact_status = ""
 
     return render_template(
-        "feedback.html",
-        title="Feedback | FX Journal",
+        "contact.html",
+        title="Contact | FX Journal",
         username=session.get("username", "User"),
-        feedback_status=feedback_status,
-        feedback_message=feedback_message,
-        feedback_subject=feedback_subject,
-        feedback_body=feedback_body,
+        contact_status=contact_status,
+        contact_message=contact_message,
+        contact_subject=contact_subject,
+        contact_category=contact_category,
+        contact_body=contact_body,
+        contact_category_choices=CONTACT_CATEGORY_CHOICES,
         account_user=user,
     )
 

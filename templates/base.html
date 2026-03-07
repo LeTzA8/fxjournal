@@ -565,7 +565,7 @@
     {% if _show_app_header %}
     <header class="site-header" role="banner">
         <div class="site-header-inner">
-            <a href="{{ url_for('home') }}" class="site-brand" aria-label="Go to dashboard">
+            <a href="{{ url_for('landing') }}" class="site-brand" aria-label="Go to landing page">
                 <img
                     src="{{ url_for('static', filename='site-logo.png') }}"
                     alt="FX Journal Logo"
@@ -577,7 +577,7 @@
                 <a href="{{ url_for('home') }}" class="site-nav-link {% if request.path == '/dashboard' %}active{% endif %}">Dashboard</a>
                 <a href="{{ url_for('analytics') }}" class="site-nav-link {% if request.path.startswith('/dashboard/analytics') %}active{% endif %}">Analytics</a>
                 <a href="{{ url_for('trades') }}" class="site-nav-link {% if request.path.startswith('/dashboard/trades') or request.path.startswith('/dashboard/import') or request.path.startswith('/dashboard/imports') %}active{% endif %}">Trades</a>
-                <a href="{{ url_for('feedback') }}" class="site-nav-link {% if request.path.startswith('/feedback') %}active{% endif %}">Feedback</a>
+                <a href="{{ url_for('contact') }}" class="site-nav-link {% if request.path.startswith('/contact') or request.path.startswith('/feedback') %}active{% endif %}">Contact</a>
             </nav>
             <div class="site-header-actions">
                 <a href="{{ url_for('account') }}" class="header-account-link">

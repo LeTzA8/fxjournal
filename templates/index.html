@@ -276,9 +276,9 @@
                     </p>
                 </div>
                 <p class="insight-note">
-                    Generated once weekly for your active account after Friday 5:30 PM New York market close, which may land on Saturday in your displayed timezone.
-                    {% if weekly_ai_next_refresh_label %}
-                    Next refresh: {{ weekly_ai_next_refresh_label }}.
+                    This review uses the most recent eligible trade week on your active account, with older account history used as supporting context.
+                    {% if weekly_ai_period_label %}
+                    Reviewed trade week ending: {{ weekly_ai_period_label }}.
                     {% endif %}
                 </p>
                 {% if weekly_ai_generated_at_label %}

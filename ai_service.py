@@ -1,5 +1,4 @@
 import hashlib
-import hashlib
 import json
 import logging
 import os
@@ -18,6 +17,7 @@ DEFAULT_PROMPT_FILE = "dashboard_advice.txt"
 DEFAULT_MODEL = "gpt-5-mini"
 DEFAULT_MAX_OUTPUT_TOKENS = 1500
 DEFAULT_TIMEOUT_SECONDS = 30
+DEFAULT_HISTORICAL_CONTEXT_DAYS = 90
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 WEEKLY_DASHBOARD_KIND = "weekly_dashboard_advice"
 WEEKLY_MARKET_TIMEZONE = ZoneInfo("America/New_York")
@@ -179,6 +179,141 @@ def get_weekly_dashboard_period(now_utc=None):
     }
 
 
+def get_latest_trade_week_period(*, user_id, trade_account_id=None, now_utc=None):
+    current_period = get_weekly_dashboard_period(now_utc=now_utc)
+    latest_trade_query = Trade.query.filter_by(user_id=user_id)
+    if trade_account_id is not None:
+        latest_trade_query = latest_trade_query.filter_by(trade_account_id=trade_account_id)
+    latest_trade = (
+        latest_trade_query
+        .filter(Trade.opened_at < current_period["period_end_utc"])
+        .order_by(Trade.opened_at.desc(), Trade.id.desc())
+        .first()
+    )
+    if latest_trade is None or latest_trade.opened_at is None:
+        return None
+
+    latest_trade_utc = latest_trade.opened_at
+    if latest_trade_utc.tzinfo is None:
+        latest_trade_utc = latest_trade_utc.replace(tzinfo=timezone.utc)
+    else:
+        latest_trade_utc = latest_trade_utc.astimezone(timezone.utc)
+    latest_trade_market = latest_trade_utc.astimezone(WEEKLY_MARKET_TIMEZONE)
+    period_start_market = (latest_trade_market - timedelta(days=latest_trade_market.weekday())).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    period_end_market = period_start_market + timedelta(days=7)
+    eligible_at_market = period_start_market + timedelta(
+        days=WEEKLY_CUTOFF_WEEKDAY,
+        hours=WEEKLY_CUTOFF_HOUR,
+        minutes=WEEKLY_CUTOFF_MINUTE,
+    )
+
+    return {
+        "period_start_utc": _to_utc_naive(period_start_market.astimezone(timezone.utc)),
+        "period_end_utc": _to_utc_naive(period_end_market.astimezone(timezone.utc)),
+        "eligible_at_utc": _to_utc_naive(eligible_at_market.astimezone(timezone.utc)),
+        "next_eligible_at_utc": None,
+        "market_cutoff_label": "Latest eligible trade week",
+    }
+
+
+def _query_trades_for_payload(*, user_id, trade_account_id=None, period_start_utc=None, period_end_utc=None):
+    trade_query = Trade.query.filter_by(user_id=user_id)
+    if trade_account_id is not None:
+        trade_query = trade_query.filter_by(trade_account_id=trade_account_id)
+    if period_start_utc is not None:
+        trade_query = trade_query.filter(Trade.opened_at >= period_start_utc)
+    if period_end_utc is not None:
+        trade_query = trade_query.filter(Trade.opened_at < period_end_utc)
+    return trade_query.order_by(Trade.opened_at.desc(), Trade.id.desc()).all()
+
+
+def _round_metric(value, digits=2):
+    if value is None:
+        return None
+    return round(float(value), digits)
+
+
+def _build_historical_context(*, user_id, trade_account_id=None, period_end_utc=None, lookback_days=DEFAULT_HISTORICAL_CONTEXT_DAYS):
+    if period_end_utc is None:
+        return None
+
+    historical_start_utc = period_end_utc - timedelta(days=max(int(lookback_days), 1))
+    historical_trades = _query_trades_for_payload(
+        user_id=user_id,
+        trade_account_id=trade_account_id,
+        period_start_utc=historical_start_utc,
+        period_end_utc=period_end_utc,
+    )
+    if not historical_trades:
+        return None
+
+    analytics = build_trade_analytics(
+        historical_trades,
+        display_timezone_name=get_ai_timezone_name(),
+    )
+
+    pair_stats = []
+    for item in analytics.get("pair_stats", [])[:3]:
+        pair_stats.append(
+            {
+                "symbol": item.get("symbol"),
+                "count": item.get("count", 0),
+                "win_rate": _round_metric(item.get("win_rate")),
+                "net_pnl": _round_metric(item.get("net_pnl")),
+            }
+        )
+
+    session_stats = []
+    for item in analytics.get("session_stats", [])[:3]:
+        session_stats.append(
+            {
+                "name": item.get("name"),
+                "count": item.get("count", 0),
+                "win_rate": _round_metric(item.get("win_rate")),
+                "net_pnl": _round_metric(item.get("net_pnl")),
+            }
+        )
+
+    weekday_stats = []
+    for item in analytics.get("weekday_stats", []):
+        if item.get("count", 0) <= 0:
+            continue
+        weekday_stats.append(
+            {
+                "name": item.get("name"),
+                "count": item.get("count", 0),
+                "win_rate": _round_metric(item.get("win_rate")),
+                "net_pnl": _round_metric(item.get("net_pnl")),
+            }
+        )
+    weekday_stats = sorted(
+        weekday_stats,
+        key=lambda item: (-item["count"], -(item["net_pnl"] or 0.0), item["name"]),
+    )[:3]
+
+    summary = analytics.get("summary", {})
+    return {
+        "window_start_utc": format_utc_timestamp(historical_start_utc),
+        "window_end_utc": format_utc_timestamp(period_end_utc),
+        "window_days": max(int(lookback_days), 1),
+        "summary": {
+            "total_trades": summary.get("total_trades", 0),
+            "closed_trades": summary.get("closed_trades", 0),
+            "win_rate": _round_metric(summary.get("win_rate")),
+            "net_pnl": _round_metric(summary.get("net_pnl")),
+            "max_drawdown": _round_metric(summary.get("max_drawdown")),
+        },
+        "top_pairs": pair_stats,
+        "top_sessions": session_stats,
+        "top_weekdays": weekday_stats,
+    }
+
+
 def build_trade_payload(
     *,
     user_id,
@@ -187,15 +322,12 @@ def build_trade_payload(
     period_start_utc=None,
     period_end_utc=None,
 ):
-    trade_query = Trade.query.filter_by(user_id=user_id)
-    if trade_account_id is not None:
-        trade_query = trade_query.filter_by(trade_account_id=trade_account_id)
-    if period_start_utc is not None:
-        trade_query = trade_query.filter(Trade.opened_at >= period_start_utc)
-    if period_end_utc is not None:
-        trade_query = trade_query.filter(Trade.opened_at < period_end_utc)
-
-    trades = trade_query.order_by(Trade.opened_at.desc(), Trade.id.desc()).all()
+    trades = _query_trades_for_payload(
+        user_id=user_id,
+        trade_account_id=trade_account_id,
+        period_start_utc=period_start_utc,
+        period_end_utc=period_end_utc,
+    )
     if max_trades is not None and max_trades > 0:
         trades = trades[:max_trades]
 
@@ -224,6 +356,11 @@ def build_trade_payload(
         "generated_at": format_utc_timestamp(datetime.utcnow()),
         "period_start_utc": format_utc_timestamp(period_start_utc),
         "period_end_utc": format_utc_timestamp(period_end_utc),
+        "historical_context": _build_historical_context(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            period_end_utc=period_end_utc,
+        ),
         "summary": {
             "total_trades": analytics["summary"]["total_trades"],
             "closed_trades": analytics["summary"]["closed_trades"],
@@ -313,6 +450,7 @@ def _format_percent(value):
 
 def format_payload_for_prompt(payload):
     summary = payload.get("summary", {})
+    historical_context = payload.get("historical_context") or {}
     trades = payload.get("trades", [])
 
     lines = [
@@ -333,8 +471,67 @@ def format_payload_for_prompt(payload):
         f"- worst_trade_pnl: {_format_signed_currency(summary.get('worst_trade_pnl'))}",
         f"- max_drawdown: {_format_number(summary.get('max_drawdown'))}",
         "",
-        f"TRADES ({len(trades)})",
+        "HISTORICAL_CONTEXT",
+        f"- window_start_utc: {historical_context.get('window_start_utc') or '-'}",
+        f"- window_end_utc: {historical_context.get('window_end_utc') or '-'}",
+        f"- window_days: {historical_context.get('window_days') or '-'}",
+        f"- historical_total_trades: {(historical_context.get('summary') or {}).get('total_trades', 0)}",
+        f"- historical_closed_trades: {(historical_context.get('summary') or {}).get('closed_trades', 0)}",
+        f"- historical_win_rate: {_format_percent((historical_context.get('summary') or {}).get('win_rate'))}",
+        f"- historical_net_pnl: {_format_signed_currency((historical_context.get('summary') or {}).get('net_pnl'))}",
+        f"- historical_max_drawdown: {_format_number((historical_context.get('summary') or {}).get('max_drawdown'))}",
+        "",
+        "HISTORICAL_TOP_PAIRS",
     ]
+
+    historical_pairs = historical_context.get("top_pairs") or []
+    if historical_pairs:
+        for index, item in enumerate(historical_pairs, start=1):
+            lines.append(
+                f"- {index}. {(item.get('symbol') or '-')}: count={item.get('count', 0)}, "
+                f"win_rate={_format_percent(item.get('win_rate'))}, net_pnl={_format_signed_currency(item.get('net_pnl'))}"
+            )
+    else:
+        lines.append("- no pair history available")
+
+    lines.extend(
+        [
+            "",
+            "HISTORICAL_TOP_SESSIONS",
+        ]
+    )
+    historical_sessions = historical_context.get("top_sessions") or []
+    if historical_sessions:
+        for index, item in enumerate(historical_sessions, start=1):
+            lines.append(
+                f"- {index}. {(item.get('name') or '-')}: count={item.get('count', 0)}, "
+                f"win_rate={_format_percent(item.get('win_rate'))}, net_pnl={_format_signed_currency(item.get('net_pnl'))}"
+            )
+    else:
+        lines.append("- no session history available")
+
+    lines.extend(
+        [
+            "",
+            "HISTORICAL_TOP_WEEKDAYS",
+        ]
+    )
+    historical_weekdays = historical_context.get("top_weekdays") or []
+    if historical_weekdays:
+        for index, item in enumerate(historical_weekdays, start=1):
+            lines.append(
+                f"- {index}. {(item.get('name') or '-')}: count={item.get('count', 0)}, "
+                f"win_rate={_format_percent(item.get('win_rate'))}, net_pnl={_format_signed_currency(item.get('net_pnl'))}"
+            )
+    else:
+        lines.append("- no weekday history available")
+
+    lines.extend(
+        [
+            "",
+        f"TRADES ({len(trades)})",
+        ]
+    )
 
     if not trades:
         lines.append("- no trades available")
@@ -591,7 +788,13 @@ def maybe_generate_weekly_dashboard_advice(
     now_utc=None,
     require_recent_login=False,
 ):
-    period = get_weekly_dashboard_period(now_utc=now_utc)
+    period = get_latest_trade_week_period(
+        user_id=user_id,
+        trade_account_id=trade_account_id,
+        now_utc=now_utc,
+    )
+    if period is None:
+        return {"record": None, "generated": False, "period": None}
     try:
         existing = get_latest_weekly_dashboard_advice(
             user_id=user_id,
