@@ -15,8 +15,12 @@ class User(db.Model):
     password = db.Column(db.String(255), nullable=False)
     email_verified = db.Column(db.Boolean, nullable=False, default=False)
     verification_sent_at = db.Column(db.DateTime, nullable=True)
-    trade_accounts = db.relationship("TradeAccount", backref="user", lazy=True)
-    trades = db.relationship("Trade", backref="user", lazy=True)
+    trade_accounts = db.relationship(
+        "TradeAccount", backref="user", lazy=True, cascade="all, delete-orphan"
+    )
+    trades = db.relationship(
+        "Trade", backref="user", lazy=True, cascade="all, delete-orphan"
+    )
 
 
 class TradeAccount(db.Model):
@@ -27,7 +31,9 @@ class TradeAccount(db.Model):
     name = db.Column(db.String(80), nullable=False, default="Main Account")
     external_account_id = db.Column(db.String(80), nullable=True)
     is_default = db.Column(db.Boolean, nullable=False, default=False)
-    trades = db.relationship("Trade", backref="trade_account", lazy=True)
+    trades = db.relationship(
+        "Trade", backref="trade_account", lazy=True, cascade="all, delete-orphan"
+    )
 
 
 class Trade(db.Model):
@@ -51,3 +57,4 @@ class Trade(db.Model):
     import_signature = db.Column(db.String(80), nullable=True, index=True)
     trade_note = db.Column(db.Text, nullable=True)
     opened_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    closed_at = db.Column(db.DateTime, nullable=True)

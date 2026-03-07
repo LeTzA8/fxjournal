@@ -575,6 +575,7 @@
             </a>
             <nav class="site-nav" aria-label="Primary">
                 <a href="{{ url_for('home') }}" class="site-nav-link {% if request.path == '/dashboard' %}active{% endif %}">Dashboard</a>
+                <a href="{{ url_for('analytics') }}" class="site-nav-link {% if request.path.startswith('/dashboard/analytics') %}active{% endif %}">Analytics</a>
                 <a href="{{ url_for('trades') }}" class="site-nav-link {% if request.path.startswith('/dashboard/trades') or request.path.startswith('/dashboard/import') or request.path.startswith('/dashboard/imports') %}active{% endif %}">Trades</a>
                 <a href="{{ url_for('feedback') }}" class="site-nav-link {% if request.path.startswith('/feedback') %}active{% endif %}">Feedback</a>
             </nav>

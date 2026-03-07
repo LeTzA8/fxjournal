@@ -1,7 +1,9 @@
 import os
 import random
 import re
-from datetime import datetime
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from openpyxl import load_workbook
 
@@ -106,7 +108,8 @@ MT5_COLUMN_ALIASES = {
     "entry_price": {"open price", "price", "entry price"},
     "exit_price": {"close price", "exit price", "price close"},
     "pnl": {"profit", "p/l", "pl", "net profit"},
-    "opened_at": {"time", "date", "open time", "close time"},
+    "opened_at": {"time", "date", "open time", "opened at", "time open"},
+    "closed_at": {"close time", "closed at", "time close", "closing time", "closed time"},
 }
 
 MT5_SECTION_TITLES = {"positions", "orders", "deals", "results"}
@@ -128,6 +131,23 @@ INSTRUMENT_CONTRACT_SIZE = {
     "ESP35": 1.0,
     "IT40": 1.0,
 }
+
+WEEKDAY_NAMES = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
+
+SESSION_DEFINITIONS = (
+    {"name": "Sydney", "zone": "Australia/Sydney", "start_hour": 7, "end_hour": 16},
+    {"name": "Tokyo", "zone": "Asia/Tokyo", "start_hour": 9, "end_hour": 18},
+    {"name": "London", "zone": "Europe/London", "start_hour": 8, "end_hour": 17},
+    {"name": "New York", "zone": "America/New_York", "start_hour": 8, "end_hour": 17},
+)
 
 
 def normalize_symbol(symbol):
@@ -286,6 +306,8 @@ def build_mt5_column_map(header_row):
     price_cols = by_name.get("price", [])
     if "opened_at" not in column_map and time_cols:
         column_map["opened_at"] = time_cols[0]
+    if "closed_at" not in column_map and len(time_cols) >= 2:
+        column_map["closed_at"] = time_cols[1]
     if "entry_price" not in column_map and price_cols:
         column_map["entry_price"] = price_cols[0]
     if "exit_price" not in column_map and len(price_cols) >= 2:
@@ -352,6 +374,7 @@ def parse_mt5_xlsx_stream(file_stream):
         exit_price = parse_float_value(col("exit_price"))
         pnl = parse_float_value(col("pnl"))
         opened_at = parse_datetime_value(col("opened_at"))
+        closed_at = parse_datetime_value(col("closed_at"))
 
         if not symbol or not side or lot_size is None or entry_price is None:
             skipped += 1
@@ -368,6 +391,7 @@ def parse_mt5_xlsx_stream(file_stream):
                 "exit_price": exit_price,
                 "pnl": pnl,
                 "opened_at": opened_at,
+                "closed_at": closed_at,
             }
         )
 
@@ -629,3 +653,347 @@ def build_dashboard_insight(user_trades, closed_trades):
             ),
         }
     return random.choice(insights)
+
+
+def get_timezone(name):
+    try:
+        return ZoneInfo(str(name or "UTC").strip() or "UTC")
+    except ZoneInfoNotFoundError:
+        return timezone.utc
+
+
+def ensure_utc_aware(value):
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc)
+    return value.replace(tzinfo=timezone.utc)
+
+
+def to_display_timezone(value, timezone_name):
+    aware_value = ensure_utc_aware(value)
+    if aware_value is None:
+        return None
+    return aware_value.astimezone(get_timezone(timezone_name))
+
+
+def format_duration_minutes(duration_minutes):
+    if duration_minutes is None:
+        return "-"
+    total_minutes = int(round(duration_minutes))
+    hours, minutes = divmod(total_minutes, 60)
+    days, hours = divmod(hours, 24)
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes or not parts:
+        parts.append(f"{minutes}m")
+    return " ".join(parts)
+
+
+def get_active_sessions(timestamp_utc):
+    if timestamp_utc is None:
+        return []
+
+    active_sessions = []
+    for session_def in SESSION_DEFINITIONS:
+        session_zone = get_timezone(session_def["zone"])
+        local_value = timestamp_utc.astimezone(session_zone)
+        hour_value = local_value.hour + (local_value.minute / 60.0)
+        if session_def["start_hour"] <= hour_value < session_def["end_hour"]:
+            active_sessions.append(session_def["name"])
+    return active_sessions
+
+
+def classify_trading_session(timestamp_utc):
+    active_sessions = get_active_sessions(timestamp_utc)
+    if not active_sessions:
+        return "Off Hours"
+    if len(active_sessions) == 1:
+        return active_sessions[0]
+    return " / ".join(active_sessions)
+
+
+def calculate_streaks(closed_records):
+    if not closed_records:
+        return {
+            "current_type": "none",
+            "current_length": 0,
+            "best_win_streak": 0,
+            "best_loss_streak": 0,
+        }
+
+    best_win_streak = 0
+    best_loss_streak = 0
+    current_type = "none"
+    current_length = 0
+
+    for record in closed_records:
+        pnl_value = record["pnl"]
+        if pnl_value > 0:
+            streak_type = "win"
+        elif pnl_value < 0:
+            streak_type = "loss"
+        else:
+            streak_type = "breakeven"
+
+        if streak_type == current_type:
+            current_length += 1
+        else:
+            current_type = streak_type
+            current_length = 1
+
+        if streak_type == "win":
+            best_win_streak = max(best_win_streak, current_length)
+        elif streak_type == "loss":
+            best_loss_streak = max(best_loss_streak, current_length)
+
+    return {
+        "current_type": current_type,
+        "current_length": current_length,
+        "best_win_streak": best_win_streak,
+        "best_loss_streak": best_loss_streak,
+    }
+
+
+def build_trade_analytics(trades, display_timezone_name="UTC", now_utc=None):
+    display_timezone = get_timezone(display_timezone_name)
+    now_utc = ensure_utc_aware(now_utc or datetime.utcnow())
+    now_local = now_utc.astimezone(display_timezone)
+    week_start_local = (now_local - timedelta(days=now_local.weekday())).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    month_start_local = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    total_trades = len(trades)
+    closed_records = []
+    open_trades = 0
+
+    for trade in sorted(trades, key=lambda item: ((item.opened_at or datetime.min), item.id or 0)):
+        pnl_value = resolve_pnl(trade)
+        opened_at_utc = ensure_utc_aware(trade.opened_at)
+        closed_at_utc = ensure_utc_aware(getattr(trade, "closed_at", None))
+        duration_minutes = None
+        if opened_at_utc and closed_at_utc and closed_at_utc >= opened_at_utc:
+            duration_minutes = (closed_at_utc - opened_at_utc).total_seconds() / 60.0
+
+        if pnl_value is None:
+            open_trades += 1
+            continue
+
+        opened_local = opened_at_utc.astimezone(display_timezone) if opened_at_utc else None
+        closed_local = closed_at_utc.astimezone(display_timezone) if closed_at_utc else None
+        record = {
+            "trade": trade,
+            "pnl": float(pnl_value),
+            "pips": resolve_pips(trade),
+            "symbol": (trade.symbol or "").strip().upper(),
+            "side": (trade.side or "").strip().upper(),
+            "opened_at_utc": opened_at_utc,
+            "closed_at_utc": closed_at_utc,
+            "opened_at_local": opened_local,
+            "closed_at_local": closed_local,
+            "opened_label": opened_local.strftime("%d %b %Y %H:%M") if opened_local else "-",
+            "closed_label": closed_local.strftime("%d %b %Y %H:%M") if closed_local else "-",
+            "weekday": WEEKDAY_NAMES[opened_local.weekday()] if opened_local else "Unknown",
+            "session": classify_trading_session(opened_at_utc),
+            "duration_minutes": duration_minutes,
+            "duration_label": format_duration_minutes(duration_minutes),
+            "status": "Closed" if trade.exit_price is not None else "Running",
+        }
+        closed_records.append(record)
+
+    total_closed = len(closed_records)
+    wins = sum(1 for record in closed_records if record["pnl"] > 0)
+    losses = sum(1 for record in closed_records if record["pnl"] < 0)
+    breakeven = total_closed - wins - losses
+    gross_profit = sum(record["pnl"] for record in closed_records if record["pnl"] > 0)
+    gross_loss = sum(record["pnl"] for record in closed_records if record["pnl"] < 0)
+    net_pnl = sum(record["pnl"] for record in closed_records)
+    avg_win = (gross_profit / wins) if wins else None
+    avg_loss_abs = (abs(gross_loss) / losses) if losses else None
+    win_rate = (wins / total_closed * 100.0) if total_closed else 0.0
+    expectancy = (net_pnl / total_closed) if total_closed else None
+    payoff_ratio = (avg_win / avg_loss_abs) if avg_win is not None and avg_loss_abs else None
+    profit_factor = (gross_profit / abs(gross_loss)) if gross_loss < 0 else None
+
+    duration_values = [
+        record["duration_minutes"]
+        for record in closed_records
+        if record["duration_minutes"] is not None
+    ]
+    average_duration_minutes = (
+        sum(duration_values) / len(duration_values) if duration_values else None
+    )
+    duration_coverage = (
+        len(duration_values) / total_closed * 100.0 if total_closed else 0.0
+    )
+
+    weekly_pnl = 0.0
+    monthly_pnl = 0.0
+    trading_days = set()
+    equity_curve = []
+    running_equity = 0.0
+    daily_equity = {}
+    peak_equity = 0.0
+    max_drawdown = 0.0
+
+    for record in closed_records:
+        opened_local = record["opened_at_local"]
+        if opened_local:
+            trading_days.add(opened_local.date().isoformat())
+            if opened_local >= week_start_local:
+                weekly_pnl += record["pnl"]
+            if opened_local >= month_start_local:
+                monthly_pnl += record["pnl"]
+
+        running_equity += record["pnl"]
+        peak_equity = max(peak_equity, running_equity)
+        max_drawdown = min(max_drawdown, running_equity - peak_equity)
+        record["equity_after_trade"] = round(running_equity, 2)
+
+        if opened_local:
+            day_key = opened_local.date().isoformat()
+            daily_equity[day_key] = {
+                "date": day_key,
+                "label": opened_local.strftime("%d %b"),
+                "equity": round(running_equity, 2),
+            }
+
+        equity_curve.append(
+            {
+                "date": record["opened_at_local"].strftime("%Y-%m-%d %H:%M")
+                if record["opened_at_local"]
+                else f"trade-{record['trade'].id}",
+                "label": record["opened_at_local"].strftime("%d %b")
+                if record["opened_at_local"]
+                else "Unknown",
+                "equity": round(running_equity, 2),
+                "pnl": round(record["pnl"], 2),
+                "symbol": record["symbol"],
+            }
+        )
+
+    weekday_buckets = {
+        name: {"label": name[:3], "count": 0, "wins": 0, "pnl": 0.0}
+        for name in WEEKDAY_NAMES
+    }
+    pair_buckets = defaultdict(lambda: {"count": 0, "wins": 0, "pnl": 0.0, "gross_profit": 0.0, "gross_loss": 0.0})
+    session_buckets = defaultdict(lambda: {"count": 0, "wins": 0, "pnl": 0.0})
+
+    for record in closed_records:
+        weekday_bucket = weekday_buckets.get(record["weekday"])
+        if weekday_bucket is not None:
+            weekday_bucket["count"] += 1
+            weekday_bucket["pnl"] += record["pnl"]
+            if record["pnl"] > 0:
+                weekday_bucket["wins"] += 1
+
+        pair_bucket = pair_buckets[record["symbol"] or "Unknown"]
+        pair_bucket["count"] += 1
+        pair_bucket["pnl"] += record["pnl"]
+        if record["pnl"] > 0:
+            pair_bucket["wins"] += 1
+            pair_bucket["gross_profit"] += record["pnl"]
+        elif record["pnl"] < 0:
+            pair_bucket["gross_loss"] += record["pnl"]
+
+        session_bucket = session_buckets[record["session"]]
+        session_bucket["count"] += 1
+        session_bucket["pnl"] += record["pnl"]
+        if record["pnl"] > 0:
+            session_bucket["wins"] += 1
+
+    weekday_stats = []
+    for name in WEEKDAY_NAMES:
+        bucket = weekday_buckets[name]
+        weekday_stats.append(
+            {
+                "name": name,
+                "label": bucket["label"],
+                "count": bucket["count"],
+                "win_rate": (bucket["wins"] / bucket["count"] * 100.0) if bucket["count"] else None,
+                "avg_pnl": (bucket["pnl"] / bucket["count"]) if bucket["count"] else None,
+                "net_pnl": bucket["pnl"],
+            }
+        )
+
+    pair_stats = []
+    for symbol, bucket in pair_buckets.items():
+        count = bucket["count"]
+        pair_stats.append(
+            {
+                "symbol": symbol,
+                "count": count,
+                "win_rate": (bucket["wins"] / count * 100.0) if count else None,
+                "expectancy": (bucket["pnl"] / count) if count else None,
+                "net_pnl": bucket["pnl"],
+                "profit_factor": (
+                    bucket["gross_profit"] / abs(bucket["gross_loss"])
+                    if bucket["gross_loss"] < 0
+                    else None
+                ),
+            }
+        )
+    pair_stats.sort(key=lambda item: (-item["count"], -item["net_pnl"], item["symbol"]))
+
+    session_stats = []
+    for session_name, bucket in session_buckets.items():
+        count = bucket["count"]
+        session_stats.append(
+            {
+                "name": session_name,
+                "count": count,
+                "win_rate": (bucket["wins"] / count * 100.0) if count else None,
+                "expectancy": (bucket["pnl"] / count) if count else None,
+                "net_pnl": bucket["pnl"],
+            }
+        )
+    session_stats.sort(key=lambda item: (-item["count"], item["name"]))
+
+    best_trade = max(closed_records, key=lambda record: record["pnl"], default=None)
+    worst_trade = min(closed_records, key=lambda record: record["pnl"], default=None)
+    streaks = calculate_streaks(closed_records)
+
+    return {
+        "timezone_name": getattr(display_timezone, "key", "UTC"),
+        "summary": {
+            "total_trades": total_trades,
+            "closed_trades": total_closed,
+            "open_trades": open_trades,
+            "wins": wins,
+            "losses": losses,
+            "breakeven": breakeven,
+            "win_rate": win_rate,
+            "net_pnl": net_pnl,
+            "weekly_pnl": weekly_pnl,
+            "monthly_pnl": monthly_pnl,
+            "gross_profit": gross_profit,
+            "gross_loss": gross_loss,
+            "expectancy": expectancy,
+            "avg_win": avg_win,
+            "avg_loss_abs": avg_loss_abs,
+            "payoff_ratio": payoff_ratio,
+            "profit_factor": profit_factor,
+            "average_duration_minutes": average_duration_minutes,
+            "average_duration_label": format_duration_minutes(average_duration_minutes),
+            "duration_coverage": duration_coverage,
+            "trading_days": len(trading_days),
+            "max_drawdown": abs(max_drawdown),
+            "best_trade": best_trade,
+            "worst_trade": worst_trade,
+        },
+        "streaks": streaks,
+        "equity_curve": equity_curve,
+        "daily_equity_curve": list(daily_equity.values()),
+        "weekday_stats": weekday_stats,
+        "pair_stats": pair_stats,
+        "session_stats": session_stats,
+        "closed_records": closed_records,
+        "week_label": week_start_local.strftime("%d %b %Y"),
+    }

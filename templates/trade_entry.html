@@ -67,8 +67,12 @@
                         <option value="Running" {% if (not trade) or trade.exit_price is none %}selected{% endif %}>Running</option>
                     </select>
 
-                    <label for="trade_date">Date</label>
-                    <input id="trade_date" name="trade_date" type="date" value="{{ trade.opened_at.strftime('%Y-%m-%d') if trade else '' }}" required>
+                    <label for="opened_at">Opened At</label>
+                    <input id="opened_at" name="opened_at" type="datetime-local" value="{{ opened_at_value }}" required>
+
+                    <label for="closed_at">Closed At</label>
+                    <input id="closed_at" name="closed_at" type="datetime-local" value="{{ closed_at_value }}">
+                    <p class="field-help">Times are interpreted in {{ analytics_timezone }} and stored in UTC for analytics.</p>
 
                     <label for="trade_note">Trade Note</label>
                     <textarea id="trade_note" name="trade_note" rows="4" placeholder="Why you took this setup, mistakes, execution notes...">{{ trade.trade_note if trade and trade.trade_note else '' }}</textarea>
@@ -108,7 +112,7 @@
                         <p id="mt5FileName" class="dropzone-file"></p>
                     </div>
                     <p class="import-help">
-                        Upload a MetaTrader 5 report exported as <code>.xlsx</code>. The parser and DB import step will be added next.
+                        Upload a MetaTrader 5 report exported as <code>.xlsx</code>. If the file includes close timestamps, duration and session analytics will use them automatically.
                     </p>
                     <div class="form-actions">
                         <button type="submit" class="submit-btn">Upload XLSX</button>
@@ -229,6 +233,10 @@
     .trade-form label { font-size: 0.84rem;
         font-weight: 700; text-transform: uppercase;
         letter-spacing: 0.04em; }
+
+    .field-help { margin: -0.2rem 0 0.1rem;
+        font-size: 0.8rem;
+        color: #6b7280; }
 
     .import-form label { font-size: 0.84rem;
         font-weight: 700; text-transform: uppercase;

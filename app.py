@@ -20,16 +20,19 @@ from auth_account import (
 from models import Trade, TradeAccount, User, db
 from trading import (
     BASE_SYMBOL_OPTIONS,
+    build_trade_analytics,
     build_dashboard_insight,
     build_import_signature,
     calc_pnl_values,
     canonicalize_symbol,
     derive_exit_price,
+    get_timezone,
     get_symbol_options,
     parse_import_signature_datetime,
     parse_mt5_xlsx_stream,
     resolve_pips,
     resolve_pnl,
+    to_display_timezone,
 )
 
 load_dotenv()
@@ -52,6 +55,35 @@ def env_int(name, default):
         return int(value.strip())
     except (TypeError, ValueError):
         return default
+
+
+def get_app_timezone_name():
+    return os.getenv("APP_TIMEZONE", "Asia/Singapore").strip() or "Asia/Singapore"
+
+
+def parse_local_datetime_input(raw_value):
+    text_value = str(raw_value or "").strip()
+    if not text_value:
+        return None
+
+    try:
+        local_value = datetime.strptime(text_value, "%Y-%m-%dT%H:%M")
+    except ValueError:
+        try:
+            local_value = datetime.strptime(text_value, "%Y-%m-%d")
+        except ValueError:
+            return None
+
+    timezone_name = get_app_timezone_name()
+    local_aware = local_value.replace(tzinfo=get_timezone(timezone_name))
+    return local_aware.astimezone(get_timezone("UTC")).replace(tzinfo=None)
+
+
+def format_local_datetime_input(value):
+    local_value = to_display_timezone(value, get_app_timezone_name())
+    if local_value is None:
+        return ""
+    return local_value.strftime("%Y-%m-%dT%H:%M")
 
 
 def is_local_dev_environment():
@@ -137,6 +169,8 @@ def ensure_trades_table_columns():
         statements.append(
             f"ALTER TABLE {table_name} ADD COLUMN trade_account_id INTEGER"
         )
+    if "closed_at" not in existing_columns:
+        statements.append(f"ALTER TABLE {table_name} ADD COLUMN closed_at TIMESTAMP")
 
     with db.engine.begin() as connection:
         for stmt in statements:
@@ -335,19 +369,44 @@ def get_active_trade_account_for_user(user_id):
     return active_account
 
 
+def delete_users_with_related_data(user_ids):
+    normalized_ids = sorted({int(user_id) for user_id in user_ids if user_id is not None})
+    if not normalized_ids:
+        return 0
+
+    Trade.query.filter(Trade.user_id.in_(normalized_ids)).delete(
+        synchronize_session=False
+    )
+    TradeAccount.query.filter(TradeAccount.user_id.in_(normalized_ids)).delete(
+        synchronize_session=False
+    )
+    return User.query.filter(User.id.in_(normalized_ids)).delete(
+        synchronize_session=False
+    )
+
+
 def purge_expired_unverified_users():
     max_age_seconds = env_int("EMAIL_VERIFY_TOKEN_MAX_AGE_SECONDS", 86400)
     cutoff = datetime.utcnow() - timedelta(seconds=max_age_seconds)
-    deleted_count = (
-        User.query.filter(
+    expired_user_ids = [
+        user_id
+        for user_id, in db.session.query(User.id).filter(
             User.email_verified.is_(False),
             User.verification_sent_at.isnot(None),
             User.verification_sent_at < cutoff,
-        ).delete(synchronize_session=False)
-    )
-    if deleted_count:
+        )
+    ]
+    if not expired_user_ids:
+        return 0
+
+    try:
+        deleted_count = delete_users_with_related_data(expired_user_ids)
         db.session.commit()
-    return deleted_count
+        return deleted_count
+    except (OperationalError, IntegrityError):
+        db.session.rollback()
+        app.logger.exception("Failed to purge expired unverified users.")
+        return 0
 
 
 with app.app_context():
@@ -485,44 +544,26 @@ def home():
         db.session.rollback()
         user_trades = []
 
-    now = datetime.utcnow()
-    week_start = (now - timedelta(days=now.weekday())).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-
-    closed = []
-    for trade in user_trades:
-        pnl_value = resolve_pnl(trade)
-        if pnl_value is not None:
-            closed.append((trade, pnl_value))
-
-    total_closed = len(closed)
-    wins = sum(1 for _, pnl in closed if pnl > 0)
-    losses = sum(1 for _, pnl in closed if pnl < 0)
-    win_rate = (wins / total_closed * 100) if total_closed else 0.0
-
-    net_pnl_week = sum(
-        pnl for trade, pnl in closed if trade.opened_at and trade.opened_at >= week_start
-    )
+    timezone_name = get_app_timezone_name()
+    analytics = build_trade_analytics(user_trades, display_timezone_name=timezone_name)
+    summary = analytics["summary"]
+    closed = [(record["trade"], record["pnl"]) for record in analytics["closed_records"]]
+    now_local = to_display_timezone(datetime.utcnow(), timezone_name)
     trades_this_month = sum(
         1
         for trade in user_trades
-        if trade.opened_at
-        and trade.opened_at.month == now.month
-        and trade.opened_at.year == now.year
+        if (opened_local := to_display_timezone(trade.opened_at, timezone_name))
+        and opened_local.month == now_local.month
+        and opened_local.year == now_local.year
     )
-
-    avg_win = (sum(p for _, p in closed if p > 0) / wins) if wins else 0
-    avg_loss = (abs(sum(p for _, p in closed if p < 0)) / losses) if losses else 0
-    avg_rr = (avg_win / avg_loss) if avg_loss else None
-    account_pnl_total = sum(pnl for _, pnl in closed)
 
     recent_trades = []
     for trade in user_trades:
         pnl_value = resolve_pnl(trade)
         pips_value = resolve_pips(trade)
-        trade_date = trade.opened_at.strftime("%d %b %Y") if trade.opened_at else "-"
-        trade_date_value = trade.opened_at.strftime("%Y-%m-%d") if trade.opened_at else ""
+        opened_local = to_display_timezone(trade.opened_at, timezone_name)
+        trade_date = opened_local.strftime("%d %b %Y") if opened_local else "-"
+        trade_date_value = opened_local.strftime("%Y-%m-%d") if opened_local else ""
         recent_trades.append(
             {
                 "symbol": trade.symbol,
@@ -538,41 +579,60 @@ def home():
             }
         )
 
-    chart_points = []
-    closed_for_equity = sorted(
-        closed,
-        key=lambda item: (
-            item[0].opened_at or datetime.min,
-            item[0].id or 0,
-        ),
-    )
-    running_equity = 0.0
-    daily_equity_points = {}
-    for trade, pnl in closed_for_equity:
-        running_equity += float(pnl)
-        if not trade.opened_at:
-            continue
-        day_key = trade.opened_at.strftime("%Y-%m-%d")
-        daily_equity_points[day_key] = {
-            "date": day_key,
-            "label": trade.opened_at.strftime("%d %b"),
-            "equity": round(running_equity, 2),
-        }
-    chart_points = list(daily_equity_points.values())
+    chart_points = analytics["daily_equity_curve"]
     dashboard_insight = build_dashboard_insight(user_trades, closed)
 
     return render_template(
         "index.html",
         title="FX Journal",
         username=username,
-        win_rate=win_rate,
-        net_pnl_week=net_pnl_week,
-        account_pnl_total=account_pnl_total,
+        win_rate=summary["win_rate"],
+        net_pnl_week=summary["weekly_pnl"],
+        account_pnl_total=summary["net_pnl"],
         trades_this_month=trades_this_month,
-        avg_rr=avg_rr,
+        avg_rr=summary["payoff_ratio"],
         recent_trades=recent_trades,
         chart_points=chart_points,
         dashboard_insight=dashboard_insight,
+        analytics_snapshot=analytics,
+        analytics_timezone=timezone_name,
+    )
+
+
+@app.route("/dashboard/analytics")
+def analytics():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    timezone_name = get_app_timezone_name()
+
+    try:
+        user_trades = (
+            Trade.query.filter_by(
+                user_id=user_id,
+                trade_account_id=active_trade_account.id,
+            )
+            .order_by(Trade.opened_at.desc())
+            .all()
+        )
+    except OperationalError:
+        db.session.rollback()
+        user_trades = []
+
+    analytics_payload = build_trade_analytics(
+        user_trades,
+        display_timezone_name=timezone_name,
+    )
+
+    return render_template(
+        "analytics.html",
+        title="Analytics | FX Journal",
+        username=session.get("username", "User"),
+        analytics=analytics_payload,
+        analytics_timezone=timezone_name,
+        active_trade_account=active_trade_account,
     )
 
 
@@ -743,9 +803,7 @@ def delete_account():
         )
 
     try:
-        Trade.query.filter_by(user_id=user.id).delete(synchronize_session=False)
-        TradeAccount.query.filter_by(user_id=user.id).delete(synchronize_session=False)
-        db.session.delete(user)
+        delete_users_with_related_data([user.id])
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()
@@ -1286,6 +1344,7 @@ def new_trade():
         if symbol not in allowed_symbols:
             return redirect(url_for("new_trade"))
         side = request.form.get("side", "BUY").strip().upper()
+        status = request.form.get("status", "Running").strip().lower()
         entry_price = float(request.form.get("entry_price", 0.0))
         exit_price = request.form.get("exit_price", "").strip()
         exit_price = float(exit_price) if exit_price else None
@@ -1293,15 +1352,16 @@ def new_trade():
         trade_note = request.form.get("trade_note", "").strip()
         pnl = request.form.get("pnl", "").strip()
         pnl = float(pnl) if pnl else None
-        trade_date_raw = request.form.get("trade_date", "").strip()
-        try:
-            opened_at = (
-                datetime.strptime(trade_date_raw, "%Y-%m-%d")
-                if trade_date_raw
-                else datetime.utcnow()
-            )
-        except ValueError:
+        opened_at = parse_local_datetime_input(request.form.get("opened_at", "").strip())
+        if opened_at is None:
+            opened_at = parse_local_datetime_input(request.form.get("trade_date", "").strip())
+        if opened_at is None:
             opened_at = datetime.utcnow()
+        closed_at = parse_local_datetime_input(request.form.get("closed_at", "").strip())
+        if status != "closed":
+            closed_at = None
+        if closed_at is not None and closed_at < opened_at:
+            closed_at = None
 
         if pnl is not None and exit_price is None:
             exit_price = derive_exit_price(
@@ -1330,6 +1390,7 @@ def new_trade():
             pnl=pnl,
             exit_price=exit_price,
             opened_at=opened_at,
+            closed_at=closed_at,
         )
         db.session.add(trade)
         db.session.commit()
@@ -1352,6 +1413,9 @@ def new_trade():
         trade=None,
         form_action=url_for("new_trade"),
         form_mode="new",
+        opened_at_value="",
+        closed_at_value="",
+        analytics_timezone=get_app_timezone_name(),
     )
 
 
@@ -1433,6 +1497,7 @@ def import_mt5_trades():
             exit_price = row.get("exit_price")
             pnl = row.get("pnl")
             opened_at = row.get("opened_at")
+            closed_at = row.get("closed_at")
 
             if symbol not in allowed_symbols:
                 if symbol:
@@ -1490,6 +1555,7 @@ def import_mt5_trades():
                     lot_size=float(lot_size),
                     pnl=float(pnl) if pnl is not None else None,
                     opened_at=opened_at,
+                    closed_at=closed_at,
                     trade_note="Imported from MT5 Positions",
                 )
             )
@@ -1594,6 +1660,9 @@ def trade_detail(trade_id):
     ).first_or_404()
     trade_pnl = resolve_pnl(trade)
     trade_pips = resolve_pips(trade)
+    timezone_name = get_app_timezone_name()
+    opened_at_local = to_display_timezone(trade.opened_at, timezone_name)
+    closed_at_local = to_display_timezone(trade.closed_at, timezone_name)
 
     return render_template(
         "trade_detail.html",
@@ -1602,6 +1671,9 @@ def trade_detail(trade_id):
         trade=trade,
         trade_pnl=trade_pnl,
         trade_pips=trade_pips,
+        trade_opened_at_label=opened_at_local.strftime("%d %b %Y %H:%M") if opened_at_local else "-",
+        trade_closed_at_label=closed_at_local.strftime("%d %b %Y %H:%M") if closed_at_local else "-",
+        analytics_timezone=timezone_name,
     )
 
 
@@ -1624,6 +1696,7 @@ def edit_trade(trade_id):
         if symbol not in allowed_symbols:
             return redirect(url_for("edit_trade", trade_id=trade.id))
         side = request.form.get("side", "BUY").strip().upper()
+        status = request.form.get("status", "Running").strip().lower()
         entry_price = float(request.form.get("entry_price", 0.0))
         exit_price = request.form.get("exit_price", "").strip()
         exit_price = float(exit_price) if exit_price else None
@@ -1631,15 +1704,18 @@ def edit_trade(trade_id):
         trade_note = request.form.get("trade_note", "").strip()
         pnl = request.form.get("pnl", "").strip()
         pnl = float(pnl) if pnl else None
-        trade_date_raw = request.form.get("trade_date", "").strip()
-        try:
-            opened_at = (
-                datetime.strptime(trade_date_raw, "%Y-%m-%d")
-                if trade_date_raw
-                else trade.opened_at
-            )
-        except ValueError:
+        opened_at = parse_local_datetime_input(request.form.get("opened_at", "").strip())
+        if opened_at is None:
+            opened_at = parse_local_datetime_input(request.form.get("trade_date", "").strip())
+        if opened_at is None:
             opened_at = trade.opened_at
+        closed_at = parse_local_datetime_input(request.form.get("closed_at", "").strip())
+        if status != "closed":
+            closed_at = None
+        elif closed_at is None:
+            closed_at = trade.closed_at
+        if closed_at is not None and opened_at is not None and closed_at < opened_at:
+            closed_at = None
 
         if pnl is not None and exit_price is None:
             exit_price = derive_exit_price(
@@ -1666,6 +1742,7 @@ def edit_trade(trade_id):
         trade.trade_note = trade_note
         trade.pnl = pnl
         trade.opened_at = opened_at
+        trade.closed_at = closed_at
 
         db.session.commit()
         return redirect(url_for("trades"))
@@ -1678,6 +1755,9 @@ def edit_trade(trade_id):
         trade=trade,
         form_action=url_for("edit_trade", trade_id=trade.id),
         form_mode="edit",
+        opened_at_value=format_local_datetime_input(trade.opened_at),
+        closed_at_value=format_local_datetime_input(trade.closed_at),
+        analytics_timezone=get_app_timezone_name(),
     )
 
 

@@ -1,0 +1,1177 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% set summary = analytics.summary %}
+{% set streaks = analytics.streaks %}
+{% set best_trade = summary.best_trade %}
+{% set worst_trade = summary.worst_trade %}
+{% set top_pair = analytics.pair_stats[0] if analytics.pair_stats else none %}
+{% set top_session = analytics.session_stats[0] if analytics.session_stats else none %}
+<section class="analytics-shell">
+    <div class="analytics-content">
+        <header class="analytics-hero panel">
+            <div>
+                <p class="eyebrow">Analytics</p>
+                <h1>Performance Analytics</h1>
+                <p class="hero-copy">Review edge quality, session timing, and consistency drift from the same data already feeding your dashboard.</p>
+            </div>
+            <div class="hero-meta">
+                {% if active_trade_account %}
+                <div class="meta-chip">
+                    <span>Account</span>
+                    <strong>{{ active_trade_account.name }}</strong>
+                </div>
+                {% endif %}
+                <div class="meta-chip">
+                    <span>Timezone</span>
+                    <strong>{{ analytics_timezone }}</strong>
+                </div>
+                <div class="meta-chip">
+                    <span>Week Start</span>
+                    <strong>{{ analytics.week_label }}</strong>
+                </div>
+            </div>
+        </header>
+
+        {% if summary.closed_trades == 0 %}
+        <section class="panel empty-state">
+            <h2>No closed trades yet</h2>
+            <p>Analytics unlock after you log at least one closed trade with realized PnL. Open trades are still tracked on the trade journal.</p>
+            <div class="empty-actions">
+                <a href="{{ url_for('new_trade') }}" class="trades-btn">Add Trade</a>
+                <a href="{{ url_for('trades') }}" class="ghost-btn">Open Journal</a>
+            </div>
+        </section>
+        {% else %}
+        <section class="kpi-grid">
+            <article class="kpi-card panel">
+                <p class="kpi-label">Win Rate</p>
+                <p class="kpi-value">{{ '%.1f'|format(summary.win_rate) }}%</p>
+                <p class="kpi-note">{{ summary.wins }}W / {{ summary.losses }}L / {{ summary.breakeven }}BE</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">Weekly PnL</p>
+                <p class="kpi-value {% if summary.weekly_pnl > 0 %}good{% elif summary.weekly_pnl < 0 %}bad{% endif %}">
+                    {% if summary.weekly_pnl > 0 %}+{% endif %}${{ '%.2f'|format(summary.weekly_pnl) }}
+                </p>
+                <p class="kpi-note">Since {{ analytics.week_label }}</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">Monthly PnL</p>
+                <p class="kpi-value {% if summary.monthly_pnl > 0 %}good{% elif summary.monthly_pnl < 0 %}bad{% endif %}">
+                    {% if summary.monthly_pnl > 0 %}+{% endif %}${{ '%.2f'|format(summary.monthly_pnl) }}
+                </p>
+                <p class="kpi-note">{{ summary.trading_days }} trading day{% if summary.trading_days != 1 %}s{% endif %}</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">Expectancy</p>
+                <p class="kpi-value {% if summary.expectancy and summary.expectancy > 0 %}good{% elif summary.expectancy and summary.expectancy < 0 %}bad{% endif %}">
+                    {% if summary.expectancy is not none %}
+                    {{ '%+.2f'|format(summary.expectancy) }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </p>
+                <p class="kpi-note">Average result per closed trade</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">Profit Factor</p>
+                <p class="kpi-value">
+                    {% if summary.profit_factor is not none %}
+                    {{ '%.2f'|format(summary.profit_factor) }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </p>
+                <p class="kpi-note">Gross profit / gross loss</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">Avg Duration</p>
+                <p class="kpi-value">{{ summary.average_duration_label }}</p>
+                <p class="kpi-note">{{ '%.0f'|format(summary.duration_coverage) }}% coverage from trades with open and close timestamps</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">Max Drawdown</p>
+                <p class="kpi-value bad">${{ '%.2f'|format(summary.max_drawdown) }}</p>
+                <p class="kpi-note">Measured from cumulative closed-trade equity</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">Trade Count</p>
+                <p class="kpi-value">{{ summary.closed_trades }}</p>
+                <p class="kpi-note">{{ summary.open_trades }} open / {{ summary.total_trades }} total</p>
+            </article>
+        </section>
+
+        <section class="analytics-grid">
+            <article class="panel equity-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Equity Curve</h2>
+                        <p class="panel-copy">Cumulative realized PnL across closed trades.</p>
+                    </div>
+                    <div class="chart-controls">
+                        <label for="equityMode">View</label>
+                        <select id="equityMode" aria-label="Equity curve mode">
+                            <option value="trade" selected>Every Trade</option>
+                            <option value="day">Daily Close</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="chart-shell" id="equityChartShell">
+                    <svg id="equityChart" viewBox="0 0 760 280" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Equity curve">
+                        <defs>
+                            <linearGradient id="analyticsEquityStroke" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#2f8a58"></stop>
+                                <stop offset="100%" stop-color="#6ad69b"></stop>
+                            </linearGradient>
+                            <linearGradient id="analyticsEquityFill" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="rgba(79, 185, 128, 0.28)"></stop>
+                                <stop offset="100%" stop-color="rgba(79, 185, 128, 0.03)"></stop>
+                            </linearGradient>
+                        </defs>
+                        <g id="equityChartGrid"></g>
+                        <path id="equityChartArea" class="chart-area"></path>
+                        <path id="equityChartGlow" class="chart-glow"></path>
+                        <path id="equityChartPath" class="chart-path"></path>
+                        <line id="equityChartZero" class="zero-line" x1="0" x2="760" y1="0" y2="0" hidden></line>
+                        <g id="equityChartPoints"></g>
+                    </svg>
+                    <div id="equityChartTooltip" class="chart-tooltip" hidden></div>
+                </div>
+                <div id="equityChartAxis" class="chart-axis"></div>
+                <script id="analyticsEquityTradesData" type="application/json">{{ analytics.equity_curve|tojson }}</script>
+                <script id="analyticsEquityDaysData" type="application/json">{{ analytics.daily_equity_curve|tojson }}</script>
+            </article>
+
+            <article class="panel overview-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Core Readout</h2>
+                        <p class="panel-copy">High-signal stats for edge quality and downside control.</p>
+                    </div>
+                </div>
+                <dl class="detail-list">
+                    <div>
+                        <dt>Net PnL</dt>
+                        <dd class="{% if summary.net_pnl > 0 %}good{% elif summary.net_pnl < 0 %}bad{% endif %}">
+                            {% if summary.net_pnl > 0 %}+{% endif %}${{ '%.2f'|format(summary.net_pnl) }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt>Gross Profit</dt>
+                        <dd class="good">+${{ '%.2f'|format(summary.gross_profit) }}</dd>
+                    </div>
+                    <div>
+                        <dt>Gross Loss</dt>
+                        <dd class="bad">${{ '%.2f'|format(summary.gross_loss) }}</dd>
+                    </div>
+                    <div>
+                        <dt>Average Win</dt>
+                        <dd>{% if summary.avg_win is not none %}+${{ '%.2f'|format(summary.avg_win) }}{% else %}-{% endif %}</dd>
+                    </div>
+                    <div>
+                        <dt>Average Loss</dt>
+                        <dd>{% if summary.avg_loss_abs is not none %}-${{ '%.2f'|format(summary.avg_loss_abs) }}{% else %}-{% endif %}</dd>
+                    </div>
+                    <div>
+                        <dt>Payoff Ratio</dt>
+                        <dd>{% if summary.payoff_ratio is not none %}1 : {{ '%.2f'|format(summary.payoff_ratio) }}{% else %}-{% endif %}</dd>
+                    </div>
+                </dl>
+
+                <div class="callout-grid">
+                    <article class="callout-card">
+                        <p class="callout-label">Best Trade</p>
+                        {% if best_trade %}
+                        <p class="callout-value good">{{ '%+.2f'|format(best_trade.pnl) }}</p>
+                        <p class="callout-note">{{ best_trade.symbol }} · {{ best_trade.opened_label }}</p>
+                        {% else %}
+                        <p class="callout-value">-</p>
+                        {% endif %}
+                    </article>
+                    <article class="callout-card">
+                        <p class="callout-label">Worst Trade</p>
+                        {% if worst_trade %}
+                        <p class="callout-value bad">{{ '%+.2f'|format(worst_trade.pnl) }}</p>
+                        <p class="callout-note">{{ worst_trade.symbol }} · {{ worst_trade.opened_label }}</p>
+                        {% else %}
+                        <p class="callout-value">-</p>
+                        {% endif %}
+                    </article>
+                </div>
+            </article>
+
+            <article class="panel streak-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Streak Tracking</h2>
+                        <p class="panel-copy">Current run plus best historical streaks.</p>
+                    </div>
+                </div>
+                <div class="streak-grid">
+                    <article class="streak-card">
+                        <p class="streak-label">Current</p>
+                        <p class="streak-value">
+                            {% if streaks.current_length %}
+                            {{ streaks.current_type|capitalize }} x{{ streaks.current_length }}
+                            {% else %}
+                            None
+                            {% endif %}
+                        </p>
+                    </article>
+                    <article class="streak-card">
+                        <p class="streak-label">Best Win Streak</p>
+                        <p class="streak-value good">x{{ streaks.best_win_streak }}</p>
+                    </article>
+                    <article class="streak-card">
+                        <p class="streak-label">Best Loss Streak</p>
+                        <p class="streak-value bad">x{{ streaks.best_loss_streak }}</p>
+                    </article>
+                </div>
+                <p class="context-note">Streaks are calculated from closed trades in chronological order.</p>
+            </article>
+
+            <article class="panel chart-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Win Rate By Day</h2>
+                        <p class="panel-copy">Each bar uses your local analytics timezone.</p>
+                    </div>
+                </div>
+                <div class="mini-chart-shell">
+                    <svg id="weekdayChart" viewBox="0 0 560 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Weekday win rate chart"></svg>
+                </div>
+                <script id="analyticsWeekdayData" type="application/json">{{ analytics.weekday_stats|tojson }}</script>
+            </article>
+
+            <article class="panel session-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Session Performance</h2>
+                        <p class="panel-copy">Sessions are classified from UTC trade-open timestamps against Sydney, Tokyo, London, and New York market hours.</p>
+                    </div>
+                </div>
+                <div class="mini-chart-shell">
+                    <svg id="sessionChart" viewBox="0 0 560 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Session net PnL chart"></svg>
+                </div>
+                <script id="analyticsSessionData" type="application/json">{{ analytics.session_stats|tojson }}</script>
+                <p class="context-note">Daylight saving shifts are handled by the underlying IANA time zone rules for each session.</p>
+            </article>
+
+            <article class="panel table-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Pair Breakdown</h2>
+                        <p class="panel-copy">Where your edge is concentrated right now.</p>
+                    </div>
+                    {% if top_pair %}
+                    <span class="soft-badge">Most traded: {{ top_pair.symbol }}</span>
+                    {% endif %}
+                </div>
+                <div class="table-shell analytics-table-shell">
+                    <table class="analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Pair</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>Expectancy</th>
+                                <th>Net PnL</th>
+                                <th>PF</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pair in analytics.pair_stats %}
+                            <tr>
+                                <td>{{ pair.symbol }}</td>
+                                <td>{{ pair.count }}</td>
+                                <td>{% if pair.win_rate is not none %}{{ '%.1f'|format(pair.win_rate) }}%{% else %}-{% endif %}</td>
+                                <td class="{% if pair.expectancy and pair.expectancy > 0 %}good{% elif pair.expectancy and pair.expectancy < 0 %}bad{% endif %}">
+                                    {% if pair.expectancy is not none %}{{ '%+.2f'|format(pair.expectancy) }}{% else %}-{% endif %}
+                                </td>
+                                <td class="{% if pair.net_pnl > 0 %}good{% elif pair.net_pnl < 0 %}bad{% endif %}">
+                                    {{ '%+.2f'|format(pair.net_pnl) }}
+                                </td>
+                                <td>{% if pair.profit_factor is not none %}{{ '%.2f'|format(pair.profit_factor) }}{% else %}-{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel table-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Weekday Breakdown</h2>
+                        <p class="panel-copy">Use this to spot timing drift across the week.</p>
+                    </div>
+                </div>
+                <div class="table-shell analytics-table-shell">
+                    <table class="analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Day</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>Avg PnL</th>
+                                <th>Net PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for weekday in analytics.weekday_stats %}
+                            <tr>
+                                <td>{{ weekday.name }}</td>
+                                <td>{{ weekday.count }}</td>
+                                <td>{% if weekday.win_rate is not none %}{{ '%.1f'|format(weekday.win_rate) }}%{% else %}-{% endif %}</td>
+                                <td class="{% if weekday.avg_pnl and weekday.avg_pnl > 0 %}good{% elif weekday.avg_pnl and weekday.avg_pnl < 0 %}bad{% endif %}">
+                                    {% if weekday.avg_pnl is not none %}{{ '%+.2f'|format(weekday.avg_pnl) }}{% else %}-{% endif %}
+                                </td>
+                                <td class="{% if weekday.net_pnl > 0 %}good{% elif weekday.net_pnl < 0 %}bad{% endif %}">
+                                    {{ '%+.2f'|format(weekday.net_pnl) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel table-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Session Breakdown</h2>
+                        <p class="panel-copy">Overlap periods will appear as combined session names.</p>
+                    </div>
+                    {% if top_session %}
+                    <span class="soft-badge">Most active: {{ top_session.name }}</span>
+                    {% endif %}
+                </div>
+                <div class="table-shell analytics-table-shell">
+                    <table class="analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Session</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>Expectancy</th>
+                                <th>Net PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for session_stat in analytics.session_stats %}
+                            <tr>
+                                <td>{{ session_stat.name }}</td>
+                                <td>{{ session_stat.count }}</td>
+                                <td>{% if session_stat.win_rate is not none %}{{ '%.1f'|format(session_stat.win_rate) }}%{% else %}-{% endif %}</td>
+                                <td class="{% if session_stat.expectancy and session_stat.expectancy > 0 %}good{% elif session_stat.expectancy and session_stat.expectancy < 0 %}bad{% endif %}">
+                                    {% if session_stat.expectancy is not none %}{{ '%+.2f'|format(session_stat.expectancy) }}{% else %}-{% endif %}
+                                </td>
+                                <td class="{% if session_stat.net_pnl > 0 %}good{% elif session_stat.net_pnl < 0 %}bad{% endif %}">
+                                    {{ '%+.2f'|format(session_stat.net_pnl) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel history-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Closed Trade History</h2>
+                        <p class="panel-copy">Recent closed trades with timing, session classification, and duration.</p>
+                    </div>
+                </div>
+                <div class="table-shell analytics-table-shell">
+                    <table class="analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Pair</th>
+                                <th>Side</th>
+                                <th>Opened</th>
+                                <th>Session</th>
+                                <th>Duration</th>
+                                <th>Pips</th>
+                                <th>PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for record in analytics.closed_records|reverse %}
+                            <tr>
+                                <td>{{ record.symbol }}</td>
+                                <td>{{ record.side }}</td>
+                                <td>{{ record.opened_label }}</td>
+                                <td>{{ record.session }}</td>
+                                <td>{{ record.duration_label }}</td>
+                                <td>
+                                    {% if record.pips is not none %}
+                                    {{ '%+.1f'|format(record.pips) }}
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </td>
+                                <td class="{% if record.pnl > 0 %}good{% elif record.pnl < 0 %}bad{% endif %}">
+                                    {{ '%+.2f'|format(record.pnl) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+        </section>
+        {% endif %}
+    </div>
+</section>
+<style>
+    main {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+    }
+
+    .analytics-shell {
+        min-height: 100vh;
+        padding: clamp(0.9rem, 2vw, 1.5rem);
+    }
+
+    .analytics-content {
+        display: grid;
+        gap: 0.9rem;
+    }
+
+    .panel {
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 16px;
+        background: color-mix(in srgb, var(--card) 72%, transparent);
+        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.16);
+        padding: 1rem;
+        min-width: 0;
+    }
+
+    .analytics-hero {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+
+    .eyebrow {
+        margin: 0 0 0.45rem;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+    }
+
+    h1 {
+        margin: 0;
+        font-size: clamp(1.4rem, 2.8vw, 2.4rem);
+        color: var(--ink);
+    }
+
+    h2 {
+        margin: 0;
+        font-size: 1.02rem;
+        color: var(--ink);
+    }
+
+    .hero-copy,
+    .panel-copy,
+    .context-note {
+        margin: 0.4rem 0 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+    }
+
+    .hero-meta {
+        display: flex;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .meta-chip,
+    .soft-badge {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface) 68%, transparent);
+        padding: 0.6rem 0.8rem;
+        min-width: 0;
+    }
+
+    .meta-chip span,
+    .soft-badge {
+        display: block;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .meta-chip strong {
+        display: block;
+        margin-top: 0.2rem;
+        font-size: 0.92rem;
+        color: var(--ink);
+    }
+
+    .soft-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        color: var(--muted);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 2rem 1rem;
+    }
+
+    .empty-state h2 {
+        font-size: 1.2rem;
+    }
+
+    .empty-state p {
+        max-width: 620px;
+        margin: 0.65rem auto 0;
+        color: var(--muted);
+    }
+
+    .empty-actions {
+        margin-top: 1rem;
+        display: flex;
+        gap: 0.65rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .ghost-btn,
+    .trades-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        padding: 0 0.92rem;
+        border-radius: 10px;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        text-decoration: none;
+    }
+
+    .trades-btn {
+        border: 1px solid color-mix(in srgb, var(--good) 62%, var(--border));
+        background: color-mix(in srgb, var(--good) 16%, var(--card));
+        color: color-mix(in srgb, var(--good) 82%, white 18%);
+        box-shadow: 0 10px 22px rgba(34, 197, 94, 0.14);
+    }
+
+    .ghost-btn {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        background: color-mix(in srgb, var(--surface) 72%, transparent);
+        color: var(--ink);
+    }
+
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.9rem;
+    }
+
+    .kpi-card {
+        padding: 0.95rem 1rem;
+    }
+
+    .kpi-label {
+        margin: 0;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .kpi-value {
+        margin: 0.42rem 0 0;
+        font-size: clamp(1.28rem, 2vw, 1.88rem);
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .kpi-note {
+        margin: 0.28rem 0 0;
+        color: var(--muted);
+        font-size: 0.84rem;
+    }
+
+    .analytics-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.9rem;
+        align-items: start;
+    }
+
+    .equity-panel,
+    .history-panel {
+        grid-column: 1 / -1;
+    }
+
+    .panel-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        align-items: flex-start;
+        margin-bottom: 0.85rem;
+    }
+
+    .chart-controls {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+
+    .chart-controls select {
+        min-height: 38px;
+        border-radius: 10px;
+        border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+        background: color-mix(in srgb, var(--surface) 80%, transparent);
+        color: var(--ink);
+        padding: 0 0.8rem;
+        font: inherit;
+    }
+
+    .chart-shell,
+    .mini-chart-shell {
+        position: relative;
+        border-radius: 14px;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        background:
+            radial-gradient(circle at top, color-mix(in srgb, var(--accent) 10%, transparent), transparent 58%),
+            color-mix(in srgb, var(--surface) 82%, transparent);
+        overflow: hidden;
+    }
+
+    .chart-shell {
+        min-height: 280px;
+        padding: 0.45rem;
+    }
+
+    .mini-chart-shell {
+        min-height: 240px;
+        padding: 0.35rem;
+    }
+
+    #equityChart,
+    #weekdayChart,
+    #sessionChart {
+        display: block;
+        width: 100%;
+        height: auto;
+    }
+
+    .chart-axis {
+        display: flex;
+        position: relative;
+        min-height: 1.4rem;
+        margin-top: 0.35rem;
+    }
+
+    .chart-axis .axis-label {
+        position: absolute;
+        transform: translateX(-50%);
+        font-size: 0.72rem;
+        color: var(--muted);
+        white-space: nowrap;
+    }
+
+    .chart-tooltip {
+        position: absolute;
+        z-index: 2;
+        transform: translate(-50%, calc(-100% - 10px));
+        border-radius: 10px;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        background: color-mix(in srgb, var(--card) 94%, transparent);
+        color: var(--ink);
+        padding: 0.45rem 0.6rem;
+        font-size: 0.76rem;
+        font-weight: 700;
+        box-shadow: 0 12px 30px rgba(2, 6, 23, 0.2);
+        pointer-events: none;
+        white-space: nowrap;
+    }
+
+    .chart-area {
+        fill: url(#analyticsEquityFill);
+    }
+
+    .chart-glow {
+        fill: none;
+        stroke: color-mix(in srgb, var(--good) 60%, transparent);
+        stroke-width: 9;
+        opacity: 0.18;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    .chart-path {
+        fill: none;
+        stroke: url(#analyticsEquityStroke);
+        stroke-width: 3.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+
+    .zero-line,
+    .grid-line {
+        stroke: color-mix(in srgb, var(--border) 68%, transparent);
+        stroke-width: 1;
+    }
+
+    .chart-point {
+        fill: color-mix(in srgb, var(--card) 85%, transparent);
+        stroke: var(--good);
+        stroke-width: 2.2;
+    }
+
+    .detail-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin: 0;
+    }
+
+    .detail-list div {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 14px;
+        padding: 0.8rem 0.9rem;
+        background: color-mix(in srgb, var(--surface) 72%, transparent);
+    }
+
+    .detail-list dt {
+        margin: 0;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .detail-list dd {
+        margin: 0.35rem 0 0;
+        font-size: 1.06rem;
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .callout-grid,
+    .streak-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin-top: 0.85rem;
+    }
+
+    .streak-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-top: 0;
+    }
+
+    .callout-card,
+    .streak-card {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 14px;
+        padding: 0.85rem 0.9rem;
+        background: color-mix(in srgb, var(--surface) 72%, transparent);
+    }
+
+    .callout-label,
+    .streak-label {
+        margin: 0;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .callout-value,
+    .streak-value {
+        margin: 0.34rem 0 0;
+        font-size: 1.16rem;
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .callout-note {
+        margin: 0.28rem 0 0;
+        color: var(--muted);
+        font-size: 0.82rem;
+    }
+
+    .table-shell {
+        overflow: auto;
+        border-radius: 14px;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        background: color-mix(in srgb, var(--surface) 72%, transparent);
+    }
+
+    .analytics-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 640px;
+    }
+
+    .analytics-table th,
+    .analytics-table td {
+        padding: 0.82rem 0.88rem;
+        text-align: left;
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+        font-size: 0.86rem;
+        white-space: nowrap;
+    }
+
+    .analytics-table th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        color: var(--muted);
+        font-size: 0.75rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    .analytics-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+
+    .good {
+        color: var(--good) !important;
+    }
+
+    .bad {
+        color: var(--bad) !important;
+    }
+
+    @media (max-width: 1180px) {
+        .kpi-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .analytics-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 760px) {
+        .analytics-shell {
+            padding: 0.9rem;
+        }
+
+        .analytics-hero,
+        .panel-head {
+            flex-direction: column;
+        }
+
+        .hero-meta {
+            justify-content: flex-start;
+        }
+
+        .kpi-grid,
+        .detail-list,
+        .callout-grid,
+        .streak-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .analytics-table {
+            min-width: 560px;
+        }
+    }
+</style>
+
+<script>
+(() => {
+    const parseJson = (id, fallback = []) => {
+        const node = document.getElementById(id);
+        if (!node) return fallback;
+        try {
+            const parsed = JSON.parse(node.textContent || "[]");
+            return Array.isArray(parsed) ? parsed : fallback;
+        } catch {
+            return fallback;
+        }
+    };
+
+    const equityTradeData = parseJson("analyticsEquityTradesData");
+    const equityDayData = parseJson("analyticsEquityDaysData");
+    const weekdayData = parseJson("analyticsWeekdayData");
+    const sessionData = parseJson("analyticsSessionData");
+
+    const smoothPath = (points) => {
+        if (!points.length) return "";
+        if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+        const tension = 0.2;
+        let d = `M ${points[0].x} ${points[0].y}`;
+        for (let i = 0; i < points.length - 1; i += 1) {
+            const p0 = points[i - 1] || points[i];
+            const p1 = points[i];
+            const p2 = points[i + 1];
+            const p3 = points[i + 2] || p2;
+            const cp1x = p1.x + (p2.x - p0.x) * tension;
+            const cp1y = p1.y + (p2.y - p0.y) * tension;
+            const cp2x = p2.x - (p3.x - p1.x) * tension;
+            const cp2y = p2.y - (p3.y - p1.y) * tension;
+            d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+        }
+        return d;
+    };
+
+    const renderEquityChart = () => {
+        const shell = document.getElementById("equityChartShell");
+        const svg = document.getElementById("equityChart");
+        const grid = document.getElementById("equityChartGrid");
+        const area = document.getElementById("equityChartArea");
+        const glow = document.getElementById("equityChartGlow");
+        const path = document.getElementById("equityChartPath");
+        const zeroLine = document.getElementById("equityChartZero");
+        const pointsGroup = document.getElementById("equityChartPoints");
+        const tooltip = document.getElementById("equityChartTooltip");
+        const axis = document.getElementById("equityChartAxis");
+        const modeSelect = document.getElementById("equityMode");
+        if (!shell || !svg || !grid || !area || !glow || !path || !zeroLine || !pointsGroup || !tooltip || !axis) {
+            return;
+        }
+
+        const width = 760;
+        const height = 280;
+        const pad = { t: 22, r: 22, b: 28, l: 26 };
+        const plotW = width - pad.l - pad.r;
+        const plotH = height - pad.t - pad.b;
+
+        const normalizePoint = (point, index) => {
+            const equity = Number(point && point.equity);
+            if (!Number.isFinite(equity)) return null;
+            const label = (point && point.label) ? String(point.label) : `${index + 1}`;
+            const dateLabel = (point && point.date) ? String(point.date) : label;
+            return { label, dateLabel, equity };
+        };
+
+        const getData = () => {
+            const mode = modeSelect ? modeSelect.value : "trade";
+            const source = mode === "day" ? equityDayData : equityTradeData;
+            return source.map(normalizePoint).filter(Boolean);
+        };
+
+        let renderedPoints = [];
+
+        const getViewport = () => {
+            const rect = svg.getBoundingClientRect();
+            const scale = Math.min(rect.width / width, rect.height / height);
+            return {
+                rect,
+                scale,
+                offsetX: (rect.width - width * scale) / 2,
+                offsetY: (rect.height - height * scale) / 2,
+            };
+        };
+
+        const setTooltip = (point) => {
+            const shellRect = shell.getBoundingClientRect();
+            const viewport = getViewport();
+            tooltip.hidden = false;
+            tooltip.textContent = `${point.dateLabel}: ${point.equity > 0 ? "+" : ""}$${point.equity.toFixed(2)}`;
+            tooltip.style.left = `${viewport.rect.left - shellRect.left + viewport.offsetX + point.x * viewport.scale}px`;
+            tooltip.style.top = `${viewport.rect.top - shellRect.top + viewport.offsetY + point.y * viewport.scale}px`;
+        };
+
+        const hideTooltip = () => {
+            tooltip.hidden = true;
+        };
+
+        const renderAxis = (points) => {
+            axis.innerHTML = "";
+            if (!points.length) return;
+            const step = points.length > 10 ? Math.ceil(points.length / 6) : 1;
+            points.forEach((point, index) => {
+                const isEdge = index === 0 || index === points.length - 1;
+                if (!isEdge && index % step !== 0) return;
+                const label = document.createElement("span");
+                label.className = "axis-label";
+                label.textContent = point.label;
+                label.style.left = `${(point.x / width) * 100}%`;
+                axis.appendChild(label);
+            });
+        };
+
+        const render = () => {
+            const data = getData();
+            if (!data.length) {
+                path.setAttribute("d", "");
+                area.setAttribute("d", "");
+                glow.setAttribute("d", "");
+                pointsGroup.innerHTML = "";
+                axis.innerHTML = "";
+                return;
+            }
+
+            const values = data.map((item) => item.equity);
+            const minRaw = Math.min(...values);
+            const maxRaw = Math.max(...values);
+            const span = maxRaw - minRaw || 1;
+            const minV = minRaw - span * 0.12;
+            const maxV = maxRaw + span * 0.12;
+            const xFor = (index, count) => count === 1 ? width / 2 : pad.l + (index / (count - 1)) * plotW;
+            const yFor = (value) => pad.t + ((maxV - value) / (maxV - minV || 1)) * plotH;
+
+            renderedPoints = data.map((item, index) => ({
+                ...item,
+                x: xFor(index, data.length),
+                y: yFor(item.equity),
+            }));
+
+            grid.innerHTML = "";
+            for (let i = 0; i < 5; i += 1) {
+                const y = pad.t + (plotH / 4) * i;
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("class", "grid-line");
+                line.setAttribute("x1", String(pad.l));
+                line.setAttribute("x2", String(width - pad.r));
+                line.setAttribute("y1", String(y));
+                line.setAttribute("y2", String(y));
+                grid.appendChild(line);
+            }
+
+            const lineD = smoothPath(renderedPoints);
+            path.setAttribute("d", lineD);
+            glow.setAttribute("d", lineD);
+            const floorY = yFor(minV);
+            area.setAttribute("d", `${lineD} L ${renderedPoints[renderedPoints.length - 1].x} ${floorY} L ${renderedPoints[0].x} ${floorY} Z`);
+
+            if (minV <= 0 && maxV >= 0) {
+                const zeroY = yFor(0);
+                zeroLine.hidden = false;
+                zeroLine.setAttribute("y1", String(zeroY));
+                zeroLine.setAttribute("y2", String(zeroY));
+            } else {
+                zeroLine.hidden = true;
+            }
+
+            pointsGroup.innerHTML = "";
+            renderedPoints.forEach((point) => {
+                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                circle.setAttribute("class", "chart-point");
+                circle.setAttribute("cx", String(point.x));
+                circle.setAttribute("cy", String(point.y));
+                circle.setAttribute("r", "4.2");
+                circle.addEventListener("mouseenter", () => setTooltip(point));
+                circle.addEventListener("focus", () => setTooltip(point));
+                circle.addEventListener("mouseleave", hideTooltip);
+                circle.addEventListener("blur", hideTooltip);
+                circle.setAttribute("tabindex", "0");
+                pointsGroup.appendChild(circle);
+            });
+
+            renderAxis(renderedPoints);
+        };
+
+        svg.addEventListener("pointerleave", hideTooltip);
+        shell.addEventListener("mouseleave", hideTooltip);
+        if (modeSelect) {
+            modeSelect.addEventListener("change", render);
+        }
+        window.addEventListener("resize", render, { passive: true });
+        render();
+    };
+
+    const renderBarChart = (svgId, data, options) => {
+        const svg = document.getElementById(svgId);
+        if (!svg) return;
+        const width = 560;
+        const height = 240;
+        const pad = { t: 24, r: 18, b: 34, l: 18 };
+        const plotW = width - pad.l - pad.r;
+        const plotH = height - pad.t - pad.b;
+        const cleaned = data.filter((item) => Number.isFinite(Number(options.value(item))));
+        if (!cleaned.length) {
+            svg.innerHTML = "";
+            return;
+        }
+
+        const maxAbs = Math.max(...cleaned.map((item) => Math.abs(Number(options.value(item)))), 1);
+        const zeroY = pad.t + plotH / 2;
+        const colW = plotW / cleaned.length;
+        svg.innerHTML = "";
+
+        const baseline = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        baseline.setAttribute("x1", String(pad.l));
+        baseline.setAttribute("x2", String(width - pad.r));
+        baseline.setAttribute("y1", String(zeroY));
+        baseline.setAttribute("y2", String(zeroY));
+        baseline.setAttribute("stroke", "color-mix(in srgb, var(--border) 70%, transparent)");
+        baseline.setAttribute("stroke-width", "1");
+        svg.appendChild(baseline);
+
+        cleaned.forEach((item, index) => {
+            const value = Number(options.value(item));
+            const barH = Math.max((Math.abs(value) / maxAbs) * (plotH / 2 - 14), 2);
+            const x = pad.l + index * colW + colW * 0.15;
+            const barW = colW * 0.7;
+            const y = value >= 0 ? zeroY - barH : zeroY;
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute("x", String(x));
+            rect.setAttribute("y", String(y));
+            rect.setAttribute("width", String(barW));
+            rect.setAttribute("height", String(barH));
+            rect.setAttribute("rx", "8");
+            rect.setAttribute("fill", value >= 0 ? "rgba(34, 197, 94, 0.72)" : "rgba(239, 68, 68, 0.72)");
+            svg.appendChild(rect);
+
+            const caption = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            caption.setAttribute("x", String(x + barW / 2));
+            caption.setAttribute("y", String(height - 12));
+            caption.setAttribute("text-anchor", "middle");
+            caption.setAttribute("font-size", "11");
+            caption.setAttribute("font-weight", "700");
+            caption.setAttribute("fill", "currentColor");
+            caption.textContent = options.label(item);
+            svg.appendChild(caption);
+
+            const topLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            topLabel.setAttribute("x", String(x + barW / 2));
+            topLabel.setAttribute("y", String(value >= 0 ? y - 6 : y + barH + 14));
+            topLabel.setAttribute("text-anchor", "middle");
+            topLabel.setAttribute("font-size", "10");
+            topLabel.setAttribute("font-weight", "700");
+            topLabel.setAttribute("fill", "currentColor");
+            topLabel.textContent = options.caption(item);
+            svg.appendChild(topLabel);
+        });
+    };
+
+    renderEquityChart();
+    renderBarChart("weekdayChart", weekdayData, {
+        value: (item) => item.win_rate ?? 0,
+        label: (item) => item.label || item.name?.slice(0, 3) || "",
+        caption: (item) => item.count ? `${Number(item.win_rate ?? 0).toFixed(0)}%` : "0",
+    });
+    renderBarChart("sessionChart", sessionData, {
+        value: (item) => item.net_pnl ?? 0,
+        label: (item) => item.name || "",
+        caption: (item) => `${Number(item.net_pnl ?? 0) > 0 ? "+" : ""}${Number(item.net_pnl ?? 0).toFixed(0)}`,
+    });
+})();
+</script>
+{% endblock %}
