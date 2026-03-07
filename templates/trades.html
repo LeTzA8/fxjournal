@@ -177,6 +177,10 @@
                                     <span class="pip-note">
                                         ({{ '%+.1f'|format(trade.pips) }} pips)
                                     </span>
+                                    {% elif trade.ticks is not none %}
+                                    <span class="pip-note">
+                                        ({{ '%+.1f'|format(trade.ticks) }} ticks)
+                                    </span>
                                     {% endif %}
                                 </td>
                                 <td>
@@ -664,4 +668,3 @@
 })();
 </script>
 {% endblock %}
-

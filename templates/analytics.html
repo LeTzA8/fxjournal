@@ -175,9 +175,22 @@
                     </div>
                     <div>
                         <dt>Risk:Reward</dt>
-                        <dd>{% if summary.risk_reward_ratio is not none %}{{ '%.2f'|format(summary.risk_reward_ratio) }} : 1{% else %}-{% endif %}</dd>
+                        <dd>{% if summary.risk_reward_display %}{{ summary.risk_reward_display }}{% else %}-{% endif %}</dd>
                     </div>
                 </dl>
+
+                {% if summary.risk_reward_mode == "account_percent" %}
+                <p class="context-note">Risk:Reward is shown as average realized loss % of account versus average realized win % of account.</p>
+                {% elif summary.risk_reward_mode == "money_ratio" %}
+                <p class="context-note">
+                    Risk:Reward is currently based on average realized loss versus average realized win in money terms.
+                    Add account size in <a href="{{ url_for('trade_accounts') }}">Trade Accounts</a> to switch this to a more accurate % of account view.
+                </p>
+                {% else %}
+                <p class="context-note">
+                    Risk:Reward needs both wins and losses. Add closed trades first, then add account size in <a href="{{ url_for('trade_accounts') }}">Trade Accounts</a> for a % of account view.
+                </p>
+                {% endif %}
 
                 <div class="callout-grid">
                     <article class="callout-card">

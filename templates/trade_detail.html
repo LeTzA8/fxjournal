@@ -51,6 +51,9 @@
                     <label for="pips">Pips (FX only)</label>
                     <input id="pips" type="text" value="{% if trade_pips is not none %}{{ '%+.1f'|format(trade_pips) }} pips{% else %}-{% endif %}" readonly>
 
+                    <label for="ticks">Ticks (Futures only)</label>
+                    <input id="ticks" type="text" value="{% if trade_ticks is not none %}{{ '%+.1f'|format(trade_ticks) }} ticks{% else %}-{% endif %}" readonly>
+
                     <label for="status">Status</label>
                     <input id="status" type="text" value="{% if trade and trade.exit_price is not none %}Closed{% else %}Running{% endif %}" readonly>
 

@@ -46,9 +46,22 @@
             <article class="metric">
                 <p class="metric-label">Avg R:R</p>
                 <p class="metric-value">
-                    {% if avg_rr is not none %}{{ '%.2f'|format(avg_rr) }} : 1{% else %}-{% endif %}
+                    {% if avg_rr_display %}{{ avg_rr_display }}{% else %}-{% endif %}
                 </p>
-                <p class="metric-note">Avg risk / avg reward</p>
+                <p class="metric-note">
+                    {% if avg_rr_mode == "account_percent" %}
+                    Avg loss % / avg win % of account
+                    {% elif avg_rr_mode == "money_ratio" %}
+                    Based on avg realized loss / avg realized win in money terms
+                    {% else %}
+                    No closed win/loss data yet
+                    {% endif %}
+                </p>
+                {% if avg_rr_mode != "account_percent" %}
+                <p class="metric-note">
+                    Add account size in <a href="{{ url_for('trade_accounts') }}">Trade Accounts</a> for a more accurate % based R:R.
+                </p>
+                {% endif %}
             </article>
         </section>
 
@@ -162,6 +175,10 @@
                                     {% if trade.pips is not none %}
                                     <span class="pip-note">
                                         ({{ '%+.1f'|format(trade.pips) }} pips)
+                                    </span>
+                                    {% elif trade.ticks is not none %}
+                                    <span class="pip-note">
+                                        ({{ '%+.1f'|format(trade.ticks) }} ticks)
                                     </span>
                                     {% endif %}
                                 </td>

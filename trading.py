@@ -811,6 +811,20 @@ def calc_pips_values(symbol, side, entry_price, exit_price, instrument_type="CFD
     return direction * ((exit_price - entry_price) / pip_size)
 
 
+def calc_ticks_values(symbol, side, entry_price, exit_price, instrument_type="CFD", contract_code=None):
+    if normalize_account_type(instrument_type) != "FUTURES":
+        return None
+    if entry_price is None or exit_price is None:
+        return None
+
+    spec = get_futures_symbol_spec(symbol=symbol, contract_code=contract_code)
+    if spec is None or spec["tick_size"] <= 0:
+        return None
+
+    direction = 1.0 if (side or "").upper() == "BUY" else -1.0
+    return direction * ((exit_price - entry_price) / spec["tick_size"])
+
+
 def calc_pnl_values(symbol, side, entry_price, exit_price, lot_size, instrument_type="CFD", contract_code=None):
     if entry_price is None or exit_price is None:
         return None
@@ -894,6 +908,17 @@ def resolve_pips(trade):
         entry_price=trade.entry_price,
         exit_price=trade.exit_price,
         instrument_type=get_trade_account_type(trade),
+    )
+
+
+def resolve_ticks(trade):
+    return calc_ticks_values(
+        symbol=trade.symbol,
+        side=trade.side,
+        entry_price=trade.entry_price,
+        exit_price=trade.exit_price,
+        instrument_type=get_trade_account_type(trade),
+        contract_code=getattr(trade, "contract_code", None),
     )
 
 
@@ -1147,7 +1172,12 @@ def calculate_streaks(closed_records):
     }
 
 
-def build_trade_analytics(trades, display_timezone_name="UTC", now_utc=None):
+def build_trade_analytics(
+    trades,
+    display_timezone_name="UTC",
+    now_utc=None,
+    account_size=None,
+):
     display_timezone = get_timezone(display_timezone_name)
     now_utc = ensure_utc_aware(now_utc or datetime.utcnow())
     now_local = now_utc.astimezone(display_timezone)
@@ -1210,6 +1240,42 @@ def build_trade_analytics(trades, display_timezone_name="UTC", now_utc=None):
     expectancy = (net_pnl / total_closed) if total_closed else None
     payoff_ratio = (avg_win / avg_loss_abs) if avg_win is not None and avg_loss_abs else None
     risk_reward_ratio = (avg_loss_abs / avg_win) if avg_loss_abs is not None and avg_win else None
+    normalized_account_size = None
+    if account_size not in {None, ""}:
+        try:
+            normalized_account_size = float(account_size)
+        except (TypeError, ValueError):
+            normalized_account_size = None
+    if normalized_account_size is not None and normalized_account_size <= 0:
+        normalized_account_size = None
+    avg_risk_percent_of_account = (
+        (avg_loss_abs / normalized_account_size * 100.0)
+        if avg_loss_abs is not None and normalized_account_size
+        else None
+    )
+    avg_reward_percent_of_account = (
+        (avg_win / normalized_account_size * 100.0)
+        if avg_win is not None and normalized_account_size
+        else None
+    )
+    percent_based_risk_reward_display = (
+        f"{avg_risk_percent_of_account:.2f}% : {avg_reward_percent_of_account:.2f}%"
+        if avg_risk_percent_of_account is not None and avg_reward_percent_of_account is not None
+        else None
+    )
+    money_based_risk_reward_display = (
+        f"{risk_reward_ratio:.2f} : 1" if risk_reward_ratio is not None else None
+    )
+    risk_reward_display = (
+        percent_based_risk_reward_display or money_based_risk_reward_display
+    )
+    risk_reward_mode = (
+        "account_percent"
+        if percent_based_risk_reward_display is not None
+        else "money_ratio"
+        if money_based_risk_reward_display is not None
+        else "unknown"
+    )
     profit_factor = (gross_profit / abs(gross_loss)) if gross_loss < 0 else None
 
     duration_values = [
@@ -1370,6 +1436,11 @@ def build_trade_analytics(trades, display_timezone_name="UTC", now_utc=None):
             "avg_loss_abs": avg_loss_abs,
             "payoff_ratio": payoff_ratio,
             "risk_reward_ratio": risk_reward_ratio,
+            "avg_risk_percent_of_account": avg_risk_percent_of_account,
+            "avg_reward_percent_of_account": avg_reward_percent_of_account,
+            "risk_reward_display": risk_reward_display,
+            "risk_reward_mode": risk_reward_mode,
+            "risk_reward_known": risk_reward_display is not None,
             "profit_factor": profit_factor,
             "average_duration_minutes": average_duration_minutes,
             "average_duration_label": format_duration_minutes(average_duration_minutes),

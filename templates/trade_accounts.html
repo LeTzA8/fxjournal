@@ -37,6 +37,9 @@
                             <div>
                                 <p class="account-name">{{ trade_account.name }}</p>
                                 <p class="account-meta">Type: {{ "Futures" if trade_account.account_type == "FUTURES" else "CFD" }}</p>
+                                {% if trade_account.account_size is not none %}
+                                <p class="account-meta">Account Size: ${{ '{:,.2f}'.format(trade_account.account_size) }}</p>
+                                {% endif %}
                                 {% if trade_account.external_account_id %}
                                 <p class="account-meta">External ID: {{ trade_account.external_account_id }}</p>
                                 {% else %}
@@ -113,6 +116,18 @@
                         placeholder="Optional broker/prop account ID"
                     >
 
+                    <label for="account_size">Account Size (optional)</label>
+                    <input
+                        id="account_size"
+                        name="account_size"
+                        type="number"
+                        inputmode="decimal"
+                        min="0.01"
+                        step="0.01"
+                        value="{% if edit_target.account_size is not none %}{{ '%.2f'|format(edit_target.account_size) }}{% endif %}"
+                        placeholder="Used for risk % of account"
+                    >
+
                     <label for="account_type">Account Type</label>
                     <select id="account_type" name="account_type" required>
                         {% for option in account_type_choices %}
@@ -147,6 +162,17 @@
                         type="text"
                         maxlength="80"
                         placeholder="Optional broker/prop account ID"
+                    >
+
+                    <label for="account_size">Account Size (optional)</label>
+                    <input
+                        id="account_size"
+                        name="account_size"
+                        type="number"
+                        inputmode="decimal"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Used for risk % of account"
                     >
 
                     <label for="account_type">Account Type</label>
@@ -320,6 +346,7 @@
         letter-spacing: 0.04em; }
 
     .create-form input[type="text"],
+    .create-form input[type="number"],
     .create-form select { border: 1px solid #c7d5cb;
         border-radius: 10px;
         padding: 0.58rem 0.66rem;

@@ -40,6 +40,7 @@ from trading import (
     parse_mt5_xlsx_stream,
     resolve_pips,
     resolve_pnl,
+    resolve_ticks,
     to_display_timezone,
 )
 
@@ -246,6 +247,54 @@ def ensure_trade_accounts_backfill():
 
 def normalize_trade_account_name(value):
     return " ".join(str(value or "").strip().split())
+
+
+def parse_trade_account_size(value):
+    text_value = str(value or "").strip().replace(",", "")
+    if not text_value:
+        return None
+    try:
+        account_size = float(text_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("invalid account size") from exc
+    if account_size <= 0:
+        raise ValueError("invalid account size")
+    return account_size
+
+
+def append_query_params(path_or_url, **params):
+    parsed = urlsplit(str(path_or_url or ""))
+    query_items = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    for key, value in params.items():
+        if value is None:
+            query_items.pop(key, None)
+            continue
+        text_value = str(value).strip()
+        if not text_value:
+            query_items.pop(key, None)
+            continue
+        query_items[key] = text_value
+    return urlunsplit(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            urlencode(query_items, doseq=True),
+            parsed.fragment,
+        )
+    )
+
+
+def get_safe_internal_next(default_endpoint):
+    next_value = (
+        request.form.get("next", "").strip()
+        or request.args.get("next", "").strip()
+        or request.referrer
+        or ""
+    )
+    if next_value.startswith("/") and not next_value.startswith("//"):
+        return next_value
+    return url_for(default_endpoint)
 
 
 def resolve_active_trade_account(user_id, requested_account_id=None):
@@ -524,7 +573,11 @@ def home():
         user_trades = []
 
     timezone_name = get_app_timezone_name()
-    analytics = build_trade_analytics(user_trades, display_timezone_name=timezone_name)
+    analytics = build_trade_analytics(
+        user_trades,
+        display_timezone_name=timezone_name,
+        account_size=active_trade_account.account_size if active_trade_account else None,
+    )
     summary = analytics["summary"]
     closed = [(record["trade"], record["pnl"]) for record in analytics["closed_records"]]
     now_local = to_display_timezone(datetime.utcnow(), timezone_name)
@@ -541,6 +594,7 @@ def home():
     for trade in user_trades:
         pnl_value = resolve_pnl(trade)
         pips_value = resolve_pips(trade)
+        ticks_value = resolve_ticks(trade)
         opened_local = to_display_timezone(trade.opened_at, timezone_name)
         trade_date = opened_local.strftime("%d %b %Y") if opened_local else "-"
         trade_date_value = opened_local.strftime("%Y-%m-%d") if opened_local else ""
@@ -553,6 +607,7 @@ def home():
                 "lot_size": trade.lot_size,
                 "pnl": pnl_value,
                 "pips": pips_value,
+                "ticks": ticks_value,
                 "date": trade_date,
                 "date_value": trade_date_value,
                 "status": "Closed" if trade.exit_price is not None else "Running",
@@ -570,7 +625,9 @@ def home():
         net_pnl_week=summary["weekly_pnl"],
         account_pnl_total=summary["net_pnl"],
         trades_this_month=trades_this_month,
-        avg_rr=summary["risk_reward_ratio"],
+        avg_rr_display=summary["risk_reward_display"],
+        avg_rr_known=summary["risk_reward_known"],
+        avg_rr_mode=summary["risk_reward_mode"],
         recent_trades=recent_trades,
         size_label=size_label,
         chart_points=chart_points,
@@ -603,6 +660,7 @@ def analytics():
     analytics_payload = build_trade_analytics(
         user_trades,
         display_timezone_name=timezone_name,
+        account_size=active_trade_account.account_size if active_trade_account else None,
     )
 
     return render_template(
@@ -835,6 +893,16 @@ def create_trade_account():
     external_account_id = normalize_trade_account_name(
         request.form.get("external_account_id")
     )
+    try:
+        account_size = parse_trade_account_size(request.form.get("account_size"))
+    except ValueError:
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="Account size must be a positive number or left blank.",
+            )
+        )
 
     if not account_name:
         return redirect(
@@ -896,6 +964,7 @@ def create_trade_account():
         user_id=user_id,
         name=account_name,
         external_account_id=external_account_id or None,
+        account_size=account_size,
         account_type=account_type,
         is_default=is_default,
     )
@@ -969,6 +1038,16 @@ def update_trade_account(trade_account_id):
     external_account_id = normalize_trade_account_name(
         request.form.get("external_account_id")
     )
+    try:
+        account_size = parse_trade_account_size(request.form.get("account_size"))
+    except ValueError:
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="Account size must be a positive number or left blank.",
+            )
+        )
 
     if not account_name:
         return redirect(
@@ -1025,6 +1104,7 @@ def update_trade_account(trade_account_id):
 
     account.name = account_name
     account.external_account_id = external_account_id or None
+    account.account_size = account_size
     account.account_type = account_type
     db.session.commit()
     return redirect(
@@ -1032,6 +1112,55 @@ def update_trade_account(trade_account_id):
             get_safe_internal_next("trade_accounts"),
             trade_account_status="success",
             trade_account_message=f"Trade account '{account.name}' updated.",
+        )
+    )
+
+
+@app.route("/account/trade-accounts/delete-all", methods=["POST"])
+@limiter.limit(
+    "2 per hour",
+    methods=["POST"],
+    error_message="Too many destructive account actions. Please wait and try again.",
+)
+def delete_all_trade_accounts():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    confirmation_text = request.form.get("delete_all_trade_accounts_confirmation", "").strip().upper()
+    if confirmation_text != "DELETE ALL":
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="Type DELETE ALL to confirm removing every trade account.",
+            )
+        )
+
+    trade_count = Trade.query.filter_by(user_id=user_id).count()
+    account_count = TradeAccount.query.filter_by(user_id=user_id).count()
+
+    Trade.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+    TradeAccount.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+
+    replacement_account = TradeAccount(
+        user_id=user_id,
+        name="Main Account",
+        account_type="CFD",
+        is_default=True,
+    )
+    db.session.add(replacement_account)
+    db.session.commit()
+    session["active_trade_account_id"] = replacement_account.id
+
+    return redirect(
+        append_query_params(
+            get_safe_internal_next("trade_accounts"),
+            trade_account_status="success",
+            trade_account_message=(
+                f"Deleted {account_count} trade accounts and {trade_count} linked trades. "
+                "A fresh Main Account was created."
+            ),
         )
     )
 
@@ -1225,6 +1354,7 @@ def trades():
                 "lot_size": trade.lot_size,
                 "pnl": resolve_pnl(trade),
                 "pips": resolve_pips(trade),
+                "ticks": resolve_ticks(trade),
                 "opened_at": trade.opened_at,
             }
         )
@@ -1752,6 +1882,7 @@ def trade_detail(trade_id):
     ).first_or_404()
     trade_pnl = resolve_pnl(trade)
     trade_pips = resolve_pips(trade)
+    trade_ticks = resolve_ticks(trade)
     trade_account_type = get_trade_account_type(trade)
     timezone_name = get_app_timezone_name()
     opened_at_local = to_display_timezone(trade.opened_at, timezone_name)
@@ -1765,6 +1896,7 @@ def trade_detail(trade_id):
         trade_display_symbol=format_trade_symbol(trade),
         trade_pnl=trade_pnl,
         trade_pips=trade_pips,
+        trade_ticks=trade_ticks,
         trade_account_type=trade_account_type,
         trade_size_label=get_trade_size_label(trade_account_type),
         trade_opened_at_label=opened_at_local.strftime("%d %b %Y %H:%M") if opened_at_local else "-",

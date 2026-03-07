@@ -34,6 +34,7 @@ class TradeAccount(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     name = db.Column(db.String(80), nullable=False, default="Main Account")
     external_account_id = db.Column(db.String(80), nullable=True)
+    account_size = db.Column(db.Float, nullable=True)
     account_type = db.Column(db.String(16), nullable=False, default="CFD")
     is_default = db.Column(db.Boolean, nullable=False, default=False)
     trades = db.relationship(
