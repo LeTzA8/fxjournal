@@ -25,6 +25,11 @@
                     <h2>All Trades</h2>
                     <div class="table-actions">
                         <a href="{{ url_for('new_trade') }}" class="new-trade-btn">New Trade</a>
+                        {% if manage_mode %}
+                        <a href="{{ url_for('trades') }}" class="manage-trades-btn is-active">Done</a>
+                        {% else %}
+                        <a href="{{ url_for('trades', manage=1) }}" class="manage-trades-btn">Manage Trades</a>
+                        {% endif %}
                     </div>
                 </div>
                 {% if batch_delete_status and batch_delete_message %}
@@ -102,45 +107,57 @@
                         </select>
                     </div>
                 </div>
-                {% if import_batches %}
+                {% if manage_mode %}
+                <section class="manage-trades-panel" aria-label="Manage trades">
+                    <div class="manage-trades-copy">
+                        <p class="manage-title">Manage Trades</p>
+                        <p class="helper-note danger-note">
+                            Bulk delete selected trades manually or remove an imported batch for your active account.
+                        </p>
+                    </div>
+                </section>
+                {% endif %}
+                {% if manage_mode and import_batches %}
                 <form action="{{ url_for('delete_import_batch') }}" method="post" class="batch-delete-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <label for="import_signature">Delete Imported Batch</label>
+                    <div class="batch-delete-head">
+                        <label for="import_signature">Delete Imported Batch</label>
+                        <button type="button" class="batch-delete-arm-btn" id="batchDeleteArmButton" aria-controls="import_signature batchDeleteSubmit">
+                            Enable Delete
+                        </button>
+                    </div>
                     <p class="helper-note danger-note">
                         This deletes every imported trade in the selected batch for your active account.
                     </p>
-                    <select id="import_signature" name="import_signature" required>
+                    <select id="import_signature" name="import_signature" required disabled>
+                        <option value="">Select imported batch</option>
                         {% for batch in import_batches %}
                         <option value="{{ batch.signature }}">
                             {{ batch.imported_at_label }} - {{ batch.trade_count }} trade{% if batch.trade_count != 1 %}s{% endif %}
                         </option>
                         {% endfor %}
                     </select>
-                    <label for="delete_import_batch_confirmation">Type <strong>DELETE</strong> to confirm</label>
-                    <input
-                        id="delete_import_batch_confirmation"
-                        name="delete_import_batch_confirmation"
-                        type="text"
-                        placeholder="DELETE"
-                        required
-                        autocomplete="off"
-                    >
-                    <label class="delete-check">
-                        <input
-                            id="delete_import_batch_acknowledge"
-                            name="delete_import_batch_acknowledge"
-                            type="checkbox"
-                            required
-                        >
-                        <span>I understand this removes all trades in the selected import batch.</span>
-                    </label>
-                    <button type="submit" class="batch-delete-btn">Delete Batch</button>
+                    <button type="submit" class="batch-delete-btn" id="batchDeleteSubmit" disabled>Delete Batch</button>
                 </form>
                 {% endif %}
+                <form action="{{ url_for('bulk_delete_trades') }}" method="post" class="bulk-delete-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {% if manage_mode %}
+                    <div class="bulk-delete-toolbar">
+                        <label class="bulk-select-all">
+                            <input type="checkbox" id="selectVisibleTrades">
+                            <span>Select visible trades</span>
+                        </label>
+                        <button type="submit" class="batch-delete-btn" id="deleteSelectedTrades" disabled>Delete Selected</button>
+                    </div>
+                    {% endif %}
                 <div class="table-shell">
                     <table>
                         <thead>
                             <tr>
+                                {% if manage_mode %}
+                                <th>Select</th>
+                                {% endif %}
                                 <th>Symbol</th>
                                 <th>Side</th>
                                 <th>Entry</th>
@@ -165,6 +182,17 @@
                                 data-pnl="{{ trade.pnl if trade.pnl is not none else '' }}"
                                 data-lot="{{ trade.lot_size }}"
                             >
+                                {% if manage_mode %}
+                                <td>
+                                    <input
+                                        type="checkbox"
+                                        class="trade-select"
+                                        name="trade_pubkeys"
+                                        value="{{ trade.pubkey }}"
+                                        aria-label="Select trade {{ trade.symbol }} {{ trade_date_value }}"
+                                    >
+                                </td>
+                                {% endif %}
                                 <td>{{ trade.symbol }}</td>
                                 <td>
                                     {% if trade.side == "SELL" %}
@@ -212,22 +240,19 @@
                                     <div class="row-actions">
                                         <a href="{{ url_for('trade_detail', trade_pubkey=trade.pubkey) }}" class="view-btn">View</a>
                                         <a href="{{ url_for('edit_trade', trade_pubkey=trade.pubkey) }}" class="edit-btn">Edit</a>
-                                        <form action="{{ url_for('delete_trade', trade_pubkey=trade.pubkey) }}" method="post" class="delete-form">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="delete-btn">Delete</button>
-                                        </form>
                                     </div>
                                 </td>
                             </tr>
                             {% endfor %}
                             {% else %}
                             <tr class="empty-row">
-                                <td colspan="9">No trades yet. Add your first trade.</td>
+                                <td colspan="{% if manage_mode %}10{% else %}9{% endif %}">No trades yet. Add your first trade.</td>
                             </tr>
                             {% endif %}
                         </tbody>
                     </table>
                 </div>
+                </form>
             </article>
         </section>
     </div>
@@ -241,7 +266,8 @@
     .dash-wrap { position: relative;
         min-height: 100vh;
         width: 100%;
-        overflow: hidden;
+        overflow-x: hidden;
+        overflow-y: auto;
         isolation: isolate;
         padding: clamp(0.9rem, 2vw, 1.5rem);
         perspective: 1100px; }
@@ -300,6 +326,7 @@
     .trade-log { display: flex;
         flex-direction: column;
         height: clamp(460px, 78vh, 920px);
+        overflow: hidden;
         min-height: 0; }
 
     .panel-head { display: flex;
@@ -359,6 +386,30 @@
         margin-bottom: 0.75rem;
         min-width: 0; }
 
+    .manage-trades-panel { border: 1px solid #e4c8c6;
+        border-radius: 12px;
+        padding: 0.72rem;
+        margin: 0 0 0.75rem;
+        background: rgba(127, 29, 29, 0.04); }
+
+    .manage-trades-copy { display: grid;
+        gap: 0.26rem; }
+
+    .manage-title { margin: 0;
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase; }
+
+    .batch-delete-head {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+    }
+
     .batch-delete-form label { font-size: 0.76rem; font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.04em; }
@@ -371,11 +422,10 @@
         font-size: 0.78rem;
         min-width: 0; }
 
-    .batch-delete-form input[type="text"] { border: 1px solid #d6b4b2;
-        border-radius: 8px;
-        padding: 0.4rem 0.55rem;
-        font-size: 0.78rem;
-        min-width: 0; }
+    .batch-delete-form select:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
 
     .batch-delete-btn { border: 1px solid #d6b4b2;  border-radius: 8px;
         padding: 0.38rem 0.62rem;
@@ -385,16 +435,47 @@
         letter-spacing: 0.03em;
         cursor: pointer; }
 
-    .delete-check { grid-column: 1 / -1;
-        display: inline-flex;
-        align-items: flex-start;
-        gap: 0.45rem;
-        font-size: 0.8rem;
-        text-transform: none !important;
-        letter-spacing: 0 !important; }
+    .bulk-delete-form { display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        gap: 0.65rem; }
 
-    .delete-check input { width: auto;
-        margin-top: 0.18rem; }
+    .bulk-delete-toolbar { display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+        flex-wrap: wrap; }
+
+    .bulk-select-all { display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: 0.82rem;
+        font-weight: 700; }
+
+    .bulk-select-all input,
+    .trade-select { width: 16px;
+        height: 16px; }
+
+    .batch-delete-arm-btn { border: 1px solid #d6b4b2;
+        border-radius: 8px;
+        padding: 0.38rem 0.62rem;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        cursor: pointer; }
+
+    .batch-delete-arm-btn.is-armed,
+    .batch-delete-btn.is-armed {
+        border-color: #c35656;
+        box-shadow: 0 0 0 1px rgba(195, 86, 86, 0.14);
+    }
+
+    .batch-delete-btn:disabled {
+        opacity: 0.58;
+        cursor: not-allowed;
+    }
 
     .danger-note { color: #a04545; }
 .filter-row { display: grid;
@@ -444,12 +525,31 @@
         box-shadow: 0 7px 16px rgba(34, 107, 69, 0.28);
         filter: brightness(1.03); }
 
+    .manage-trades-btn { display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #d6b4b2;  border-radius: 8px;
+        padding: 0.35rem 0.65rem;
+        font-weight: 800;
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        text-decoration: none; }
+
+    .manage-trades-btn.is-active {
+        border-color: #c35656;
+        box-shadow: 0 0 0 1px rgba(195, 86, 86, 0.14);
+    }
+
     .table-shell { width: 100%;
         max-width: 100%;
         overflow-x: auto;
         overflow-y: hidden;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior-x: contain; }
+
+    .bulk-delete-form .table-shell { flex: 1 1 auto;
+        min-height: 0; }
 
     .trade-log .table-shell { flex: 1 1 auto;
         min-height: 0;
@@ -492,8 +592,7 @@
         gap: 0.4rem; }
 
     .view-btn,
-    .edit-btn,
-    .delete-btn { display: inline-flex;
+    .edit-btn { display: inline-flex;
         align-items: center;
         justify-content: center;
         border-radius: 7px;
@@ -507,9 +606,6 @@
 
     .view-btn { border: 1px solid #c8d6de; }
 .edit-btn { border: 1px solid #c6d4ca; }
-.delete-form { margin: 0; }
-
-    .delete-btn { border: 1px solid #d6b4b2; }
 .empty-row td { text-align: center; padding: 1rem 0.45rem;
         font-style: italic; }
 
@@ -549,6 +645,43 @@
 
 <script>
 (() => {
+    const armButton = document.getElementById("batchDeleteArmButton");
+    const batchSelect = document.getElementById("import_signature");
+    const submitButton = document.getElementById("batchDeleteSubmit");
+    if (!armButton || !batchSelect || !submitButton) {
+        return;
+    }
+
+    let isArmed = false;
+
+    const syncBatchDeleteState = () => {
+        batchSelect.disabled = !isArmed;
+        submitButton.disabled = !isArmed || !batchSelect.value;
+        armButton.classList.toggle("is-armed", isArmed);
+        submitButton.classList.toggle("is-armed", isArmed);
+        armButton.textContent = isArmed ? "Delete Mode On" : "Enable Delete";
+        if (!isArmed) {
+            batchSelect.value = "";
+        }
+    };
+
+    armButton.addEventListener("click", () => {
+        isArmed = !isArmed;
+        syncBatchDeleteState();
+    });
+
+    batchSelect.addEventListener("change", syncBatchDeleteState);
+    syncBatchDeleteState();
+})();
+</script>
+
+<script>
+(() => {
+    const bulkDeleteForm = document.querySelector(".bulk-delete-form");
+    const selectVisibleTrades = document.getElementById("selectVisibleTrades");
+    const deleteSelectedTrades = document.getElementById("deleteSelectedTrades");
+    const tradeCheckboxes = Array.from(document.querySelectorAll(".trade-select"));
+
     const table = document.querySelector(".trade-log table");
     if (!table) {
         return;
@@ -577,7 +710,8 @@
 
     const noMatchRow = document.createElement("tr");
     noMatchRow.className = "no-match-row hidden-row";
-    noMatchRow.innerHTML = '<td colspan="9" class="muted">No trades match current filters.</td>';
+    const columnCount = table.querySelectorAll("thead th").length || 9;
+    noMatchRow.innerHTML = `<td colspan="${columnCount}" class="muted">No trades match current filters.</td>`;
     tbody.appendChild(noMatchRow);
 
     const toUpper = (value) => (value || "").toString().trim().toUpperCase();
@@ -671,11 +805,33 @@
         });
 
         noMatchRow.classList.toggle("hidden-row", visibleCount !== 0);
+        syncBulkDeleteState();
     };
 
     const applyAll = () => {
         sortRows();
         applyFilters();
+    };
+
+    const visibleTradeRows = () =>
+        rows.filter((row) => !row.classList.contains("hidden-row"));
+
+    const syncBulkDeleteState = () => {
+        if (!deleteSelectedTrades) {
+            return;
+        }
+        const selectedCount = tradeCheckboxes.filter((input) => input.checked).length;
+        deleteSelectedTrades.disabled = selectedCount === 0;
+
+        if (!selectVisibleTrades) {
+            return;
+        }
+        const visibleCheckboxes = visibleTradeRows()
+            .map((row) => row.querySelector(".trade-select"))
+            .filter(Boolean);
+        const allVisibleSelected = visibleCheckboxes.length > 0 && visibleCheckboxes.every((input) => input.checked);
+        selectVisibleTrades.checked = allVisibleSelected;
+        selectVisibleTrades.indeterminate = visibleCheckboxes.some((input) => input.checked) && !allVisibleSelected;
     };
 
     if (filterField) {
@@ -706,8 +862,33 @@
         sortSelect.addEventListener("change", applyAll);
     }
 
+    if (selectVisibleTrades) {
+        selectVisibleTrades.addEventListener("change", () => {
+            visibleTradeRows().forEach((row) => {
+                const checkbox = row.querySelector(".trade-select");
+                if (checkbox) {
+                    checkbox.checked = selectVisibleTrades.checked;
+                }
+            });
+            syncBulkDeleteState();
+        });
+    }
+
+    tradeCheckboxes.forEach((checkbox) => {
+        checkbox.addEventListener("change", syncBulkDeleteState);
+    });
+
+    if (bulkDeleteForm) {
+        bulkDeleteForm.addEventListener("submit", (event) => {
+            if (!tradeCheckboxes.some((input) => input.checked)) {
+                event.preventDefault();
+            }
+        });
+    }
+
     updateValueControl();
     applyAll();
+    syncBulkDeleteState();
 })();
 </script>
 {% endblock %}

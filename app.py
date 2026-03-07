@@ -1693,6 +1693,7 @@ def trades():
 
     batch_delete_status = request.args.get("batch_delete_status", "").strip().lower()
     batch_delete_message = request.args.get("batch_delete_message", "").strip()
+    manage_mode = request.args.get("manage", "").strip().lower() in {"1", "true", "yes", "on"}
     trade_account_status = request.args.get("trade_account_status", "").strip().lower()
     trade_account_message = request.args.get("trade_account_message", "").strip()
     if batch_delete_status not in {"success", "error", "info"}:
@@ -1736,10 +1737,75 @@ def trades():
         trades=trade_rows,
         size_label=size_label,
         import_batches=import_batches,
+        manage_mode=manage_mode,
         batch_delete_status=batch_delete_status,
         batch_delete_message=batch_delete_message,
         trade_account_status=trade_account_status,
         trade_account_message=trade_account_message,
+    )
+
+
+@app.route("/dashboard/trades/bulk-delete", methods=["POST"])
+@limiter.limit(
+    "6 per minute",
+    methods=["POST"],
+    error_message="Too many trade deletion attempts. Please wait and try again.",
+)
+def bulk_delete_trades():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    selected_pubkeys = [
+        value.strip()
+        for value in request.form.getlist("trade_pubkeys")
+        if value and value.strip()
+    ]
+
+    if not selected_pubkeys:
+        return redirect(
+            url_for(
+                "trades",
+                manage="1",
+                batch_delete_status="error",
+                batch_delete_message="Select at least one trade to delete.",
+            )
+        )
+
+    try:
+        deleted = (
+            Trade.query.filter(
+                Trade.user_id == user_id,
+                Trade.trade_account_id == active_trade_account.id,
+                Trade.pubkey.in_(selected_pubkeys),
+            ).delete(synchronize_session=False)
+        )
+        db.session.commit()
+    except (OperationalError, IntegrityError):
+        db.session.rollback()
+        return redirect(
+            url_for(
+                "trades",
+                manage="1",
+                batch_delete_status="error",
+                batch_delete_message="Could not delete the selected trades right now. Please try again.",
+            )
+        )
+
+    status = "success" if deleted > 0 else "info"
+    message = (
+        f"Deleted {deleted} selected trade{'s' if deleted != 1 else ''}."
+        if deleted > 0
+        else "No trades matched the selected rows."
+    )
+    return redirect(
+        url_for(
+            "trades",
+            manage="1",
+            batch_delete_status=status,
+            batch_delete_message=message,
+        )
     )
 
 
@@ -2422,22 +2488,13 @@ def delete_import_batch():
     active_trade_account = get_active_trade_account_for_user(user_id)
 
     import_signature = request.form.get("import_signature", "").strip()
-    confirmation_text = request.form.get("delete_import_batch_confirmation", "").strip().upper()
-    acknowledged = request.form.get("delete_import_batch_acknowledge") == "on"
     if not import_signature:
         return redirect(
             url_for(
                 "trades",
+                manage="1",
                 batch_delete_status="error",
                 batch_delete_message="Please select an import batch to delete.",
-            )
-        )
-    if confirmation_text != "DELETE" or not acknowledged:
-        return redirect(
-            url_for(
-                "trades",
-                batch_delete_status="error",
-                batch_delete_message="Type DELETE and tick the confirmation checkbox to remove the selected import batch.",
             )
         )
 
@@ -2455,6 +2512,7 @@ def delete_import_batch():
         return redirect(
             url_for(
                 "trades",
+                manage="1",
                 batch_delete_status="error",
                 batch_delete_message="Could not delete the selected import batch right now. Please try again.",
             )
@@ -2469,6 +2527,7 @@ def delete_import_batch():
     return redirect(
         url_for(
             "trades",
+            manage="1",
             batch_delete_status=status,
             batch_delete_message=message,
         )

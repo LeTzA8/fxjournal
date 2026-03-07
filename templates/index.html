@@ -319,12 +319,20 @@
 
     .dash-content { position: relative;
         z-index: 1; }
-.dash-head { margin-bottom: 1rem; }
+.dash-head { margin-bottom: 1rem;
+        padding: 1rem 1.05rem 1.02rem;
+        border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--card) 34%, transparent);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        box-shadow: 0 12px 30px rgba(2, 6, 23, 0.14); }
 
     .crumb { font-size: 0.78rem;
         text-transform: uppercase;
         letter-spacing: 0.08em; font-weight: 700;
-        margin-bottom: 0.7rem; }
+        color: color-mix(in srgb, var(--muted) 88%, var(--ink));
+        margin-bottom: 0.72rem; }
 
     .crumb a { text-decoration: none;
         border-bottom: 1px solid transparent; }
@@ -339,10 +347,15 @@
     h1 { margin: 0;
         font-size: clamp(1.35rem, 2.3vw, 2rem); }
 
-    .subtitle { margin: 0.38rem 0 0; }
+    .subtitle { margin: 0.42rem 0 0;
+        max-width: 58ch;
+        color: color-mix(in srgb, var(--muted) 84%, var(--ink));
+        font-size: 0.98rem;
+        line-height: 1.5; }
 
     .welcome { margin: 0.45rem 0 0; font-size: 0.95rem;
-        font-weight: 700; }
+        font-weight: 800;
+        color: color-mix(in srgb, var(--accent) 48%, var(--ink)); }
 
     .panel-title-wrap { display: grid;
         gap: 0.18rem; }
@@ -404,20 +417,26 @@
         margin-bottom: 0.9rem;
         min-width: 0; }
 
-    .metric { border: 1px solid #d4dfd6;
-        border-radius: 14px;
+    .metric { border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+        border-radius: 16px;
         padding: 0.85rem 0.9rem;
-        box-shadow: 0 8px 24px rgba(19, 63, 42, 0.08); }
+        background: color-mix(in srgb, var(--card) 38%, transparent);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        box-shadow: 0 10px 24px rgba(2, 6, 23, 0.14); }
 
     .metric-label { margin: 0;
         font-size: 0.8rem; text-transform: uppercase;
         letter-spacing: 0.06em;
-        font-weight: 700; }
+        font-weight: 800;
+        color: color-mix(in srgb, var(--accent) 52%, var(--ink)); }
 
     .metric-value { margin: 0.35rem 0 0;
-        font-size: clamp(1.28rem, 2.1vw, 1.7rem); font-weight: 700; }
+        font-size: clamp(1.28rem, 2.1vw, 1.7rem); font-weight: 800; }
 
-    .metric-note { margin: 0.35rem 0 0; font-size: 0.82rem; }
+    .metric-note { margin: 0.35rem 0 0; font-size: 0.82rem;
+        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
+        line-height: 1.45; }
 .bad { }
     .pip-note { display: block;
         margin-top: 0.12rem;
@@ -435,10 +454,13 @@
         min-width: 0;
         align-items: start; }
 
-    .panel { border: 1px solid #d4ded6;
-        border-radius: 14px;
+    .panel { border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+        border-radius: 18px;
         padding: 0.9rem;
-        box-shadow: 0 10px 28px rgba(15, 55, 36, 0.08);
+        background: color-mix(in srgb, var(--card) 34%, transparent);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.14);
         min-width: 0;
         max-width: 100%; }
 
@@ -494,7 +516,8 @@
         letter-spacing: 0.04em; }
 
     h2 { margin: 0;
-        font-size: 1rem; }
+        font-size: 1.04rem;
+        letter-spacing: -0.02em; }
 
     .soft { font-size: 0.8rem; }
 
@@ -576,14 +599,14 @@
     .chart-area.negative { fill: rgba(220, 38, 38, 0.18); }
 
     .chart-glow { fill: none;
-        stroke-width: 9;
+        stroke-width: 4.6;
         stroke-linecap: round;
         stroke-linejoin: round;
         opacity: 0.2;
         filter: blur(3px);
         stroke-dasharray: 1200;
         stroke-dashoffset: 1200;
-        animation: draw-line 4.4s cubic-bezier(.22, .61, .36, 1) forwards; }
+        animation: draw-line 4.4s var(--curve-draw-ease) forwards; }
 
     .chart-glow.positive,
     .chart-path.positive { stroke: #2f8a58; }
@@ -592,12 +615,12 @@
     .chart-path.negative { stroke: #dc2626; }
 
     .chart-path { fill: none;
-        stroke-width: 3.4;
+        stroke-width: 1.45;
         stroke-linecap: round;
         stroke-linejoin: round;
         stroke-dasharray: 1200;
         stroke-dashoffset: 1200;
-        animation: draw-line 4.4s cubic-bezier(.22, .61, .36, 1) forwards; }
+        animation: draw-line 4.4s var(--curve-draw-ease) forwards; }
 
     .zero-line { stroke: #475569;
         stroke-width: 1.6;
@@ -605,7 +628,7 @@
         opacity: 0.9; }
 
     .chart-point { fill: #ffffff;
-        stroke-width: 2.4;
+        stroke-width: 1.4;
         cursor: default;
         transition: transform 150ms ease;
         transform-origin: center; }
@@ -905,6 +928,39 @@
         return `${sign}$${absValue.toFixed(decimals)}`.replace(/\.00$/, "");
     };
 
+    const restartCurveAnimation = () => {
+        const animatedPaths = [
+            glowPositive,
+            glowNegative,
+            pathPositive,
+            pathNegative,
+        ];
+        const animatedAreas = [areaPositive, areaNegative];
+
+        animatedPaths.forEach((element) => {
+            const totalLength = Math.max(Math.ceil(element.getTotalLength()), 1);
+            element.style.animation = "none";
+            element.style.strokeDasharray = String(totalLength);
+            element.style.strokeDashoffset = String(totalLength);
+        });
+
+        animatedAreas.forEach((element) => {
+            element.style.animation = "none";
+            element.style.opacity = "0";
+        });
+
+        void svg.getBoundingClientRect();
+
+        animatedPaths.forEach((element) => {
+            element.style.animation = "draw-line 4.4s var(--curve-draw-ease) forwards";
+        });
+
+        animatedAreas.forEach((element) => {
+            element.style.animation = "area-fade 3.6s ease forwards";
+            element.style.opacity = "";
+        });
+    };
+
     const getViewportTransform = () => {
         const svgRect = svg.getBoundingClientRect();
         const scale = Math.min(svgRect.width / w, svgRect.height / h);
@@ -991,6 +1047,7 @@
 
     let renderedPoints = [];
     let hoverPoint = null;
+    let drawdownHoverLocked = false;
 
     const hideHoverPoint = () => {
         if (hoverPoint) {
@@ -1031,7 +1088,7 @@
     };
 
     const showNearestHoverPoint = (clientX) => {
-        if (!hoverPoint || !renderedPoints.length) {
+        if (drawdownHoverLocked || !hoverPoint || !renderedPoints.length) {
             return;
         }
 
@@ -1128,16 +1185,19 @@
         glowNegative.setAttribute("d", lineD);
         areaPositive.setAttribute("d", areaD);
         areaNegative.setAttribute("d", areaD);
+        restartCurveAnimation();
 
-        positiveClipRect.setAttribute("x", "0");
+        positiveClipRect.setAttribute("x", String(pad.l));
         positiveClipRect.setAttribute("y", "0");
-        positiveClipRect.setAttribute("width", String(w));
+        positiveClipRect.setAttribute("width", String(plotW));
         positiveClipRect.setAttribute("height", String(Math.max(zeroY, 0)));
-        negativeClipRect.setAttribute("x", "0");
+        negativeClipRect.setAttribute("x", String(pad.l));
         negativeClipRect.setAttribute("y", String(zeroY));
-        negativeClipRect.setAttribute("width", String(w));
+        negativeClipRect.setAttribute("width", String(plotW));
         negativeClipRect.setAttribute("height", String(Math.max(h - zeroY, 0)));
 
+        zeroLine.setAttribute("x1", String(pad.l));
+        zeroLine.setAttribute("x2", String(w - pad.r));
         zeroLine.setAttribute("y1", String(zeroY));
         zeroLine.setAttribute("y2", String(zeroY));
 
@@ -1150,20 +1210,36 @@
             drawdownMarker.setAttribute("class", "chart-point drawdown-marker");
             drawdownMarker.setAttribute("cx", String(troughPoint.x));
             drawdownMarker.setAttribute("cy", String(troughPoint.y));
-            drawdownMarker.setAttribute("r", "5.4");
+            drawdownMarker.setAttribute("r", "2.6");
             drawdownMarker.setAttribute("tabindex", "0");
             drawdownMarker.setAttribute(
                 "aria-label",
                 `Max drawdown point ${troughPoint.dateKey} drawdown ${maxDrawdown.amount.toFixed(2)}`
             );
             drawdownMarker.addEventListener("mouseenter", () => {
+                drawdownHoverLocked = true;
+                if (hoverPoint) {
+                    hoverPoint.hidden = true;
+                    hoverPoint.classList.remove("is-active");
+                }
                 setTooltip(troughPoint, `${troughPoint.dateKey} Max DD`);
             });
             drawdownMarker.addEventListener("focus", () => {
+                drawdownHoverLocked = true;
+                if (hoverPoint) {
+                    hoverPoint.hidden = true;
+                    hoverPoint.classList.remove("is-active");
+                }
                 setTooltip(troughPoint, `${troughPoint.dateKey} Max DD`);
             });
-            drawdownMarker.addEventListener("mouseleave", hideTooltip);
-            drawdownMarker.addEventListener("blur", hideTooltip);
+            drawdownMarker.addEventListener("mouseleave", () => {
+                drawdownHoverLocked = false;
+                hideTooltip();
+            });
+            drawdownMarker.addEventListener("blur", () => {
+                drawdownHoverLocked = false;
+                hideTooltip();
+            });
             pointsGroup.appendChild(drawdownMarker);
 
             const ddLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -1176,7 +1252,7 @@
 
         hoverPoint = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         hoverPoint.setAttribute("class", "chart-point hover-marker");
-        hoverPoint.setAttribute("r", "4.8");
+        hoverPoint.setAttribute("r", "2.6");
         hoverPoint.hidden = true;
         pointsGroup.appendChild(hoverPoint);
 

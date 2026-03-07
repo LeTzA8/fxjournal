@@ -740,10 +740,13 @@
 
     .chart-glow {
         fill: none;
-        stroke-width: 9;
+        stroke-width: 4.6;
         opacity: 0.18;
         stroke-linecap: round;
         stroke-linejoin: round;
+        stroke-dasharray: 1600;
+        stroke-dashoffset: 1600;
+        animation: draw-line 4.4s var(--curve-draw-ease) forwards;
     }
 
     .chart-glow.positive,
@@ -758,9 +761,17 @@
 
     .chart-path {
         fill: none;
-        stroke-width: 3.2;
+        stroke-width: 1.4;
         stroke-linecap: round;
         stroke-linejoin: round;
+        stroke-dasharray: 1600;
+        stroke-dashoffset: 1600;
+        animation: draw-line 4.4s var(--curve-draw-ease) forwards;
+    }
+
+    .chart-area {
+        opacity: 0;
+        animation: area-fade 3.6s ease forwards;
     }
 
     .grid-line {
@@ -793,7 +804,7 @@
 
     .chart-point {
         fill: color-mix(in srgb, var(--card) 85%, transparent);
-        stroke-width: 2.2;
+        stroke-width: 1.3;
     }
 
     .chart-point.positive {
@@ -813,6 +824,14 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.75rem;
         margin: 0;
+    }
+
+    @keyframes draw-line {
+        to { stroke-dashoffset: 0; }
+    }
+
+    @keyframes area-fade {
+        to { opacity: 1; }
     }
 
     .detail-list div {
@@ -1055,6 +1074,39 @@
             return "flat";
         };
 
+        const restartCurveAnimation = () => {
+            const animatedPaths = [
+                glowPositive,
+                glowNegative,
+                pathPositive,
+                pathNegative,
+            ];
+            const animatedAreas = [areaPositive, areaNegative];
+
+            animatedPaths.forEach((element) => {
+                const totalLength = Math.max(Math.ceil(element.getTotalLength()), 1);
+                element.style.animation = "none";
+                element.style.strokeDasharray = String(totalLength);
+                element.style.strokeDashoffset = String(totalLength);
+            });
+
+            animatedAreas.forEach((element) => {
+                element.style.animation = "none";
+                element.style.opacity = "0";
+            });
+
+            void svg.getBoundingClientRect();
+
+            animatedPaths.forEach((element) => {
+                element.style.animation = "draw-line 4.4s var(--curve-draw-ease) forwards";
+            });
+
+            animatedAreas.forEach((element) => {
+                element.style.animation = "area-fade 3.6s ease forwards";
+                element.style.opacity = "";
+            });
+        };
+
         const formatAxisPnl = (value) => {
             const absValue = Math.abs(value);
             const sign = value > 0 ? "+" : value < 0 ? "-" : "";
@@ -1182,16 +1234,19 @@
             glowNegative.setAttribute("d", lineD);
             areaPositive.setAttribute("d", areaD);
             areaNegative.setAttribute("d", areaD);
+            restartCurveAnimation();
 
-            positiveClipRect.setAttribute("x", "0");
+            positiveClipRect.setAttribute("x", String(pad.l));
             positiveClipRect.setAttribute("y", "0");
-            positiveClipRect.setAttribute("width", String(width));
+            positiveClipRect.setAttribute("width", String(plotW));
             positiveClipRect.setAttribute("height", String(Math.max(zeroY, 0)));
-            negativeClipRect.setAttribute("x", "0");
+            negativeClipRect.setAttribute("x", String(pad.l));
             negativeClipRect.setAttribute("y", String(zeroY));
-            negativeClipRect.setAttribute("width", String(width));
+            negativeClipRect.setAttribute("width", String(plotW));
             negativeClipRect.setAttribute("height", String(Math.max(height - zeroY, 0)));
 
+            zeroLine.setAttribute("x1", String(pad.l));
+            zeroLine.setAttribute("x2", String(width - pad.r));
             zeroLine.setAttribute("y1", String(zeroY));
             zeroLine.setAttribute("y2", String(zeroY));
 
@@ -1201,7 +1256,7 @@
                 circle.setAttribute("class", `chart-point ${pointTone(point.equity)}`);
                 circle.setAttribute("cx", String(point.x));
                 circle.setAttribute("cy", String(point.y));
-                circle.setAttribute("r", "4.2");
+                circle.setAttribute("r", "2.2");
                 circle.addEventListener("mouseenter", () => setTooltip(point));
                 circle.addEventListener("focus", () => setTooltip(point));
                 circle.addEventListener("mouseleave", hideTooltip);
