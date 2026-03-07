@@ -27,8 +27,11 @@
                 </div>
 
                 <form class="trade-form" onsubmit="return false;">
-                    <label for="symbol">Pair</label>
-                    <input id="symbol" type="text" value="{{ trade.symbol if trade else '' }}" readonly>
+                    <label for="symbol">Symbol</label>
+                    <input id="symbol" type="text" value="{{ trade_display_symbol if trade else '' }}" readonly>
+
+                    <label for="account_type">Account Type</label>
+                    <input id="account_type" type="text" value="{{ "Futures" if trade_account_type == "FUTURES" else "CFD" }}" readonly>
 
                     <label for="side">Side</label>
                     <input id="side" type="text" value="{{ trade.side if trade else '' }}" readonly>
@@ -39,13 +42,13 @@
                     <label for="exit_price">Exit Price</label>
                     <input id="exit_price" type="text" value="{{ '%.5f'|format(trade.exit_price) if trade and trade.exit_price is not none else 'Open' }}" readonly>
 
-                    <label for="lot_size">Lots</label>
+                    <label for="lot_size">{{ trade_size_label }}</label>
                     <input id="lot_size" type="text" value="{{ '%.2f'|format(trade.lot_size) if trade and trade.lot_size is not none else '' }}" readonly>
 
                     <label for="pnl">PnL</label>
                     <input id="pnl" type="text" value="{% if trade_pnl is not none %}{{ '%.2f'|format(trade_pnl) }}{% else %}-{% endif %}" readonly>
 
-                    <label for="pips">Pips</label>
+                    <label for="pips">Pips (FX only)</label>
                     <input id="pips" type="text" value="{% if trade_pips is not none %}{{ '%+.1f'|format(trade_pips) }} pips{% else %}-{% endif %}" readonly>
 
                     <label for="status">Status</label>

@@ -1,6 +1,8 @@
 import os
 import random
 import re
+import csv
+import io
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
@@ -10,7 +12,7 @@ from flask import has_app_context
 from openpyxl import load_workbook
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
-from models import CFDSymbol
+from models import CFDSymbol, FuturesSymbol
 
 
 DEFAULT_CFD_SYMBOL_SPECS = (
@@ -72,6 +74,8 @@ MT5_COLUMN_ALIASES = {
 }
 
 MT5_SECTION_TITLES = {"positions", "orders", "deals", "results"}
+ACCOUNT_TYPE_CHOICES = ("CFD", "FUTURES")
+FUTURES_MONTH_CODES = frozenset({"F", "G", "H", "J", "K", "M", "N", "Q", "U", "V", "X", "Z"})
 
 WEEKDAY_NAMES = [
     "Monday",
@@ -108,6 +112,9 @@ def clear_cfd_symbol_cache():
     _load_cfd_symbol_specs.cache_clear()
     _load_cfd_symbol_map.cache_clear()
     _load_cfd_alias_map.cache_clear()
+    _load_futures_symbol_specs.cache_clear()
+    _load_futures_symbol_map.cache_clear()
+    _load_futures_alias_map.cache_clear()
 
 
 @lru_cache(maxsize=1)
@@ -164,19 +171,153 @@ def _load_cfd_alias_map():
     return alias_map
 
 
-def canonicalize_symbol(symbol):
+@lru_cache(maxsize=1)
+def _load_futures_symbol_specs():
+    if not has_app_context():
+        return tuple()
+
+    try:
+        rows = (
+            FuturesSymbol.query.filter_by(is_active=True)
+            .order_by(FuturesSymbol.sort_order.asc(), FuturesSymbol.root_symbol.asc())
+            .all()
+        )
+    except (OperationalError, ProgrammingError):
+        return tuple()
+
+    return tuple(
+        {
+            "root_symbol": normalize_symbol(row.root_symbol),
+            "aliases": _normalize_aliases(row.aliases),
+            "display_name": str(row.display_name or "").strip(),
+            "exchange": str(row.exchange or "").strip(),
+            "tick_size": float(row.tick_size),
+            "tick_value": float(row.tick_value),
+            "currency": str(row.currency or "USD").strip().upper() or "USD",
+            "sort_order": int(row.sort_order or 0),
+        }
+        for row in rows
+    )
+
+
+@lru_cache(maxsize=1)
+def _load_futures_symbol_map():
+    return {spec["root_symbol"]: spec for spec in _load_futures_symbol_specs()}
+
+
+@lru_cache(maxsize=1)
+def _load_futures_alias_map():
+    alias_map = {}
+    for spec in _load_futures_symbol_specs():
+        alias_map[spec["root_symbol"]] = spec["root_symbol"]
+        for alias in spec["aliases"]:
+            alias_map[alias] = spec["root_symbol"]
+    return alias_map
+
+
+def normalize_account_type(value):
+    return "FUTURES" if str(value or "").strip().upper() == "FUTURES" else "CFD"
+
+
+def get_account_type_choices():
+    return ACCOUNT_TYPE_CHOICES
+
+
+def parse_futures_contract_code(contract_code, expected_root=None):
+    normalized = normalize_symbol(contract_code)
+    if not normalized:
+        return None
+
+    candidate_root = normalize_symbol(expected_root)
+    if candidate_root:
+        suffix = normalized[len(candidate_root) :]
+        if not normalized.startswith(candidate_root) or len(suffix) < 2:
+            return None
+        month_code = suffix[0]
+        year_code = suffix[1:]
+        if month_code not in FUTURES_MONTH_CODES or not year_code.isdigit():
+            return None
+        return {
+            "root_symbol": candidate_root,
+            "month_code": month_code,
+            "year_code": year_code,
+            "contract_code": normalized,
+        }
+
+    futures_roots = sorted(_load_futures_symbol_map(), key=len, reverse=True)
+    for root_symbol in futures_roots:
+        if not normalized.startswith(root_symbol):
+            continue
+        suffix = normalized[len(root_symbol) :]
+        if len(suffix) < 2:
+            continue
+        month_code = suffix[0]
+        year_code = suffix[1:]
+        if month_code in FUTURES_MONTH_CODES and year_code.isdigit():
+            return {
+                "root_symbol": root_symbol,
+                "month_code": month_code,
+                "year_code": year_code,
+                "contract_code": normalized,
+            }
+
+    generic_match = re.fullmatch(r"([A-Z]+)([FGHJKMNQUVXZ])(\d+)", normalized)
+    if generic_match:
+        return {
+            "root_symbol": generic_match.group(1),
+            "month_code": generic_match.group(2),
+            "year_code": generic_match.group(3),
+            "contract_code": normalized,
+        }
+    return None
+
+
+def canonicalize_symbol(symbol, instrument_type="CFD"):
     normalized = normalize_symbol(symbol)
     if not normalized:
         return ""
+
+    account_type = normalize_account_type(instrument_type)
+    if account_type == "FUTURES":
+        alias_map = _load_futures_alias_map()
+        if normalized in alias_map:
+            return alias_map[normalized]
+        parsed_contract = parse_futures_contract_code(normalized)
+        if parsed_contract:
+            return parsed_contract["root_symbol"]
+        return normalized
+
     return _load_cfd_alias_map().get(normalized, normalized)
 
-
-def get_symbol_options(selected_symbol=None):
-    options = [spec["symbol"] for spec in _load_cfd_symbol_specs()]
-    selected = canonicalize_symbol(selected_symbol)
+def get_symbol_options(instrument_type="CFD", selected_symbol=None):
+    account_type = normalize_account_type(instrument_type)
+    if account_type == "FUTURES":
+        options = [spec["root_symbol"] for spec in _load_futures_symbol_specs()]
+    else:
+        options = [spec["symbol"] for spec in _load_cfd_symbol_specs()]
+    selected = canonicalize_symbol(selected_symbol, instrument_type=account_type)
     if selected and selected not in options:
         options.insert(0, selected)
     return options
+
+
+def get_trade_account_type(trade):
+    trade_account = getattr(trade, "trade_account", None)
+    return normalize_account_type(getattr(trade_account, "account_type", "CFD"))
+
+
+def get_futures_symbol_spec(symbol=None, contract_code=None):
+    parsed_contract = parse_futures_contract_code(contract_code, expected_root=symbol)
+    root_symbol = parsed_contract["root_symbol"] if parsed_contract else canonicalize_symbol(symbol, "FUTURES")
+    return _load_futures_symbol_map().get(root_symbol)
+
+
+def format_trade_symbol(trade):
+    symbol = (getattr(trade, "symbol", "") or "").strip().upper()
+    contract_code = (getattr(trade, "contract_code", "") or "").strip().upper()
+    if contract_code:
+        return f"{symbol} ({contract_code})" if symbol and contract_code != symbol else contract_code
+    return symbol
 
 
 def normalize_header_name(value):
@@ -201,7 +342,7 @@ def parse_float_value(value):
     if isinstance(value, (int, float)):
         return float(value)
 
-    text = str(value).strip().replace(",", "")
+    text = str(value).strip().replace(",", "").replace("$", "")
     if text.startswith("(") and text.endswith(")"):
         text = f"-{text[1:-1]}"
     try:
@@ -225,6 +366,8 @@ def parse_datetime_value(value):
         "%Y-%m-%d %H:%M",
         "%Y.%m.%d %H:%M:%S",
         "%Y.%m.%d %H:%M",
+        "%m/%d/%Y %H:%M:%S",
+        "%m/%d/%Y %H:%M",
         "%Y-%m-%d",
         "%d.%m.%Y %H:%M:%S",
         "%d.%m.%Y %H:%M",
@@ -326,14 +469,9 @@ def build_mt5_column_map(header_row):
     return column_map
 
 
-def parse_mt5_xlsx_stream(file_stream):
-    workbook = load_workbook(file_stream, data_only=True, read_only=True)
-    worksheet = workbook.active
-
-    rows = list(worksheet.iter_rows(values_only=True))
+def parse_mt5_rows(rows):
     section_idx = find_section_row(rows, "positions")
     if section_idx is None:
-        workbook.close()
         return [], 0, 0
 
     header_idx = None
@@ -352,7 +490,6 @@ def parse_mt5_xlsx_stream(file_stream):
             break
 
     if header_idx is None:
-        workbook.close()
         return [], 0, 0
 
     parsed = []
@@ -405,7 +542,153 @@ def parse_mt5_xlsx_stream(file_stream):
             }
         )
 
+    return parsed, total, skipped
+
+
+def parse_mt5_xlsx_stream(file_stream):
+    workbook = load_workbook(file_stream, data_only=True, read_only=True)
+    worksheet = workbook.active
+
+    rows = list(worksheet.iter_rows(values_only=True))
+    parsed, total, skipped = parse_mt5_rows(rows)
     workbook.close()
+    return parsed, total, skipped
+
+
+def parse_mt5_csv_stream(file_stream):
+    raw_bytes = file_stream.read()
+    if not raw_bytes:
+        return [], 0, 0
+
+    decoded_text = None
+    for encoding in ("utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "cp1252", "latin-1"):
+        try:
+            decoded_text = raw_bytes.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+
+    if decoded_text is None:
+        decoded_text = raw_bytes.decode("utf-8", errors="replace")
+
+    if not decoded_text.strip():
+        return [], 0, 0
+
+    sample = "\n".join(decoded_text.splitlines()[:10])
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+
+    rows = []
+    for row in csv.reader(io.StringIO(decoded_text), dialect):
+        rows.append([cell if cell != "" else None for cell in row])
+
+    return parse_mt5_rows(rows)
+
+
+def parse_tradovate_csv_stream(file_stream):
+    raw_bytes = file_stream.read()
+    if not raw_bytes:
+        return [], 0, 0
+
+    decoded_text = None
+    for encoding in ("utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "cp1252", "latin-1"):
+        try:
+            decoded_text = raw_bytes.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+
+    if decoded_text is None:
+        decoded_text = raw_bytes.decode("utf-8", errors="replace")
+
+    if not decoded_text.strip():
+        return [], 0, 0
+
+    reader = csv.DictReader(io.StringIO(decoded_text))
+    required_fields = {
+        "symbol",
+        "buyFillId",
+        "sellFillId",
+        "qty",
+        "buyPrice",
+        "sellPrice",
+        "pnl",
+        "boughtTimestamp",
+        "soldTimestamp",
+    }
+    if not reader.fieldnames or not required_fields.issubset(set(reader.fieldnames)):
+        return [], 0, 0
+
+    parsed = []
+    skipped = 0
+    total = 0
+
+    for row in reader:
+        if not row:
+            continue
+        if not any(str(value or "").strip() for value in row.values()):
+            continue
+
+        total += 1
+        contract_code = normalize_symbol(row.get("symbol"))
+        parsed_contract = parse_futures_contract_code(contract_code)
+        if parsed_contract is None:
+            skipped += 1
+            continue
+
+        bought_at = parse_datetime_value(row.get("boughtTimestamp"))
+        sold_at = parse_datetime_value(row.get("soldTimestamp"))
+        qty = parse_float_value(row.get("qty"))
+        buy_price = parse_float_value(row.get("buyPrice"))
+        sell_price = parse_float_value(row.get("sellPrice"))
+        pnl = parse_float_value(row.get("pnl"))
+        buy_fill_id = parse_mt5_position_value(row.get("buyFillId"))
+        sell_fill_id = parse_mt5_position_value(row.get("sellFillId"))
+
+        if (
+            bought_at is None
+            or sold_at is None
+            or qty is None
+            or qty <= 0
+            or buy_price is None
+            or sell_price is None
+            or not buy_fill_id
+            or not sell_fill_id
+        ):
+            skipped += 1
+            continue
+
+        is_long = bought_at <= sold_at
+        if is_long:
+            side = "BUY"
+            entry_price = buy_price
+            exit_price = sell_price
+            opened_at = bought_at
+            closed_at = sold_at
+        else:
+            side = "SELL"
+            entry_price = sell_price
+            exit_price = buy_price
+            opened_at = sold_at
+            closed_at = bought_at
+
+        parsed.append(
+            {
+                "symbol": parsed_contract["root_symbol"],
+                "contract_code": parsed_contract["contract_code"],
+                "external_id": f"{buy_fill_id}:{sell_fill_id}",
+                "side": side,
+                "lot_size": qty,
+                "entry_price": entry_price,
+                "exit_price": exit_price,
+                "pnl": pnl,
+                "opened_at": opened_at,
+                "closed_at": closed_at,
+            }
+        )
+
     return parsed, total, skipped
 
 
@@ -415,7 +698,7 @@ def is_fx_pair(symbol):
 
 
 def get_contract_size(symbol):
-    sym = canonicalize_symbol(symbol)
+    sym = canonicalize_symbol(symbol, "CFD")
     spec = _load_cfd_symbol_map().get(sym)
     if spec is not None:
         return spec["contract_size"]
@@ -434,7 +717,7 @@ def quote_to_usd_rate(symbol, reference_price):
 
 
 def get_pip_size(symbol):
-    sym = canonicalize_symbol(symbol)
+    sym = canonicalize_symbol(symbol, "CFD")
     spec = _load_cfd_symbol_map().get(sym)
     if spec is not None and spec["pip_size"] is not None:
         return spec["pip_size"]
@@ -443,7 +726,9 @@ def get_pip_size(symbol):
     return 0.01 if sym.endswith("JPY") else 0.0001
 
 
-def calc_pips_values(symbol, side, entry_price, exit_price):
+def calc_pips_values(symbol, side, entry_price, exit_price, instrument_type="CFD"):
+    if normalize_account_type(instrument_type) != "CFD":
+        return None
     if entry_price is None or exit_price is None:
         return None
 
@@ -455,13 +740,21 @@ def calc_pips_values(symbol, side, entry_price, exit_price):
     return direction * ((exit_price - entry_price) / pip_size)
 
 
-def calc_pnl_values(symbol, side, entry_price, exit_price, lot_size):
+def calc_pnl_values(symbol, side, entry_price, exit_price, lot_size, instrument_type="CFD", contract_code=None):
     if entry_price is None or exit_price is None:
         return None
     if lot_size is None or lot_size <= 0:
         return None
 
+    account_type = normalize_account_type(instrument_type)
     direction = 1.0 if (side or "").upper() == "BUY" else -1.0
+    if account_type == "FUTURES":
+        spec = get_futures_symbol_spec(symbol=symbol, contract_code=contract_code)
+        if spec is None or spec["tick_size"] <= 0 or spec["tick_value"] <= 0:
+            return None
+        ticks_moved = direction * ((exit_price - entry_price) / spec["tick_size"])
+        return ticks_moved * spec["tick_value"] * lot_size
+
     contract_size = get_contract_size(symbol)
     conversion_rate = quote_to_usd_rate(symbol, exit_price)
     if conversion_rate is None:
@@ -470,13 +763,21 @@ def calc_pnl_values(symbol, side, entry_price, exit_price, lot_size):
     return direction * (exit_price - entry_price) * lot_size * contract_size * conversion_rate
 
 
-def derive_exit_price(symbol, side, entry_price, lot_size, pnl_value):
+def derive_exit_price(symbol, side, entry_price, lot_size, pnl_value, instrument_type="CFD", contract_code=None):
     if entry_price is None or pnl_value is None:
         return None
     if lot_size is None or lot_size <= 0:
         return None
 
+    account_type = normalize_account_type(instrument_type)
     direction = 1.0 if (side or "").upper() == "BUY" else -1.0
+    if account_type == "FUTURES":
+        spec = get_futures_symbol_spec(symbol=symbol, contract_code=contract_code)
+        if spec is None or spec["tick_value"] <= 0:
+            return None
+        price_move = (pnl_value / (direction * lot_size * spec["tick_value"])) * spec["tick_size"]
+        return entry_price + price_move
+
     contract_size = get_contract_size(symbol)
     units = lot_size * contract_size
     if units <= 0:
@@ -504,6 +805,8 @@ def calc_pnl(trade):
         entry_price=trade.entry_price,
         exit_price=trade.exit_price,
         lot_size=trade.lot_size,
+        instrument_type=get_trade_account_type(trade),
+        contract_code=getattr(trade, "contract_code", None),
     )
 
 
@@ -519,6 +822,7 @@ def resolve_pips(trade):
         side=trade.side,
         entry_price=trade.entry_price,
         exit_price=trade.exit_price,
+        instrument_type=get_trade_account_type(trade),
     )
 
 

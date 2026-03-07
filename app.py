@@ -26,9 +26,16 @@ from trading import (
     calc_pnl_values,
     canonicalize_symbol,
     derive_exit_price,
+    format_trade_symbol,
+    get_account_type_choices,
     get_timezone,
+    get_trade_account_type,
     get_symbol_options,
+    normalize_account_type,
+    normalize_symbol,
     parse_import_signature_datetime,
+    parse_futures_contract_code,
+    parse_tradovate_csv_stream,
     parse_mt5_xlsx_stream,
     resolve_pips,
     resolve_pnl,
@@ -143,6 +150,41 @@ limiter.init_app(app)
 TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
 LEGAL_LAST_UPDATED = "March 6, 2026"
+
+
+def get_trade_size_label(account_type):
+    return "Contracts" if normalize_account_type(account_type) == "FUTURES" else "Lots"
+
+
+def build_trade_duplicate_key(
+    *,
+    symbol,
+    contract_code=None,
+    side,
+    entry_price,
+    exit_price,
+    lot_size,
+    opened_at,
+    closed_at,
+    pnl,
+):
+    def quantize(value, digits=8):
+        if value is None:
+            return None
+        return round(float(value), digits)
+
+    return (
+        normalize_symbol(contract_code or symbol),
+        str(side or "").strip().upper(),
+        quantize(entry_price),
+        quantize(exit_price),
+        quantize(lot_size),
+        quantize(pnl, digits=2),
+        opened_at.isoformat() if opened_at else None,
+        closed_at.isoformat() if closed_at else None,
+    )
+
+
 def get_user_trade_accounts(user_id):
     return (
         TradeAccount.query.filter_by(user_id=user_id)
@@ -162,6 +204,7 @@ def ensure_trade_account_for_user(user_id):
         default_account = TradeAccount(
             user_id=user_id,
             name="Main Account",
+            account_type="CFD",
             is_default=True,
         )
         db.session.add(default_account)
@@ -493,6 +536,7 @@ def home():
     )
 
     recent_trades = []
+    size_label = get_trade_size_label(active_trade_account.account_type)
     for trade in user_trades:
         pnl_value = resolve_pnl(trade)
         pips_value = resolve_pips(trade)
@@ -501,7 +545,7 @@ def home():
         trade_date_value = opened_local.strftime("%Y-%m-%d") if opened_local else ""
         recent_trades.append(
             {
-                "symbol": trade.symbol,
+                "symbol": format_trade_symbol(trade),
                 "side": trade.side,
                 "entry_price": trade.entry_price,
                 "exit_price": trade.exit_price,
@@ -527,6 +571,7 @@ def home():
         trades_this_month=trades_this_month,
         avg_rr=summary["risk_reward_ratio"],
         recent_trades=recent_trades,
+        size_label=size_label,
         chart_points=chart_points,
         dashboard_insight=dashboard_insight,
     )
@@ -785,6 +830,7 @@ def create_trade_account():
 
     user_id = session["user_id"]
     account_name = normalize_trade_account_name(request.form.get("trade_account_name"))
+    account_type = normalize_account_type(request.form.get("account_type"))
     external_account_id = normalize_trade_account_name(
         request.form.get("external_account_id")
     )
@@ -849,6 +895,7 @@ def create_trade_account():
         user_id=user_id,
         name=account_name,
         external_account_id=external_account_id or None,
+        account_type=account_type,
         is_default=is_default,
     )
     db.session.add(new_account)
@@ -917,6 +964,7 @@ def update_trade_account(trade_account_id):
         )
 
     account_name = normalize_trade_account_name(request.form.get("trade_account_name"))
+    account_type = normalize_account_type(request.form.get("account_type"))
     external_account_id = normalize_trade_account_name(
         request.form.get("external_account_id")
     )
@@ -976,6 +1024,7 @@ def update_trade_account(trade_account_id):
 
     account.name = account_name
     account.external_account_id = external_account_id or None
+    account.account_type = account_type
     db.session.commit()
     return redirect(
         append_query_params(
@@ -1163,11 +1212,12 @@ def trades():
         user_trades = []
 
     trade_rows = []
+    size_label = get_trade_size_label(active_trade_account.account_type)
     for trade in user_trades:
         trade_rows.append(
             {
                 "id": trade.id,
-                "symbol": trade.symbol,
+                "symbol": format_trade_symbol(trade),
                 "side": trade.side,
                 "entry_price": trade.entry_price,
                 "exit_price": trade.exit_price,
@@ -1221,6 +1271,7 @@ def trades():
         title="My Trades | FX Journal",
         username=username,
         trades=trade_rows,
+        size_label=size_label,
         import_batches=import_batches,
         batch_delete_status=batch_delete_status,
         batch_delete_message=batch_delete_message,
@@ -1258,6 +1309,7 @@ def trade_accounts():
         title="Trade Accounts | FX Journal",
         username=session.get("username", "User"),
         account_rows=account_rows,
+        account_type_choices=get_account_type_choices(),
         edit_target=edit_target,
         active_trade_account=active_trade_account,
         trade_account_status=trade_account_status,
@@ -1272,10 +1324,19 @@ def new_trade():
     active_trade_account = get_active_trade_account_for_user(user_id)
 
     if request.method == "POST":
-        allowed_symbols = set(get_symbol_options())
-        symbol = canonicalize_symbol(request.form.get("symbol", ""))
+        account_type = normalize_account_type(active_trade_account.account_type)
+        allowed_symbols = set(get_symbol_options(account_type))
+        symbol = canonicalize_symbol(request.form.get("symbol", ""), account_type)
+        contract_code = (request.form.get("contract_code", "") or "").strip().upper() or None
         if symbol not in allowed_symbols:
             return redirect(url_for("new_trade"))
+        if account_type == "FUTURES" and contract_code:
+            parsed_contract = parse_futures_contract_code(contract_code, expected_root=symbol)
+            if parsed_contract is None:
+                return redirect(url_for("new_trade"))
+            contract_code = parsed_contract["contract_code"]
+        elif account_type != "FUTURES":
+            contract_code = None
         side = request.form.get("side", "BUY").strip().upper()
         status = request.form.get("status", "Running").strip().lower()
         entry_price = float(request.form.get("entry_price", 0.0))
@@ -1303,6 +1364,8 @@ def new_trade():
                 entry_price=entry_price,
                 lot_size=lot_size,
                 pnl_value=pnl,
+                instrument_type=account_type,
+                contract_code=contract_code,
             )
         if pnl is None and exit_price is not None:
             pnl = calc_pnl_values(
@@ -1311,11 +1374,14 @@ def new_trade():
                 entry_price=entry_price,
                 exit_price=exit_price,
                 lot_size=lot_size,
+                instrument_type=account_type,
+                contract_code=contract_code,
             )
         trade = Trade(
             user_id=user_id,
             trade_account_id=active_trade_account.id,
             symbol=symbol,
+            contract_code=contract_code,
             side=side,
             entry_price=entry_price,
             lot_size=lot_size,
@@ -1340,7 +1406,9 @@ def new_trade():
         "trade_entry.html",
         title="New Trade | FX Journal",
         username=session.get("username", "User"),
-        symbol_options=get_symbol_options(),
+        symbol_options=get_symbol_options(active_trade_account.account_type),
+        account_type=normalize_account_type(active_trade_account.account_type),
+        size_label=get_trade_size_label(active_trade_account.account_type),
         import_status=import_status,
         import_message=import_message,
         trade=None,
@@ -1353,11 +1421,12 @@ def new_trade():
 
 
 @app.route("/dashboard/import", methods=["POST"])
-def import_mt5_trades():
+def import_trade_file():
     if not session.get("user_id"):
         return redirect(url_for("login"))
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
+    account_type = normalize_account_type(active_trade_account.account_type)
 
     uploaded_file = request.files.get("mt5_file")
     if not uploaded_file or not uploaded_file.filename:
@@ -1365,33 +1434,53 @@ def import_mt5_trades():
             url_for(
                 "new_trade",
                 import_status="error",
-                import_message="Please choose an MT5 .xlsx file to upload.",
+                import_message=(
+                    "Please choose a Tradovate .csv file to upload."
+                    if account_type == "FUTURES"
+                    else "Please choose an MT5 .xlsx file to upload."
+                ),
             )
         )
 
     filename = uploaded_file.filename.strip().lower()
-    if not filename.endswith(".xlsx"):
+    if account_type == "FUTURES":
+        if not filename.endswith(".csv"):
+            return redirect(
+                url_for(
+                    "new_trade",
+                    import_status="error",
+                    import_message="Invalid file type. Please upload a Tradovate .csv file.",
+                )
+            )
+    elif not filename.endswith(".xlsx"):
         return redirect(
             url_for(
                 "new_trade",
                 import_status="error",
-                import_message="Invalid file type. Please upload an .xlsx file.",
+                import_message="Invalid file type. Please upload an MT5 .xlsx file.",
             )
         )
 
     try:
         uploaded_file.stream.seek(0)
-        parsed_rows, total_rows, skipped_rows = parse_mt5_xlsx_stream(uploaded_file.stream)
+        if account_type == "FUTURES":
+            parsed_rows, total_rows, skipped_rows = parse_tradovate_csv_stream(uploaded_file.stream)
+        else:
+            parsed_rows, total_rows, skipped_rows = parse_mt5_xlsx_stream(uploaded_file.stream)
         if not parsed_rows:
             return redirect(
                 url_for(
                     "new_trade",
                     import_status="error",
-                    import_message="No valid trade rows found in this MT5 file.",
+                    import_message=(
+                        "No valid trade rows found in this Tradovate CSV."
+                        if account_type == "FUTURES"
+                        else "No valid trade rows found in this MT5 file."
+                    ),
                 )
             )
 
-        allowed_symbols = set(get_symbol_options())
+        allowed_symbols = set(get_symbol_options(active_trade_account.account_type))
         failed_symbols = set()
         validation_skipped = 0
         validation_reasons = {
@@ -1403,27 +1492,51 @@ def import_mt5_trades():
             "missing_open_time": 0,
         }
 
-        existing_positions = {
-            pos
-            for (pos,) in db.session.query(Trade.mt5_position)
-            .filter_by(
-                user_id=user_id,
-                trade_account_id=active_trade_account.id,
-            )
-            .filter(Trade.mt5_position.isnot(None))
-            .all()
-            if pos
-        }
-
+        existing_positions = set()
         import_positions = set()
-        import_signature = build_import_signature("mt5")
+        existing_trade_keys = set()
+        import_trade_keys = set()
+        if account_type == "FUTURES":
+            existing_trades = (
+                Trade.query.filter_by(
+                    user_id=user_id,
+                    trade_account_id=active_trade_account.id,
+                )
+                .all()
+            )
+            existing_trade_keys = {
+                build_trade_duplicate_key(
+                    symbol=trade.symbol,
+                    contract_code=trade.contract_code,
+                    side=trade.side,
+                    entry_price=trade.entry_price,
+                    exit_price=trade.exit_price,
+                    lot_size=trade.lot_size,
+                    opened_at=trade.opened_at,
+                    closed_at=trade.closed_at,
+                    pnl=resolve_pnl(trade),
+                )
+                for trade in existing_trades
+            }
+        else:
+            existing_positions = {
+                pos
+                for (pos,) in db.session.query(Trade.mt5_position)
+                .filter_by(
+                    user_id=user_id,
+                    trade_account_id=active_trade_account.id,
+                )
+                .filter(Trade.mt5_position.isnot(None))
+                .all()
+                if pos
+            }
+
+        import_signature = build_import_signature("tradovate" if account_type == "FUTURES" else "mt5")
         duplicate_count = 0
         insert_batch = []
 
         for row in parsed_rows:
-            symbol = canonicalize_symbol(row.get("symbol"))
-            mt5_position = row.get("mt5_position")
-            mt5_position_raw = row.get("mt5_position_raw")
+            symbol = canonicalize_symbol(row.get("symbol"), active_trade_account.account_type)
             side = (row.get("side") or "").upper()
             lot_size = row.get("lot_size")
             entry_price = row.get("entry_price")
@@ -1431,6 +1544,9 @@ def import_mt5_trades():
             pnl = row.get("pnl")
             opened_at = row.get("opened_at")
             closed_at = row.get("closed_at")
+            contract_code = row.get("contract_code")
+            mt5_position = row.get("mt5_position")
+            mt5_position_raw = row.get("mt5_position_raw")
 
             if symbol not in allowed_symbols:
                 if symbol:
@@ -1438,14 +1554,15 @@ def import_mt5_trades():
                 validation_skipped += 1
                 continue
 
-            if mt5_position is None:
-                validation_skipped += 1
-                raw_text = str(mt5_position_raw or "").strip()
-                if raw_text:
-                    validation_reasons["invalid_mt5_position"] += 1
-                else:
-                    validation_reasons["missing_mt5_position"] += 1
-                continue
+            if account_type == "CFD":
+                if mt5_position is None:
+                    validation_skipped += 1
+                    raw_text = str(mt5_position_raw or "").strip()
+                    if raw_text:
+                        validation_reasons["invalid_mt5_position"] += 1
+                    else:
+                        validation_reasons["missing_mt5_position"] += 1
+                    continue
 
             if side not in {"BUY", "SELL"}:
                 validation_skipped += 1
@@ -1468,13 +1585,38 @@ def import_mt5_trades():
                 continue
 
             if pnl is None and exit_price is not None:
-                pnl = calc_pnl_values(symbol, side, entry_price, exit_price, lot_size)
+                pnl = calc_pnl_values(
+                    symbol,
+                    side,
+                    entry_price,
+                    exit_price,
+                    lot_size,
+                    instrument_type=active_trade_account.account_type,
+                    contract_code=contract_code,
+                )
 
-            if mt5_position in existing_positions or mt5_position in import_positions:
-                duplicate_count += 1
-                continue
+            if account_type == "FUTURES":
+                trade_key = build_trade_duplicate_key(
+                    symbol=symbol,
+                    contract_code=contract_code,
+                    side=side,
+                    entry_price=entry_price,
+                    exit_price=exit_price,
+                    lot_size=lot_size,
+                    opened_at=opened_at,
+                    closed_at=closed_at,
+                    pnl=pnl,
+                )
+                if trade_key in existing_trade_keys or trade_key in import_trade_keys:
+                    duplicate_count += 1
+                    continue
+                import_trade_keys.add(trade_key)
+            else:
+                if mt5_position in existing_positions or mt5_position in import_positions:
+                    duplicate_count += 1
+                    continue
+                import_positions.add(mt5_position)
 
-            import_positions.add(mt5_position)
             insert_batch.append(
                 Trade(
                     user_id=user_id,
@@ -1482,6 +1624,7 @@ def import_mt5_trades():
                     symbol=symbol,
                     mt5_position=mt5_position,
                     import_signature=import_signature,
+                    contract_code=contract_code,
                     side=side,
                     entry_price=float(entry_price),
                     exit_price=float(exit_price) if exit_price is not None else None,
@@ -1489,7 +1632,11 @@ def import_mt5_trades():
                     pnl=float(pnl) if pnl is not None else None,
                     opened_at=opened_at,
                     closed_at=closed_at,
-                    trade_note="Imported from MT5 Positions",
+                    trade_note=(
+                        "Imported from Tradovate Performance CSV"
+                        if account_type == "FUTURES"
+                        else "Imported from MT5 Positions"
+                    ),
                 )
             )
 
@@ -1558,10 +1705,11 @@ def import_mt5_trades():
                 "new_trade",
                 import_status=status,
                 import_message=(
-                    f"Imported {len(insert_batch)} trades from Positions. "
+                    f"Imported {len(insert_batch)} trades from "
+                    f"{'Tradovate CSV' if account_type == 'FUTURES' else 'Positions'}. "
                     f"Parsed rows: {len(parsed_rows)}/{total_rows}. "
                     f"Skipped: {skipped_rows + validation_skipped}. "
-                    f"Duplicate positions: {duplicate_count}."
+                    f"{'Duplicate trades' if account_type == 'FUTURES' else 'Duplicate positions'}: {duplicate_count}."
                     f" Import signature: {import_signature}."
                     f"{symbol_msg}"
                     f"{uncertain_msg}"
@@ -1574,7 +1722,11 @@ def import_mt5_trades():
             url_for(
                 "new_trade",
                 import_status="error",
-                import_message="Upload processing failed. Check MT5 export format and try again.",
+                import_message=(
+                    "Upload processing failed. Check Tradovate CSV format and try again."
+                    if account_type == "FUTURES"
+                    else "Upload processing failed. Check MT5 export format and try again."
+                ),
             )
         )
 
@@ -1593,6 +1745,7 @@ def trade_detail(trade_id):
     ).first_or_404()
     trade_pnl = resolve_pnl(trade)
     trade_pips = resolve_pips(trade)
+    trade_account_type = get_trade_account_type(trade)
     timezone_name = get_app_timezone_name()
     opened_at_local = to_display_timezone(trade.opened_at, timezone_name)
     closed_at_local = to_display_timezone(trade.closed_at, timezone_name)
@@ -1602,8 +1755,11 @@ def trade_detail(trade_id):
         title="Trade Detail | FX Journal",
         username=session.get("username", "User"),
         trade=trade,
+        trade_display_symbol=format_trade_symbol(trade),
         trade_pnl=trade_pnl,
         trade_pips=trade_pips,
+        trade_account_type=trade_account_type,
+        trade_size_label=get_trade_size_label(trade_account_type),
         trade_opened_at_label=opened_at_local.strftime("%d %b %Y %H:%M") if opened_at_local else "-",
         trade_closed_at_label=closed_at_local.strftime("%d %b %Y %H:%M") if closed_at_local else "-",
         analytics_timezone=timezone_name,
@@ -1624,10 +1780,19 @@ def edit_trade(trade_id):
     ).first_or_404()
 
     if request.method == "POST":
-        allowed_symbols = set(get_symbol_options(trade.symbol))
-        symbol = canonicalize_symbol(request.form.get("symbol", ""))
+        account_type = normalize_account_type(active_trade_account.account_type)
+        allowed_symbols = set(get_symbol_options(account_type, trade.symbol))
+        symbol = canonicalize_symbol(request.form.get("symbol", ""), account_type)
+        contract_code = (request.form.get("contract_code", "") or "").strip().upper() or None
         if symbol not in allowed_symbols:
             return redirect(url_for("edit_trade", trade_id=trade.id))
+        if account_type == "FUTURES" and contract_code:
+            parsed_contract = parse_futures_contract_code(contract_code, expected_root=symbol)
+            if parsed_contract is None:
+                return redirect(url_for("edit_trade", trade_id=trade.id))
+            contract_code = parsed_contract["contract_code"]
+        elif account_type != "FUTURES":
+            contract_code = None
         side = request.form.get("side", "BUY").strip().upper()
         status = request.form.get("status", "Running").strip().lower()
         entry_price = float(request.form.get("entry_price", 0.0))
@@ -1657,6 +1822,8 @@ def edit_trade(trade_id):
                 entry_price=entry_price,
                 lot_size=lot_size,
                 pnl_value=pnl,
+                instrument_type=account_type,
+                contract_code=contract_code,
             )
         if pnl is None and exit_price is not None:
             pnl = calc_pnl_values(
@@ -1665,9 +1832,12 @@ def edit_trade(trade_id):
                 entry_price=entry_price,
                 exit_price=exit_price,
                 lot_size=lot_size,
+                instrument_type=account_type,
+                contract_code=contract_code,
             )
 
         trade.symbol = symbol
+        trade.contract_code = contract_code
         trade.side = side
         trade.entry_price = entry_price
         trade.exit_price = exit_price
@@ -1684,7 +1854,9 @@ def edit_trade(trade_id):
         "trade_entry.html",
         title="Edit Trade | FX Journal",
         username=session.get("username", "User"),
-        symbol_options=get_symbol_options(trade.symbol),
+        symbol_options=get_symbol_options(active_trade_account.account_type, trade.symbol),
+        account_type=normalize_account_type(active_trade_account.account_type),
+        size_label=get_trade_size_label(active_trade_account.account_type),
         trade=trade,
         form_action=url_for("edit_trade", trade_id=trade.id),
         form_mode="edit",

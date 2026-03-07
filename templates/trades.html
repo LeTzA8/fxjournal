@@ -62,14 +62,14 @@
                     <div id="tradeFilters" class="filter-row">
                         <select id="filterField" aria-label="Filter by">
                             <option value="">No Filter</option>
-                            <option value="pair">Pair</option>
+                            <option value="pair">Symbol</option>
                             <option value="date">Date</option>
                             <option value="side">Side</option>
                             <option value="status">Status</option>
                         </select>
 
                         <select id="pairFilter" class="filter-value" aria-label="Choose pair" hidden>
-                            <option value="">All Pairs</option>
+                            <option value="">All Symbols</option>
                         </select>
 
                         <select id="dateFilter" class="filter-value" aria-label="Choose date" hidden>
@@ -97,8 +97,8 @@
                             <option value="date_asc">Date (Oldest)</option>
                             <option value="pnl_desc">PnL (High-Low)</option>
                             <option value="pnl_asc">PnL (Low-High)</option>
-                            <option value="lot_desc">Lot Size (High-Low)</option>
-                            <option value="lot_asc">Lot Size (Low-High)</option>
+                            <option value="lot_desc">Size (High-Low)</option>
+                            <option value="lot_asc">Size (Low-High)</option>
                         </select>
                     </div>
                 </div>
@@ -120,11 +120,11 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>Pair</th>
+                                <th>Symbol</th>
                                 <th>Side</th>
                                 <th>Entry</th>
                                 <th>Exit</th>
-                                <th>Lots</th>
+                                <th>{{ size_label }}</th>
                                 <th>PnL</th>
                                 <th>Status</th>
                                 <th>Date</th>
@@ -562,7 +562,7 @@
     fillSelect(
         pairFilter,
         unique(rows.map((row) => toUpper(row.dataset.pair))).sort(),
-        "All Pairs"
+        "All Symbols"
     );
     fillSelect(
         dateFilter,
@@ -664,8 +664,4 @@
 })();
 </script>
 {% endblock %}
-
-
-
-
 

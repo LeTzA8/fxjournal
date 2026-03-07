@@ -34,6 +34,7 @@ class TradeAccount(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     name = db.Column(db.String(80), nullable=False, default="Main Account")
     external_account_id = db.Column(db.String(80), nullable=True)
+    account_type = db.Column(db.String(16), nullable=False, default="CFD")
     is_default = db.Column(db.Boolean, nullable=False, default=False)
     trades = db.relationship(
         "Trade", backref="trade_account", lazy=True, cascade="all, delete-orphan"
@@ -76,6 +77,7 @@ class Trade(db.Model):
     pnl = db.Column(db.Float, nullable=True)
     mt5_position = db.Column(db.String(64), nullable=True, index=True)
     import_signature = db.Column(db.String(80), nullable=True, index=True)
+    contract_code = db.Column(db.String(24), nullable=True)
     trade_note = db.Column(db.Text, nullable=True)
     opened_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     closed_at = db.Column(db.DateTime, nullable=True)
@@ -99,4 +101,19 @@ class AllowedSignupEmailDomain(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     domain = db.Column(db.String(255), unique=True, nullable=False, index=True)
     notes = db.Column(db.String(255), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+
+class FuturesSymbol(db.Model):
+    __tablename__ = "futures_symbols"
+
+    id = db.Column(db.Integer, primary_key=True)
+    root_symbol = db.Column(db.String(16), unique=True, nullable=False, index=True)
+    aliases = db.Column(db.Text, nullable=True)
+    display_name = db.Column(db.String(120), nullable=True)
+    exchange = db.Column(db.String(64), nullable=True)
+    tick_size = db.Column(db.Float, nullable=False)
+    tick_value = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(16), nullable=False, default="USD")
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
     is_active = db.Column(db.Boolean, nullable=False, default=True)

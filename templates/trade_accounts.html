@@ -36,6 +36,7 @@
                         <div class="account-card-head">
                             <div>
                                 <p class="account-name">{{ trade_account.name }}</p>
+                                <p class="account-meta">Type: {{ "Futures" if trade_account.account_type == "FUTURES" else "CFD" }}</p>
                                 {% if trade_account.external_account_id %}
                                 <p class="account-meta">External ID: {{ trade_account.external_account_id }}</p>
                                 {% else %}
@@ -112,6 +113,13 @@
                         placeholder="Optional broker/prop account ID"
                     >
 
+                    <label for="account_type">Account Type</label>
+                    <select id="account_type" name="account_type" required>
+                        {% for option in account_type_choices %}
+                        <option value="{{ option }}" {% if edit_target.account_type == option %}selected{% endif %}>{{ "Futures" if option == "FUTURES" else "CFD" }}</option>
+                        {% endfor %}
+                    </select>
+
                     <div class="inline-actions">
                         <button type="submit" class="submit-btn">Save Changes</button>
                         <a href="{{ url_for('trade_accounts') }}" class="ghost-link btn-link">Cancel</a>
@@ -140,6 +148,13 @@
                         maxlength="80"
                         placeholder="Optional broker/prop account ID"
                     >
+
+                    <label for="account_type">Account Type</label>
+                    <select id="account_type" name="account_type" required>
+                        {% for option in account_type_choices %}
+                        <option value="{{ option }}" {% if option == "CFD" %}selected{% endif %}>{{ "Futures" if option == "FUTURES" else "CFD" }}</option>
+                        {% endfor %}
+                    </select>
 
                     <label class="toggle-row" for="set_as_default">
                         <input id="set_as_default" name="set_as_default" type="checkbox" value="1">
@@ -304,7 +319,8 @@
         text-transform: uppercase;
         letter-spacing: 0.04em; }
 
-    .create-form input[type="text"] { border: 1px solid #c7d5cb;
+    .create-form input[type="text"],
+    .create-form select { border: 1px solid #c7d5cb;
         border-radius: 10px;
         padding: 0.58rem 0.66rem;
         font: inherit; }

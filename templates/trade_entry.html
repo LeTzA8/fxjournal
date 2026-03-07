@@ -30,18 +30,26 @@
             <article class="panel entry-panel">
                 <div class="panel-head">
                     <h2>Trade Details</h2>
-                    <span class="soft">Manual Input</span>
+                    <span class="soft">{{ "Futures" if account_type == "FUTURES" else "CFD" }} Manual Input</span>
                 </div>
 
                 <form action="{{ form_action }}" method="post" class="trade-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <label for="symbol">Pair</label>
+                    <p class="field-help">Active account type: <strong>{{ "Futures" if account_type == "FUTURES" else "CFD" }}</strong></p>
+
+                    <label for="symbol">Symbol</label>
                     <select id="symbol" name="symbol" required>
-                        {% set selected_symbol = trade.symbol if trade else symbol_options[0] %}
+                        {% set selected_symbol = trade.symbol if trade else (symbol_options[0] if symbol_options else '') %}
                         {% for symbol in symbol_options %}
                         <option value="{{ symbol }}" {% if selected_symbol == symbol %}selected{% endif %}>{{ symbol }}</option>
                         {% endfor %}
                     </select>
+
+                    {% if account_type == "FUTURES" %}
+                    <label for="contract_code">Contract Code</label>
+                    <input id="contract_code" name="contract_code" type="text" maxlength="24" placeholder="Optional, e.g. NQH6" value="{{ trade.contract_code if trade and trade.contract_code else '' }}">
+                    <p class="field-help">Use the exact traded contract when available. PnL still uses the root symbol spec.</p>
+                    {% endif %}
 
                     <label for="side">Side</label>
                     <select id="side" name="side" required>
@@ -55,7 +63,7 @@
                     <label for="exit_price">Exit Price</label>
                     <input id="exit_price" name="exit_price" type="number" step="0.00001" placeholder="Leave blank if still open" value="{{ trade.exit_price if trade and trade.exit_price is not none else '' }}">
 
-                    <label for="lot_size">Lots</label>
+                    <label for="lot_size">{{ size_label }}</label>
                     <input id="lot_size" name="lot_size" type="number" step="0.01" placeholder="0.10" value="{{ trade.lot_size if trade else '' }}" required>
 
                     <label for="pnl">PnL</label>
@@ -87,35 +95,66 @@
             {% if form_mode == "new" %}
             <article class="panel import-panel">
                 <div class="panel-head">
-                    <h2>Import from MetaTrader 5</h2>
-                    <span class="soft">XLSX Upload</span>
+                    <h2>{% if account_type == "FUTURES" %}Import from Tradovate{% else %}Import from MetaTrader 5{% endif %}</h2>
+                    <span class="soft">{% if account_type == "FUTURES" %}CSV Upload{% else %}XLSX Upload{% endif %}</span>
                 </div>
 
                 {% if import_status and import_message %}
                 <p class="import-alert {{ import_status }}">{{ import_message }}</p>
                 {% endif %}
 
-                <form action="{{ url_for('import_mt5_trades') }}" method="post" enctype="multipart/form-data" class="import-form">
+                <form action="{{ url_for('import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <label for="mt5_file">MT5 Excel File</label>
-                    <div id="mt5Dropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload MT5 xlsx file" aria-controls="mt5_file">
-                        <p class="dropzone-title">Drag and drop your MT5 .xlsx file here</p>
+                    <label for="mt5_file">{% if account_type == "FUTURES" %}Tradovate Performance File{% else %}MT5 Report File{% endif %}</label>
+                    <div id="mt5Dropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload trade import file" aria-controls="mt5_file">
+                        <p class="dropzone-title">
+                            {% if account_type == "FUTURES" %}
+                            Drag and drop your Tradovate .csv file here
+                            {% else %}
+                            Drag and drop your MT5 .xlsx file here
+                            {% endif %}
+                        </p>
                         <p class="dropzone-sub">or tap to browse</p>
                         <input
                             id="mt5_file"
                             name="mt5_file"
                             class="file-input"
                             type="file"
-                            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
                             required
                         >
                         <p id="mt5FileName" class="dropzone-file"></p>
                     </div>
+                    <div id="importProfile" class="import-profile" hidden>
+                        <p class="import-profile-title">Import Check</p>
+                        <dl class="import-profile-grid">
+                            <div>
+                                <dt>Detected Platform</dt>
+                                <dd id="importPlatformValue">-</dd>
+                            </div>
+                            <div>
+                                <dt>Detected Market</dt>
+                                <dd id="importMarketValue">-</dd>
+                            </div>
+                            <div>
+                                <dt>Active Account</dt>
+                                <dd>{{ "Futures" if account_type == "FUTURES" else "CFD" }}</dd>
+                            </div>
+                            <div>
+                                <dt>Validation</dt>
+                                <dd id="importValidationValue">Waiting for file</dd>
+                            </div>
+                        </dl>
+                    </div>
                     <p class="import-help">
+                        {% if account_type == "FUTURES" %}
+                        Upload the Tradovate performance export as <code>.csv</code>. Contract code, side, entry, exit, timestamps, and PnL will be mapped automatically.
+                        {% else %}
                         Upload a MetaTrader 5 report exported as <code>.xlsx</code>. If the file includes close timestamps, duration and session analytics will use them automatically.
+                        {% endif %}
                     </p>
                     <div class="form-actions">
-                        <button type="submit" class="submit-btn">Upload XLSX</button>
+                        <button type="submit" class="submit-btn">{% if account_type == "FUTURES" %}Upload CSV{% else %}Upload XLSX{% endif %}</button>
                     </div>
                 </form>
             </article>
@@ -291,6 +330,39 @@
 
     .import-help { margin: 0; font-size: 0.82rem; }
 
+    .import-profile { margin: 0;
+        border: 1px solid #d4ded6;
+        border-radius: 10px;
+        padding: 0.72rem 0.78rem; }
+
+    .import-profile-title { margin: 0 0 0.5rem;
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase; }
+
+    .import-profile-grid { margin: 0;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem 0.8rem; }
+
+    .import-profile-grid div { min-width: 0; }
+
+    .import-profile-grid dt { margin: 0 0 0.12rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase; }
+
+    .import-profile-grid dd { margin: 0;
+        font-size: 0.84rem;
+        font-weight: 600;
+        word-break: break-word; }
+
+    .import-profile.valid { border-color: #b5dcc2; }
+
+    .import-profile.invalid { border-color: #e6c1bf; }
+
     .import-alert { margin: 0 0 0.7rem;
         border-radius: 10px;
         padding: 0.58rem 0.72rem;
@@ -353,7 +425,12 @@
     const dropzone = document.getElementById("mt5Dropzone");
     const fileInput = document.getElementById("mt5_file");
     const fileName = document.getElementById("mt5FileName");
-    if (!dropzone || !fileInput || !fileName) {
+    const importProfile = document.getElementById("importProfile");
+    const platformValue = document.getElementById("importPlatformValue");
+    const marketValue = document.getElementById("importMarketValue");
+    const validationValue = document.getElementById("importValidationValue");
+    const submitButton = document.querySelector(".import-form .submit-btn");
+    if (!dropzone || !fileInput || !fileName || !importProfile || !platformValue || !marketValue || !validationValue || !submitButton) {
         return;
     }
 
@@ -368,21 +445,67 @@
         }
     };
 
+    const activeMarketType = {{ ("Futures" if account_type == "FUTURES" else "CFD") | tojson }};
+    const extensionMap = {
+        ".csv": { platform: "Tradovate", market: "Futures" },
+        ".xlsx": { platform: "MetaTrader 5", market: "CFD" },
+    };
+    const getDetectedProfile = (file) => {
+        const name = file && file.name ? file.name.toLowerCase() : "";
+        const extension = Object.keys(extensionMap).find((suffix) => name.endsWith(suffix));
+        return extension ? extensionMap[extension] : null;
+    };
+    const isSupportedFile = (file) => {
+        return Boolean(getDetectedProfile(file));
+    };
+    const setImportProfile = (file, detectedProfile, isValid) => {
+        if (!file || !detectedProfile) {
+            importProfile.hidden = true;
+            importProfile.classList.remove("valid", "invalid");
+            platformValue.textContent = "-";
+            marketValue.textContent = "-";
+            validationValue.textContent = "Waiting for file";
+            submitButton.disabled = true;
+            return;
+        }
+
+        importProfile.hidden = false;
+        importProfile.classList.toggle("valid", Boolean(isValid));
+        importProfile.classList.toggle("invalid", !isValid);
+        platformValue.textContent = detectedProfile.platform;
+        marketValue.textContent = detectedProfile.market;
+        validationValue.textContent = isValid
+            ? `Matches active ${activeMarketType} account`
+            : `Blocked: ${detectedProfile.market} file does not match active ${activeMarketType} account`;
+        submitButton.disabled = !isValid;
+    };
+
     fileInput.addEventListener("change", () => {
         const file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
         if (!file) {
             setFileName(null);
             setInvalid("");
+            setImportProfile(null, null, false);
             return;
         }
-        if (!file.name.toLowerCase().endsWith(".xlsx")) {
+        const detectedProfile = getDetectedProfile(file);
+        if (!isSupportedFile(file)) {
             setFileName(null);
             fileInput.value = "";
-            setInvalid("Please select an .xlsx file.");
+            setInvalid("Please select a .xlsx or .csv file.");
+            setImportProfile(null, null, false);
+            return;
+        }
+        const isValid = detectedProfile.market === activeMarketType;
+        if (!isValid) {
+            setFileName(file);
+            setInvalid(`This ${detectedProfile.market} file does not match the active ${activeMarketType} account.`);
+            setImportProfile(file, detectedProfile, false);
             return;
         }
         setInvalid("");
         setFileName(file);
+        setImportProfile(file, detectedProfile, true);
     });
 
     ["dragenter", "dragover"].forEach((eventName) => {
@@ -406,10 +529,20 @@
         if (!file) {
             return;
         }
-        if (!file.name.toLowerCase().endsWith(".xlsx")) {
+        const detectedProfile = getDetectedProfile(file);
+        if (!isSupportedFile(file)) {
             fileInput.value = "";
             setFileName(null);
-            setInvalid("Please drop an .xlsx file.");
+            setInvalid("Please drop a .xlsx or .csv file.");
+            setImportProfile(null, null, false);
+            return;
+        }
+        const isValid = detectedProfile.market === activeMarketType;
+        if (!isValid) {
+            fileInput.value = "";
+            setFileName(file);
+            setInvalid(`This ${detectedProfile.market} file does not match the active ${activeMarketType} account.`);
+            setImportProfile(file, detectedProfile, false);
             return;
         }
         setInvalid("");
@@ -421,6 +554,7 @@
             // Some browsers may block programmatic assignment; fallback keeps filename hint.
         }
         setFileName(file);
+        setImportProfile(file, detectedProfile, true);
     });
 
     dropzone.addEventListener("keydown", (event) => {
@@ -429,6 +563,8 @@
             fileInput.click();
         }
     });
+
+    setImportProfile(null, null, false);
 })();
 </script>
 {% endblock %}
