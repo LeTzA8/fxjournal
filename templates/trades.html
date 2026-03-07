@@ -106,6 +106,9 @@
                 <form action="{{ url_for('delete_import_batch') }}" method="post" class="batch-delete-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label for="import_signature">Delete Imported Batch</label>
+                    <p class="helper-note danger-note">
+                        This deletes every imported trade in the selected batch for your active account.
+                    </p>
                     <select id="import_signature" name="import_signature" required>
                         {% for batch in import_batches %}
                         <option value="{{ batch.signature }}">
@@ -113,6 +116,24 @@
                         </option>
                         {% endfor %}
                     </select>
+                    <label for="delete_import_batch_confirmation">Type <strong>DELETE</strong> to confirm</label>
+                    <input
+                        id="delete_import_batch_confirmation"
+                        name="delete_import_batch_confirmation"
+                        type="text"
+                        placeholder="DELETE"
+                        required
+                        autocomplete="off"
+                    >
+                    <label class="delete-check">
+                        <input
+                            id="delete_import_batch_acknowledge"
+                            name="delete_import_batch_acknowledge"
+                            type="checkbox"
+                            required
+                        >
+                        <span>I understand this removes all trades in the selected import batch.</span>
+                    </label>
                     <button type="submit" class="batch-delete-btn">Delete Batch</button>
                 </form>
                 {% endif %}
@@ -332,9 +353,9 @@
         letter-spacing: 0.02em; }
 
     .batch-delete-form { display: grid;
-        grid-template-columns: max-content minmax(220px, 1fr) auto;
+        grid-template-columns: 1fr auto;
         gap: 0.45rem;
-        align-items: center;
+        align-items: end;
         margin-bottom: 0.75rem;
         min-width: 0; }
 
@@ -342,7 +363,16 @@
         text-transform: uppercase;
         letter-spacing: 0.04em; }
 
+    .batch-delete-form .helper-note { grid-column: 1 / -1;
+        margin: 0; }
+
     .batch-delete-form select { border: 1px solid #c6d4ca;  border-radius: 8px;
+        padding: 0.4rem 0.55rem;
+        font-size: 0.78rem;
+        min-width: 0; }
+
+    .batch-delete-form input[type="text"] { border: 1px solid #d6b4b2;
+        border-radius: 8px;
         padding: 0.4rem 0.55rem;
         font-size: 0.78rem;
         min-width: 0; }
@@ -354,6 +384,19 @@
         text-transform: uppercase;
         letter-spacing: 0.03em;
         cursor: pointer; }
+
+    .delete-check { grid-column: 1 / -1;
+        display: inline-flex;
+        align-items: flex-start;
+        gap: 0.45rem;
+        font-size: 0.8rem;
+        text-transform: none !important;
+        letter-spacing: 0 !important; }
+
+    .delete-check input { width: auto;
+        margin-top: 0.18rem; }
+
+    .danger-note { color: #a04545; }
 .filter-row { display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 0.45rem;

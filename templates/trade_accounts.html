@@ -76,15 +76,10 @@
                                 href="{{ url_for('trade_accounts', edit=trade_account.pubkey) }}#editor"
                                 class="ghost-link btn-link"
                             >Edit</a>
-                            <form
-                                action="{{ url_for('delete_trade_account', trade_account_pubkey=trade_account.pubkey) }}"
-                                method="post"
-                                onsubmit='return confirm({{ ("Delete " ~ trade_account.name ~ " and all linked trades and AI reviews? This cannot be undone.") | tojson }});'
-                            >
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
-                                <button type="submit" class="ghost-btn danger-btn">Delete</button>
-                            </form>
+                            <a
+                                href="{{ url_for('trade_accounts', edit=trade_account.pubkey) }}#danger-zone"
+                                class="ghost-link btn-link danger-btn"
+                            >Delete</a>
                         </div>
                     </article>
                     {% endfor %}
@@ -202,6 +197,82 @@
 
                 <hr class="section-divider">
                 <p class="helper-note">Tip: Use distinct names like <strong>Live</strong>, <strong>Demo</strong>, or <strong>Challenge</strong> for clarity.</p>
+
+                {% if edit_target %}
+                <hr class="section-divider">
+                <section id="danger-zone" class="danger-zone">
+                    <div class="panel-head">
+                        <h2>Delete This Account</h2>
+                        <span class="soft">Danger Zone</span>
+                    </div>
+                    <p class="helper-note danger-note">
+                        This permanently deletes <strong>{{ edit_target.name }}</strong>, its {{ edit_target_trade_count }} trade{% if edit_target_trade_count != 1 %}s{% endif %}, and {{ edit_target_ai_review_count }} linked AI review{% if edit_target_ai_review_count != 1 %}s{% endif %}.
+                    </p>
+                    <form action="{{ url_for('delete_trade_account', trade_account_pubkey=edit_target.pubkey) }}" method="post" class="danger-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+
+                        <label for="delete_trade_account_confirmation">
+                            Type <strong>DELETE</strong> to confirm
+                        </label>
+                        <input
+                            id="delete_trade_account_confirmation"
+                            name="delete_trade_account_confirmation"
+                            type="text"
+                            placeholder="DELETE"
+                            required
+                            autocomplete="off"
+                        >
+                        <label class="delete-check">
+                            <input
+                                id="delete_trade_account_acknowledge"
+                                name="delete_trade_account_acknowledge"
+                                type="checkbox"
+                                required
+                            >
+                            <span>I understand this permanently removes this trade account and everything inside it.</span>
+                        </label>
+                        <button type="submit" class="ghost-btn danger-btn">Delete This Trade Account</button>
+                    </form>
+                </section>
+                {% endif %}
+
+                <hr class="section-divider">
+                <section class="danger-zone">
+                    <div class="panel-head">
+                        <h2>Delete All Trade Accounts</h2>
+                        <span class="soft">Danger Zone</span>
+                    </div>
+                    <p class="helper-note danger-note">
+                        This deletes all {{ account_rows|length }} trade account{% if account_rows|length != 1 %}s{% endif %}, all {{ total_trade_count }} trade{% if total_trade_count != 1 %}s{% endif %}, and all {{ total_ai_review_count }} linked AI review{% if total_ai_review_count != 1 %}s{% endif %}. A fresh Main Account will be created immediately after.
+                    </p>
+                    <form action="{{ url_for('delete_all_trade_accounts') }}" method="post" class="danger-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+
+                        <label for="delete_all_trade_accounts_confirmation">
+                            Type <strong>DELETE</strong> to confirm
+                        </label>
+                        <input
+                            id="delete_all_trade_accounts_confirmation"
+                            name="delete_all_trade_accounts_confirmation"
+                            type="text"
+                            placeholder="DELETE"
+                            required
+                            autocomplete="off"
+                        >
+                        <label class="delete-check">
+                            <input
+                                id="delete_all_trade_accounts_acknowledge"
+                                name="delete_all_trade_accounts_acknowledge"
+                                type="checkbox"
+                                required
+                            >
+                            <span>I understand this removes every trade account, all related trades, and all linked AI reviews for this user.</span>
+                        </label>
+                        <button type="submit" class="ghost-btn danger-btn">Delete All Trade Accounts</button>
+                    </form>
+                </section>
             </article>
         </section>
     </div>
@@ -391,6 +462,34 @@
 
     .danger-btn { border-color: #d78989;
         color: #a93c3c; }
+
+    .danger-zone { display: grid;
+        gap: 0.62rem; }
+
+    .danger-form { display: grid;
+        gap: 0.62rem; }
+
+    .danger-form label { font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em; }
+
+    .danger-form input[type="text"] { border: 1px solid #d5b4b4;
+        border-radius: 10px;
+        padding: 0.58rem 0.66rem;
+        font: inherit; }
+
+    .delete-check { display: inline-flex;
+        align-items: flex-start;
+        gap: 0.45rem;
+        font-size: 0.8rem;
+        text-transform: none !important;
+        letter-spacing: 0 !important; }
+
+    .delete-check input { width: auto;
+        margin-top: 0.18rem; }
+
+    .danger-note { color: #9f4747; }
 
     .btn-link { display: inline-flex;
         align-items: center;

@@ -181,7 +181,7 @@ limiter.init_app(app)
 
 TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
-LEGAL_LAST_UPDATED = "March 7, 2026"
+LEGAL_LAST_UPDATED = "March 8, 2026"
 
 
 def get_trade_size_label(account_type):
@@ -435,6 +435,9 @@ def delete_users_with_related_data(user_ids):
     if not normalized_ids:
         return 0
 
+    AIGeneratedResponse.query.filter(AIGeneratedResponse.user_id.in_(normalized_ids)).delete(
+        synchronize_session=False
+    )
     Trade.query.filter(Trade.user_id.in_(normalized_ids)).delete(
         synchronize_session=False
     )
@@ -1002,7 +1005,7 @@ def delete_account():
     return redirect(
         url_for(
             "login",
-            success="Your account and all related trade data were deleted.",
+            success="Your account and all related trade, account, and AI review data were deleted.",
         )
     )
 
@@ -1295,6 +1298,18 @@ def delete_trade_account(trade_account_pubkey):
         trade_account_id=account.id,
     ).count()
     active_trade_account_id = session.get("active_trade_account_id")
+    confirmation_text = request.form.get("delete_trade_account_confirmation", "").strip().upper()
+    acknowledged = request.form.get("delete_trade_account_acknowledge") == "on"
+    if confirmation_text != "DELETE" or not acknowledged:
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message=(
+                    f"To delete '{account.name}', type DELETE and tick the confirmation checkbox."
+                ),
+            )
+        )
 
     try:
         next_active_account = None
@@ -1374,30 +1389,43 @@ def delete_all_trade_accounts():
 
     user_id = session["user_id"]
     confirmation_text = request.form.get("delete_all_trade_accounts_confirmation", "").strip().upper()
-    if confirmation_text != "DELETE ALL":
+    acknowledged = request.form.get("delete_all_trade_accounts_acknowledge") == "on"
+    if confirmation_text != "DELETE" or not acknowledged:
         return redirect(
             append_query_params(
                 get_safe_internal_next("trade_accounts"),
                 trade_account_status="error",
-                trade_account_message="Type DELETE ALL to confirm removing every trade account.",
+                trade_account_message="Type DELETE and tick the confirmation checkbox to remove every trade account.",
             )
         )
 
     trade_count = Trade.query.filter_by(user_id=user_id).count()
     account_count = TradeAccount.query.filter_by(user_id=user_id).count()
+    ai_review_count = AIGeneratedResponse.query.filter_by(user_id=user_id).count()
+    try:
+        AIGeneratedResponse.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        Trade.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        TradeAccount.query.filter_by(user_id=user_id).delete(synchronize_session=False)
 
-    Trade.query.filter_by(user_id=user_id).delete(synchronize_session=False)
-    TradeAccount.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        replacement_account = TradeAccount(
+            pubkey=build_unique_trade_account_pubkey(),
+            user_id=user_id,
+            name="Main Account",
+            account_type="CFD",
+            is_default=True,
+        )
+        db.session.add(replacement_account)
+        db.session.commit()
+    except (OperationalError, IntegrityError):
+        db.session.rollback()
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="Could not delete every trade account right now. Please try again.",
+            )
+        )
 
-    replacement_account = TradeAccount(
-        pubkey=build_unique_trade_account_pubkey(),
-        user_id=user_id,
-        name="Main Account",
-        account_type="CFD",
-        is_default=True,
-    )
-    db.session.add(replacement_account)
-    db.session.commit()
     session["active_trade_account_id"] = replacement_account.id
 
     return redirect(
@@ -1405,7 +1433,8 @@ def delete_all_trade_accounts():
             get_safe_internal_next("trade_accounts"),
             trade_account_status="success",
             trade_account_message=(
-                f"Deleted {account_count} trade accounts and {trade_count} linked trades. "
+                f"Deleted {account_count} trade accounts, {trade_count} linked trades, and "
+                f"{ai_review_count} linked AI review{'s' if ai_review_count != 1 else ''}. "
                 "A fresh Main Account was created."
             ),
         )
@@ -1669,8 +1698,21 @@ def trade_accounts():
     account_rows = get_user_trade_accounts(user_id)
     edit_pubkey = request.args.get("edit", "").strip() or request.args.get("edit_id", "").strip()
     edit_target = None
+    edit_target_trade_count = 0
+    edit_target_ai_review_count = 0
     if edit_pubkey:
         edit_target = next((account for account in account_rows if account.pubkey == edit_pubkey), None)
+    if edit_target:
+        edit_target_trade_count = Trade.query.filter_by(
+            user_id=user_id,
+            trade_account_id=edit_target.id,
+        ).count()
+        edit_target_ai_review_count = AIGeneratedResponse.query.filter_by(
+            user_id=user_id,
+            trade_account_id=edit_target.id,
+        ).count()
+    total_trade_count = Trade.query.filter_by(user_id=user_id).count()
+    total_ai_review_count = AIGeneratedResponse.query.filter_by(user_id=user_id).count()
     trade_account_status = request.args.get("trade_account_status", "").strip().lower()
     trade_account_message = request.args.get("trade_account_message", "").strip()
     if trade_account_status not in {"success", "error", "info"}:
@@ -1685,6 +1727,10 @@ def trade_accounts():
         account_rows=account_rows,
         account_type_choices=get_account_type_choices(),
         edit_target=edit_target,
+        edit_target_trade_count=edit_target_trade_count,
+        edit_target_ai_review_count=edit_target_ai_review_count,
+        total_trade_count=total_trade_count,
+        total_ai_review_count=total_ai_review_count,
         active_trade_account=active_trade_account,
         trade_account_status=trade_account_status,
         trade_account_message=trade_account_message,
@@ -2321,6 +2367,8 @@ def delete_import_batch():
     active_trade_account = get_active_trade_account_for_user(user_id)
 
     import_signature = request.form.get("import_signature", "").strip()
+    confirmation_text = request.form.get("delete_import_batch_confirmation", "").strip().upper()
+    acknowledged = request.form.get("delete_import_batch_acknowledge") == "on"
     if not import_signature:
         return redirect(
             url_for(
@@ -2329,21 +2377,39 @@ def delete_import_batch():
                 batch_delete_message="Please select an import batch to delete.",
             )
         )
+    if confirmation_text != "DELETE" or not acknowledged:
+        return redirect(
+            url_for(
+                "trades",
+                batch_delete_status="error",
+                batch_delete_message="Type DELETE and tick the confirmation checkbox to remove the selected import batch.",
+            )
+        )
 
-    deleted = (
-        Trade.query.filter_by(
-            user_id=user_id,
-            trade_account_id=active_trade_account.id,
-            import_signature=import_signature,
-        ).delete(synchronize_session=False)
-    )
-    db.session.commit()
+    try:
+        deleted = (
+            Trade.query.filter_by(
+                user_id=user_id,
+                trade_account_id=active_trade_account.id,
+                import_signature=import_signature,
+            ).delete(synchronize_session=False)
+        )
+        db.session.commit()
+    except (OperationalError, IntegrityError):
+        db.session.rollback()
+        return redirect(
+            url_for(
+                "trades",
+                batch_delete_status="error",
+                batch_delete_message="Could not delete the selected import batch right now. Please try again.",
+            )
+        )
 
     status = "success" if deleted > 0 else "info"
     message = (
-        f"Deleted {deleted} trades for import signature {import_signature}."
+        f"Deleted {deleted} imported trade{'s' if deleted != 1 else ''} from the selected batch."
         if deleted > 0
-        else f"No trades found for import signature {import_signature}."
+        else f"No trades found for the selected import batch."
     )
     return redirect(
         url_for(

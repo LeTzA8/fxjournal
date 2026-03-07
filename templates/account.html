@@ -135,7 +135,7 @@
                 <hr class="section-divider">
                 <h3 class="section-title danger-title">Delete Account</h3>
                 <p class="helper-note danger-note">
-                    This permanently deletes your user profile, all trade accounts, and all trades. This action cannot be undone.
+                    This permanently deletes your user profile, all trade accounts, all trades, and all linked AI reviews. This action cannot be undone.
                 </p>
                 <form action="{{ url_for('delete_account') }}" method="post" class="delete-account-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -402,4 +402,3 @@
 </style>
 
 {% endblock %}
-
