@@ -685,7 +685,7 @@ def home():
     weekly_ai_generated_at_label = ""
     weekly_ai_next_refresh_label = ""
     weekly_ai_empty_message = (
-        "Your weekly AI review will appear after the next market-close refresh once there are trades in the completed week."
+        "Your weekly AI review appears once there are trades in the latest completed week for this account. If last week's review was missed, it will still generate on your next dashboard visit."
     )
 
     try:

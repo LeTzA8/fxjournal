@@ -263,18 +263,20 @@ def should_generate_weekly_dashboard_advice(
     trade_account_id=None,
     period_start_utc=None,
     period_end_utc=None,
+    require_recent_login=False,
 ):
     if not user_id or trade_account_id is None:
         return False
-    current_utc = _to_utc_naive(datetime.now(timezone.utc))
-    active_cutoff = current_utc - timedelta(days=WEEKLY_ACTIVITY_LOOKBACK_DAYS)
-    user_last_login_at = (
-        db.session.query(User.last_login_at)
-        .filter(User.id == user_id)
-        .scalar()
-    )
-    if user_last_login_at is None or user_last_login_at < active_cutoff:
-        return False
+    if require_recent_login:
+        current_utc = _to_utc_naive(datetime.now(timezone.utc))
+        active_cutoff = current_utc - timedelta(days=WEEKLY_ACTIVITY_LOOKBACK_DAYS)
+        user_last_login_at = (
+            db.session.query(User.last_login_at)
+            .filter(User.id == user_id)
+            .scalar()
+        )
+        if user_last_login_at is None or user_last_login_at < active_cutoff:
+            return False
     return has_trade_data_for_period(
         user_id=user_id,
         trade_account_id=trade_account_id,
@@ -526,22 +528,26 @@ def maybe_generate_weekly_dashboard_advice(
     prompt_filename=None,
     max_trades=None,
     now_utc=None,
+    require_recent_login=False,
 ):
     period = get_weekly_dashboard_period(now_utc=now_utc)
     try:
-        if not should_generate_weekly_dashboard_advice(
-            user_id=user_id,
-            trade_account_id=trade_account_id,
-            period_start_utc=period["period_start_utc"],
-            period_end_utc=period["period_end_utc"],
-        ):
-            return {"record": None, "generated": False, "period": period}
-
         existing = get_latest_weekly_dashboard_advice(
             user_id=user_id,
             trade_account_id=trade_account_id,
             period_start_utc=period["period_start_utc"],
         )
+        if existing is not None:
+            return {"record": existing, "generated": False, "period": period}
+
+        if not should_generate_weekly_dashboard_advice(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            period_start_utc=period["period_start_utc"],
+            period_end_utc=period["period_end_utc"],
+            require_recent_login=require_recent_login,
+        ):
+            return {"record": None, "generated": False, "period": period}
 
         payload = build_trade_payload(
             user_id=user_id,
