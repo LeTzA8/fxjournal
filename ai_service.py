@@ -1,6 +1,7 @@
 import hashlib
 import hashlib
 import json
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -15,7 +16,6 @@ from trading import build_trade_analytics, format_trade_symbol, resolve_pnl
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 DEFAULT_PROMPT_FILE = "dashboard_advice.txt"
 DEFAULT_MODEL = "gpt-5-mini"
-DEFAULT_MAX_OUTPUT_TOKENS = 600
 DEFAULT_TIMEOUT_SECONDS = 30
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 WEEKLY_DASHBOARD_KIND = "weekly_dashboard_advice"
@@ -24,6 +24,7 @@ WEEKLY_CUTOFF_WEEKDAY = 4
 WEEKLY_CUTOFF_HOUR = 17
 WEEKLY_CUTOFF_MINUTE = 30
 WEEKLY_ACTIVITY_LOOKBACK_DAYS = 3
+logger = logging.getLogger(__name__)
 
 
 class AIConfigError(RuntimeError):
@@ -56,15 +57,6 @@ def get_ai_timeout_seconds():
     except ValueError:
         timeout_seconds = DEFAULT_TIMEOUT_SECONDS
     return max(timeout_seconds, 5)
-
-
-def get_ai_max_output_tokens():
-    raw_value = os.getenv("AI_MAX_OUTPUT_TOKENS", str(DEFAULT_MAX_OUTPUT_TOKENS)).strip()
-    try:
-        max_output_tokens = int(raw_value)
-    except ValueError:
-        max_output_tokens = DEFAULT_MAX_OUTPUT_TOKENS
-    return max(max_output_tokens, 64)
 
 
 def get_prompt_source_path(prompt_filename=None):
@@ -404,12 +396,38 @@ def describe_empty_response(response_payload):
     return f"OpenAI response did not include any text output (status={status})."
 
 
-def request_openai_response(messages, *, model=None, max_output_tokens=None, timeout_seconds=None):
+def summarize_response_payload(response_payload):
+    usage = response_payload.get("usage") or {}
+    incomplete_details = response_payload.get("incomplete_details") or {}
+    output_items = response_payload.get("output") or []
+    content_types = []
+    for item in output_items:
+        for content in item.get("content", []):
+            content_type = str(content.get("type") or "").strip()
+            if content_type:
+                content_types.append(content_type)
+    summary = {
+        "id": response_payload.get("id"),
+        "model": response_payload.get("model"),
+        "status": response_payload.get("status"),
+        "incomplete_reason": incomplete_details.get("reason"),
+        "output_item_count": len(output_items),
+        "content_types": content_types[:10],
+        "has_output_text": bool(str(response_payload.get("output_text") or "").strip()),
+        "input_tokens": usage.get("input_tokens"),
+        "output_tokens": usage.get("output_tokens"),
+        "cached_input_tokens": (usage.get("input_tokens_details") or {}).get("cached_tokens"),
+    }
+    return summary
+
+
+def request_openai_response(messages, *, model=None, timeout_seconds=None):
+    resolved_model = model or get_ai_model()
+    resolved_timeout_seconds = timeout_seconds or get_ai_timeout_seconds()
     api_key = get_openai_api_key()
     request_body = {
-        "model": model or get_ai_model(),
+        "model": resolved_model,
         "input": messages,
-        "max_output_tokens": max_output_tokens or get_ai_max_output_tokens(),
         "reasoning": {"effort": "minimal"},
         "text": {"verbosity": "low"},
     }
@@ -425,8 +443,19 @@ def request_openai_response(messages, *, model=None, max_output_tokens=None, tim
     )
 
     try:
-        with urlopen(request, timeout=timeout_seconds or get_ai_timeout_seconds()) as response:
-            return json.loads(response.read().decode("utf-8"))
+        with urlopen(request, timeout=resolved_timeout_seconds) as response:
+            response_payload = json.loads(response.read().decode("utf-8"))
+            usage = response_payload.get("usage") or {}
+            logger.info(
+                "OpenAI response received. model=%s timeout_seconds=%s input_tokens=%s output_tokens=%s cached_input_tokens=%s summary=%s",
+                resolved_model,
+                resolved_timeout_seconds,
+                usage.get("input_tokens"),
+                usage.get("output_tokens"),
+                (usage.get("input_tokens_details") or {}).get("cached_tokens"),
+                summarize_response_payload(response_payload),
+            )
+            return response_payload
     except HTTPError as exc:
         details = exc.read().decode("utf-8", errors="replace")
         raise AIRequestError(f"OpenAI request failed with HTTP {exc.code}: {details}") from exc
@@ -480,6 +509,13 @@ def generate_dashboard_advice(*, user_id, trade_account_id=None, prompt_filename
         response_payload = request_openai_response(messages, model=get_ai_model())
         response_text = extract_response_text(response_payload)
         if not response_text:
+            logger.warning(
+                "AI dashboard advice returned no text. user_id=%s trade_account_id=%s kind=%s summary=%s",
+                user_id,
+                trade_account_id,
+                prompt_history.prompt_id,
+                summarize_response_payload(response_payload),
+            )
             raise AIRequestError(describe_empty_response(response_payload))
 
         latest_trade = (
@@ -583,6 +619,16 @@ def maybe_generate_weekly_dashboard_advice(
         response_payload = request_openai_response(messages, model=get_ai_model())
         response_text = extract_response_text(response_payload)
         if not response_text:
+            logger.warning(
+                "Weekly AI dashboard advice returned no text. user_id=%s trade_account_id=%s kind=%s "
+                "period_start_utc=%s period_end_utc=%s summary=%s",
+                user_id,
+                trade_account_id,
+                WEEKLY_DASHBOARD_KIND,
+                period["period_start_utc"],
+                period["period_end_utc"],
+                summarize_response_payload(response_payload),
+            )
             raise AIRequestError(describe_empty_response(response_payload))
 
         latest_trade = (

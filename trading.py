@@ -721,12 +721,28 @@ def _decode_text_bytes(raw_bytes):
 
 def sniff_tradovate_csv_stream(file_stream):
     raw_bytes = file_stream.read()
+    if not raw_bytes:
+        return None
+
+    # XLSX files are ZIP containers. If we see the PK header, this is not a CSV.
+    if raw_bytes.startswith(b"PK"):
+        return None
+
     decoded_text = _decode_text_bytes(raw_bytes)
     if not decoded_text.strip():
         return None
 
-    reader = csv.DictReader(io.StringIO(decoded_text))
-    field_names = set(reader.fieldnames or [])
+    # Binary-ish decodes from non-CSV uploads can still produce text, but often
+    # contain NULs or malformed newlines that the CSV reader will reject.
+    if "\x00" in decoded_text[:4096]:
+        return None
+
+    try:
+        reader = csv.DictReader(io.StringIO(decoded_text, newline=""))
+        field_names = set(reader.fieldnames or [])
+    except csv.Error:
+        return None
+
     if not TRADOVATE_REQUIRED_FIELDS.issubset(field_names):
         return None
 
