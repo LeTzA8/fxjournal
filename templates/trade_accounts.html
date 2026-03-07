@@ -60,22 +60,31 @@
                             {% if not (active_trade_account and trade_account.id == active_trade_account.id) %}
                             <form action="{{ url_for('switch_trade_account') }}" method="post">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="trade_account_id" value="{{ trade_account.id }}">
+                                <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
                                 <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
                                 <button type="submit" class="ghost-btn">Switch</button>
                             </form>
                             {% endif %}
                             {% if not trade_account.is_default %}
-                            <form action="{{ url_for('set_default_trade_account', trade_account_id=trade_account.id) }}" method="post">
+                            <form action="{{ url_for('set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
                                 <button type="submit" class="ghost-btn">Set Default</button>
                             </form>
                             {% endif %}
                             <a
-                                href="{{ url_for('trade_accounts', edit_id=trade_account.id) }}#editor"
+                                href="{{ url_for('trade_accounts', edit=trade_account.pubkey) }}#editor"
                                 class="ghost-link btn-link"
                             >Edit</a>
+                            <form
+                                action="{{ url_for('delete_trade_account', trade_account_pubkey=trade_account.pubkey) }}"
+                                method="post"
+                                onsubmit='return confirm({{ ("Delete " ~ trade_account.name ~ " and all linked trades and AI reviews? This cannot be undone.") | tojson }});'
+                            >
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+                                <button type="submit" class="ghost-btn danger-btn">Delete</button>
+                            </form>
                         </div>
                     </article>
                     {% endfor %}
@@ -92,7 +101,7 @@
                 </div>
 
                 {% if edit_target %}
-                <form action="{{ url_for('update_trade_account', trade_account_id=edit_target.id) }}" method="post" class="create-form">
+                <form action="{{ url_for('update_trade_account', trade_account_pubkey=edit_target.pubkey) }}" method="post" class="create-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
 
@@ -379,6 +388,9 @@
         letter-spacing: 0.03em;
         text-transform: uppercase;
         cursor: pointer; }
+
+    .danger-btn { border-color: #d78989;
+        color: #a93c3c; }
 
     .btn-link { display: inline-flex;
         align-items: center;

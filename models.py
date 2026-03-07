@@ -8,10 +8,15 @@ db = SQLAlchemy()
 
 
 TRADE_PUBKEY_BYTES = 12
+TRADE_ACCOUNT_PUBKEY_BYTES = 12
 
 
 def generate_trade_pubkey():
     return secrets.token_hex(TRADE_PUBKEY_BYTES)
+
+
+def generate_trade_account_pubkey():
+    return secrets.token_hex(TRADE_ACCOUNT_PUBKEY_BYTES)
 
 
 class User(db.Model):
@@ -43,6 +48,13 @@ class TradeAccount(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    pubkey = db.Column(
+        db.String(24),
+        unique=True,
+        nullable=False,
+        index=True,
+        default=generate_trade_account_pubkey,
+    )
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     name = db.Column(db.String(80), nullable=False, default="Main Account")
     external_account_id = db.Column(db.String(80), nullable=True)

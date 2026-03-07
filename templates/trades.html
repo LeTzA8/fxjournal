@@ -41,13 +41,13 @@
                         <label for="tradeAccountSwitcher">Trade Account</label>
                         <select
                             id="tradeAccountSwitcher"
-                            name="trade_account_id"
+                            name="trade_account_pubkey"
                             aria-label="Select trade account"
                             onchange="this.form.submit()"
                         >
                             {% for trade_account in header_trade_accounts %}
                             <option
-                                value="{{ trade_account.id }}"
+                                value="{{ trade_account.pubkey }}"
                                 {% if active_trade_account and trade_account.id == active_trade_account.id %}selected{% endif %}
                             >
                                 {{ trade_account.name }}{% if trade_account.is_default %} (Default){% endif %}

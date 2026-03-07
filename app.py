@@ -25,7 +25,15 @@ from ai_service import (
     get_weekly_dashboard_period,
     maybe_generate_weekly_dashboard_advice,
 )
-from models import Trade, TradeAccount, User, db, generate_trade_pubkey
+from models import (
+    AIGeneratedResponse,
+    Trade,
+    TradeAccount,
+    User,
+    db,
+    generate_trade_account_pubkey,
+    generate_trade_pubkey,
+)
 from trading import (
     build_trade_analytics,
     build_dashboard_insight,
@@ -319,11 +327,22 @@ def get_safe_internal_next(default_endpoint):
     return url_for(default_endpoint)
 
 
-def resolve_active_trade_account(user_id, requested_account_id=None):
+def resolve_active_trade_account(user_id, requested_account_id=None, requested_account_pubkey=None):
     accounts, changed = ensure_trade_account_for_user(user_id)
     if changed:
         db.session.commit()
         accounts = get_user_trade_accounts(user_id)
+
+    if requested_account_pubkey is not None:
+        requested_pubkey = str(requested_account_pubkey).strip()
+        if requested_pubkey:
+            requested_match = next(
+                (account for account in accounts if account.pubkey == requested_pubkey),
+                None,
+            )
+            if requested_match:
+                session["active_trade_account_id"] = requested_match.id
+                return requested_match, accounts
 
     if requested_account_id is not None:
         try:
@@ -364,6 +383,20 @@ def get_active_trade_account_for_user(user_id):
     return active_account
 
 
+def get_user_trade_account_by_pubkey(user_id, trade_account_pubkey):
+    return TradeAccount.query.filter_by(
+        user_id=user_id,
+        pubkey=str(trade_account_pubkey or "").strip(),
+    ).first()
+
+
+def get_user_trade_account_by_pubkey_or_404(user_id, trade_account_pubkey):
+    return TradeAccount.query.filter_by(
+        user_id=user_id,
+        pubkey=str(trade_account_pubkey or "").strip(),
+    ).first_or_404()
+
+
 def get_user_trade_by_pubkey_or_404(user_id, trade_pubkey):
     return Trade.query.filter_by(
         user_id=user_id,
@@ -378,6 +411,19 @@ def build_unique_trade_pubkey(reserved_pubkeys=None):
         if candidate in reserved:
             continue
         exists = db.session.query(Trade.id).filter_by(pubkey=candidate).first()
+        if exists:
+            continue
+        reserved.add(candidate)
+        return candidate
+
+
+def build_unique_trade_account_pubkey(reserved_pubkeys=None):
+    reserved = reserved_pubkeys if reserved_pubkeys is not None else set()
+    while True:
+        candidate = generate_trade_account_pubkey()
+        if candidate in reserved:
+            continue
+        exists = db.session.query(TradeAccount.id).filter_by(pubkey=candidate).first()
         if exists:
             continue
         reserved.add(candidate)
@@ -961,15 +1007,17 @@ def delete_account():
     )
 
 
-@app.route("/account/trade-accounts/switch", methods=["POST"])
+@app.route("/dashboard/trade-accounts/switch", methods=["POST"])
 def switch_trade_account():
     if not session.get("user_id"):
         return redirect(url_for("login"))
 
     requested_account_id = request.form.get("trade_account_id", "").strip()
+    requested_account_pubkey = request.form.get("trade_account_pubkey", "").strip()
     _active, _accounts = resolve_active_trade_account(
         session["user_id"],
         requested_account_id=requested_account_id,
+        requested_account_pubkey=requested_account_pubkey,
     )
     next_path = request.form.get("next", "").strip()
     if next_path.startswith("/") and not next_path.startswith("//"):
@@ -977,7 +1025,7 @@ def switch_trade_account():
     return redirect(request.referrer or url_for("home"))
 
 
-@app.route("/account/trade-accounts", methods=["POST"])
+@app.route("/dashboard/trade-accounts", methods=["POST"])
 @limiter.limit(
     "6 per minute;30 per hour",
     methods=["POST"],
@@ -1061,6 +1109,7 @@ def create_trade_account():
             account.is_default = False
 
     new_account = TradeAccount(
+        pubkey=build_unique_trade_account_pubkey(),
         user_id=user_id,
         name=account_name,
         external_account_id=external_account_id or None,
@@ -1081,16 +1130,13 @@ def create_trade_account():
     )
 
 
-@app.route("/account/trade-accounts/<int:trade_account_id>/default", methods=["POST"])
-def set_default_trade_account(trade_account_id):
+@app.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/default", methods=["POST"])
+def set_default_trade_account(trade_account_pubkey):
     if not session.get("user_id"):
         return redirect(url_for("login"))
 
     user_id = session["user_id"]
-    selected = TradeAccount.query.filter_by(
-        id=trade_account_id,
-        user_id=user_id,
-    ).first()
+    selected = get_user_trade_account_by_pubkey(user_id, trade_account_pubkey)
     if not selected:
         return redirect(
             append_query_params(
@@ -1117,13 +1163,13 @@ def set_default_trade_account(trade_account_id):
     )
 
 
-@app.route("/account/trade-accounts/<int:trade_account_id>/update", methods=["POST"])
-def update_trade_account(trade_account_id):
+@app.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/update", methods=["POST"])
+def update_trade_account(trade_account_pubkey):
     if not session.get("user_id"):
         return redirect(url_for("login"))
 
     user_id = session["user_id"]
-    account = TradeAccount.query.filter_by(id=trade_account_id, user_id=user_id).first()
+    account = get_user_trade_account_by_pubkey(user_id, trade_account_pubkey)
     if not account:
         return redirect(
             append_query_params(
@@ -1216,7 +1262,107 @@ def update_trade_account(trade_account_id):
     )
 
 
-@app.route("/account/trade-accounts/delete-all", methods=["POST"])
+@app.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/delete", methods=["POST"])
+@limiter.limit(
+    "3 per minute;10 per hour",
+    methods=["POST"],
+    error_message="Too many trade account deletion attempts. Please wait and try again.",
+)
+def delete_trade_account(trade_account_pubkey):
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    account = get_user_trade_account_by_pubkey(user_id, trade_account_pubkey)
+    if not account:
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="Trade account not found.",
+            )
+        )
+
+    account_rows = get_user_trade_accounts(user_id)
+    remaining_accounts = [row for row in account_rows if row.id != account.id]
+    deleted_name = account.name
+    deleted_trade_count = Trade.query.filter_by(
+        user_id=user_id,
+        trade_account_id=account.id,
+    ).count()
+    deleted_ai_review_count = AIGeneratedResponse.query.filter_by(
+        user_id=user_id,
+        trade_account_id=account.id,
+    ).count()
+    active_trade_account_id = session.get("active_trade_account_id")
+
+    try:
+        next_active_account = None
+        if remaining_accounts:
+            if account.is_default:
+                for row in remaining_accounts:
+                    row.is_default = False
+                remaining_accounts[0].is_default = True
+            next_active_account = next(
+                (row for row in remaining_accounts if row.id == active_trade_account_id),
+                None,
+            ) or next(
+                (row for row in remaining_accounts if row.is_default),
+                remaining_accounts[0],
+            )
+
+        db.session.delete(account)
+
+        replacement_created = False
+        if not remaining_accounts:
+            next_active_account = TradeAccount(
+                pubkey=build_unique_trade_account_pubkey(),
+                user_id=user_id,
+                name="Main Account",
+                account_type="CFD",
+                is_default=True,
+            )
+            db.session.add(next_active_account)
+            db.session.flush()
+            replacement_created = True
+
+        db.session.commit()
+    except (OperationalError, IntegrityError):
+        db.session.rollback()
+        return redirect(
+            append_query_params(
+                get_safe_internal_next("trade_accounts"),
+                trade_account_status="error",
+                trade_account_message="Could not delete that trade account right now. Please try again.",
+            )
+        )
+
+    if next_active_account is not None:
+        session["active_trade_account_id"] = next_active_account.id
+    else:
+        session.pop("active_trade_account_id", None)
+
+    review_msg = (
+        f" and {deleted_ai_review_count} linked AI review"
+        f"{'' if deleted_ai_review_count == 1 else 's'}"
+        if deleted_ai_review_count
+        else ""
+    )
+    replacement_msg = " A fresh Main Account was created." if replacement_created else ""
+    return redirect(
+        append_query_params(
+            get_safe_internal_next("trade_accounts"),
+            trade_account_status="success",
+            trade_account_message=(
+                f"Deleted trade account '{deleted_name}', {deleted_trade_count} linked trade"
+                f"{'' if deleted_trade_count == 1 else 's'}{review_msg}."
+                f"{replacement_msg}"
+            ),
+        )
+    )
+
+
+@app.route("/dashboard/trade-accounts/delete-all", methods=["POST"])
 @limiter.limit(
     "2 per hour",
     methods=["POST"],
@@ -1244,6 +1390,7 @@ def delete_all_trade_accounts():
     TradeAccount.query.filter_by(user_id=user_id).delete(synchronize_session=False)
 
     replacement_account = TradeAccount(
+        pubkey=build_unique_trade_account_pubkey(),
         user_id=user_id,
         name="Main Account",
         account_type="CFD",
@@ -1520,15 +1667,10 @@ def trade_accounts():
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_rows = get_user_trade_accounts(user_id)
-    edit_id_raw = request.args.get("edit_id", "").strip()
+    edit_pubkey = request.args.get("edit", "").strip() or request.args.get("edit_id", "").strip()
     edit_target = None
-    if edit_id_raw:
-        try:
-            edit_id = int(edit_id_raw)
-        except ValueError:
-            edit_id = None
-        if edit_id is not None:
-            edit_target = next((account for account in account_rows if account.id == edit_id), None)
+    if edit_pubkey:
+        edit_target = next((account for account in account_rows if account.pubkey == edit_pubkey), None)
     trade_account_status = request.args.get("trade_account_status", "").strip().lower()
     trade_account_message = request.args.get("trade_account_message", "").strip()
     if trade_account_status not in {"success", "error", "info"}:
