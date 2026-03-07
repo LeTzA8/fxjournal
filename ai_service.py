@@ -1,4 +1,5 @@
 import hashlib
+import hashlib
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -14,7 +15,7 @@ from trading import build_trade_analytics, format_trade_symbol, resolve_pnl
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 DEFAULT_PROMPT_FILE = "dashboard_advice.txt"
 DEFAULT_MODEL = "gpt-5-mini"
-DEFAULT_MAX_OUTPUT_TOKENS = 220
+DEFAULT_MAX_OUTPUT_TOKENS = 600
 DEFAULT_TIMEOUT_SECONDS = 30
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 WEEKLY_DASHBOARD_KIND = "weekly_dashboard_advice"
@@ -394,12 +395,23 @@ def extract_response_text(response_payload):
     return "\n\n".join(chunk for chunk in text_chunks if chunk).strip()
 
 
+def describe_empty_response(response_payload):
+    status = str(response_payload.get("status") or "").strip() or "unknown"
+    incomplete_details = response_payload.get("incomplete_details") or {}
+    reason = str(incomplete_details.get("reason") or "").strip()
+    if reason:
+        return f"OpenAI response did not include any text output (status={status}, reason={reason})."
+    return f"OpenAI response did not include any text output (status={status})."
+
+
 def request_openai_response(messages, *, model=None, max_output_tokens=None, timeout_seconds=None):
     api_key = get_openai_api_key()
     request_body = {
         "model": model or get_ai_model(),
         "input": messages,
         "max_output_tokens": max_output_tokens or get_ai_max_output_tokens(),
+        "reasoning": {"effort": "minimal"},
+        "text": {"verbosity": "low"},
     }
     encoded_body = json.dumps(request_body).encode("utf-8")
     request = Request(
@@ -468,7 +480,7 @@ def generate_dashboard_advice(*, user_id, trade_account_id=None, prompt_filename
         response_payload = request_openai_response(messages, model=get_ai_model())
         response_text = extract_response_text(response_payload)
         if not response_text:
-            raise AIRequestError("OpenAI response did not include any text output.")
+            raise AIRequestError(describe_empty_response(response_payload))
 
         latest_trade = (
             Trade.query.filter_by(user_id=user_id, trade_account_id=trade_account_id)
@@ -571,7 +583,7 @@ def maybe_generate_weekly_dashboard_advice(
         response_payload = request_openai_response(messages, model=get_ai_model())
         response_text = extract_response_text(response_payload)
         if not response_text:
-            raise AIRequestError("OpenAI response did not include any text output.")
+            raise AIRequestError(describe_empty_response(response_payload))
 
         latest_trade = (
             Trade.query.filter_by(user_id=user_id, trade_account_id=trade_account_id)

@@ -9,4 +9,4 @@ Unless the trader explicitly names a strategy or method in their notes, only mak
 
 Place more emphasis on patterns tied to sessions, session overlaps or transitions, and traded pairs or instruments than on inferred methods. Prefer observations like stronger performance in London, weaker results during New York continuation, or clearer edge on specific pairs over broad claims about strategy labels.
 
-Keep the response short enough for a dashboard panel. Do not give financial advice, predict markets, or invent details that are not present in the input.
+Keep the response between 90 and 140 words. Use 2 short paragraphs max, or 3 very short paragraphs if needed. Prioritize clarity and density over fluff. Do not give financial advice, predict markets, or invent details that are not present in the input.

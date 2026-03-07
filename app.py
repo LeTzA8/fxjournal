@@ -1662,6 +1662,17 @@ def import_trade_file():
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_type = normalize_account_type(active_trade_account.account_type)
+    import_stage = "request_validation"
+    detected_profile = None
+    parser_name = None
+    total_rows = 0
+    skipped_rows = 0
+    parsed_rows = []
+    validation_skipped = 0
+    duplicate_count = 0
+    import_signature = None
+    current_row_index = None
+    current_row_context = None
 
     uploaded_file = request.files.get("mt5_file")
     if not uploaded_file or not uploaded_file.filename:
@@ -1678,6 +1689,7 @@ def import_trade_file():
         )
 
     try:
+        import_stage = "detect_profile"
         uploaded_file.stream.seek(0)
         detected_profile = detect_trade_import_profile(uploaded_file.stream)
         if detected_profile is None:
@@ -1704,7 +1716,9 @@ def import_trade_file():
             )
 
         uploaded_file.stream.seek(0)
-        if detected_profile.get("parser") == "tradovate_csv":
+        parser_name = detected_profile.get("parser")
+        import_stage = f"parse_{parser_name or 'unknown'}"
+        if parser_name == "tradovate_csv":
             parsed_rows, total_rows, skipped_rows = parse_tradovate_csv_stream(uploaded_file.stream)
         else:
             parsed_rows, total_rows, skipped_rows = parse_mt5_xlsx_stream(uploaded_file.stream)
@@ -1723,7 +1737,6 @@ def import_trade_file():
 
         allowed_symbols = set(get_symbol_options(active_trade_account.account_type))
         failed_symbols = set()
-        validation_skipped = 0
         validation_reasons = {
             "missing_mt5_position": 0,
             "invalid_mt5_position": 0,
@@ -1772,12 +1785,12 @@ def import_trade_file():
                 if pos
             }
 
+        import_stage = "build_insert_batch"
         import_signature = build_import_signature("tradovate" if account_type == "FUTURES" else "mt5")
-        duplicate_count = 0
         insert_batch = []
         reserved_pubkeys = set()
 
-        for row in parsed_rows:
+        for current_row_index, row in enumerate(parsed_rows, start=1):
             symbol = canonicalize_symbol(row.get("symbol"), active_trade_account.account_type)
             side = (row.get("side") or "").upper()
             lot_size = row.get("lot_size")
@@ -1789,6 +1802,20 @@ def import_trade_file():
             contract_code = row.get("contract_code")
             mt5_position = row.get("mt5_position")
             mt5_position_raw = row.get("mt5_position_raw")
+            current_row_context = {
+                "symbol": symbol,
+                "side": side,
+                "lot_size": lot_size,
+                "entry_price": entry_price,
+                "exit_price": exit_price,
+                "pnl": pnl,
+                "opened_at": opened_at.isoformat() if opened_at else None,
+                "closed_at": closed_at.isoformat() if closed_at else None,
+                "contract_code": contract_code,
+                "mt5_position": mt5_position,
+                "mt5_position_raw": str(mt5_position_raw or "").strip()[:64] or None,
+                "source_timezone": row.get("source_timezone"),
+            }
 
             if symbol not in allowed_symbols:
                 if symbol:
@@ -1905,6 +1932,7 @@ def import_trade_file():
                 )
             )
 
+        import_stage = "commit_import"
         db.session.add_all(insert_batch)
         db.session.commit()
 
@@ -1960,8 +1988,33 @@ def import_trade_file():
                 ),
             )
         )
-    except Exception:
+    except Exception as exc:
         db.session.rollback()
+        app.logger.exception(
+            "Trade import failed. stage=%s user_id=%s trade_account_id=%s account_type=%s "
+            "filename=%r parser=%r detected_profile=%r parsed_rows=%s total_rows=%s skipped_rows=%s "
+            "validation_skipped=%s duplicate_count=%s import_signature=%r current_row_index=%r "
+            "current_row_context=%r",
+            import_stage,
+            user_id,
+            getattr(active_trade_account, "id", None),
+            account_type,
+            getattr(uploaded_file, "filename", None),
+            parser_name,
+            detected_profile,
+            len(parsed_rows) if parsed_rows is not None else None,
+            total_rows,
+            skipped_rows,
+            validation_skipped,
+            duplicate_count,
+            import_signature,
+            current_row_index,
+            current_row_context,
+            exc_info=exc,
+        )
+        extra_detail = ""
+        if is_local_dev_environment():
+            extra_detail = f" Details: {str(exc).strip()[:240]}"
         return redirect(
             url_for(
                 "new_trade",
@@ -1970,7 +2023,7 @@ def import_trade_file():
                     "Upload processing failed. Check Tradovate CSV format and try again."
                     if account_type == "FUTURES"
                     else "Upload processing failed. Check MT5 export format and try again."
-                ),
+                ) + extra_detail,
             )
         )
 
