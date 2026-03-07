@@ -16,6 +16,7 @@ from trading import build_trade_analytics, format_trade_symbol, resolve_pnl
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 DEFAULT_PROMPT_FILE = "dashboard_advice.txt"
 DEFAULT_MODEL = "gpt-5-mini"
+DEFAULT_MAX_OUTPUT_TOKENS = 1500
 DEFAULT_TIMEOUT_SECONDS = 30
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 WEEKLY_DASHBOARD_KIND = "weekly_dashboard_advice"
@@ -57,6 +58,15 @@ def get_ai_timeout_seconds():
     except ValueError:
         timeout_seconds = DEFAULT_TIMEOUT_SECONDS
     return max(timeout_seconds, 5)
+
+
+def get_ai_max_output_tokens():
+    raw_value = os.getenv("AI_MAX_OUTPUT_TOKENS", str(DEFAULT_MAX_OUTPUT_TOKENS)).strip()
+    try:
+        max_output_tokens = int(raw_value)
+    except ValueError:
+        max_output_tokens = DEFAULT_MAX_OUTPUT_TOKENS
+    return max(max_output_tokens, 64)
 
 
 def get_prompt_source_path(prompt_filename=None):
@@ -423,12 +433,14 @@ def summarize_response_payload(response_payload):
 
 def request_openai_response(messages, *, model=None, timeout_seconds=None):
     resolved_model = model or get_ai_model()
+    resolved_max_output_tokens = get_ai_max_output_tokens()
     resolved_timeout_seconds = timeout_seconds or get_ai_timeout_seconds()
     api_key = get_openai_api_key()
     request_body = {
         "model": resolved_model,
         "input": messages,
-        "reasoning": {"effort": "minimal"},
+        "max_output_tokens": resolved_max_output_tokens,
+        "reasoning": {"effort": "medium"},
         "text": {"verbosity": "low"},
     }
     encoded_body = json.dumps(request_body).encode("utf-8")
@@ -447,8 +459,9 @@ def request_openai_response(messages, *, model=None, timeout_seconds=None):
             response_payload = json.loads(response.read().decode("utf-8"))
             usage = response_payload.get("usage") or {}
             logger.info(
-                "OpenAI response received. model=%s timeout_seconds=%s input_tokens=%s output_tokens=%s cached_input_tokens=%s summary=%s",
+                "OpenAI response received. model=%s max_output_tokens=%s timeout_seconds=%s input_tokens=%s output_tokens=%s cached_input_tokens=%s summary=%s",
                 resolved_model,
+                resolved_max_output_tokens,
                 resolved_timeout_seconds,
                 usage.get("input_tokens"),
                 usage.get("output_tokens"),
