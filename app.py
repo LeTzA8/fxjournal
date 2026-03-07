@@ -33,6 +33,7 @@ from trading import (
     get_symbol_options,
     normalize_account_type,
     normalize_symbol,
+    detect_trade_import_profile,
     parse_import_signature_datetime,
     parse_futures_contract_code,
     parse_tradovate_csv_stream,
@@ -1442,28 +1443,34 @@ def import_trade_file():
             )
         )
 
-    filename = uploaded_file.filename.strip().lower()
-    if account_type == "FUTURES":
-        if not filename.endswith(".csv"):
+    try:
+        uploaded_file.stream.seek(0)
+        detected_profile = detect_trade_import_profile(uploaded_file.stream)
+        if detected_profile is None:
             return redirect(
                 url_for(
                     "new_trade",
                     import_status="error",
-                    import_message="Invalid file type. Please upload a Tradovate .csv file.",
+                    import_message="Unsupported or unrecognized import file. Use an MT5 Positions workbook or Tradovate Performance CSV.",
                 )
             )
-    elif not filename.endswith(".xlsx"):
-        return redirect(
-            url_for(
-                "new_trade",
-                import_status="error",
-                import_message="Invalid file type. Please upload an MT5 .xlsx file.",
-            )
-        )
 
-    try:
+        detected_account_type = normalize_account_type(detected_profile.get("account_type"))
+        if detected_account_type != account_type:
+            return redirect(
+                url_for(
+                    "new_trade",
+                    import_status="error",
+                    import_message=(
+                        f"Detected {detected_profile.get('platform', 'unknown')} "
+                        f"{detected_profile.get('market_type', 'import')} file, "
+                        f"but the active account is {account_type.title()}."
+                    ),
+                )
+            )
+
         uploaded_file.stream.seek(0)
-        if account_type == "FUTURES":
+        if detected_profile.get("parser") == "tradovate_csv":
             parsed_rows, total_rows, skipped_rows = parse_tradovate_csv_stream(uploaded_file.stream)
         else:
             parsed_rows, total_rows, skipped_rows = parse_mt5_xlsx_stream(uploaded_file.stream)

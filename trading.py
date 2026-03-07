@@ -76,6 +76,19 @@ MT5_COLUMN_ALIASES = {
 MT5_SECTION_TITLES = {"positions", "orders", "deals", "results"}
 ACCOUNT_TYPE_CHOICES = ("CFD", "FUTURES")
 FUTURES_MONTH_CODES = frozenset({"F", "G", "H", "J", "K", "M", "N", "Q", "U", "V", "X", "Z"})
+TRADOVATE_REQUIRED_FIELDS = frozenset(
+    {
+        "symbol",
+        "buyFillId",
+        "sellFillId",
+        "qty",
+        "buyPrice",
+        "sellPrice",
+        "pnl",
+        "boughtTimestamp",
+        "soldTimestamp",
+    }
+)
 
 WEEKDAY_NAMES = [
     "Monday",
@@ -545,6 +558,38 @@ def parse_mt5_rows(rows):
     return parsed, total, skipped
 
 
+def sniff_mt5_xlsx_stream(file_stream):
+    try:
+        workbook = load_workbook(file_stream, data_only=True, read_only=True)
+    except Exception:
+        return None
+
+    try:
+        worksheet = workbook.active
+        rows = list(worksheet.iter_rows(values_only=True))
+        section_idx = find_section_row(rows, "positions")
+        if section_idx is None:
+            return None
+
+        header_scan_end = min(section_idx + 10, len(rows))
+        for idx in range(section_idx + 1, header_scan_end):
+            detected = build_mt5_column_map(rows[idx])
+            if (
+                detected.get("symbol") is not None
+                and detected.get("side") is not None
+                and detected.get("lot_size") is not None
+            ):
+                return {
+                    "platform": "MetaTrader 5",
+                    "market_type": "CFD",
+                    "account_type": "CFD",
+                    "parser": "mt5_xlsx",
+                }
+        return None
+    finally:
+        workbook.close()
+
+
 def parse_mt5_xlsx_stream(file_stream):
     workbook = load_workbook(file_stream, data_only=True, read_only=True)
     worksheet = workbook.active
@@ -587,38 +632,64 @@ def parse_mt5_csv_stream(file_stream):
     return parse_mt5_rows(rows)
 
 
+def _decode_text_bytes(raw_bytes):
+    if not raw_bytes:
+        return ""
+
+    for encoding in ("utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "cp1252", "latin-1"):
+        try:
+            return raw_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw_bytes.decode("utf-8", errors="replace")
+
+
+def sniff_tradovate_csv_stream(file_stream):
+    raw_bytes = file_stream.read()
+    decoded_text = _decode_text_bytes(raw_bytes)
+    if not decoded_text.strip():
+        return None
+
+    reader = csv.DictReader(io.StringIO(decoded_text))
+    field_names = set(reader.fieldnames or [])
+    if not TRADOVATE_REQUIRED_FIELDS.issubset(field_names):
+        return None
+
+    return {
+        "platform": "Tradovate",
+        "market_type": "Futures",
+        "account_type": "FUTURES",
+        "parser": "tradovate_csv",
+    }
+
+
+def detect_trade_import_profile(file_stream):
+    if file_stream is None:
+        return None
+
+    file_stream.seek(0)
+    profile = sniff_tradovate_csv_stream(file_stream)
+    file_stream.seek(0)
+    if profile is not None:
+        return profile
+
+    profile = sniff_mt5_xlsx_stream(file_stream)
+    file_stream.seek(0)
+    return profile
+
+
 def parse_tradovate_csv_stream(file_stream):
     raw_bytes = file_stream.read()
     if not raw_bytes:
         return [], 0, 0
 
-    decoded_text = None
-    for encoding in ("utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "cp1252", "latin-1"):
-        try:
-            decoded_text = raw_bytes.decode(encoding)
-            break
-        except UnicodeDecodeError:
-            continue
-
-    if decoded_text is None:
-        decoded_text = raw_bytes.decode("utf-8", errors="replace")
+    decoded_text = _decode_text_bytes(raw_bytes)
 
     if not decoded_text.strip():
         return [], 0, 0
 
     reader = csv.DictReader(io.StringIO(decoded_text))
-    required_fields = {
-        "symbol",
-        "buyFillId",
-        "sellFillId",
-        "qty",
-        "buyPrice",
-        "sellPrice",
-        "pnl",
-        "boughtTimestamp",
-        "soldTimestamp",
-    }
-    if not reader.fieldnames or not required_fields.issubset(set(reader.fieldnames)):
+    if not reader.fieldnames or not TRADOVATE_REQUIRED_FIELDS.issubset(set(reader.fieldnames)):
         return [], 0, 0
 
     parsed = []

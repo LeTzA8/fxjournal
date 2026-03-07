@@ -446,17 +446,53 @@
     };
 
     const activeMarketType = {{ ("Futures" if account_type == "FUTURES" else "CFD") | tojson }};
-    const extensionMap = {
-        ".csv": { platform: "Tradovate", market: "Futures" },
-        ".xlsx": { platform: "MetaTrader 5", market: "CFD" },
+    const expectedUploadLabel = {{ ("Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook") | tojson }};
+    const tradovateHeaders = [
+        "symbol",
+        "buyFillId",
+        "sellFillId",
+        "qty",
+        "buyPrice",
+        "sellPrice",
+        "pnl",
+        "boughtTimestamp",
+        "soldTimestamp",
+    ];
+    const parseCsvHeader = (text) => {
+        const lines = String(text || "").split(/\r?\n/).filter((line) => line.trim());
+        if (!lines.length) {
+            return [];
+        }
+        return lines[0].split(",").map((part) => part.trim());
     };
-    const getDetectedProfile = (file) => {
-        const name = file && file.name ? file.name.toLowerCase() : "";
-        const extension = Object.keys(extensionMap).find((suffix) => name.endsWith(suffix));
-        return extension ? extensionMap[extension] : null;
+    const looksLikeZipWorkbook = async (file) => {
+        try {
+            const bytes = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+            return bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4B;
+        } catch {
+            return false;
+        }
     };
-    const isSupportedFile = (file) => {
-        return Boolean(getDetectedProfile(file));
+    const detectProfileFromFile = async (file) => {
+        if (!file) {
+            return null;
+        }
+
+        try {
+            const textSample = await file.slice(0, 8192).text();
+            const csvHeader = parseCsvHeader(textSample);
+            if (csvHeader.length && tradovateHeaders.every((header) => csvHeader.includes(header))) {
+                return { platform: "Tradovate", market: "Futures" };
+            }
+        } catch {
+            // Fall through to workbook detection.
+        }
+
+        if (await looksLikeZipWorkbook(file)) {
+            return { platform: "MetaTrader 5", market: "CFD" };
+        }
+
+        return null;
     };
     const setImportProfile = (file, detectedProfile, isValid) => {
         if (!file || !detectedProfile) {
@@ -480,7 +516,7 @@
         submitButton.disabled = !isValid;
     };
 
-    fileInput.addEventListener("change", () => {
+    fileInput.addEventListener("change", async () => {
         const file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
         if (!file) {
             setFileName(null);
@@ -488,11 +524,12 @@
             setImportProfile(null, null, false);
             return;
         }
-        const detectedProfile = getDetectedProfile(file);
-        if (!isSupportedFile(file)) {
-            setFileName(null);
+        submitButton.disabled = true;
+        const detectedProfile = await detectProfileFromFile(file);
+        if (!detectedProfile) {
+            setFileName(file);
             fileInput.value = "";
-            setInvalid("Please select a .xlsx or .csv file.");
+            setInvalid(`Unsupported file. Please use a ${expectedUploadLabel} that matches this ${activeMarketType} account.`);
             setImportProfile(null, null, false);
             return;
         }
@@ -524,16 +561,17 @@
         });
     });
 
-    dropzone.addEventListener("drop", (event) => {
+    dropzone.addEventListener("drop", async (event) => {
         const file = event.dataTransfer && event.dataTransfer.files ? event.dataTransfer.files[0] : null;
         if (!file) {
             return;
         }
-        const detectedProfile = getDetectedProfile(file);
-        if (!isSupportedFile(file)) {
+        submitButton.disabled = true;
+        const detectedProfile = await detectProfileFromFile(file);
+        if (!detectedProfile) {
             fileInput.value = "";
-            setFileName(null);
-            setInvalid("Please drop a .xlsx or .csv file.");
+            setFileName(file);
+            setInvalid(`Unsupported file. Please use a ${expectedUploadLabel} that matches this ${activeMarketType} account.`);
             setImportProfile(null, null, false);
             return;
         }
