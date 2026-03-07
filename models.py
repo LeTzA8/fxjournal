@@ -25,6 +25,10 @@ class User(db.Model):
 
 class TradeAccount(db.Model):
     __tablename__ = "trade_accounts"
+    __table_args__ = (
+        db.Index("ix_trade_accounts_user_name", "user_id", "name"),
+        db.Index("ix_trade_accounts_user_external", "user_id", "external_account_id"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
@@ -38,6 +42,23 @@ class TradeAccount(db.Model):
 
 class Trade(db.Model):
     __tablename__ = "trades"
+    __table_args__ = (
+        db.Index("ix_trades_user_trade_account", "user_id", "trade_account_id"),
+        db.Index("ix_trades_user_mt5_position", "user_id", "mt5_position"),
+        db.Index("ix_trades_user_import_signature", "user_id", "import_signature"),
+        db.Index(
+            "ix_trades_user_account_mt5_position",
+            "user_id",
+            "trade_account_id",
+            "mt5_position",
+        ),
+        db.Index(
+            "ix_trades_user_account_import_signature",
+            "user_id",
+            "trade_account_id",
+            "import_signature",
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
@@ -58,3 +79,24 @@ class Trade(db.Model):
     trade_note = db.Column(db.Text, nullable=True)
     opened_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     closed_at = db.Column(db.DateTime, nullable=True)
+
+
+class CFDSymbol(db.Model):
+    __tablename__ = "CFD_Symbols"
+
+    id = db.Column(db.Integer, primary_key=True)
+    symbol = db.Column(db.String(32), unique=True, nullable=False, index=True)
+    aliases = db.Column(db.Text, nullable=True)
+    contract_size = db.Column(db.Float, nullable=False, default=1.0)
+    pip_size = db.Column(db.Float, nullable=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+
+class AllowedSignupEmailDomain(db.Model):
+    __tablename__ = "allowed_signup_email_domains"
+
+    id = db.Column(db.Integer, primary_key=True)
+    domain = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    notes = db.Column(db.String(255), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)

@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="error-shell">
+    <article class="card error-card reveal-item">
+        <p class="error-code">{{ status_code }}</p>
+        <h1>{{ heading }}</h1>
+        <p class="error-copy">{{ description }}</p>
+        {% if request_path %}
+        <p class="error-path">Requested path: <code>{{ request_path }}</code></p>
+        {% endif %}
+        <div class="error-actions">
+            <a href="{{ primary_url }}" class="error-link primary">{{ primary_label }}</a>
+            {% if secondary_url and secondary_label %}
+            <a href="{{ secondary_url }}" class="error-link secondary">{{ secondary_label }}</a>
+            {% endif %}
+        </div>
+    </article>
+</section>
+
+<style>
+    .error-shell {
+        min-height: calc(100vh - 10rem);
+        display: grid;
+        place-items: center;
+        padding: clamp(1.25rem, 3vw, 2.5rem) 1rem;
+    }
+
+    .error-card {
+        width: min(720px, 100%);
+        padding: clamp(1.6rem, 4vw, 3rem);
+        border-radius: 24px;
+        text-align: left;
+        display: grid;
+        gap: 0.95rem;
+        background:
+            linear-gradient(160deg, color-mix(in srgb, var(--card) 92%, transparent), color-mix(in srgb, var(--surface) 82%, transparent)),
+            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 24%, transparent), transparent 46%);
+        border-color: color-mix(in srgb, var(--border) 84%, var(--accent) 16%);
+    }
+
+    .error-code {
+        margin: 0;
+        font-family: var(--font-mono);
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--accent);
+    }
+
+    .error-card h1 {
+        margin: 0;
+        color: var(--ink);
+        font-size: clamp(2rem, 5vw, 3.35rem);
+        line-height: 1.02;
+    }
+
+    .error-copy {
+        margin: 0;
+        max-width: 48ch;
+        color: var(--muted);
+        font-size: 1rem;
+    }
+
+    .error-path {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.86rem;
+    }
+
+    .error-path code {
+        font-family: var(--font-mono);
+        color: var(--ink);
+        background: color-mix(in srgb, var(--surface) 84%, transparent);
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 999px;
+        padding: 0.2rem 0.5rem;
+    }
+
+    .error-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        padding-top: 0.35rem;
+    }
+
+    .error-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 0 1rem;
+        border-radius: 999px;
+        text-decoration: none;
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .error-link:hover {
+        transform: translateY(-1px);
+    }
+
+    .error-link.primary {
+        color: #fff;
+        background: var(--accent);
+        border: 1px solid color-mix(in srgb, var(--accent) 72%, #000 10%);
+    }
+
+    .error-link.primary:hover {
+        background: var(--accent-hover);
+    }
+
+    .error-link.secondary {
+        color: var(--ink);
+        border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+        background: color-mix(in srgb, var(--surface) 82%, transparent);
+    }
+
+    @media (max-width: 640px) {
+        .error-shell {
+            min-height: calc(100vh - 8rem);
+        }
+
+        .error-actions {
+            flex-direction: column;
+        }
+
+        .error-link {
+            width: 100%;
+        }
+    }
+</style>
+{% endblock %}

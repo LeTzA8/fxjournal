@@ -174,8 +174,8 @@
                         <dd>{% if summary.avg_loss_abs is not none %}-${{ '%.2f'|format(summary.avg_loss_abs) }}{% else %}-{% endif %}</dd>
                     </div>
                     <div>
-                        <dt>Payoff Ratio</dt>
-                        <dd>{% if summary.payoff_ratio is not none %}1 : {{ '%.2f'|format(summary.payoff_ratio) }}{% else %}-{% endif %}</dd>
+                        <dt>Risk:Reward</dt>
+                        <dd>{% if summary.risk_reward_ratio is not none %}{{ '%.2f'|format(summary.risk_reward_ratio) }} : 1{% else %}-{% endif %}</dd>
                     </div>
                 </dl>
 

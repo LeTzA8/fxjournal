@@ -3,102 +3,61 @@ import random
 import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from flask import has_app_context
 from openpyxl import load_workbook
+from sqlalchemy.exc import OperationalError, ProgrammingError
+
+from models import CFDSymbol
 
 
-BASE_SYMBOL_OPTIONS = [
-    "EURUSD",
-    "GBPUSD",
-    "USDJPY",
-    "AUDUSD",
-    "USDCAD",
-    "USDCHF",
-    "NZDUSD",
-    "EURJPY",
-    "GBPJPY",
-    "AUDJPY",
-    "CADJPY",
-    "CHFJPY",
-    "NZDJPY",
-    "EURGBP",
-    "EURCHF",
-    "EURAUD",
-    "EURNZD",
-    "EURCAD",
-    "GBPCHF",
-    "GBPAUD",
-    "GBPCAD",
-    "GBPNZD",
-    "AUDCAD",
-    "AUDCHF",
-    "AUDNZD",
-    "CADCHF",
-    "NZDCHF",
-    "NZDCAD",
-    "XAUUSD",
-    "XAGUSD",
-    "US500",
-    "NAS100",
-    "US30",
-    "GER40",
-    "UK100",
-    "FRA40",
-    "EU50",
-    "JP225",
-    "HK50",
-    "CHN50",
-    "AUS200",
-    "ESP35",
-    "IT40",
-]
-
-SYMBOL_ALIASES = {
-    "SPX500": "US500",
-    "SP500": "US500",
-    "US500CASH": "US500",
-    "US500INDEX": "US500",
-    "US100": "NAS100",
-    "USTEC": "NAS100",
-    "NAS100CASH": "NAS100",
-    "NASDAQ100": "NAS100",
-    "DJ30": "US30",
-    "DJIA": "US30",
-    "WS30": "US30",
-    "US30CASH": "US30",
-    "DE40": "GER40",
-    "DAX40": "GER40",
-    "GER30": "GER40",
-    "DE30": "GER40",
-    "DAX": "GER40",
-    "FTSE100": "UK100",
-    "UKX": "UK100",
-    "U100": "UK100",
-    "CAC40": "FRA40",
-    "FR40": "FRA40",
-    "STOXX50": "EU50",
-    "EUSTX50": "EU50",
-    "SX5E": "EU50",
-    "N225": "JP225",
-    "NI225": "JP225",
-    "JP225CASH": "JP225",
-    "HSI": "HK50",
-    "HSI50": "HK50",
-    "HK50CASH": "HK50",
-    "CN50": "CHN50",
-    "CHINA50": "CHN50",
-    "CHINAA50": "CHN50",
-    "A50": "CHN50",
-    "AU200": "AUS200",
-    "ASX200": "AUS200",
-    "IBEX35": "ESP35",
-    "ES35": "ESP35",
-    "ITA40": "IT40",
-    "EU": "EURUSD",
-    "GU": "GBPUSD",
-    "UJ": "USDJPY",
-}
+DEFAULT_CFD_SYMBOL_SPECS = (
+    {"symbol": "EURUSD", "aliases": ("EU",), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 10},
+    {"symbol": "GBPUSD", "aliases": ("GU",), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 20},
+    {"symbol": "USDJPY", "aliases": ("UJ",), "contract_size": 100000.0, "pip_size": 0.01, "sort_order": 30},
+    {"symbol": "AUDUSD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 40},
+    {"symbol": "USDCAD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 50},
+    {"symbol": "USDCHF", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 60},
+    {"symbol": "NZDUSD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 70},
+    {"symbol": "EURJPY", "aliases": (), "contract_size": 100000.0, "pip_size": 0.01, "sort_order": 80},
+    {"symbol": "GBPJPY", "aliases": (), "contract_size": 100000.0, "pip_size": 0.01, "sort_order": 90},
+    {"symbol": "AUDJPY", "aliases": (), "contract_size": 100000.0, "pip_size": 0.01, "sort_order": 100},
+    {"symbol": "CADJPY", "aliases": (), "contract_size": 100000.0, "pip_size": 0.01, "sort_order": 110},
+    {"symbol": "CHFJPY", "aliases": (), "contract_size": 100000.0, "pip_size": 0.01, "sort_order": 120},
+    {"symbol": "NZDJPY", "aliases": (), "contract_size": 100000.0, "pip_size": 0.01, "sort_order": 130},
+    {"symbol": "EURGBP", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 140},
+    {"symbol": "EURCHF", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 150},
+    {"symbol": "EURAUD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 160},
+    {"symbol": "EURNZD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 170},
+    {"symbol": "EURCAD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 180},
+    {"symbol": "GBPCHF", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 190},
+    {"symbol": "GBPAUD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 200},
+    {"symbol": "GBPCAD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 210},
+    {"symbol": "GBPNZD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 220},
+    {"symbol": "AUDCAD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 230},
+    {"symbol": "AUDCHF", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 240},
+    {"symbol": "AUDNZD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 250},
+    {"symbol": "CADCHF", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 260},
+    {"symbol": "NZDCHF", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 270},
+    {"symbol": "NZDCAD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 280},
+    {"symbol": "XAUUSD", "aliases": (), "contract_size": 100.0, "pip_size": None, "sort_order": 290},
+    {"symbol": "XAGUSD", "aliases": (), "contract_size": 5000.0, "pip_size": None, "sort_order": 300},
+    {"symbol": "US500", "aliases": ("SPX500", "SP500", "US500CASH", "US500INDEX"), "contract_size": 1.0, "pip_size": None, "sort_order": 310},
+    {"symbol": "NAS100", "aliases": ("US100", "USTEC", "NAS100CASH", "NASDAQ100"), "contract_size": 1.0, "pip_size": None, "sort_order": 320},
+    {"symbol": "US30", "aliases": ("DJ30", "DJIA", "WS30", "US30CASH"), "contract_size": 1.0, "pip_size": None, "sort_order": 330},
+    {"symbol": "GER40", "aliases": ("DE40", "DAX40", "GER30", "DE30", "DAX"), "contract_size": 1.0, "pip_size": None, "sort_order": 340},
+    {"symbol": "UK100", "aliases": ("FTSE100", "UKX", "U100"), "contract_size": 1.0, "pip_size": None, "sort_order": 350},
+    {"symbol": "FRA40", "aliases": ("CAC40", "FR40"), "contract_size": 1.0, "pip_size": None, "sort_order": 360},
+    {"symbol": "EU50", "aliases": ("STOXX50", "EUSTX50", "SX5E"), "contract_size": 1.0, "pip_size": None, "sort_order": 370},
+    {"symbol": "JP225", "aliases": ("N225", "NI225", "JP225CASH"), "contract_size": 1.0, "pip_size": None, "sort_order": 380},
+    {"symbol": "HK50", "aliases": ("HSI", "HSI50", "HK50CASH"), "contract_size": 1.0, "pip_size": None, "sort_order": 390},
+    {"symbol": "CHN50", "aliases": ("CN50", "CHINA50", "CHINAA50", "A50"), "contract_size": 1.0, "pip_size": None, "sort_order": 400},
+    {"symbol": "AUS200", "aliases": ("AU200", "ASX200"), "contract_size": 1.0, "pip_size": None, "sort_order": 410},
+    {"symbol": "ESP35", "aliases": ("IBEX35", "ES35"), "contract_size": 1.0, "pip_size": None, "sort_order": 420},
+    {"symbol": "IT40", "aliases": ("ITA40",), "contract_size": 1.0, "pip_size": None, "sort_order": 430},
+)
 
 MT5_COLUMN_ALIASES = {
     "mt5_position": {"position", "position id", "position ticket", "ticket"},
@@ -113,24 +72,6 @@ MT5_COLUMN_ALIASES = {
 }
 
 MT5_SECTION_TITLES = {"positions", "orders", "deals", "results"}
-
-INSTRUMENT_CONTRACT_SIZE = {
-    "XAUUSD": 100.0,
-    "XAGUSD": 5000.0,
-    "US500": 1.0,
-    "NAS100": 1.0,
-    "US30": 1.0,
-    "GER40": 1.0,
-    "UK100": 1.0,
-    "FRA40": 1.0,
-    "EU50": 1.0,
-    "JP225": 1.0,
-    "HK50": 1.0,
-    "CHN50": 1.0,
-    "AUS200": 1.0,
-    "ESP35": 1.0,
-    "IT40": 1.0,
-}
 
 WEEKDAY_NAMES = [
     "Monday",
@@ -154,15 +95,84 @@ def normalize_symbol(symbol):
     return "".join(ch for ch in (symbol or "").upper() if ch.isalnum())
 
 
+def _normalize_aliases(value):
+    seen = []
+    for raw_alias in str(value or "").split(","):
+        alias = normalize_symbol(raw_alias)
+        if alias and alias not in seen:
+            seen.append(alias)
+    return tuple(seen)
+
+
+def clear_cfd_symbol_cache():
+    _load_cfd_symbol_specs.cache_clear()
+    _load_cfd_symbol_map.cache_clear()
+    _load_cfd_alias_map.cache_clear()
+
+
+@lru_cache(maxsize=1)
+def _load_cfd_symbol_specs():
+    default_specs = tuple(
+        {
+            "symbol": spec["symbol"],
+            "aliases": tuple(spec["aliases"]),
+            "contract_size": float(spec["contract_size"]),
+            "pip_size": spec["pip_size"],
+            "sort_order": int(spec["sort_order"]),
+        }
+        for spec in DEFAULT_CFD_SYMBOL_SPECS
+    )
+    if not has_app_context():
+        return default_specs
+
+    try:
+        rows = (
+            CFDSymbol.query.filter_by(is_active=True)
+            .order_by(CFDSymbol.sort_order.asc(), CFDSymbol.symbol.asc())
+            .all()
+        )
+    except (OperationalError, ProgrammingError):
+        return default_specs
+
+    if not rows:
+        return default_specs
+
+    return tuple(
+        {
+            "symbol": normalize_symbol(row.symbol),
+            "aliases": _normalize_aliases(row.aliases),
+            "contract_size": float(row.contract_size),
+            "pip_size": float(row.pip_size) if row.pip_size is not None else None,
+            "sort_order": int(row.sort_order or 0),
+        }
+        for row in rows
+    )
+
+
+@lru_cache(maxsize=1)
+def _load_cfd_symbol_map():
+    return {spec["symbol"]: spec for spec in _load_cfd_symbol_specs()}
+
+
+@lru_cache(maxsize=1)
+def _load_cfd_alias_map():
+    alias_map = {}
+    for spec in _load_cfd_symbol_specs():
+        alias_map[spec["symbol"]] = spec["symbol"]
+        for alias in spec["aliases"]:
+            alias_map[alias] = spec["symbol"]
+    return alias_map
+
+
 def canonicalize_symbol(symbol):
     normalized = normalize_symbol(symbol)
     if not normalized:
         return ""
-    return SYMBOL_ALIASES.get(normalized, normalized)
+    return _load_cfd_alias_map().get(normalized, normalized)
 
 
 def get_symbol_options(selected_symbol=None):
-    options = list(BASE_SYMBOL_OPTIONS)
+    options = [spec["symbol"] for spec in _load_cfd_symbol_specs()]
     selected = canonicalize_symbol(selected_symbol)
     if selected and selected not in options:
         options.insert(0, selected)
@@ -405,9 +415,10 @@ def is_fx_pair(symbol):
 
 
 def get_contract_size(symbol):
-    sym = normalize_symbol(symbol)
-    if sym in INSTRUMENT_CONTRACT_SIZE:
-        return INSTRUMENT_CONTRACT_SIZE[sym]
+    sym = canonicalize_symbol(symbol)
+    spec = _load_cfd_symbol_map().get(sym)
+    if spec is not None:
+        return spec["contract_size"]
     if is_fx_pair(sym):
         return 100000.0
     return 1.0
@@ -423,7 +434,10 @@ def quote_to_usd_rate(symbol, reference_price):
 
 
 def get_pip_size(symbol):
-    sym = normalize_symbol(symbol)
+    sym = canonicalize_symbol(symbol)
+    spec = _load_cfd_symbol_map().get(sym)
+    if spec is not None and spec["pip_size"] is not None:
+        return spec["pip_size"]
     if not is_fx_pair(sym):
         return None
     return 0.01 if sym.endswith("JPY") else 0.0001
@@ -820,6 +834,7 @@ def build_trade_analytics(trades, display_timezone_name="UTC", now_utc=None):
     win_rate = (wins / total_closed * 100.0) if total_closed else 0.0
     expectancy = (net_pnl / total_closed) if total_closed else None
     payoff_ratio = (avg_win / avg_loss_abs) if avg_win is not None and avg_loss_abs else None
+    risk_reward_ratio = (avg_loss_abs / avg_win) if avg_loss_abs is not None and avg_win else None
     profit_factor = (gross_profit / abs(gross_loss)) if gross_loss < 0 else None
 
     duration_values = [
@@ -979,6 +994,7 @@ def build_trade_analytics(trades, display_timezone_name="UTC", now_utc=None):
             "avg_win": avg_win,
             "avg_loss_abs": avg_loss_abs,
             "payoff_ratio": payoff_ratio,
+            "risk_reward_ratio": risk_reward_ratio,
             "profit_factor": profit_factor,
             "average_duration_minutes": average_duration_minutes,
             "average_duration_label": format_duration_minutes(average_duration_minutes),

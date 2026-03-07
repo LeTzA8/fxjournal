@@ -5,10 +5,11 @@ from dotenv import load_dotenv
 from flask import Flask, g, redirect, render_template, request, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
-from sqlalchemy import inspect, or_, text
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError, OperationalError
-from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 from auth_account import (
@@ -19,7 +20,6 @@ from auth_account import (
 )
 from models import Trade, TradeAccount, User, db
 from trading import (
-    BASE_SYMBOL_OPTIONS,
     build_trade_analytics,
     build_dashboard_insight,
     build_import_signature,
@@ -130,6 +130,7 @@ elif database_url.startswith("postgresql://") and "+psycopg" not in database_url
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
+migrate = Migrate(app, db, directory="migrations", compare_type=True)
 csrf = CSRFProtect(app)
 # For production, set RATELIMIT_STORAGE_URI to Redis for shared counters.
 limiter = Limiter(
@@ -142,127 +143,6 @@ limiter.init_app(app)
 TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
 LEGAL_LAST_UPDATED = "March 6, 2026"
-
-
-
-
-
-
-
-def ensure_trades_table_columns():
-    table_name = Trade.__tablename__
-    inspector = inspect(db.engine)
-    if table_name not in inspector.get_table_names():
-        return
-
-    existing_columns = {col["name"] for col in inspector.get_columns(table_name)}
-    statements = []
-    if "mt5_position" not in existing_columns:
-        statements.append(
-            f"ALTER TABLE {table_name} ADD COLUMN mt5_position VARCHAR(64)"
-        )
-    if "import_signature" not in existing_columns:
-        statements.append(
-            f"ALTER TABLE {table_name} ADD COLUMN import_signature VARCHAR(80)"
-        )
-    if "trade_account_id" not in existing_columns:
-        statements.append(
-            f"ALTER TABLE {table_name} ADD COLUMN trade_account_id INTEGER"
-        )
-    if "closed_at" not in existing_columns:
-        statements.append(f"ALTER TABLE {table_name} ADD COLUMN closed_at TIMESTAMP")
-
-    with db.engine.begin() as connection:
-        for stmt in statements:
-            connection.execute(text(stmt))
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_trades_user_trade_account "
-                f"ON {table_name} (user_id, trade_account_id)"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_trades_user_mt5_position "
-                f"ON {table_name} (user_id, mt5_position)"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_trades_user_import_signature "
-                f"ON {table_name} (user_id, import_signature)"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_trades_user_account_mt5_position "
-                f"ON {table_name} (user_id, trade_account_id, mt5_position)"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_trades_user_account_import_signature "
-                f"ON {table_name} (user_id, trade_account_id, import_signature)"
-            )
-        )
-
-
-def ensure_trade_accounts_table_columns():
-    table_name = TradeAccount.__tablename__
-    inspector = inspect(db.engine)
-    if table_name not in inspector.get_table_names():
-        return
-
-    existing_columns = {col["name"] for col in inspector.get_columns(table_name)}
-    statements = []
-    if "external_account_id" not in existing_columns:
-        statements.append(
-            f"ALTER TABLE {table_name} ADD COLUMN external_account_id VARCHAR(80)"
-        )
-    if "is_default" not in existing_columns:
-        statements.append(
-            f"ALTER TABLE {table_name} ADD COLUMN is_default BOOLEAN NOT NULL DEFAULT FALSE"
-        )
-
-    with db.engine.begin() as connection:
-        for stmt in statements:
-            connection.execute(text(stmt))
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_trade_accounts_user_name "
-                f"ON {table_name} (user_id, name)"
-            )
-        )
-        connection.execute(
-            text(
-                "CREATE INDEX IF NOT EXISTS ix_trade_accounts_user_external "
-                f"ON {table_name} (user_id, external_account_id)"
-            )
-        )
-
-
-def ensure_users_table_columns():
-    table_name = User.__tablename__
-    inspector = inspect(db.engine)
-    if table_name not in inspector.get_table_names():
-        return
-
-    existing_columns = {col["name"] for col in inspector.get_columns(table_name)}
-    statements = []
-    if "email_verified" not in existing_columns:
-        statements.append(
-            f"ALTER TABLE {table_name} ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT FALSE"
-        )
-    if "verification_sent_at" not in existing_columns:
-        statements.append(
-            f"ALTER TABLE {table_name} ADD COLUMN verification_sent_at TIMESTAMP"
-        )
-
-    with db.engine.begin() as connection:
-        for stmt in statements:
-            connection.execute(text(stmt))
-
-
 def get_user_trade_accounts(user_id):
     return (
         TradeAccount.query.filter_by(user_id=user_id)
@@ -408,15 +288,6 @@ def purge_expired_unverified_users():
         app.logger.exception("Failed to purge expired unverified users.")
         return 0
 
-
-with app.app_context():
-    db.create_all()
-    ensure_users_table_columns()
-    ensure_trade_accounts_table_columns()
-    ensure_trades_table_columns()
-    ensure_trade_accounts_backfill()
-
-
 def _is_same_origin(url_value):
     parsed = urlparse(url_value)
     if parsed.scheme not in {"http", "https"}:
@@ -510,6 +381,70 @@ def handle_rate_limit(_error):
     return "Too many requests. Please try again later.", 429
 
 
+def render_error_page(status_code, heading, description, title=None):
+    user_logged_in = bool(session.get("user_id"))
+    primary_endpoint = "home" if user_logged_in else "login"
+    primary_label = "Back to Dashboard" if user_logged_in else "Go to Login"
+    secondary_endpoint = "trades" if user_logged_in else None
+    secondary_label = "View Trades" if user_logged_in else None
+    return (
+        render_template(
+            "error.html",
+            title=title or f"{status_code} | FX Journal",
+            status_code=status_code,
+            heading=heading,
+            description=description,
+            primary_url=url_for(primary_endpoint),
+            primary_label=primary_label,
+            secondary_url=url_for(secondary_endpoint) if secondary_endpoint else None,
+            secondary_label=secondary_label,
+            request_path=request.path,
+        ),
+        status_code,
+    )
+
+
+@app.errorhandler(HTTPException)
+def handle_http_error(error):
+    page_content = {
+        403: (
+            "Access denied",
+            "You do not have permission to view this page.",
+            "403 | FX Journal",
+        ),
+        404: (
+            "Page not found",
+            "The page you requested does not exist or may have moved.",
+            "404 | FX Journal",
+        ),
+        405: (
+            "Method not allowed",
+            "That action is not available for this page.",
+            "405 | FX Journal",
+        ),
+    }
+    heading, description, title = page_content.get(
+        error.code,
+        (
+            error.name or "Request error",
+            error.description or "Something went wrong while processing your request.",
+            f"{error.code} | FX Journal" if error.code else "Error | FX Journal",
+        ),
+    )
+    return render_error_page(error.code or 500, heading, description, title=title)
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(error):
+    app.logger.exception("Unhandled application error.", exc_info=error)
+    return render_error_page(
+        500,
+        "Something broke on our side",
+        "The page could not be loaded right now. Please try again in a moment.",
+        title="500 | FX Journal",
+    )
+
+
 register_public_auth_routes(
     app,
     limiter,
@@ -590,12 +525,10 @@ def home():
         net_pnl_week=summary["weekly_pnl"],
         account_pnl_total=summary["net_pnl"],
         trades_this_month=trades_this_month,
-        avg_rr=summary["payoff_ratio"],
+        avg_rr=summary["risk_reward_ratio"],
         recent_trades=recent_trades,
         chart_points=chart_points,
         dashboard_insight=dashboard_insight,
-        analytics_snapshot=analytics,
-        analytics_timezone=timezone_name,
     )
 
 
@@ -1458,7 +1391,7 @@ def import_mt5_trades():
                 )
             )
 
-        allowed_symbols = set(BASE_SYMBOL_OPTIONS)
+        allowed_symbols = set(get_symbol_options())
         failed_symbols = set()
         validation_skipped = 0
         validation_reasons = {

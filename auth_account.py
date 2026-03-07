@@ -4,33 +4,13 @@ from datetime import datetime
 
 from flask import current_app, redirect, render_template, request, session, url_for
 from sqlalchemy import or_
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
-from models import User, db
+from models import AllowedSignupEmailDomain, User, db
 
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
 PENDING_REGISTRATIONS = {}
-DEFAULT_ALLOWED_SIGNUP_EMAIL_DOMAINS = {
-    "gmail.com",
-    "outlook.com",
-    "hotmail.com",
-    "live.com",
-    "msn.com",
-    "yahoo.com",
-    "yahoo.co.uk",
-    "yahoo.ca",
-    "ymail.com",
-    "icloud.com",
-    "me.com",
-    "mac.com",
-    "aol.com",
-    "proton.me",
-    "protonmail.com",
-    "pm.me",
-    "gmx.com",
-    "mail.com",
-}
 
 
 def _env_int(name, default):
@@ -59,9 +39,19 @@ def build_external_url(path_or_url):
 def get_allowed_signup_email_domains():
     raw = os.getenv("ALLOWED_SIGNUP_EMAIL_DOMAINS", "").strip()
     if not raw:
-        return DEFAULT_ALLOWED_SIGNUP_EMAIL_DOMAINS
-    parsed = {part.strip().lower() for part in raw.split(",") if part and part.strip()}
-    return parsed or DEFAULT_ALLOWED_SIGNUP_EMAIL_DOMAINS
+        try:
+            rows = (
+                AllowedSignupEmailDomain.query.filter_by(is_active=True)
+                .order_by(AllowedSignupEmailDomain.domain.asc())
+                .all()
+            )
+        except (OperationalError, ProgrammingError):
+            current_app.logger.warning(
+                "Allowed signup domain table is unavailable. Falling back to env-only allowlist."
+            )
+            return set()
+        return {row.domain.strip().lower() for row in rows if row.domain and row.domain.strip()}
+    return {part.strip().lower() for part in raw.split(",") if part and part.strip()}
 
 
 def is_allowed_signup_email_domain(email):

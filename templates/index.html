@@ -46,9 +46,9 @@
             <article class="metric">
                 <p class="metric-label">Avg R:R</p>
                 <p class="metric-value">
-                    {% if avg_rr is not none %}1 : {{ '%.2f'|format(avg_rr) }}{% else %}-{% endif %}
+                    {% if avg_rr is not none %}{{ '%.2f'|format(avg_rr) }} : 1{% else %}-{% endif %}
                 </p>
-                <p class="metric-note">Avg win / avg loss</p>
+                <p class="metric-note">Avg risk / avg reward</p>
             </article>
         </section>
 
@@ -233,35 +233,6 @@
                     <p class="insight-body">{{ dashboard_insight.body }}</p>
                 </div>
                 <p class="insight-note">Refresh the dashboard for another insight.</p>
-            </article>
-
-            <article class="panel insights-panel">
-                <div class="panel-head">
-                    <h2>Analytics Snapshot</h2>
-                    <a href="{{ url_for('analytics') }}" class="ghost-btn">Open Full Analytics</a>
-                </div>
-                <ul class="notes-list analytics-mini-list">
-                    <li>
-                        <strong>Expectancy:</strong>
-                        {% if analytics_snapshot.summary.expectancy is not none %}
-                        {{ '%+.2f'|format(analytics_snapshot.summary.expectancy) }} per closed trade
-                        {% else %}
-                        Not enough closed trades yet
-                        {% endif %}
-                    </li>
-                    <li>
-                        <strong>Current streak:</strong>
-                        {{ analytics_snapshot.streaks.current_type|capitalize }} x{{ analytics_snapshot.streaks.current_length }}
-                    </li>
-                    <li>
-                        <strong>Avg duration:</strong>
-                        {{ analytics_snapshot.summary.average_duration_label }}
-                    </li>
-                    <li>
-                        <strong>Timezone:</strong>
-                        {{ analytics_timezone }}
-                    </li>
-                </ul>
             </article>
 
             <article class="panel notes-panel">
@@ -1273,6 +1244,4 @@
 })();
 </script>
 {% endblock %}
-
-
 
