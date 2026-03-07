@@ -76,6 +76,14 @@ MT5_COLUMN_ALIASES = {
 MT5_SECTION_TITLES = {"positions", "orders", "deals", "results"}
 ACCOUNT_TYPE_CHOICES = ("CFD", "FUTURES")
 FUTURES_MONTH_CODES = frozenset({"F", "G", "H", "J", "K", "M", "N", "Q", "U", "V", "X", "Z"})
+MT5_DEFAULT_SOURCE_TIMEZONE_NAME = "GMT+2"
+MT5_DEFAULT_SOURCE_TIMEZONE = timezone(timedelta(hours=2), name=MT5_DEFAULT_SOURCE_TIMEZONE_NAME)
+try:
+    TRADOVATE_DEFAULT_SOURCE_TIMEZONE_NAME = "America/Chicago"
+    TRADOVATE_DEFAULT_SOURCE_TIMEZONE = ZoneInfo(TRADOVATE_DEFAULT_SOURCE_TIMEZONE_NAME)
+except ZoneInfoNotFoundError:
+    TRADOVATE_DEFAULT_SOURCE_TIMEZONE_NAME = "CT"
+    TRADOVATE_DEFAULT_SOURCE_TIMEZONE = timezone(timedelta(hours=-6), name="CT")
 TRADOVATE_REQUIRED_FIELDS = frozenset(
     {
         "symbol",
@@ -393,6 +401,59 @@ def parse_datetime_value(value):
     return None
 
 
+def convert_source_datetime_to_utc_naive(value, source_timezone):
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value.replace(tzinfo=source_timezone).astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def describe_timezone_for_storage(value, fallback="UTC"):
+    if value is None:
+        return fallback
+    zone_key = getattr(value, "key", None)
+    if zone_key:
+        return zone_key
+    zone_name = None
+    try:
+        zone_name = value.tzname(None)
+    except TypeError:
+        zone_name = None
+    return str(zone_name or fallback).strip() or fallback
+
+
+def parse_source_datetime_value(value, default_source_timezone, default_timezone_name):
+    if value is None or value == "":
+        return None, default_timezone_name
+
+    parsed_value = value if isinstance(value, datetime) else None
+    if parsed_value is None:
+        text = str(value).strip()
+        if not text:
+            return None, default_timezone_name
+
+        iso_candidate = text.replace("Z", "+00:00") if text.endswith("Z") else text
+        try:
+            parsed_value = datetime.fromisoformat(iso_candidate)
+        except ValueError:
+            parsed_value = parse_datetime_value(text)
+
+    if parsed_value is None:
+        return None, default_timezone_name
+
+    if parsed_value.tzinfo is not None:
+        return (
+            parsed_value.astimezone(timezone.utc).replace(tzinfo=None),
+            describe_timezone_for_storage(parsed_value.tzinfo, default_timezone_name),
+        )
+
+    return (
+        convert_source_datetime_to_utc_naive(parsed_value, default_source_timezone),
+        default_timezone_name,
+    )
+
+
 def parse_mt5_position_value(value):
     if value is None:
         return None
@@ -533,8 +594,21 @@ def parse_mt5_rows(rows):
         entry_price = parse_float_value(col("entry_price"))
         exit_price = parse_float_value(col("exit_price"))
         pnl = parse_float_value(col("pnl"))
-        opened_at = parse_datetime_value(col("opened_at"))
-        closed_at = parse_datetime_value(col("closed_at"))
+        opened_at, opened_source_timezone = parse_source_datetime_value(
+            col("opened_at"),
+            MT5_DEFAULT_SOURCE_TIMEZONE,
+            MT5_DEFAULT_SOURCE_TIMEZONE_NAME,
+        )
+        closed_at, closed_source_timezone = parse_source_datetime_value(
+            col("closed_at"),
+            MT5_DEFAULT_SOURCE_TIMEZONE,
+            MT5_DEFAULT_SOURCE_TIMEZONE_NAME,
+        )
+        source_timezone = (
+            opened_source_timezone
+            or closed_source_timezone
+            or MT5_DEFAULT_SOURCE_TIMEZONE_NAME
+        )
 
         if not symbol or not side or lot_size is None or entry_price is None:
             skipped += 1
@@ -552,6 +626,7 @@ def parse_mt5_rows(rows):
                 "pnl": pnl,
                 "opened_at": opened_at,
                 "closed_at": closed_at,
+                "source_timezone": source_timezone,
             }
         )
 
@@ -709,8 +784,21 @@ def parse_tradovate_csv_stream(file_stream):
             skipped += 1
             continue
 
-        bought_at = parse_datetime_value(row.get("boughtTimestamp"))
-        sold_at = parse_datetime_value(row.get("soldTimestamp"))
+        bought_at, bought_source_timezone = parse_source_datetime_value(
+            row.get("boughtTimestamp"),
+            TRADOVATE_DEFAULT_SOURCE_TIMEZONE,
+            TRADOVATE_DEFAULT_SOURCE_TIMEZONE_NAME,
+        )
+        sold_at, sold_source_timezone = parse_source_datetime_value(
+            row.get("soldTimestamp"),
+            TRADOVATE_DEFAULT_SOURCE_TIMEZONE,
+            TRADOVATE_DEFAULT_SOURCE_TIMEZONE_NAME,
+        )
+        source_timezone = (
+            bought_source_timezone
+            or sold_source_timezone
+            or TRADOVATE_DEFAULT_SOURCE_TIMEZONE_NAME
+        )
         qty = parse_float_value(row.get("qty"))
         buy_price = parse_float_value(row.get("buyPrice"))
         sell_price = parse_float_value(row.get("sellPrice"))
@@ -757,6 +845,7 @@ def parse_tradovate_csv_stream(file_stream):
                 "pnl": pnl,
                 "opened_at": opened_at,
                 "closed_at": closed_at,
+                "source_timezone": source_timezone,
             }
         )
 

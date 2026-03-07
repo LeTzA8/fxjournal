@@ -189,9 +189,9 @@
                                 <td>{{ trade.opened_at.strftime('%d %b %Y') if trade.opened_at else '-' }}</td>
                                 <td>
                                     <div class="row-actions">
-                                        <a href="{{ url_for('trade_detail', trade_id=trade.id) }}" class="view-btn">View</a>
-                                        <a href="{{ url_for('edit_trade', trade_id=trade.id) }}" class="edit-btn">Edit</a>
-                                        <form action="{{ url_for('delete_trade', trade_id=trade.id) }}" method="post" class="delete-form">
+                                        <a href="{{ url_for('trade_detail', trade_pubkey=trade.pubkey) }}" class="view-btn">View</a>
+                                        <a href="{{ url_for('edit_trade', trade_pubkey=trade.pubkey) }}" class="edit-btn">Edit</a>
+                                        <form action="{{ url_for('delete_trade', trade_pubkey=trade.pubkey) }}" method="post" class="delete-form">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="delete-btn">Delete</button>
                                         </form>

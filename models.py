@@ -1,9 +1,17 @@
 from datetime import datetime
+import secrets
 
 from flask_sqlalchemy import SQLAlchemy
 
 
 db = SQLAlchemy()
+
+
+TRADE_PUBKEY_BYTES = 12
+
+
+def generate_trade_pubkey():
+    return secrets.token_hex(TRADE_PUBKEY_BYTES)
 
 
 class User(db.Model):
@@ -15,11 +23,15 @@ class User(db.Model):
     password = db.Column(db.String(255), nullable=False)
     email_verified = db.Column(db.Boolean, nullable=False, default=False)
     verification_sent_at = db.Column(db.DateTime, nullable=True)
+    last_login_at = db.Column(db.DateTime, nullable=True)
     trade_accounts = db.relationship(
         "TradeAccount", backref="user", lazy=True, cascade="all, delete-orphan"
     )
     trades = db.relationship(
         "Trade", backref="user", lazy=True, cascade="all, delete-orphan"
+    )
+    ai_generated_responses = db.relationship(
+        "AIGeneratedResponse", backref="user", lazy=True, cascade="all, delete-orphan"
     )
 
 
@@ -39,6 +51,12 @@ class TradeAccount(db.Model):
     is_default = db.Column(db.Boolean, nullable=False, default=False)
     trades = db.relationship(
         "Trade", backref="trade_account", lazy=True, cascade="all, delete-orphan"
+    )
+    ai_generated_responses = db.relationship(
+        "AIGeneratedResponse",
+        backref="trade_account",
+        lazy=True,
+        cascade="all, delete-orphan",
     )
 
 
@@ -63,6 +81,13 @@ class Trade(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    pubkey = db.Column(
+        db.String(24),
+        unique=True,
+        nullable=False,
+        index=True,
+        default=generate_trade_pubkey,
+    )
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     trade_account_id = db.Column(
         db.Integer,
@@ -78,6 +103,7 @@ class Trade(db.Model):
     pnl = db.Column(db.Float, nullable=True)
     mt5_position = db.Column(db.String(64), nullable=True, index=True)
     import_signature = db.Column(db.String(80), nullable=True, index=True)
+    source_timezone = db.Column(db.String(64), nullable=True)
     contract_code = db.Column(db.String(24), nullable=True)
     trade_note = db.Column(db.Text, nullable=True)
     opened_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -118,3 +144,75 @@ class FuturesSymbol(db.Model):
     currency = db.Column(db.String(16), nullable=False, default="USD")
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+
+class AIPromptHistory(db.Model):
+    __tablename__ = "ai_prompt_history"
+
+    id = db.Column(db.Integer, primary_key=True)
+    prompt_id = db.Column(db.String(64), nullable=False, index=True)
+    prompt_sha256 = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    prompt_text = db.Column(db.Text, nullable=False)
+    source_path = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    generated_responses = db.relationship(
+        "AIGeneratedResponse",
+        backref="prompt_history",
+        lazy=True,
+        cascade="all, delete-orphan",
+    )
+
+
+class AIGeneratedResponse(db.Model):
+    __tablename__ = "ai_generated_responses"
+    __table_args__ = (
+        db.Index(
+            "ix_ai_generated_responses_user_kind_generated_at",
+            "user_id",
+            "kind",
+            "generated_at",
+        ),
+        db.Index(
+            "ix_ai_generated_responses_user_account_kind_generated_at",
+            "user_id",
+            "trade_account_id",
+            "kind",
+            "generated_at",
+        ),
+        db.Index(
+            "ix_ai_generated_responses_prompt_generated_at",
+            "prompt_history_id",
+            "generated_at",
+        ),
+        db.Index(
+            "ix_ai_generated_responses_user_account_kind_period_start",
+            "user_id",
+            "trade_account_id",
+            "kind",
+            "period_start_utc",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    trade_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trade_accounts.id"),
+        nullable=True,
+        index=True,
+    )
+    prompt_history_id = db.Column(
+        db.Integer,
+        db.ForeignKey("ai_prompt_history.id"),
+        nullable=False,
+        index=True,
+    )
+    kind = db.Column(db.String(64), nullable=False, default="dashboard_advice")
+    model = db.Column(db.String(64), nullable=False, default="gpt-5-mini")
+    response_text = db.Column(db.Text, nullable=False)
+    payload_hash = db.Column(db.String(64), nullable=True, index=True)
+    trade_count_used = db.Column(db.Integer, nullable=False, default=0)
+    source_last_trade_id = db.Column(db.Integer, nullable=True)
+    period_start_utc = db.Column(db.DateTime, nullable=True)
+    period_end_utc = db.Column(db.DateTime, nullable=True)
+    generated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)

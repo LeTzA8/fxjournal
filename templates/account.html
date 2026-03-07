@@ -69,6 +69,10 @@
                         <dt>Imported Trades</dt>
                         <dd>{{ imported_trades }}</dd>
                     </div>
+                    <div class="profile-row">
+                        <dt>Display Timezone</dt>
+                        <dd>{{ display_timezone_name }}</dd>
+                    </div>
                 </dl>
                 {% if not email_verified %}
                 <p class="helper-note">Email not verified yet. Use the registration flow to create and verify a new account email.</p>
@@ -398,5 +402,4 @@
 </style>
 
 {% endblock %}
-
 

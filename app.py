@@ -1,6 +1,7 @@
 import os
 from datetime import datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dotenv import load_dotenv
 from flask import Flask, g, redirect, render_template, request, session, url_for
 from flask_limiter import Limiter
@@ -18,7 +19,13 @@ from auth_account import (
     register_public_auth_routes,
     send_email_placeholder,
 )
-from models import Trade, TradeAccount, User, db
+from ai_service import (
+    AIConfigError,
+    AIRequestError,
+    get_weekly_dashboard_period,
+    maybe_generate_weekly_dashboard_advice,
+)
+from models import Trade, TradeAccount, User, db, generate_trade_pubkey
 from trading import (
     build_trade_analytics,
     build_dashboard_insight,
@@ -70,6 +77,21 @@ def get_app_timezone_name():
     return os.getenv("APP_TIMEZONE", "Asia/Singapore").strip() or "Asia/Singapore"
 
 
+def normalize_timezone_name(value, default=None):
+    text_value = str(value or "").strip()
+    if not text_value:
+        return default
+    try:
+        ZoneInfo(text_value)
+    except ZoneInfoNotFoundError:
+        return default
+    return text_value
+
+
+def get_display_timezone_name():
+    return normalize_timezone_name(session.get("display_timezone"), get_app_timezone_name()) or "UTC"
+
+
 def parse_local_datetime_input(raw_value):
     text_value = str(raw_value or "").strip()
     if not text_value:
@@ -83,13 +105,13 @@ def parse_local_datetime_input(raw_value):
         except ValueError:
             return None
 
-    timezone_name = get_app_timezone_name()
+    timezone_name = get_display_timezone_name()
     local_aware = local_value.replace(tzinfo=get_timezone(timezone_name))
     return local_aware.astimezone(get_timezone("UTC")).replace(tzinfo=None)
 
 
 def format_local_datetime_input(value):
-    local_value = to_display_timezone(value, get_app_timezone_name())
+    local_value = to_display_timezone(value, get_display_timezone_name())
     if local_value is None:
         return ""
     return local_value.strftime("%Y-%m-%dT%H:%M")
@@ -151,7 +173,7 @@ limiter.init_app(app)
 
 TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
-LEGAL_LAST_UPDATED = "March 6, 2026"
+LEGAL_LAST_UPDATED = "March 7, 2026"
 
 
 def get_trade_size_label(account_type):
@@ -342,6 +364,26 @@ def get_active_trade_account_for_user(user_id):
     return active_account
 
 
+def get_user_trade_by_pubkey_or_404(user_id, trade_pubkey):
+    return Trade.query.filter_by(
+        user_id=user_id,
+        pubkey=str(trade_pubkey or "").strip(),
+    ).first_or_404()
+
+
+def build_unique_trade_pubkey(reserved_pubkeys=None):
+    reserved = reserved_pubkeys if reserved_pubkeys is not None else set()
+    while True:
+        candidate = generate_trade_pubkey()
+        if candidate in reserved:
+            continue
+        exists = db.session.query(Trade.id).filter_by(pubkey=candidate).first()
+        if exists:
+            continue
+        reserved.add(candidate)
+        return candidate
+
+
 def delete_users_with_related_data(user_ids):
     normalized_ids = sorted({int(user_id) for user_id in user_ids if user_id is not None})
     if not normalized_ids:
@@ -399,6 +441,12 @@ def cleanup_expired_unverified_accounts():
 
 
 @app.before_request
+def load_display_timezone_context():
+    g.display_timezone_name = get_display_timezone_name()
+    return None
+
+
+@app.before_request
 def load_trade_account_context():
     g.active_trade_account = None
     g.user_trade_accounts = []
@@ -433,6 +481,7 @@ def inject_trade_account_context():
     return {
         "active_trade_account": getattr(g, "active_trade_account", None),
         "header_trade_accounts": getattr(g, "user_trade_accounts", []),
+        "display_timezone_name": getattr(g, "display_timezone_name", get_app_timezone_name()),
     }
 
 
@@ -442,6 +491,22 @@ def set_security_headers(response):
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     return response
+
+
+@app.route("/session/display-timezone", methods=["POST"])
+def set_display_timezone():
+    payload = request.get_json(silent=True) or {}
+    timezone_name = normalize_timezone_name(
+        payload.get("timezone") or request.form.get("timezone"),
+        default=None,
+    )
+    if not timezone_name:
+        return "", 400
+
+    if session.get("display_timezone") != timezone_name:
+        session["display_timezone"] = timezone_name
+        session.modified = True
+    return "", 204
 
 
 @app.errorhandler(RequestEntityTooLarge)
@@ -572,7 +637,7 @@ def home():
         db.session.rollback()
         user_trades = []
 
-    timezone_name = get_app_timezone_name()
+    timezone_name = get_display_timezone_name()
     analytics = build_trade_analytics(
         user_trades,
         display_timezone_name=timezone_name,
@@ -616,6 +681,37 @@ def home():
 
     chart_points = analytics["daily_equity_curve"]
     dashboard_insight = build_dashboard_insight(user_trades, closed)
+    weekly_ai_review = None
+    weekly_ai_generated_at_label = ""
+    weekly_ai_next_refresh_label = ""
+    weekly_ai_empty_message = (
+        "Your weekly AI review will appear after the next market-close refresh once there are trades in the completed week."
+    )
+
+    try:
+        weekly_ai_result = maybe_generate_weekly_dashboard_advice(
+            user_id=user_id,
+            trade_account_id=active_trade_account.id if active_trade_account else None,
+            prompt_filename="dashboard_advice.txt",
+        )
+        weekly_ai_review = weekly_ai_result.get("record")
+        weekly_period = weekly_ai_result.get("period") or get_weekly_dashboard_period()
+    except (AIConfigError, AIRequestError, OSError, ValueError) as exc:
+        db.session.rollback()
+        app.logger.warning("Weekly AI review unavailable: %s", exc)
+        weekly_period = get_weekly_dashboard_period()
+        weekly_ai_empty_message = "Weekly AI review is temporarily unavailable."
+
+    if weekly_ai_review and weekly_ai_review.generated_at:
+        generated_local = to_display_timezone(weekly_ai_review.generated_at, timezone_name)
+        if generated_local is not None:
+            weekly_ai_generated_at_label = generated_local.strftime("%d %b %Y %H:%M")
+
+    next_refresh_local = to_display_timezone(weekly_period.get("next_eligible_at_utc"), timezone_name)
+    if next_refresh_local is not None:
+        weekly_ai_next_refresh_label = (
+            f"{next_refresh_local.strftime('%a %d %b %Y %H:%M')} {timezone_name}"
+        )
 
     return render_template(
         "index.html",
@@ -632,6 +728,10 @@ def home():
         size_label=size_label,
         chart_points=chart_points,
         dashboard_insight=dashboard_insight,
+        weekly_ai_review=weekly_ai_review,
+        weekly_ai_generated_at_label=weekly_ai_generated_at_label,
+        weekly_ai_next_refresh_label=weekly_ai_next_refresh_label,
+        weekly_ai_empty_message=weekly_ai_empty_message,
     )
 
 
@@ -642,7 +742,7 @@ def analytics():
 
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
-    timezone_name = get_app_timezone_name()
+    timezone_name = get_display_timezone_name()
 
     try:
         user_trades = (
@@ -1347,6 +1447,7 @@ def trades():
         trade_rows.append(
             {
                 "id": trade.id,
+                "pubkey": trade.pubkey,
                 "symbol": format_trade_symbol(trade),
                 "side": trade.side,
                 "entry_price": trade.entry_price,
@@ -1455,6 +1556,7 @@ def new_trade():
     active_trade_account = get_active_trade_account_for_user(user_id)
 
     if request.method == "POST":
+        input_timezone_name = get_display_timezone_name()
         account_type = normalize_account_type(active_trade_account.account_type)
         allowed_symbols = set(get_symbol_options(account_type))
         symbol = canonicalize_symbol(request.form.get("symbol", ""), account_type)
@@ -1509,8 +1611,10 @@ def new_trade():
                 contract_code=contract_code,
             )
         trade = Trade(
+            pubkey=build_unique_trade_pubkey(),
             user_id=user_id,
             trade_account_id=active_trade_account.id,
+            source_timezone=input_timezone_name,
             symbol=symbol,
             contract_code=contract_code,
             side=side,
@@ -1547,7 +1651,7 @@ def new_trade():
         form_mode="new",
         opened_at_value="",
         closed_at_value="",
-        analytics_timezone=get_app_timezone_name(),
+        analytics_timezone=get_display_timezone_name(),
     )
 
 
@@ -1671,6 +1775,7 @@ def import_trade_file():
         import_signature = build_import_signature("tradovate" if account_type == "FUTURES" else "mt5")
         duplicate_count = 0
         insert_batch = []
+        reserved_pubkeys = set()
 
         for row in parsed_rows:
             symbol = canonicalize_symbol(row.get("symbol"), active_trade_account.account_type)
@@ -1756,8 +1861,10 @@ def import_trade_file():
 
             insert_batch.append(
                 Trade(
+                    pubkey=build_unique_trade_pubkey(reserved_pubkeys),
                     user_id=user_id,
                     trade_account_id=active_trade_account.id,
+                    source_timezone=(row.get("source_timezone") or None),
                     symbol=symbol,
                     mt5_position=mt5_position,
                     import_signature=import_signature,
@@ -1868,23 +1975,18 @@ def import_trade_file():
         )
 
 
-@app.route("/dashboard/trades/<int:trade_id>")
-def trade_detail(trade_id):
+@app.route("/dashboard/trades/<string:trade_pubkey>")
+def trade_detail(trade_pubkey):
     if not session.get("user_id"):
         return redirect(url_for("login"))
     user_id = session["user_id"]
-    active_trade_account = get_active_trade_account_for_user(user_id)
 
-    trade = Trade.query.filter_by(
-        id=trade_id,
-        user_id=user_id,
-        trade_account_id=active_trade_account.id,
-    ).first_or_404()
+    trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
     trade_pnl = resolve_pnl(trade)
     trade_pips = resolve_pips(trade)
     trade_ticks = resolve_ticks(trade)
     trade_account_type = get_trade_account_type(trade)
-    timezone_name = get_app_timezone_name()
+    timezone_name = get_display_timezone_name()
     opened_at_local = to_display_timezone(trade.opened_at, timezone_name)
     closed_at_local = to_display_timezone(trade.closed_at, timezone_name)
 
@@ -1901,34 +2003,32 @@ def trade_detail(trade_id):
         trade_size_label=get_trade_size_label(trade_account_type),
         trade_opened_at_label=opened_at_local.strftime("%d %b %Y %H:%M") if opened_at_local else "-",
         trade_closed_at_label=closed_at_local.strftime("%d %b %Y %H:%M") if closed_at_local else "-",
+        trade_source_timezone=trade.source_timezone or "Unknown",
         analytics_timezone=timezone_name,
     )
 
 
-@app.route("/dashboard/trades/<int:trade_id>/edit", methods=["GET", "POST"])
-def edit_trade(trade_id):
+@app.route("/dashboard/trades/<string:trade_pubkey>/edit", methods=["GET", "POST"])
+def edit_trade(trade_pubkey):
     if not session.get("user_id"):
         return redirect(url_for("login"))
     user_id = session["user_id"]
-    active_trade_account = get_active_trade_account_for_user(user_id)
 
-    trade = Trade.query.filter_by(
-        id=trade_id,
-        user_id=user_id,
-        trade_account_id=active_trade_account.id,
-    ).first_or_404()
+    trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
+    trade_account = trade.trade_account or get_active_trade_account_for_user(user_id)
 
     if request.method == "POST":
-        account_type = normalize_account_type(active_trade_account.account_type)
+        input_timezone_name = get_display_timezone_name()
+        account_type = normalize_account_type(trade_account.account_type)
         allowed_symbols = set(get_symbol_options(account_type, trade.symbol))
         symbol = canonicalize_symbol(request.form.get("symbol", ""), account_type)
         contract_code = (request.form.get("contract_code", "") or "").strip().upper() or None
         if symbol not in allowed_symbols:
-            return redirect(url_for("edit_trade", trade_id=trade.id))
+            return redirect(url_for("edit_trade", trade_pubkey=trade.pubkey))
         if account_type == "FUTURES" and contract_code:
             parsed_contract = parse_futures_contract_code(contract_code, expected_root=symbol)
             if parsed_contract is None:
-                return redirect(url_for("edit_trade", trade_id=trade.id))
+                return redirect(url_for("edit_trade", trade_pubkey=trade.pubkey))
             contract_code = parsed_contract["contract_code"]
         elif account_type != "FUTURES":
             contract_code = None
@@ -1985,6 +2085,7 @@ def edit_trade(trade_id):
         trade.pnl = pnl
         trade.opened_at = opened_at
         trade.closed_at = closed_at
+        trade.source_timezone = input_timezone_name
 
         db.session.commit()
         return redirect(url_for("trades"))
@@ -1993,30 +2094,25 @@ def edit_trade(trade_id):
         "trade_entry.html",
         title="Edit Trade | FX Journal",
         username=session.get("username", "User"),
-        symbol_options=get_symbol_options(active_trade_account.account_type, trade.symbol),
-        account_type=normalize_account_type(active_trade_account.account_type),
-        size_label=get_trade_size_label(active_trade_account.account_type),
+        symbol_options=get_symbol_options(trade_account.account_type, trade.symbol),
+        account_type=normalize_account_type(trade_account.account_type),
+        size_label=get_trade_size_label(trade_account.account_type),
         trade=trade,
-        form_action=url_for("edit_trade", trade_id=trade.id),
+        form_action=url_for("edit_trade", trade_pubkey=trade.pubkey),
         form_mode="edit",
         opened_at_value=format_local_datetime_input(trade.opened_at),
         closed_at_value=format_local_datetime_input(trade.closed_at),
-        analytics_timezone=get_app_timezone_name(),
+        analytics_timezone=get_display_timezone_name(),
     )
 
 
-@app.route("/dashboard/trades/<int:trade_id>/delete", methods=["POST"])
-def delete_trade(trade_id):
+@app.route("/dashboard/trades/<string:trade_pubkey>/delete", methods=["POST"])
+def delete_trade(trade_pubkey):
     if not session.get("user_id"):
         return redirect(url_for("login"))
     user_id = session["user_id"]
-    active_trade_account = get_active_trade_account_for_user(user_id)
 
-    trade = Trade.query.filter_by(
-        id=trade_id,
-        user_id=user_id,
-        trade_account_id=active_trade_account.id,
-    ).first_or_404()
+    trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
     db.session.delete(trade)
     db.session.commit()
     return redirect(url_for("trades"))

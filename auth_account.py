@@ -297,10 +297,12 @@ def register_public_auth_routes(
                         error="Please verify your email before logging in.",
                         success=success_message,
                     )
+                user.last_login_at = datetime.utcnow()
                 session["user_id"] = user.id
                 session["username"] = user.username
                 active_account, _accounts = resolve_active_trade_account(user.id)
                 session["active_trade_account_id"] = active_account.id
+                db.session.commit()
                 return redirect(url_for("home"))
 
             return render_template(

@@ -120,20 +120,22 @@
                 <div class="chart-shell" id="equityChartShell">
                     <svg id="equityChart" viewBox="0 0 760 280" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Equity curve">
                         <defs>
-                            <linearGradient id="analyticsEquityStroke" x1="0%" y1="0%" x2="100%" y2="0%">
-                                <stop offset="0%" stop-color="#2f8a58"></stop>
-                                <stop offset="100%" stop-color="#6ad69b"></stop>
-                            </linearGradient>
-                            <linearGradient id="analyticsEquityFill" x1="0%" y1="0%" x2="0%" y2="100%">
-                                <stop offset="0%" stop-color="rgba(79, 185, 128, 0.28)"></stop>
-                                <stop offset="100%" stop-color="rgba(79, 185, 128, 0.03)"></stop>
-                            </linearGradient>
+                            <clipPath id="analyticsPositiveClip">
+                                <rect id="analyticsPositiveClipRect" x="0" y="0" width="760" height="140"></rect>
+                            </clipPath>
+                            <clipPath id="analyticsNegativeClip">
+                                <rect id="analyticsNegativeClipRect" x="0" y="140" width="760" height="140"></rect>
+                            </clipPath>
                         </defs>
                         <g id="equityChartGrid"></g>
-                        <path id="equityChartArea" class="chart-area"></path>
-                        <path id="equityChartGlow" class="chart-glow"></path>
-                        <path id="equityChartPath" class="chart-path"></path>
-                        <line id="equityChartZero" class="zero-line" x1="0" x2="760" y1="0" y2="0" hidden></line>
+                        <path id="equityChartAreaPositive" class="chart-area positive" clip-path="url(#analyticsPositiveClip)"></path>
+                        <path id="equityChartAreaNegative" class="chart-area negative" clip-path="url(#analyticsNegativeClip)"></path>
+                        <path id="equityChartGlowPositive" class="chart-glow positive" clip-path="url(#analyticsPositiveClip)"></path>
+                        <path id="equityChartGlowNegative" class="chart-glow negative" clip-path="url(#analyticsNegativeClip)"></path>
+                        <path id="equityChartPathPositive" class="chart-path positive" clip-path="url(#analyticsPositiveClip)"></path>
+                        <path id="equityChartPathNegative" class="chart-path negative" clip-path="url(#analyticsNegativeClip)"></path>
+                        <line id="equityChartZero" class="zero-line" x1="0" x2="760" y1="0" y2="0"></line>
+                        <g id="equityChartYAxis"></g>
                         <g id="equityChartPoints"></g>
                     </svg>
                     <div id="equityChartTooltip" class="chart-tooltip" hidden></div>
@@ -725,36 +727,85 @@
     }
 
     .chart-area {
-        fill: url(#analyticsEquityFill);
+        fill: none;
+    }
+
+    .chart-area.positive {
+        fill: rgba(79, 185, 128, 0.24);
+    }
+
+    .chart-area.negative {
+        fill: rgba(239, 68, 68, 0.18);
     }
 
     .chart-glow {
         fill: none;
-        stroke: color-mix(in srgb, var(--good) 60%, transparent);
         stroke-width: 9;
         opacity: 0.18;
         stroke-linecap: round;
         stroke-linejoin: round;
     }
 
+    .chart-glow.positive,
+    .chart-path.positive {
+        stroke: var(--good);
+    }
+
+    .chart-glow.negative,
+    .chart-path.negative {
+        stroke: var(--bad);
+    }
+
     .chart-path {
         fill: none;
-        stroke: url(#analyticsEquityStroke);
         stroke-width: 3.2;
         stroke-linecap: round;
         stroke-linejoin: round;
     }
 
-    .zero-line,
     .grid-line {
         stroke: color-mix(in srgb, var(--border) 68%, transparent);
         stroke-width: 1;
     }
 
+    .zero-line {
+        stroke: color-mix(in srgb, #334155 82%, transparent);
+        stroke-width: 1.6;
+        stroke-dasharray: 6 4;
+    }
+
+    .y-axis-tick {
+        stroke: color-mix(in srgb, var(--border) 78%, transparent);
+        stroke-width: 1;
+    }
+
+    .y-axis-label {
+        fill: #ffffff;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        paint-order: stroke;
+        stroke: rgba(15, 23, 42, 0.72);
+        stroke-width: 1.4px;
+        stroke-linejoin: round;
+        text-rendering: geometricPrecision;
+    }
+
     .chart-point {
         fill: color-mix(in srgb, var(--card) 85%, transparent);
-        stroke: var(--good);
         stroke-width: 2.2;
+    }
+
+    .chart-point.positive {
+        stroke: var(--good);
+    }
+
+    .chart-point.negative {
+        stroke: var(--bad);
+    }
+
+    .chart-point.flat {
+        stroke: #334155;
     }
 
     .detail-list {
@@ -956,21 +1007,31 @@
         const shell = document.getElementById("equityChartShell");
         const svg = document.getElementById("equityChart");
         const grid = document.getElementById("equityChartGrid");
-        const area = document.getElementById("equityChartArea");
-        const glow = document.getElementById("equityChartGlow");
-        const path = document.getElementById("equityChartPath");
+        const areaPositive = document.getElementById("equityChartAreaPositive");
+        const areaNegative = document.getElementById("equityChartAreaNegative");
+        const glowPositive = document.getElementById("equityChartGlowPositive");
+        const glowNegative = document.getElementById("equityChartGlowNegative");
+        const pathPositive = document.getElementById("equityChartPathPositive");
+        const pathNegative = document.getElementById("equityChartPathNegative");
+        const positiveClipRect = document.getElementById("analyticsPositiveClipRect");
+        const negativeClipRect = document.getElementById("analyticsNegativeClipRect");
+        const yAxis = document.getElementById("equityChartYAxis");
         const zeroLine = document.getElementById("equityChartZero");
         const pointsGroup = document.getElementById("equityChartPoints");
         const tooltip = document.getElementById("equityChartTooltip");
         const axis = document.getElementById("equityChartAxis");
         const modeSelect = document.getElementById("equityMode");
-        if (!shell || !svg || !grid || !area || !glow || !path || !zeroLine || !pointsGroup || !tooltip || !axis) {
+        if (
+            !shell || !svg || !grid || !areaPositive || !areaNegative || !glowPositive || !glowNegative ||
+            !pathPositive || !pathNegative || !positiveClipRect || !negativeClipRect || !yAxis || !zeroLine ||
+            !pointsGroup || !tooltip || !axis
+        ) {
             return;
         }
 
         const width = 760;
         const height = 280;
-        const pad = { t: 22, r: 22, b: 28, l: 26 };
+        const pad = { t: 22, r: 64, b: 28, l: 26 };
         const plotW = width - pad.l - pad.r;
         const plotH = height - pad.t - pad.b;
 
@@ -986,6 +1047,28 @@
             const mode = modeSelect ? modeSelect.value : "trade";
             const source = mode === "day" ? equityDayData : equityTradeData;
             return source.map(normalizePoint).filter(Boolean);
+        };
+
+        const pointTone = (equity) => {
+            if (equity > 0) return "positive";
+            if (equity < 0) return "negative";
+            return "flat";
+        };
+
+        const formatAxisPnl = (value) => {
+            const absValue = Math.abs(value);
+            const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+            if (absValue >= 1000000) {
+                return `${sign}$${(absValue / 1000000).toFixed(absValue >= 10000000 ? 0 : 1)}m`;
+            }
+            if (absValue >= 1000) {
+                return `${sign}$${(absValue / 1000).toFixed(absValue >= 10000 ? 0 : 1)}k`;
+            }
+            if (absValue >= 100) {
+                return `${sign}$${Math.round(absValue)}`;
+            }
+            const decimals = absValue >= 10 ? 1 : 2;
+            return `${sign}$${absValue.toFixed(decimals)}`.replace(/\.00$/, "");
         };
 
         let renderedPoints = [];
@@ -1032,20 +1115,23 @@
         const render = () => {
             const data = getData();
             if (!data.length) {
-                path.setAttribute("d", "");
-                area.setAttribute("d", "");
-                glow.setAttribute("d", "");
+                pathPositive.setAttribute("d", "");
+                pathNegative.setAttribute("d", "");
+                areaPositive.setAttribute("d", "");
+                areaNegative.setAttribute("d", "");
+                glowPositive.setAttribute("d", "");
+                glowNegative.setAttribute("d", "");
+                yAxis.innerHTML = "";
                 pointsGroup.innerHTML = "";
                 axis.innerHTML = "";
                 return;
             }
 
             const values = data.map((item) => item.equity);
-            const minRaw = Math.min(...values);
-            const maxRaw = Math.max(...values);
-            const span = maxRaw - minRaw || 1;
-            const minV = minRaw - span * 0.12;
-            const maxV = maxRaw + span * 0.12;
+            const maxAbsValue = Math.max(...values.map((value) => Math.abs(value)), 1);
+            const chartLimit = maxAbsValue * 1.1;
+            const minV = -chartLimit;
+            const maxV = chartLimit;
             const xFor = (index, count) => count === 1 ? width / 2 : pad.l + (index / (count - 1)) * plotW;
             const yFor = (value) => pad.t + ((maxV - value) / (maxV - minV || 1)) * plotH;
 
@@ -1056,8 +1142,10 @@
             }));
 
             grid.innerHTML = "";
+            yAxis.innerHTML = "";
             for (let i = 0; i < 5; i += 1) {
                 const y = pad.t + (plotH / 4) * i;
+                const axisValue = maxV - ((maxV - minV) / 4) * i;
                 const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
                 line.setAttribute("class", "grid-line");
                 line.setAttribute("x1", String(pad.l));
@@ -1065,27 +1153,52 @@
                 line.setAttribute("y1", String(y));
                 line.setAttribute("y2", String(y));
                 grid.appendChild(line);
+
+                const tick = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                tick.setAttribute("class", "y-axis-tick");
+                tick.setAttribute("x1", String(width - pad.r + 6));
+                tick.setAttribute("x2", String(width - pad.r + 14));
+                tick.setAttribute("y1", String(y));
+                tick.setAttribute("y2", String(y));
+                yAxis.appendChild(tick);
+
+                const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                label.setAttribute("class", "y-axis-label");
+                label.setAttribute("x", String(width - 6));
+                label.setAttribute("y", String(y));
+                label.setAttribute("text-anchor", "end");
+                label.setAttribute("dominant-baseline", i === 0 ? "hanging" : i === 4 ? "auto" : "middle");
+                label.textContent = formatAxisPnl(axisValue);
+                yAxis.appendChild(label);
             }
 
             const lineD = smoothPath(renderedPoints);
-            path.setAttribute("d", lineD);
-            glow.setAttribute("d", lineD);
-            const floorY = yFor(minV);
-            area.setAttribute("d", `${lineD} L ${renderedPoints[renderedPoints.length - 1].x} ${floorY} L ${renderedPoints[0].x} ${floorY} Z`);
+            const zeroY = yFor(0);
+            const areaD = `${lineD} L ${renderedPoints[renderedPoints.length - 1].x} ${zeroY} L ${renderedPoints[0].x} ${zeroY} Z`;
 
-            if (minV <= 0 && maxV >= 0) {
-                const zeroY = yFor(0);
-                zeroLine.hidden = false;
-                zeroLine.setAttribute("y1", String(zeroY));
-                zeroLine.setAttribute("y2", String(zeroY));
-            } else {
-                zeroLine.hidden = true;
-            }
+            pathPositive.setAttribute("d", lineD);
+            pathNegative.setAttribute("d", lineD);
+            glowPositive.setAttribute("d", lineD);
+            glowNegative.setAttribute("d", lineD);
+            areaPositive.setAttribute("d", areaD);
+            areaNegative.setAttribute("d", areaD);
+
+            positiveClipRect.setAttribute("x", "0");
+            positiveClipRect.setAttribute("y", "0");
+            positiveClipRect.setAttribute("width", String(width));
+            positiveClipRect.setAttribute("height", String(Math.max(zeroY, 0)));
+            negativeClipRect.setAttribute("x", "0");
+            negativeClipRect.setAttribute("y", String(zeroY));
+            negativeClipRect.setAttribute("width", String(width));
+            negativeClipRect.setAttribute("height", String(Math.max(height - zeroY, 0)));
+
+            zeroLine.setAttribute("y1", String(zeroY));
+            zeroLine.setAttribute("y2", String(zeroY));
 
             pointsGroup.innerHTML = "";
             renderedPoints.forEach((point) => {
                 const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                circle.setAttribute("class", "chart-point");
+                circle.setAttribute("class", `chart-point ${pointTone(point.equity)}`);
                 circle.setAttribute("cx", String(point.x));
                 circle.setAttribute("cy", String(point.y));
                 circle.setAttribute("r", "4.2");

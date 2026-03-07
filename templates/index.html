@@ -212,20 +212,22 @@
                 <div class="line-chart-shell" id="pnlChartShell">
                     <svg id="pnlLineChart" viewBox="0 0 600 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Account equity curve chart">
                         <defs>
-                            <linearGradient id="pnlStrokeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                                <stop offset="0%" stop-color="#2f8a58"></stop>
-                                <stop offset="100%" stop-color="#56b582"></stop>
-                            </linearGradient>
-                            <linearGradient id="pnlAreaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                                <stop offset="0%" stop-color="rgba(47, 138, 88, 0.26)"></stop>
-                                <stop offset="100%" stop-color="rgba(47, 138, 88, 0.03)"></stop>
-                            </linearGradient>
+                            <clipPath id="pnlPositiveClip">
+                                <rect id="pnlPositiveClipRect" x="0" y="0" width="600" height="110"></rect>
+                            </clipPath>
+                            <clipPath id="pnlNegativeClip">
+                                <rect id="pnlNegativeClipRect" x="0" y="110" width="600" height="110"></rect>
+                            </clipPath>
                         </defs>
                         <g id="pnlGrid"></g>
-                        <path id="pnlArea" class="chart-area"></path>
-                        <path id="pnlGlow" class="chart-glow"></path>
-                        <path id="pnlPath" class="chart-path"></path>
-                        <line id="pnlZeroLine" class="zero-line" x1="0" x2="600" y1="0" y2="0" hidden></line>
+                        <path id="pnlAreaPositive" class="chart-area positive" clip-path="url(#pnlPositiveClip)"></path>
+                        <path id="pnlAreaNegative" class="chart-area negative" clip-path="url(#pnlNegativeClip)"></path>
+                        <path id="pnlGlowPositive" class="chart-glow positive" clip-path="url(#pnlPositiveClip)"></path>
+                        <path id="pnlGlowNegative" class="chart-glow negative" clip-path="url(#pnlNegativeClip)"></path>
+                        <path id="pnlPathPositive" class="chart-path positive" clip-path="url(#pnlPositiveClip)"></path>
+                        <path id="pnlPathNegative" class="chart-path negative" clip-path="url(#pnlNegativeClip)"></path>
+                        <line id="pnlZeroLine" class="zero-line" x1="0" x2="600" y1="0" y2="0"></line>
+                        <g id="pnlYAxis"></g>
                         <g id="pnlPoints"></g>
                     </svg>
                     <div id="pnlTooltip" class="pnl-tooltip" hidden></div>
@@ -254,20 +256,34 @@
 
             <article class="panel notes-panel">
                 <div class="panel-head">
-                    <h2>Session Notes</h2>
-                    <button class="ghost-btn" type="button">Add Note</button>
+                    <h2>Weekly AI Review</h2>
+                    <span class="soft">Weekly Only</span>
                 </div>
-                <ul class="notes-list">
-                    <li>
-                        <strong>London open:</strong> Better patience on pullback entries, fewer impulsive market orders.
-                    </li>
-                    <li>
-                        <strong>NY overlap:</strong> Overtraded after first loss; add 10-minute reset rule.
-                    </li>
-                    <li>
-                        <strong>Risk:</strong> Keep max daily drawdown hard stop at 2R.
-                    </li>
-                </ul>
+                <div class="insight-content session-ai-card">
+                    <p class="insight-title">
+                        {% if weekly_ai_review %}
+                        Latest Weekly Review
+                        {% else %}
+                        Waiting for Weekly Refresh
+                        {% endif %}
+                    </p>
+                    <p class="insight-body">
+                        {% if weekly_ai_review %}
+                        {{ weekly_ai_review.response_text }}
+                        {% else %}
+                        {{ weekly_ai_empty_message }}
+                        {% endif %}
+                    </p>
+                </div>
+                <p class="insight-note">
+                    Generated once weekly for your active account after Friday 5:30 PM New York market close, which may land on Saturday in your displayed timezone.
+                    {% if weekly_ai_next_refresh_label %}
+                    Next refresh: {{ weekly_ai_next_refresh_label }}.
+                    {% endif %}
+                </p>
+                {% if weekly_ai_generated_at_label %}
+                <p class="insight-note">Latest generated: {{ weekly_ai_generated_at_label }}.</p>
+                {% endif %}
             </article>
 
             <article class="panel sim-panel">
@@ -550,12 +566,15 @@
     .grid-line { stroke: #dce8df;
         stroke-width: 1; }
 
-    .chart-area { fill: url(#pnlAreaGradient);
+    .chart-area {
         opacity: 0;
         animation: area-fade 3.6s ease forwards; }
 
+    .chart-area.positive { fill: rgba(47, 138, 88, 0.22); }
+
+    .chart-area.negative { fill: rgba(220, 38, 38, 0.18); }
+
     .chart-glow { fill: none;
-        stroke: url(#pnlStrokeGradient);
         stroke-width: 9;
         stroke-linecap: round;
         stroke-linejoin: round;
@@ -565,8 +584,13 @@
         stroke-dashoffset: 1200;
         animation: draw-line 4.4s cubic-bezier(.22, .61, .36, 1) forwards; }
 
+    .chart-glow.positive,
+    .chart-path.positive { stroke: #2f8a58; }
+
+    .chart-glow.negative,
+    .chart-path.negative { stroke: #dc2626; }
+
     .chart-path { fill: none;
-        stroke: url(#pnlStrokeGradient);
         stroke-width: 3.4;
         stroke-linecap: round;
         stroke-linejoin: round;
@@ -574,9 +598,10 @@
         stroke-dashoffset: 1200;
         animation: draw-line 4.4s cubic-bezier(.22, .61, .36, 1) forwards; }
 
-    .zero-line { stroke: #9fb3a7;
-        stroke-width: 1;
-        stroke-dasharray: 4 4; }
+    .zero-line { stroke: #475569;
+        stroke-width: 1.6;
+        stroke-dasharray: 6 4;
+        opacity: 0.9; }
 
     .chart-point { fill: #ffffff;
         stroke-width: 2.4;
@@ -584,15 +609,28 @@
         transition: transform 150ms ease;
         transform-origin: center; }
 
+    .chart-point.positive { stroke: #2f8a58; }
+
+    .chart-point.negative { stroke: #dc2626; }
+
+    .chart-point.flat { stroke: #475569; }
+
     .chart-point.drawdown-marker { fill: #fff6ed;
         stroke: #c05621;
         cursor: pointer; }
 
     .chart-point.hover-marker { fill: #ecfdf5;
-        stroke: #1f7942;
         opacity: 0;
         pointer-events: none;
         transition: opacity 120ms ease; }
+
+    .chart-point.hover-marker.positive { stroke: #1f7942; }
+
+    .chart-point.hover-marker.negative { stroke: #dc2626;
+        fill: #fef2f2; }
+
+    .chart-point.hover-marker.flat { stroke: #475569;
+        fill: #f8fafc; }
 
     .chart-point.hover-marker.is-active { opacity: 1; }
 
@@ -611,6 +649,19 @@
         height: 1.05rem;
         margin-top: 0.35rem;
         overflow: hidden; }
+
+    .y-axis-tick { stroke: #b3c3b8;
+        stroke-width: 1; }
+
+    .y-axis-label { fill: #ffffff;
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        paint-order: stroke;
+        stroke: rgba(15, 23, 42, 0.72);
+        stroke-width: 1.4px;
+        stroke-linejoin: round;
+        text-rendering: geometricPrecision; }
 
     .chart-x-axis .x-label { position: absolute;
         transform: translateX(-50%);
@@ -683,13 +734,11 @@
         width: 2px; box-shadow: 0 0 20px #3fb476;
         animation: sweep 2.8s linear infinite; }
 
-    .notes-list { margin: 0;
-        padding-left: 1rem;
+    .session-ai-card { min-height: 100%;
         display: grid;
-        gap: 0.52rem; }
+        align-content: start; }
 
-    .notes-list li { line-height: 1.4;
-        font-size: 0.86rem; }
+    .session-ai-card .insight-body { white-space: pre-line; }
 
     @keyframes sweep { from { transform: translateX(-20px); }
         to { transform: translateX(560px); } }
@@ -751,9 +800,15 @@
     const chartShell = document.getElementById("pnlChartShell");
     const svg = document.getElementById("pnlLineChart");
     const grid = document.getElementById("pnlGrid");
-    const path = document.getElementById("pnlPath");
-    const glow = document.getElementById("pnlGlow");
-    const area = document.getElementById("pnlArea");
+    const pathPositive = document.getElementById("pnlPathPositive");
+    const pathNegative = document.getElementById("pnlPathNegative");
+    const glowPositive = document.getElementById("pnlGlowPositive");
+    const glowNegative = document.getElementById("pnlGlowNegative");
+    const areaPositive = document.getElementById("pnlAreaPositive");
+    const areaNegative = document.getElementById("pnlAreaNegative");
+    const positiveClipRect = document.getElementById("pnlPositiveClipRect");
+    const negativeClipRect = document.getElementById("pnlNegativeClipRect");
+    const yAxis = document.getElementById("pnlYAxis");
     const pointsGroup = document.getElementById("pnlPoints");
     const zeroLine = document.getElementById("pnlZeroLine");
     const tooltip = document.getElementById("pnlTooltip");
@@ -761,7 +816,11 @@
     const dataNode = document.getElementById("pnlChartData");
     const rangeSelect = document.getElementById("equityRange");
 
-    if (!chartShell || !svg || !grid || !path || !glow || !area || !pointsGroup || !zeroLine || !tooltip || !xAxis || !dataNode) {
+    if (
+        !chartShell || !svg || !grid || !pathPositive || !pathNegative || !glowPositive || !glowNegative ||
+        !areaPositive || !areaNegative || !positiveClipRect || !negativeClipRect || !yAxis || !pointsGroup ||
+        !zeroLine || !tooltip || !xAxis || !dataNode
+    ) {
         return;
     }
 
@@ -773,15 +832,20 @@
     }
 
     if (!Array.isArray(chartData) || !chartData.length) {
-        path.setAttribute("d", "");
-        area.setAttribute("d", "");
+        pathPositive.setAttribute("d", "");
+        pathNegative.setAttribute("d", "");
+        glowPositive.setAttribute("d", "");
+        glowNegative.setAttribute("d", "");
+        areaPositive.setAttribute("d", "");
+        areaNegative.setAttribute("d", "");
+        yAxis.innerHTML = "";
         xAxis.innerHTML = '<span class="x-label" style="left: 50%;">-</span>';
         return;
     }
 
     const w = 600;
     const h = 220;
-    const pad = { t: 18, r: 42, b: 26, l: 42 };
+    const pad = { t: 18, r: 56, b: 26, l: 42 };
     const plotW = w - pad.l - pad.r;
     const plotH = h - pad.t - pad.b;
 
@@ -812,6 +876,32 @@
             d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
         }
         return d;
+    };
+
+    const pointTone = (equity) => {
+        if (equity > 0) {
+            return "positive";
+        }
+        if (equity < 0) {
+            return "negative";
+        }
+        return "flat";
+    };
+
+    const formatAxisPnl = (value) => {
+        const absValue = Math.abs(value);
+        const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+        if (absValue >= 1000000) {
+            return `${sign}$${(absValue / 1000000).toFixed(absValue >= 10000000 ? 0 : 1)}m`;
+        }
+        if (absValue >= 1000) {
+            return `${sign}$${(absValue / 1000).toFixed(absValue >= 10000 ? 0 : 1)}k`;
+        }
+        if (absValue >= 100) {
+            return `${sign}$${Math.round(absValue)}`;
+        }
+        const decimals = absValue >= 10 ? 1 : 2;
+        return `${sign}$${absValue.toFixed(decimals)}`.replace(/\.00$/, "");
     };
 
     const getViewportTransform = () => {
@@ -956,7 +1046,7 @@
         }
 
         hoverPoint.hidden = false;
-        hoverPoint.classList.add("is-active");
+        hoverPoint.className.baseVal = `chart-point hover-marker ${pointTone(nearest.equity)} is-active`;
         hoverPoint.setAttribute("cx", String(nearest.x));
         hoverPoint.setAttribute("cy", String(nearest.y));
         setTooltip(nearest, nearest.dateKey);
@@ -981,11 +1071,10 @@
     const renderChart = () => {
         const points = pointsForRange();
         const values = points.map((p) => p.equity);
-        const minVRaw = Math.min(...values);
-        const maxVRaw = Math.max(...values);
-        const span = maxVRaw - minVRaw;
-        const minV = span === 0 ? minVRaw - 1 : minVRaw - span * 0.12;
-        const maxV = span === 0 ? maxVRaw + 1 : maxVRaw + span * 0.12;
+        const maxAbsValue = Math.max(...values.map((value) => Math.abs(value)), 1);
+        const chartLimit = maxAbsValue * 1.1;
+        const minV = -chartLimit;
+        const maxV = chartLimit;
         const xFor = (i, n) => (n === 1 ? w / 2 : pad.l + (i / (n - 1)) * plotW);
         const yFor = (v) => pad.t + ((maxV - v) / (maxV - minV)) * plotH;
 
@@ -998,8 +1087,10 @@
         }));
 
         grid.innerHTML = "";
+        yAxis.innerHTML = "";
         for (let i = 0; i < 5; i += 1) {
             const y = pad.t + (plotH / 4) * i;
+            const axisValue = maxV - ((maxV - minV) / 4) * i;
             const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
             line.setAttribute("class", "grid-line");
             line.setAttribute("x1", String(pad.l));
@@ -1007,24 +1098,47 @@
             line.setAttribute("y1", String(y));
             line.setAttribute("y2", String(y));
             grid.appendChild(line);
+
+            const tick = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            tick.setAttribute("class", "y-axis-tick");
+            tick.setAttribute("x1", String(w - pad.r + 4));
+            tick.setAttribute("x2", String(w - pad.r + 10));
+            tick.setAttribute("y1", String(y));
+            tick.setAttribute("y2", String(y));
+            yAxis.appendChild(tick);
+
+            const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            label.setAttribute("class", "y-axis-label");
+            label.setAttribute("x", String(w - 4));
+            label.setAttribute("y", String(y));
+            label.setAttribute("text-anchor", "end");
+            label.setAttribute("dominant-baseline", i === 0 ? "hanging" : i === 4 ? "auto" : "middle");
+            label.textContent = formatAxisPnl(axisValue);
+            yAxis.appendChild(label);
         }
 
         const lineD = smoothPath(pts);
-        path.setAttribute("d", lineD);
-        glow.setAttribute("d", lineD);
+        const zeroY = yFor(0);
+        const areaD = `${lineD} L ${pts[pts.length - 1].x} ${zeroY} L ${pts[0].x} ${zeroY} Z`;
 
-        const baseY = yFor(minV);
-        const areaD = `${lineD} L ${pts[pts.length - 1].x} ${baseY} L ${pts[0].x} ${baseY} Z`;
-        area.setAttribute("d", areaD);
+        pathPositive.setAttribute("d", lineD);
+        pathNegative.setAttribute("d", lineD);
+        glowPositive.setAttribute("d", lineD);
+        glowNegative.setAttribute("d", lineD);
+        areaPositive.setAttribute("d", areaD);
+        areaNegative.setAttribute("d", areaD);
 
-        if (minV <= 0 && maxV >= 0) {
-            const zy = yFor(0);
-            zeroLine.setAttribute("y1", String(zy));
-            zeroLine.setAttribute("y2", String(zy));
-            zeroLine.hidden = false;
-        } else {
-            zeroLine.hidden = true;
-        }
+        positiveClipRect.setAttribute("x", "0");
+        positiveClipRect.setAttribute("y", "0");
+        positiveClipRect.setAttribute("width", String(w));
+        positiveClipRect.setAttribute("height", String(Math.max(zeroY, 0)));
+        negativeClipRect.setAttribute("x", "0");
+        negativeClipRect.setAttribute("y", String(zeroY));
+        negativeClipRect.setAttribute("width", String(w));
+        negativeClipRect.setAttribute("height", String(Math.max(h - zeroY, 0)));
+
+        zeroLine.setAttribute("y1", String(zeroY));
+        zeroLine.setAttribute("y2", String(zeroY));
 
         pointsGroup.innerHTML = "";
 

@@ -1420,6 +1420,49 @@
     </script>
     <script>
         (() => {
+            const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const currentTimezone = {{ display_timezone_name|tojson }};
+            const syncKey = "fxj-timezone-sync";
+
+            if (!browserTimezone) {
+                return;
+            }
+
+            if (browserTimezone === currentTimezone) {
+                try {
+                    sessionStorage.removeItem(syncKey);
+                } catch (_error) {}
+                return;
+            }
+
+            const syncAttempt = `${currentTimezone}->${browserTimezone}`;
+            try {
+                if (sessionStorage.getItem(syncKey) === syncAttempt) {
+                    return;
+                }
+            } catch (_error) {}
+
+            fetch({{ url_for('set_display_timezone')|tojson }}, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": {{ csrf_token()|tojson }},
+                },
+                body: JSON.stringify({ timezone: browserTimezone }),
+            }).then((response) => {
+                if (!response.ok) {
+                    return;
+                }
+                try {
+                    sessionStorage.setItem(syncKey, syncAttempt);
+                } catch (_error) {}
+                window.location.reload();
+            }).catch(() => {});
+        })();
+    </script>
+    <script>
+        (() => {
             const revealTargets = Array.from(
                 document.querySelectorAll(".metric, .panel, .login-card, .card")
             );

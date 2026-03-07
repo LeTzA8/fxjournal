@@ -57,8 +57,17 @@
                     <label for="status">Status</label>
                     <input id="status" type="text" value="{% if trade and trade.exit_price is not none %}Closed{% else %}Running{% endif %}" readonly>
 
-                    <label for="trade_date">Date</label>
-                    <input id="trade_date" type="text" value="{{ trade.opened_at.strftime('%d %b %Y') if trade and trade.opened_at else '' }}" readonly>
+                    <label for="opened_at_display">Opened At ({{ analytics_timezone }})</label>
+                    <input id="opened_at_display" type="text" value="{{ trade_opened_at_label }}" readonly>
+
+                    <label for="closed_at_display">Closed At ({{ analytics_timezone }})</label>
+                    <input id="closed_at_display" type="text" value="{{ trade_closed_at_label }}" readonly>
+
+                    <label for="stored_timezone">Stored Time Convention</label>
+                    <input id="stored_timezone" type="text" value="UTC" readonly>
+
+                    <label for="source_timezone">Source Timezone</label>
+                    <input id="source_timezone" type="text" value="{{ trade_source_timezone }}" readonly>
 
                     <label for="trade_note">Trade Note</label>
                     <textarea id="trade_note" rows="5" readonly>{{ trade.trade_note if trade and trade.trade_note else 'No note added for this trade yet.' }}</textarea>

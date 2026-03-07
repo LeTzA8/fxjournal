@@ -98,6 +98,13 @@
                     <h2>{% if account_type == "FUTURES" %}Import from Tradovate{% else %}Import from MetaTrader 5{% endif %}</h2>
                     <span class="soft">{% if account_type == "FUTURES" %}CSV Upload{% else %}XLSX Upload{% endif %}</span>
                 </div>
+                <p class="field-help">
+                    {% if account_type == "FUTURES" %}
+                    Tradovate timestamps default to <strong>America/Chicago</strong> unless the file provides explicit timezone data.
+                    {% else %}
+                    MT5 timestamps default to <strong>GMT+2</strong> unless the file provides explicit timezone data.
+                    {% endif %}
+                </p>
 
                 {% if import_status and import_message %}
                 <p class="import-alert {{ import_status }}">{{ import_message }}</p>
