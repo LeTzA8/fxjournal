@@ -19,7 +19,12 @@
     <div class="login-card">
         <p class="eyebrow">FX Journal</p>
         <h1>Verify your email</h1>
-        <p class="subtext">Check your inbox and click the verification link to activate your account.</p>
+        <p class="subtext">
+            Check your inbox and click the verification link to activate your account.
+            {% if awaiting_approval %}
+            After verification, your account will wait for manual approval before login is allowed.
+            {% endif %}
+        </p>
         {% if success %}
         <p class="notice success">{{ success }}</p>
         {% endif %}
@@ -41,7 +46,6 @@
 </section>
 
 {% endblock %}
-
 
 
 

@@ -2,15 +2,33 @@ import os
 import secrets
 from datetime import datetime
 
-from flask import current_app, redirect, render_template, request, session, url_for
+from flask import abort, current_app, redirect, render_template, request, session, url_for
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
-from models import AllowedSignupEmailDomain, User, db
+from models import AllowedSignupEmailDomain, SignupCode, User, db
 
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
 PENDING_REGISTRATIONS = {}
+SIGNUP_STATUS_PENDING = "pending"
+SIGNUP_STATUS_APPROVED = "approved"
+SIGNUP_STATUS_REJECTED = "rejected"
+SIGNUP_STATUS_SUSPENDED = "suspended"
+VALID_SIGNUP_STATUSES = {
+    SIGNUP_STATUS_PENDING,
+    SIGNUP_STATUS_APPROVED,
+    SIGNUP_STATUS_REJECTED,
+    SIGNUP_STATUS_SUSPENDED,
+}
+SIGNUP_CODE_MODE_OFF = "off"
+SIGNUP_CODE_MODE_OPTIONAL = "optional"
+SIGNUP_CODE_MODE_REQUIRED = "required"
+VALID_SIGNUP_CODE_MODES = {
+    SIGNUP_CODE_MODE_OFF,
+    SIGNUP_CODE_MODE_OPTIONAL,
+    SIGNUP_CODE_MODE_REQUIRED,
+}
 
 
 def _env_int(name, default):
@@ -21,6 +39,90 @@ def _env_int(name, default):
         return int(value.strip())
     except (TypeError, ValueError):
         return default
+
+
+def _env_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def get_registration_paused():
+    return _env_bool("REGISTRATION_PAUSED", False)
+
+
+def get_auto_approve_new_users():
+    return _env_bool("AUTO_APPROVE_NEW_USERS", True)
+
+
+def get_signup_code_mode():
+    raw = os.getenv("SIGNUP_CODE_MODE", SIGNUP_CODE_MODE_OFF).strip().lower()
+    return raw if raw in VALID_SIGNUP_CODE_MODES else SIGNUP_CODE_MODE_OFF
+
+
+def get_signup_code_query_param():
+    return (os.getenv("REFERRAL_LINK_QUERY_PARAM", "ref").strip().lower() or "ref")
+
+
+def get_admin_user_emails():
+    raw = os.getenv("ADMIN_USER_EMAILS", "").strip()
+    return {part.strip().lower() for part in raw.split(",") if part and part.strip()}
+
+
+def is_admin_email(email):
+    candidate = (email or "").strip().lower()
+    return bool(candidate and candidate in get_admin_user_emails())
+
+
+def normalize_signup_status(value, default=SIGNUP_STATUS_APPROVED):
+    candidate = str(value or "").strip().lower()
+    return candidate if candidate in VALID_SIGNUP_STATUSES else default
+
+
+def normalize_signup_code(value):
+    cleaned = "".join(ch for ch in str(value or "").strip().upper() if ch.isalnum())
+    return cleaned[:32]
+
+
+def generate_signup_code():
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(8))
+
+
+def build_unique_signup_code():
+    while True:
+        candidate = generate_signup_code()
+        existing = SignupCode.query.filter_by(code=candidate).first()
+        if existing is None:
+            return candidate
+
+
+def get_signup_code_validation_message(mode):
+    if mode == SIGNUP_CODE_MODE_REQUIRED:
+        return "A valid referral code is required to register right now."
+    return "Referral code is invalid or no longer active."
+
+
+def find_signup_code(code_value):
+    normalized = normalize_signup_code(code_value)
+    if not normalized:
+        return None
+    return SignupCode.query.filter_by(code=normalized).first()
+
+
+def is_signup_code_usable(code_row):
+    if not code_row or not code_row.is_active:
+        return False
+    if code_row.expires_at and code_row.expires_at <= datetime.utcnow():
+        return False
+    if code_row.max_uses is not None and code_row.used_count >= code_row.max_uses:
+        return False
+    return True
+
+
+def get_initial_signup_status():
+    return SIGNUP_STATUS_APPROVED if get_auto_approve_new_users() else SIGNUP_STATUS_PENDING
 
 
 def get_public_base_url():
@@ -235,6 +337,74 @@ def register_public_auth_routes(
     is_local_dev_environment,
     resolve_active_trade_account,
 ):
+    def get_current_user():
+        user_id = session.get("user_id")
+        if not user_id:
+            return None
+        return User.query.filter_by(id=user_id).first()
+
+    def get_current_admin_user():
+        user = get_current_user()
+        if not user or not is_admin_email(user.email):
+            return None
+        return user
+
+    def require_admin_user():
+        admin_user = get_current_admin_user()
+        if admin_user is None:
+            if session.get("user_id"):
+                abort(403)
+            return None
+        return admin_user
+
+    def render_login_page(*, error=None, success=None, info=None, email=""):
+        return render_template(
+            "login.html",
+            title="Login | FX Journal",
+            body_class="auth-layout",
+            error=error,
+            success=success,
+            info=info,
+            email_value=email,
+        )
+
+    def render_register_page(
+        *,
+        error=None,
+        success=None,
+        info=None,
+        username="",
+        email="",
+        signup_code="",
+    ):
+        signup_code_mode = get_signup_code_mode()
+        signup_code_query_param = get_signup_code_query_param()
+        show_signup_code_input = signup_code_mode != SIGNUP_CODE_MODE_OFF
+        return render_template(
+            "register.html",
+            title="Register | FX Journal",
+            body_class="auth-layout",
+            error=error,
+            success=success,
+            info=info,
+            username_value=username,
+            email_value=email,
+            signup_code_value=signup_code,
+            signup_code_mode=signup_code_mode,
+            signup_code_query_param=signup_code_query_param,
+            show_signup_code_input=show_signup_code_input,
+            registrations_paused=get_registration_paused(),
+        )
+
+    def build_admin_redirect(message="", status="info"):
+        return redirect(
+            url_for(
+                "admin_signup_access",
+                admin_status=status,
+                admin_message=message,
+            )
+        )
+
     @app.route("/")
     def landing():
         return render_template(
@@ -275,8 +445,9 @@ def register_public_auth_routes(
         verified = request.args.get("verified") == "1"
         reset_done = request.args.get("reset") == "1"
         success_message = request.args.get("success", "").strip()
+        info_message = request.args.get("info", "").strip()
 
-        if not success_message:
+        if not success_message and not info_message:
             if reset_done:
                 success_message = "Password reset successful. Please log in."
             elif verified:
@@ -290,12 +461,30 @@ def register_public_auth_routes(
             if user and check_password_hash(user.password, password):
                 if os.getenv("REQUIRE_EMAIL_VERIFICATION", "true").strip().lower() in {"1", "true", "yes", "on"} and not user.email_verified:
                     session["pending_verify_email"] = user.email
-                    return render_template(
-                        "login.html",
-                        title="Login | FX Journal",
-                        body_class="auth-layout",
+                    return render_login_page(
                         error="Please verify your email before logging in.",
                         success=success_message,
+                        info=info_message or None,
+                        email=email,
+                    )
+                signup_status = normalize_signup_status(user.signup_status)
+                if signup_status == SIGNUP_STATUS_PENDING:
+                    return render_login_page(
+                        success=success_message,
+                        info="Your account is verified, but it is still waiting for manual approval.",
+                        email=email,
+                    )
+                if signup_status == SIGNUP_STATUS_REJECTED:
+                    return render_login_page(
+                        error="Your registration was not approved. Contact support if you think this is a mistake.",
+                        success=success_message,
+                        email=email,
+                    )
+                if signup_status == SIGNUP_STATUS_SUSPENDED:
+                    return render_login_page(
+                        error="This account is currently suspended. Contact support for help.",
+                        success=success_message,
+                        email=email,
                     )
                 user.last_login_at = datetime.utcnow()
                 session["user_id"] = user.id
@@ -305,18 +494,15 @@ def register_public_auth_routes(
                 db.session.commit()
                 return redirect(url_for("home"))
 
-            return render_template(
-                "login.html",
-                title="Login | FX Journal",
-                body_class="auth-layout",
+            return render_login_page(
                 error="Invalid email or password.",
                 success=success_message,
+                info=info_message or None,
+                email=email,
             )
-        return render_template(
-            "login.html",
-            title="Login | FX Journal",
-            body_class="auth-layout",
+        return render_login_page(
             success=success_message,
+            info=info_message or None,
         )
 
     @app.route("/register", methods=["GET", "POST"])
@@ -325,44 +511,91 @@ def register_public_auth_routes(
             return redirect(url_for("home"))
 
         error_message = request.args.get("error", "").strip()
+        info_message = request.args.get("info", "").strip()
+        query_param = get_signup_code_query_param()
+        signup_code_prefill = normalize_signup_code(request.args.get(query_param, ""))
+
+        if get_registration_paused():
+            return render_register_page(
+                error=error_message or None,
+                info=info_message or "New registrations are temporarily paused.",
+                signup_code=signup_code_prefill,
+            )
 
         if request.method == "POST":
             username = request.form.get("username", "").strip()
             email = request.form.get("email", "").strip().lower()
             password = request.form.get("password", "")
             accepted_legal = request.form.get("accept_legal") == "on"
+            signup_code_value = normalize_signup_code(
+                request.form.get("signup_code") or request.args.get(query_param, "")
+            )
+            signup_code_mode = get_signup_code_mode()
+            signup_code_row = None
+
+            if signup_code_mode != SIGNUP_CODE_MODE_OFF and signup_code_value:
+                signup_code_row = find_signup_code(signup_code_value)
+                if not is_signup_code_usable(signup_code_row):
+                    return render_register_page(
+                        error=get_signup_code_validation_message(signup_code_mode),
+                        username=username,
+                        email=email,
+                        signup_code=signup_code_value,
+                    )
+            elif signup_code_mode == SIGNUP_CODE_MODE_REQUIRED:
+                return render_register_page(
+                    error="A valid referral code is required to register right now.",
+                    username=username,
+                    email=email,
+                    signup_code=signup_code_value,
+                )
 
             if not username or not email or not password:
-                return render_template(
-                    "register.html",
-                    title="Register | FX Journal",
-                    body_class="auth-layout",
+                return render_register_page(
                     error="All fields are required.",
+                    username=username,
+                    email=email,
+                    signup_code=signup_code_value,
                 )
 
             if not is_allowed_signup_email_domain(email):
-                return render_template(
-                    "register.html",
-                    title="Register | FX Journal",
-                    body_class="auth-layout",
+                return render_register_page(
                     error=(
                         "Please use a common email provider "
                         "(for example Gmail, Outlook, Yahoo, iCloud, or Proton)."
                     ),
+                    username=username,
+                    email=email,
+                    signup_code=signup_code_value,
                 )
 
             if not accepted_legal:
-                return render_template(
-                    "register.html",
-                    title="Register | FX Journal",
-                    body_class="auth-layout",
+                return render_register_page(
                     error="You must accept the Terms and Conditions and Privacy Policy.",
+                    username=username,
+                    email=email,
+                    signup_code=signup_code_value,
                 )
 
             existing_user = User.query.filter(
                 or_(User.username == username, User.email == email)
             ).first()
             if existing_user:
+                existing_status = normalize_signup_status(existing_user.signup_status)
+                if existing_user.email == email and existing_status == SIGNUP_STATUS_REJECTED:
+                    return render_register_page(
+                        error="This email already has a rejected registration. Contact support if you need help.",
+                        username=username,
+                        email=email,
+                        signup_code=signup_code_value,
+                    )
+                if existing_user.email == email and existing_status == SIGNUP_STATUS_SUSPENDED:
+                    return render_register_page(
+                        error="This email belongs to a suspended account.",
+                        username=username,
+                        email=email,
+                        signup_code=signup_code_value,
+                    )
                 if existing_user.email == email and not existing_user.email_verified:
                     session["pending_verify_email"] = existing_user.email
                     session.pop("pending_registration_id", None)
@@ -389,19 +622,23 @@ def register_public_auth_routes(
                     if is_local_dev_environment() and not email_result.get("sent"):
                         verify_kwargs["verify_link"] = verify_link
                     return redirect(url_for("verify_email_pending", **verify_kwargs))
-                return render_template(
-                    "register.html",
-                    title="Register | FX Journal",
-                    body_class="auth-layout",
+                return render_register_page(
                     error="Username or email already exists.",
+                    username=username,
+                    email=email,
+                    signup_code=signup_code_value,
                 )
 
             hashed_password = generate_password_hash(password)
+            initial_signup_status = get_initial_signup_status()
             user = User(
                 username=username,
                 email=email,
                 password=hashed_password,
                 email_verified=False,
+                signup_status=initial_signup_status,
+                signup_code_used=signup_code_row.code if signup_code_row else None,
+                approved_at=datetime.utcnow() if initial_signup_status == SIGNUP_STATUS_APPROVED else None,
                 verification_sent_at=datetime.utcnow(),
             )
             db.session.add(user)
@@ -409,11 +646,11 @@ def register_public_auth_routes(
                 db.session.commit()
             except IntegrityError:
                 db.session.rollback()
-                return render_template(
-                    "register.html",
-                    title="Register | FX Journal",
-                    body_class="auth-layout",
+                return render_register_page(
                     error="Username or email already exists.",
+                    username=username,
+                    email=email,
+                    signup_code=signup_code_value,
                 )
 
             session["pending_verify_email"] = user.email
@@ -440,11 +677,10 @@ def register_public_auth_routes(
                 verify_kwargs["verify_link"] = verify_link
             return redirect(url_for("verify_email_pending", **verify_kwargs))
 
-        return render_template(
-            "register.html",
-            title="Register | FX Journal",
-            body_class="auth-layout",
+        return render_register_page(
             error=error_message or None,
+            info=info_message or None,
+            signup_code=signup_code_prefill,
         )
 
     @app.route("/verify-email/pending", methods=["GET", "POST"])
@@ -459,6 +695,7 @@ def register_public_auth_routes(
         pending_id = ""
         pending = None
         using_legacy_pending = False
+        awaiting_approval = False
 
         if pending_email:
             user = User.query.filter_by(email=pending_email).first()
@@ -467,9 +704,18 @@ def register_public_auth_routes(
                 pending_email = ""
             elif user.email_verified:
                 session.pop("pending_verify_email", None)
-                return redirect(url_for("login", verified="1"))
+                if normalize_signup_status(user.signup_status) == SIGNUP_STATUS_APPROVED:
+                    return redirect(url_for("login", verified="1"))
+                return redirect(
+                    url_for(
+                        "login",
+                        verified="1",
+                        info="Email verified. Your account is waiting for approval.",
+                    )
+                )
             else:
                 pending_username = user.username
+                awaiting_approval = normalize_signup_status(user.signup_status) == SIGNUP_STATUS_PENDING
 
         if not pending_email:
             pending_id = session.get("pending_registration_id", "").strip()
@@ -484,6 +730,7 @@ def register_public_auth_routes(
             pending_email = pending["email"]
             pending_username = pending["username"]
             using_legacy_pending = True
+            awaiting_approval = get_initial_signup_status() == SIGNUP_STATUS_PENDING
 
         success = (
             "Verification email sent. Please check your inbox."
@@ -543,6 +790,7 @@ def register_public_auth_routes(
             success=success or None,
             error=error or None,
             debug_verify_link=debug_verify_link,
+            awaiting_approval=awaiting_approval,
         )
 
     @app.route("/verify-email/resend", methods=["GET"])
@@ -598,11 +846,14 @@ def register_public_auth_routes(
                     )
                 )
 
+            initial_signup_status = get_initial_signup_status()
             user = User(
                 username=pending["username"],
                 email=pending["email"],
                 password=pending["password_hash"],
                 email_verified=True,
+                signup_status=initial_signup_status,
+                approved_at=datetime.utcnow() if initial_signup_status == SIGNUP_STATUS_APPROVED else None,
                 verification_sent_at=datetime.utcnow(),
             )
             db.session.add(user)
@@ -612,7 +863,15 @@ def register_public_auth_routes(
             if session.get("pending_registration_id") == registration_id:
                 session.pop("pending_registration_id", None)
 
-            return redirect(url_for("login", verified="1"))
+            if normalize_signup_status(user.signup_status) == SIGNUP_STATUS_APPROVED:
+                return redirect(url_for("login", verified="1"))
+            return redirect(
+                url_for(
+                    "login",
+                    verified="1",
+                    info="Email verified. Your account is waiting for approval.",
+                )
+            )
 
         email = verify_auth_token(
             token=token,
@@ -638,12 +897,168 @@ def register_public_auth_routes(
 
         if not user.email_verified:
             user.email_verified = True
+            if user.signup_code_used:
+                signup_code = find_signup_code(user.signup_code_used)
+                if is_signup_code_usable(signup_code):
+                    signup_code.used_count += 1
             db.session.commit()
 
         if session.get("pending_verify_email", "").strip().lower() == email:
             session.pop("pending_verify_email", None)
 
-        return redirect(url_for("login", verified="1"))
+        if normalize_signup_status(user.signup_status) == SIGNUP_STATUS_APPROVED:
+            return redirect(url_for("login", verified="1"))
+        return redirect(
+            url_for(
+                "login",
+                verified="1",
+                info="Email verified. Your account is waiting for approval.",
+            )
+        )
+
+    @app.route("/dashboard/admin/access")
+    def admin_signup_access():
+        admin_user = require_admin_user()
+        if admin_user is None:
+            return redirect(url_for("login"))
+
+        admin_status = request.args.get("admin_status", "").strip().lower()
+        admin_message = request.args.get("admin_message", "").strip()
+        if admin_status not in {"success", "error", "info"}:
+            admin_status = ""
+        if not admin_message:
+            admin_status = ""
+
+        pending_users = (
+            User.query.filter_by(signup_status=SIGNUP_STATUS_PENDING)
+            .order_by(User.verification_sent_at.asc(), User.id.asc())
+            .all()
+        )
+        signup_codes = (
+            SignupCode.query.order_by(SignupCode.created_at.desc(), SignupCode.id.desc()).all()
+        )
+        return render_template(
+            "admin_signup_access.html",
+            title="Access Control | FX Journal",
+            username=admin_user.username,
+            admin_status=admin_status,
+            admin_message=admin_message,
+            pending_users=pending_users,
+            signup_codes=signup_codes,
+            registration_paused=get_registration_paused(),
+            auto_approve_new_users=get_auto_approve_new_users(),
+            signup_code_mode=get_signup_code_mode(),
+            signup_code_query_param=get_signup_code_query_param(),
+            public_register_url=build_external_url(url_for("register")),
+        )
+
+    @app.route("/dashboard/admin/access/users/<int:user_id>/approve", methods=["POST"])
+    def admin_signup_approve_user(user_id):
+        admin_user = require_admin_user()
+        if admin_user is None:
+            return redirect(url_for("login"))
+
+        user = User.query.filter_by(id=user_id).first()
+        if not user:
+            return build_admin_redirect("User not found.", "error")
+
+        user.signup_status = SIGNUP_STATUS_APPROVED
+        user.approved_at = datetime.utcnow()
+        user.approved_by_user_id = admin_user.id
+        db.session.commit()
+        return build_admin_redirect(
+            f"Approved {user.username}.",
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/users/<int:user_id>/reject", methods=["POST"])
+    def admin_signup_reject_user(user_id):
+        admin_user = require_admin_user()
+        if admin_user is None:
+            return redirect(url_for("login"))
+
+        user = User.query.filter_by(id=user_id).first()
+        if not user:
+            return build_admin_redirect("User not found.", "error")
+
+        user.signup_status = SIGNUP_STATUS_REJECTED
+        user.approved_at = None
+        user.approved_by_user_id = None
+        db.session.commit()
+        return build_admin_redirect(
+            f"Rejected {user.username}.",
+            "info",
+        )
+
+    @app.route("/dashboard/admin/access/codes", methods=["POST"])
+    def admin_signup_create_code():
+        admin_user = require_admin_user()
+        if admin_user is None:
+            return redirect(url_for("login"))
+
+        requested_code = normalize_signup_code(request.form.get("code"))
+        notes = (request.form.get("notes") or "").strip() or None
+        max_uses_raw = (request.form.get("max_uses") or "").strip()
+        expires_on_raw = (request.form.get("expires_on") or "").strip()
+
+        if requested_code and len(requested_code) < 4:
+            return build_admin_redirect("Manual codes must be at least 4 characters.", "error")
+
+        if max_uses_raw:
+            try:
+                max_uses = int(max_uses_raw)
+            except ValueError:
+                return build_admin_redirect("Max uses must be a whole number.", "error")
+            if max_uses <= 0:
+                return build_admin_redirect("Max uses must be greater than zero.", "error")
+        else:
+            max_uses = None
+
+        if expires_on_raw:
+            try:
+                expires_at = datetime.fromisoformat(f"{expires_on_raw}T23:59:59")
+            except ValueError:
+                return build_admin_redirect("Expiry date is invalid.", "error")
+        else:
+            expires_at = None
+
+        code_value = requested_code or build_unique_signup_code()
+        existing_code = SignupCode.query.filter_by(code=code_value).first()
+        if existing_code:
+            return build_admin_redirect("That signup code already exists.", "error")
+
+        signup_code = SignupCode(
+            code=code_value,
+            created_by_user_id=admin_user.id,
+            notes=notes,
+            is_active=True,
+            max_uses=max_uses,
+            used_count=0,
+            expires_at=expires_at,
+        )
+        db.session.add(signup_code)
+        db.session.commit()
+        return build_admin_redirect(
+            f"Created signup code {signup_code.code}.",
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/codes/<int:code_id>/toggle", methods=["POST"])
+    def admin_signup_toggle_code(code_id):
+        admin_user = require_admin_user()
+        if admin_user is None:
+            return redirect(url_for("login"))
+
+        signup_code = SignupCode.query.filter_by(id=code_id).first()
+        if not signup_code:
+            return build_admin_redirect("Signup code not found.", "error")
+
+        signup_code.is_active = not signup_code.is_active
+        db.session.commit()
+        return build_admin_redirect(
+            f"{'Activated' if signup_code.is_active else 'Deactivated'} signup code {signup_code.code}.",
+            "success",
+        )
 
     @app.route("/password/forgot", methods=["GET", "POST"])
     @limiter.limit(

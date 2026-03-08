@@ -22,6 +22,9 @@
         {% if success %}
         <p class="notice success">{{ success }}</p>
         {% endif %}
+        {% if info %}
+        <p class="notice">{{ info }}</p>
+        {% endif %}
         {% if error %}
         <p class="notice error">{{ error }}</p>
         {% endif %}
@@ -29,13 +32,33 @@
         <form action="/register" method="post" class="login-form" data-themed-validation>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label for="username">Username</label>
-            <input id="username" name="username" type="text" placeholder="your_username" required>
+            <input id="username" name="username" type="text" placeholder="your_username" value="{{ username_value or '' }}" required>
 
             <label for="email">Email</label>
-            <input id="email" name="email" type="email" placeholder="you@example.com" required>
+            <input id="email" name="email" type="email" placeholder="you@example.com" value="{{ email_value or '' }}" required>
 
             <label for="password">Password</label>
             <input id="password" name="password" type="password" placeholder="Create a password" required>
+
+            {% if show_signup_code_input %}
+            <label for="signup_code">
+                Referral Code{% if signup_code_mode == "required" %} (Required){% else %} (Optional){% endif %}
+            </label>
+            <input
+                id="signup_code"
+                name="signup_code"
+                type="text"
+                placeholder="Enter referral code"
+                value="{{ signup_code_value or '' }}"
+                {% if signup_code_mode == "required" %}required{% endif %}
+                autocomplete="off"
+            >
+            <p class="helper-note">
+                You can also open a referral link like
+                <code>/register?{{ signup_code_query_param }}=CODE123</code>
+                to auto-fill this field.
+            </p>
+            {% endif %}
 
             <label class="legal-consent">
                 <input id="accept_legal" name="accept_legal" type="checkbox" required>
@@ -47,13 +70,12 @@
                 </span>
             </label>
 
-            <button type="submit">Create Account</button>
+            <button type="submit" {% if registrations_paused %}disabled{% endif %}>Create Account</button>
         </form>
         <p class="switch-link">Already have an account? <a href="/login">Log in</a></p>
     </div>
 </section>
 
 {% endblock %}
-
 
 

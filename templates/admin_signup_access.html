@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="dash-wrap">
+    <div class="dash-content">
+        <header class="dash-head">
+            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Admin</div>
+            <div class="head-row">
+                <div>
+                    <h1>Access Control</h1>
+                    <p class="welcome">Welcome, {{ username }}.</p>
+                    <p class="subtitle">Approve new users, control registration intake, and manage referral codes.</p>
+                </div>
+                <div class="head-actions">
+                    <a class="ghost-link" href="{{ url_for('home') }}">Dashboard</a>
+                    <a class="ghost-link" href="{{ url_for('account') }}">Account</a>
+                </div>
+            </div>
+        </header>
+
+        {% if admin_status and admin_message %}
+        <p class="account-alert {{ admin_status }}">{{ admin_message }}</p>
+        {% endif %}
+
+        <section class="panel-grid">
+            <article class="panel status-panel">
+                <div class="panel-head">
+                    <h2>Registration Controls</h2>
+                    <span class="soft">Environment Driven</span>
+                </div>
+                <dl class="status-list">
+                    <div class="status-row">
+                        <dt>Registration Paused</dt>
+                        <dd class="{{ 'bad' if registration_paused else 'good' }}">{{ "Yes" if registration_paused else "No" }}</dd>
+                    </div>
+                    <div class="status-row">
+                        <dt>Auto Approve New Users</dt>
+                        <dd class="{{ 'good' if auto_approve_new_users else 'bad' }}">{{ "Yes" if auto_approve_new_users else "No" }}</dd>
+                    </div>
+                    <div class="status-row">
+                        <dt>Signup Code Mode</dt>
+                        <dd>{{ signup_code_mode|replace('_', ' ')|title }}</dd>
+                    </div>
+                </dl>
+                <p class="helper-note">These settings are controlled by environment variables and require an app reload after changes.</p>
+            </article>
+
+            <article class="panel pending-panel">
+                <div class="panel-head">
+                    <h2>Pending Approvals</h2>
+                    <span class="soft">{{ pending_users|length }} pending</span>
+                </div>
+                {% if pending_users %}
+                <div class="pending-list">
+                    {% for user in pending_users %}
+                    <article class="pending-card">
+                        <div class="pending-meta">
+                            <p class="pending-name">{{ user.username }}</p>
+                            <p class="pending-line">{{ user.email }}</p>
+                            <p class="pending-line">Email verified: {{ "Yes" if user.email_verified else "No" }}</p>
+                            <p class="pending-line">Referral code: {{ user.signup_code_used or "None" }}</p>
+                            <p class="pending-line">Verification requested: {{ user.verification_sent_at.strftime("%Y-%m-%d %H:%M UTC") if user.verification_sent_at else "-" }}</p>
+                        </div>
+                        <div class="inline-actions">
+                            <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="submit-btn">Approve</button>
+                            </form>
+                            <form action="{{ url_for('admin_signup_reject_user', user_id=user.id) }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="ghost-btn danger-btn">Reject</button>
+                            </form>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="helper-note">No users are waiting for approval right now.</p>
+                {% endif %}
+            </article>
+        </section>
+
+        <section class="panel-grid lower-grid">
+            <article class="panel create-code-panel">
+                <div class="panel-head">
+                    <h2>Create Signup Code</h2>
+                    <span class="soft">Referral or Invite</span>
+                </div>
+                <form action="{{ url_for('admin_signup_create_code') }}" method="post" class="code-form" data-themed-validation>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <label for="code">Manual Code (optional)</label>
+                    <input id="code" name="code" type="text" maxlength="32" placeholder="Leave blank to auto-generate">
+
+                    <label for="notes">Notes (optional)</label>
+                    <input id="notes" name="notes" type="text" maxlength="255" placeholder="e.g. Beta creator cohort">
+
+                    <label for="max_uses">Max Uses (optional)</label>
+                    <input id="max_uses" name="max_uses" type="number" min="1" step="1" placeholder="Unlimited if blank">
+
+                    <label for="expires_on">Expires On (optional)</label>
+                    <input id="expires_on" name="expires_on" type="date">
+
+                    <button type="submit" class="submit-btn">Create Code</button>
+                </form>
+            </article>
+
+            <article class="panel codes-panel">
+                <div class="panel-head">
+                    <h2>Signup Codes</h2>
+                    <span class="soft">{{ signup_codes|length }} total</span>
+                </div>
+                {% if signup_codes %}
+                <div class="codes-list">
+                    {% for code in signup_codes %}
+                    <article class="code-card">
+                        <div class="code-head">
+                            <p class="code-value">{{ code.code }}</p>
+                            <span class="chip{% if not code.is_active %} default{% endif %}">{{ "Active" if code.is_active else "Inactive" }}</span>
+                        </div>
+                        <p class="pending-line">Link: {{ public_register_url }}?{{ signup_code_query_param }}={{ code.code }}</p>
+                        <p class="pending-line">Uses: {{ code.used_count }}{% if code.max_uses is not none %} / {{ code.max_uses }}{% else %} / unlimited{% endif %}</p>
+                        <p class="pending-line">Expires: {{ code.expires_at.strftime("%Y-%m-%d %H:%M UTC") if code.expires_at else "Never" }}</p>
+                        <p class="pending-line">Notes: {{ code.notes or "-" }}</p>
+                        <div class="inline-actions">
+                            <form action="{{ url_for('admin_signup_toggle_code', code_id=code.id) }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="ghost-btn">{{ "Deactivate" if code.is_active else "Activate" }}</button>
+                            </form>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="helper-note">No signup codes created yet.</p>
+                {% endif %}
+            </article>
+        </section>
+    </div>
+</section>
+
+<style>
+    .panel-grid { display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.8rem;
+        align-items: start; }
+
+    .lower-grid { margin-top: 0.8rem; }
+
+    .panel { border-radius: 14px;
+        padding: 0.9rem; }
+
+    h2 { margin: 0;
+        font-size: 1rem; }
+
+    .status-list,
+    .pending-list,
+    .codes-list { display: grid;
+        gap: 0.62rem;
+        margin: 0; }
+
+    .status-row,
+    .pending-card,
+    .code-card { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 12px;
+        padding: 0.72rem;
+        background: color-mix(in srgb, var(--surface) 96%, transparent); }
+
+    .status-row { display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.7rem; }
+
+    .status-row dt { font-size: 0.8rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.04em; }
+
+    .status-row dd { margin: 0;
+        font-weight: 700; }
+
+    .pending-card,
+    .code-card { display: grid;
+        gap: 0.62rem; }
+
+    .pending-name,
+    .code-value { margin: 0;
+        font-size: 0.92rem;
+        font-weight: 800; }
+
+    .pending-line { margin: 0.18rem 0 0;
+        font-size: 0.8rem;
+        overflow-wrap: anywhere; }
+
+    .code-head { display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.7rem; }
+
+    .code-form { display: grid;
+        gap: 0.62rem; }
+
+    .code-form label { font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em; }
+
+    .code-form input { width: 100%;
+        border: 1px solid #c7d5cb;
+        border-radius: 10px;
+        padding: 0.62rem 0.7rem;
+        font: inherit; }
+
+    .inline-actions { display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        flex-wrap: wrap; }
+
+    .chip { border: 1px solid #8bc8a5;
+        border-radius: 999px;
+        padding: 0.24rem 0.52rem;
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        background: color-mix(in srgb, #3f9a69 16%, transparent);
+        color: #1f6b46; }
+
+    .chip.default { border-color: #d49e2f;
+        background: color-mix(in srgb, #f3b84a 24%, transparent);
+        color: #8a5a00; }
+
+    .helper-note { margin: 0;
+        font-size: 0.8rem; }
+
+    @media (max-width: 980px) {
+        .panel-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}

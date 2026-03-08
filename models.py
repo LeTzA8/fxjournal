@@ -27,6 +27,15 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
     email_verified = db.Column(db.Boolean, nullable=False, default=False)
+    signup_status = db.Column(db.String(16), nullable=False, default="approved", index=True)
+    signup_code_used = db.Column(db.String(32), nullable=True, index=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    approved_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     verification_sent_at = db.Column(db.DateTime, nullable=True)
     last_login_at = db.Column(db.DateTime, nullable=True)
     trade_accounts = db.relationship(
@@ -141,6 +150,25 @@ class AllowedSignupEmailDomain(db.Model):
     domain = db.Column(db.String(255), unique=True, nullable=False, index=True)
     notes = db.Column(db.String(255), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+
+class SignupCode(db.Model):
+    __tablename__ = "signup_codes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(32), unique=True, nullable=False, index=True)
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    notes = db.Column(db.String(255), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    max_uses = db.Column(db.Integer, nullable=True)
+    used_count = db.Column(db.Integer, nullable=False, default=0)
+    expires_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
 class FuturesSymbol(db.Model):

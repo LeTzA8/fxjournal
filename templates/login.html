@@ -22,6 +22,9 @@
         {% if success %}
         <p class="notice success">{{ success }}</p>
         {% endif %}
+        {% if info %}
+        <p class="notice">{{ info }}</p>
+        {% endif %}
         {% if error %}
         <p class="notice error">{{ error }}</p>
         {% endif %}
@@ -29,7 +32,7 @@
         <form action="/login" method="post" class="login-form" data-themed-validation>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label for="email">Email</label>
-            <input id="email" name="email" type="email" placeholder="you@example.com" required>
+            <input id="email" name="email" type="email" placeholder="you@example.com" value="{{ email_value or '' }}" required>
 
             <label for="password">Password</label>
             <input id="password" name="password" type="password" placeholder="Enter your password" required>
@@ -42,7 +45,6 @@
 </section>
 
 {% endblock %}
-
 
 
 

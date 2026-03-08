@@ -1151,6 +1151,12 @@
                     href="{{ url_for('trade_accounts') }}"
                     class="site-nav-link{% if request.endpoint == 'trade_accounts' %} active{% endif %}"
                 >Trade Accounts</a>
+                {% if is_admin_user %}
+                <a
+                    href="{{ url_for('admin_signup_access') }}"
+                    class="site-nav-link{% if request.endpoint in ['admin_signup_access'] %} active{% endif %}"
+                >Admin</a>
+                {% endif %}
                 <a
                     href="{{ url_for('contact') }}"
                     class="site-nav-link{% if request.endpoint == 'contact' %} active{% endif %}"
