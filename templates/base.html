@@ -941,6 +941,81 @@
         body.app-layout .submit-btn,
         body.app-layout .trades-btn,
         body.app-layout .new-trade-btn,
+        body.app-layout .ghost-btn,
+        body.app-layout .edit-btn,
+        body.app-layout .account-btn,
+        body.app-layout .view-btn,
+        body.app-layout .logout-btn,
+        body.app-layout .danger-btn,
+        body.app-layout .manage-trades-btn,
+        body.app-layout .batch-delete-btn,
+        body.app-layout .batch-delete-arm-btn,
+        body.auth-layout .submit-btn,
+        body.auth-layout .ghost-btn,
+        body.auth-layout .account-btn,
+        body.auth-layout .logout-btn,
+        body.auth-layout .danger-btn,
+        body.landing-layout .submit-btn,
+        body.landing-layout .trades-btn,
+        body.landing-layout .new-trade-btn,
+        body.landing-layout .ghost-btn,
+        body.landing-layout .edit-btn,
+        body.landing-layout .account-btn,
+        body.landing-layout .view-btn,
+        body.landing-layout .logout-btn,
+        body.landing-layout .danger-btn {
+            appearance: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 38px;
+            padding: 0.55rem 0.82rem;
+            border-width: 1px;
+            border-style: solid;
+            border-radius: 10px;
+            font: inherit;
+            font-size: 0.76rem;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            line-height: 1;
+            text-decoration: none;
+            cursor: pointer;
+            transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease, border-color 180ms ease, color 180ms ease;
+        }
+
+        body.app-layout .submit-btn:hover,
+        body.app-layout .trades-btn:hover,
+        body.app-layout .new-trade-btn:hover,
+        body.app-layout .ghost-btn:hover,
+        body.app-layout .edit-btn:hover,
+        body.app-layout .account-btn:hover,
+        body.app-layout .view-btn:hover,
+        body.app-layout .logout-btn:hover,
+        body.app-layout .danger-btn:hover,
+        body.app-layout .manage-trades-btn:hover,
+        body.app-layout .batch-delete-btn:hover,
+        body.app-layout .batch-delete-arm-btn:hover,
+        body.auth-layout .submit-btn:hover,
+        body.auth-layout .ghost-btn:hover,
+        body.auth-layout .account-btn:hover,
+        body.auth-layout .logout-btn:hover,
+        body.auth-layout .danger-btn:hover,
+        body.landing-layout .submit-btn:hover,
+        body.landing-layout .trades-btn:hover,
+        body.landing-layout .new-trade-btn:hover,
+        body.landing-layout .ghost-btn:hover,
+        body.landing-layout .edit-btn:hover,
+        body.landing-layout .account-btn:hover,
+        body.landing-layout .view-btn:hover,
+        body.landing-layout .logout-btn:hover,
+        body.landing-layout .danger-btn:hover {
+            transform: translateY(-1px);
+        }
+
+        body.app-layout .submit-btn,
+        body.app-layout .trades-btn,
+        body.app-layout .new-trade-btn,
         body.auth-layout .submit-btn,
         body.landing-layout .submit-btn,
         body.landing-layout .trades-btn,
@@ -1153,8 +1228,8 @@
                 >Trade Accounts</a>
                 {% if is_admin_user %}
                 <a
-                    href="{{ url_for('admin_signup_access') }}"
-                    class="site-nav-link{% if request.endpoint in ['admin_signup_access'] %} active{% endif %}"
+                    href="{{ url_for('admin_signup_users') }}"
+                    class="site-nav-link{% if request.endpoint in ['admin_signup_access', 'admin_signup_users', 'admin_signup_codes'] %} active{% endif %}"
                 >Admin</a>
                 {% endif %}
                 <a

@@ -70,9 +70,13 @@ def get_admin_user_emails():
     return {part.strip().lower() for part in raw.split(",") if part and part.strip()}
 
 
-def is_admin_email(email):
+def is_root_admin_email(email):
     candidate = (email or "").strip().lower()
     return bool(candidate and candidate in get_admin_user_emails())
+
+
+def is_admin_email(email):
+    return is_root_admin_email(email)
 
 
 def normalize_signup_status(value, default=SIGNUP_STATUS_APPROVED):
@@ -123,6 +127,26 @@ def is_signup_code_usable(code_row):
 
 def get_initial_signup_status():
     return SIGNUP_STATUS_APPROVED if get_auto_approve_new_users() else SIGNUP_STATUS_PENDING
+
+
+def user_has_admin_access(user):
+    if not user:
+        return False
+    if not getattr(user, "email_verified", False):
+        return False
+    if normalize_signup_status(getattr(user, "signup_status", None)) != SIGNUP_STATUS_APPROVED:
+        return False
+    return bool(getattr(user, "is_admin", False) or is_root_admin_email(getattr(user, "email", "")))
+
+
+def user_has_root_admin_access(user):
+    if not user:
+        return False
+    if not getattr(user, "email_verified", False):
+        return False
+    if normalize_signup_status(getattr(user, "signup_status", None)) != SIGNUP_STATUS_APPROVED:
+        return False
+    return is_root_admin_email(getattr(user, "email", ""))
 
 
 def get_public_base_url():
@@ -345,7 +369,13 @@ def register_public_auth_routes(
 
     def get_current_admin_user():
         user = get_current_user()
-        if not user or not is_admin_email(user.email):
+        if not user_has_admin_access(user):
+            return None
+        return user
+
+    def get_current_root_admin_user():
+        user = get_current_user()
+        if not user_has_root_admin_access(user):
             return None
         return user
 
@@ -353,9 +383,17 @@ def register_public_auth_routes(
         admin_user = get_current_admin_user()
         if admin_user is None:
             if session.get("user_id"):
-                abort(403)
+                abort(404)
             return None
         return admin_user
+
+    def require_root_admin_user():
+        root_admin_user = get_current_root_admin_user()
+        if root_admin_user is None:
+            if session.get("user_id"):
+                abort(404)
+            return None
+        return root_admin_user
 
     def render_login_page(*, error=None, success=None, info=None, email=""):
         return render_template(
@@ -396,13 +434,54 @@ def register_public_auth_routes(
             registrations_paused=get_registration_paused(),
         )
 
-    def build_admin_redirect(message="", status="info"):
+    def build_admin_redirect(section="users", message="", status="info"):
+        endpoint = "admin_signup_codes" if section == "codes" else "admin_signup_users"
         return redirect(
             url_for(
-                "admin_signup_access",
+                endpoint,
                 admin_status=status,
                 admin_message=message,
             )
+        )
+
+    def parse_admin_notice():
+        admin_status = request.args.get("admin_status", "").strip().lower()
+        admin_message = request.args.get("admin_message", "").strip()
+        if admin_status not in {"success", "error", "info"}:
+            admin_status = ""
+        if not admin_message:
+            admin_status = ""
+        return admin_status, admin_message
+
+    def build_admin_overview():
+        return {
+            "total_users": User.query.count(),
+            "pending_users": User.query.filter_by(signup_status=SIGNUP_STATUS_PENDING).count(),
+            "approved_users": User.query.filter_by(signup_status=SIGNUP_STATUS_APPROVED).count(),
+            "rejected_users": User.query.filter_by(signup_status=SIGNUP_STATUS_REJECTED).count(),
+            "suspended_users": User.query.filter_by(signup_status=SIGNUP_STATUS_SUSPENDED).count(),
+            "admin_users": User.query.filter_by(is_admin=True).count(),
+            "signup_codes": SignupCode.query.count(),
+        }
+
+    def render_admin_page(*, admin_user, section, **extra_context):
+        admin_status, admin_message = parse_admin_notice()
+        return render_template(
+            "admin_signup_access.html",
+            title="Access Control | FX Journal",
+            username=admin_user.username,
+            admin_status=admin_status,
+            admin_message=admin_message,
+            section=section,
+            is_root_admin=user_has_root_admin_access(admin_user),
+            root_admin_emails=get_admin_user_emails(),
+            overview=build_admin_overview(),
+            registration_paused=get_registration_paused(),
+            auto_approve_new_users=get_auto_approve_new_users(),
+            signup_code_mode=get_signup_code_mode(),
+            signup_code_query_param=get_signup_code_query_param(),
+            public_register_url=build_external_url(url_for("register")),
+            **extra_context,
         )
 
     @app.route("/")
@@ -921,78 +1000,156 @@ def register_public_auth_routes(
         admin_user = require_admin_user()
         if admin_user is None:
             return redirect(url_for("login"))
+        return redirect(url_for("admin_signup_users"))
 
-        admin_status = request.args.get("admin_status", "").strip().lower()
-        admin_message = request.args.get("admin_message", "").strip()
-        if admin_status not in {"success", "error", "info"}:
-            admin_status = ""
-        if not admin_message:
-            admin_status = ""
+    @app.route("/dashboard/admin/access/users")
+    def admin_signup_users():
+        admin_user = require_admin_user()
+        if admin_user is None:
+            return redirect(url_for("login"))
 
+        status_filter = request.args.get("status", "pending").strip().lower()
+        if status_filter not in {
+            "pending",
+            "approved",
+            "rejected",
+            "suspended",
+            "admins",
+            "all",
+        }:
+            status_filter = "pending"
+
+        users_query = User.query
+        if status_filter == "admins":
+            root_admin_emails = sorted(get_admin_user_emails())
+            if root_admin_emails:
+                users_query = users_query.filter(
+                    or_(User.is_admin.is_(True), User.email.in_(root_admin_emails))
+                )
+            else:
+                users_query = users_query.filter(User.is_admin.is_(True))
+        elif status_filter != "all":
+            users_query = users_query.filter_by(signup_status=status_filter)
+
+        users = (
+            users_query.order_by(
+                User.signup_status.asc(),
+                User.email_verified.asc(),
+                User.id.desc(),
+            ).all()
+        )
         pending_users = (
             User.query.filter_by(signup_status=SIGNUP_STATUS_PENDING)
-            .order_by(User.verification_sent_at.asc(), User.id.asc())
+            .order_by(User.email_verified.asc(), User.verification_sent_at.asc(), User.id.asc())
+            .limit(6)
             .all()
         )
-        signup_codes = (
-            SignupCode.query.order_by(SignupCode.created_at.desc(), SignupCode.id.desc()).all()
-        )
-        return render_template(
-            "admin_signup_access.html",
-            title="Access Control | FX Journal",
-            username=admin_user.username,
-            admin_status=admin_status,
-            admin_message=admin_message,
+
+        return render_admin_page(
+            admin_user=admin_user,
+            section="users",
+            users=users,
+            status_filter=status_filter,
             pending_users=pending_users,
-            signup_codes=signup_codes,
-            registration_paused=get_registration_paused(),
-            auto_approve_new_users=get_auto_approve_new_users(),
-            signup_code_mode=get_signup_code_mode(),
-            signup_code_query_param=get_signup_code_query_param(),
-            public_register_url=build_external_url(url_for("register")),
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/approve", methods=["POST"])
     def admin_signup_approve_user(user_id):
-        admin_user = require_admin_user()
+        admin_user = require_root_admin_user()
         if admin_user is None:
             return redirect(url_for("login"))
 
         user = User.query.filter_by(id=user_id).first()
         if not user:
-            return build_admin_redirect("User not found.", "error")
+            return build_admin_redirect("users", "User not found.", "error")
 
         user.signup_status = SIGNUP_STATUS_APPROVED
         user.approved_at = datetime.utcnow()
         user.approved_by_user_id = admin_user.id
         db.session.commit()
         return build_admin_redirect(
+            "users",
             f"Approved {user.username}.",
             "success",
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/reject", methods=["POST"])
     def admin_signup_reject_user(user_id):
-        admin_user = require_admin_user()
+        admin_user = require_root_admin_user()
         if admin_user is None:
             return redirect(url_for("login"))
 
         user = User.query.filter_by(id=user_id).first()
         if not user:
-            return build_admin_redirect("User not found.", "error")
+            return build_admin_redirect("users", "User not found.", "error")
+
+        if user.id == admin_user.id:
+            return build_admin_redirect("users", "You cannot reject your own account.", "error")
 
         user.signup_status = SIGNUP_STATUS_REJECTED
         user.approved_at = None
         user.approved_by_user_id = None
         db.session.commit()
         return build_admin_redirect(
+            "users",
             f"Rejected {user.username}.",
             "info",
         )
 
-    @app.route("/dashboard/admin/access/codes", methods=["POST"])
-    def admin_signup_create_code():
+    @app.route("/dashboard/admin/access/users/<int:user_id>/admin-toggle", methods=["POST"])
+    def admin_signup_toggle_user_admin(user_id):
+        admin_user = require_root_admin_user()
+        if admin_user is None:
+            return redirect(url_for("login"))
+
+        user = User.query.filter_by(id=user_id).first()
+        if not user:
+            return build_admin_redirect("users", "User not found.", "error")
+        if user.id == admin_user.id:
+            return build_admin_redirect(
+                "users",
+                "Use ADMIN_USER_EMAILS to control your own root access; this toggle is for other users.",
+                "error",
+            )
+        if is_root_admin_email(user.email):
+            return build_admin_redirect(
+                "users",
+                "Root admin emails keep access from environment settings and cannot be changed here.",
+                "error",
+            )
+        if normalize_signup_status(user.signup_status) != SIGNUP_STATUS_APPROVED:
+            return build_admin_redirect(
+                "users",
+                "Only approved users can be granted admin access.",
+                "error",
+            )
+
+        user.is_admin = not user.is_admin
+        db.session.commit()
+        return build_admin_redirect(
+            "users",
+            f"{'Granted' if user.is_admin else 'Removed'} admin access for {user.username}.",
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/codes")
+    def admin_signup_codes():
         admin_user = require_admin_user()
+        if admin_user is None:
+            return redirect(url_for("login"))
+
+        signup_codes = (
+            SignupCode.query.order_by(SignupCode.created_at.desc(), SignupCode.id.desc()).all()
+        )
+        return render_admin_page(
+            admin_user=admin_user,
+            section="codes",
+            signup_codes=signup_codes,
+        )
+
+    @app.route("/dashboard/admin/access/codes/create", methods=["POST"])
+    def admin_signup_create_code():
+        admin_user = require_root_admin_user()
         if admin_user is None:
             return redirect(url_for("login"))
 
@@ -1002,15 +1159,15 @@ def register_public_auth_routes(
         expires_on_raw = (request.form.get("expires_on") or "").strip()
 
         if requested_code and len(requested_code) < 4:
-            return build_admin_redirect("Manual codes must be at least 4 characters.", "error")
+            return build_admin_redirect("codes", "Manual codes must be at least 4 characters.", "error")
 
         if max_uses_raw:
             try:
                 max_uses = int(max_uses_raw)
             except ValueError:
-                return build_admin_redirect("Max uses must be a whole number.", "error")
+                return build_admin_redirect("codes", "Max uses must be a whole number.", "error")
             if max_uses <= 0:
-                return build_admin_redirect("Max uses must be greater than zero.", "error")
+                return build_admin_redirect("codes", "Max uses must be greater than zero.", "error")
         else:
             max_uses = None
 
@@ -1018,14 +1175,14 @@ def register_public_auth_routes(
             try:
                 expires_at = datetime.fromisoformat(f"{expires_on_raw}T23:59:59")
             except ValueError:
-                return build_admin_redirect("Expiry date is invalid.", "error")
+                return build_admin_redirect("codes", "Expiry date is invalid.", "error")
         else:
             expires_at = None
 
         code_value = requested_code or build_unique_signup_code()
         existing_code = SignupCode.query.filter_by(code=code_value).first()
         if existing_code:
-            return build_admin_redirect("That signup code already exists.", "error")
+            return build_admin_redirect("codes", "That signup code already exists.", "error")
 
         signup_code = SignupCode(
             code=code_value,
@@ -1039,23 +1196,25 @@ def register_public_auth_routes(
         db.session.add(signup_code)
         db.session.commit()
         return build_admin_redirect(
+            "codes",
             f"Created signup code {signup_code.code}.",
             "success",
         )
 
     @app.route("/dashboard/admin/access/codes/<int:code_id>/toggle", methods=["POST"])
     def admin_signup_toggle_code(code_id):
-        admin_user = require_admin_user()
+        admin_user = require_root_admin_user()
         if admin_user is None:
             return redirect(url_for("login"))
 
         signup_code = SignupCode.query.filter_by(id=code_id).first()
         if not signup_code:
-            return build_admin_redirect("Signup code not found.", "error")
+            return build_admin_redirect("codes", "Signup code not found.", "error")
 
         signup_code.is_active = not signup_code.is_active
         db.session.commit()
         return build_admin_redirect(
+            "codes",
             f"{'Activated' if signup_code.is_active else 'Deactivated'} signup code {signup_code.code}.",
             "success",
         )

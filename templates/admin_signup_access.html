@@ -1,19 +1,21 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="dash-wrap">
+<section class="dash-wrap admin-access">
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Admin</div>
-            <div class="head-row">
+            <div class="head-row admin-head-row">
                 <div>
+                    <p class="admin-kicker">Restricted Internal Area</p>
                     <h1>Access Control</h1>
-                    <p class="welcome">Welcome, {{ username }}.</p>
-                    <p class="subtitle">Approve new users, control registration intake, and manage referral codes.</p>
+                    <p class="welcome">Signed in as {{ username }}.</p>
+                    <p class="subtitle">Review registrations, control admin access, and manage signup codes without exposing these routes to normal users.</p>
                 </div>
-                <div class="head-actions">
-                    <a class="ghost-link" href="{{ url_for('home') }}">Dashboard</a>
-                    <a class="ghost-link" href="{{ url_for('account') }}">Account</a>
+                <div class="admin-head-meta">
+                    <span class="chip {{ 'root-chip' if is_root_admin else 'default' }}">
+                        {{ "Root Admin" if is_root_admin else "DB Admin" }}
+                    </span>
+                    <span class="soft">Env + account-state gated</span>
                 </div>
             </div>
         </header>
@@ -22,33 +24,65 @@
         <p class="account-alert {{ admin_status }}">{{ admin_message }}</p>
         {% endif %}
 
-        <section class="panel-grid">
-            <article class="panel status-panel">
-                <div class="panel-head">
-                    <h2>Registration Controls</h2>
-                    <span class="soft">Environment Driven</span>
-                </div>
-                <dl class="status-list">
-                    <div class="status-row">
-                        <dt>Registration Paused</dt>
-                        <dd class="{{ 'bad' if registration_paused else 'good' }}">{{ "Yes" if registration_paused else "No" }}</dd>
-                    </div>
-                    <div class="status-row">
-                        <dt>Auto Approve New Users</dt>
-                        <dd class="{{ 'good' if auto_approve_new_users else 'bad' }}">{{ "Yes" if auto_approve_new_users else "No" }}</dd>
-                    </div>
-                    <div class="status-row">
-                        <dt>Signup Code Mode</dt>
-                        <dd>{{ signup_code_mode|replace('_', ' ')|title }}</dd>
-                    </div>
-                </dl>
-                <p class="helper-note">These settings are controlled by environment variables and require an app reload after changes.</p>
+        <section class="admin-summary-grid">
+            <article class="panel summary-card">
+                <p class="summary-label">Pending</p>
+                <p class="summary-value">{{ overview.pending_users }}</p>
+                <p class="summary-note">Awaiting manual review</p>
             </article>
+            <article class="panel summary-card">
+                <p class="summary-label">Approved</p>
+                <p class="summary-value good">{{ overview.approved_users }}</p>
+                <p class="summary-note">Can access the app</p>
+            </article>
+            <article class="panel summary-card">
+                <p class="summary-label">Rejected</p>
+                <p class="summary-value bad">{{ overview.rejected_users }}</p>
+                <p class="summary-note">Explicitly blocked</p>
+            </article>
+            <article class="panel summary-card">
+                <p class="summary-label">Signup Codes</p>
+                <p class="summary-value">{{ overview.signup_codes }}</p>
+                <p class="summary-note">Referral and invite links</p>
+            </article>
+        </section>
 
-            <article class="panel pending-panel">
+        <section class="panel control-panel">
+            <div class="panel-head">
+                <h2>Runtime Controls</h2>
+                <span class="soft">Env backed</span>
+            </div>
+            <div class="control-grid">
+                <div class="control-item">
+                    <span class="control-label">Registration Paused</span>
+                    <span class="{{ 'bad' if registration_paused else 'good' }}">{{ "Yes" if registration_paused else "No" }}</span>
+                </div>
+                <div class="control-item">
+                    <span class="control-label">Auto Approve New Users</span>
+                    <span class="{{ 'good' if auto_approve_new_users else 'bad' }}">{{ "Yes" if auto_approve_new_users else "No" }}</span>
+                </div>
+                <div class="control-item">
+                    <span class="control-label">Signup Code Mode</span>
+                    <span>{{ signup_code_mode|replace('_', ' ')|title }}</span>
+                </div>
+                <div class="control-item">
+                    <span class="control-label">Admin Gate</span>
+                    <span>{{ "Root env email for writes" if is_root_admin else "Read-only unless root" }}</span>
+                </div>
+            </div>
+        </section>
+
+        <nav class="admin-tabs" aria-label="Admin Sections">
+            <a href="{{ url_for('admin_signup_users') }}" class="admin-tab{% if section == 'users' %} is-active{% endif %}">Users</a>
+            <a href="{{ url_for('admin_signup_codes') }}" class="admin-tab{% if section == 'codes' %} is-active{% endif %}">Codes</a>
+        </nav>
+
+        {% if section == "users" %}
+        <section class="panel-grid admin-main-grid">
+            <article class="panel spotlight-panel">
                 <div class="panel-head">
-                    <h2>Pending Approvals</h2>
-                    <span class="soft">{{ pending_users|length }} pending</span>
+                    <h2>Pending Spotlight</h2>
+                    <span class="soft">{{ pending_users|length }} shown</span>
                 </div>
                 {% if pending_users %}
                 <div class="pending-list">
@@ -57,10 +91,11 @@
                         <div class="pending-meta">
                             <p class="pending-name">{{ user.username }}</p>
                             <p class="pending-line">{{ user.email }}</p>
-                            <p class="pending-line">Email verified: {{ "Yes" if user.email_verified else "No" }}</p>
-                            <p class="pending-line">Referral code: {{ user.signup_code_used or "None" }}</p>
-                            <p class="pending-line">Verification requested: {{ user.verification_sent_at.strftime("%Y-%m-%d %H:%M UTC") if user.verification_sent_at else "-" }}</p>
+                            <p class="pending-line">Verified: <span class="{{ 'good' if user.email_verified else 'bad' }}">{{ "Yes" if user.email_verified else "No" }}</span></p>
+                            <p class="pending-line">Code used: {{ user.signup_code_used or "None" }}</p>
+                            <p class="pending-line">Verification sent: {{ user.verification_sent_at.strftime("%Y-%m-%d %H:%M UTC") if user.verification_sent_at else "-" }}</p>
                         </div>
+                        {% if is_root_admin %}
                         <div class="inline-actions">
                             <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -71,6 +106,7 @@
                                 <button type="submit" class="ghost-btn danger-btn">Reject</button>
                             </form>
                         </div>
+                        {% endif %}
                     </article>
                     {% endfor %}
                 </div>
@@ -78,14 +114,112 @@
                 <p class="helper-note">No users are waiting for approval right now.</p>
                 {% endif %}
             </article>
-        </section>
 
-        <section class="panel-grid lower-grid">
+            <article class="panel users-panel">
+                <div class="panel-head panel-head-stack">
+                    <div>
+                        <h2>Registered Users</h2>
+                        <p class="helper-note">Filter by status or inspect admin access at a glance.</p>
+                    </div>
+                    <div class="filter-row">
+                        <a href="{{ url_for('admin_signup_users', status='pending') }}" class="admin-filter{% if status_filter == 'pending' %} is-active{% endif %}">Pending</a>
+                        <a href="{{ url_for('admin_signup_users', status='approved') }}" class="admin-filter{% if status_filter == 'approved' %} is-active{% endif %}">Approved</a>
+                        <a href="{{ url_for('admin_signup_users', status='rejected') }}" class="admin-filter{% if status_filter == 'rejected' %} is-active{% endif %}">Rejected</a>
+                        <a href="{{ url_for('admin_signup_users', status='admins') }}" class="admin-filter{% if status_filter == 'admins' %} is-active{% endif %}">Admins</a>
+                        <a href="{{ url_for('admin_signup_users', status='all') }}" class="admin-filter{% if status_filter == 'all' %} is-active{% endif %}">All</a>
+                    </div>
+                </div>
+
+                {% if users %}
+                <div class="table-shell admin-table-shell">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Status</th>
+                                <th>Verified</th>
+                                <th>Admin</th>
+                                <th>Referral</th>
+                                <th>Last Activity</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            {% set is_root_email = user.email|lower in root_admin_emails %}
+                            <tr>
+                                <td>
+                                    <div class="user-cell">
+                                        <strong>{{ user.username }}</strong>
+                                        <span>{{ user.email }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="chip{% if user.signup_status == 'approved' %} success-chip{% elif user.signup_status == 'rejected' %} danger-chip{% elif user.signup_status == 'pending' %} default{% endif %}">
+                                        {{ user.signup_status|title }}
+                                    </span>
+                                </td>
+                                <td class="{{ 'good' if user.email_verified else 'bad' }}">{{ "Yes" if user.email_verified else "No" }}</td>
+                                <td>
+                                    {% if is_root_email %}
+                                    <span class="chip root-chip">Root</span>
+                                    {% elif user.is_admin %}
+                                    <span class="chip success-chip">DB Admin</span>
+                                    {% else %}
+                                    <span class="soft">No</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ user.signup_code_used or "-" }}</td>
+                                <td>
+                                    <div class="user-cell">
+                                        <span>Approved: {{ user.approved_at.strftime("%Y-%m-%d %H:%M UTC") if user.approved_at else "-" }}</span>
+                                        <span>Last login: {{ user.last_login_at.strftime("%Y-%m-%d %H:%M UTC") if user.last_login_at else "-" }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if is_root_admin %}
+                                    <div class="inline-actions">
+                                        {% if user.signup_status != 'approved' %}
+                                        <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="submit-btn">Approve</button>
+                                        </form>
+                                        {% endif %}
+                                        {% if user.signup_status != 'rejected' %}
+                                        <form action="{{ url_for('admin_signup_reject_user', user_id=user.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="ghost-btn danger-btn">Reject</button>
+                                        </form>
+                                        {% endif %}
+                                        {% if not is_root_email %}
+                                        <form action="{{ url_for('admin_signup_toggle_user_admin', user_id=user.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="ghost-btn">{{ "Remove Admin" if user.is_admin else "Grant Admin" }}</button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                    {% else %}
+                                    <span class="soft">Read-only</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="helper-note">No users match the current filter.</p>
+                {% endif %}
+            </article>
+        </section>
+        {% else %}
+        <section class="panel-grid admin-main-grid">
             <article class="panel create-code-panel">
                 <div class="panel-head">
                     <h2>Create Signup Code</h2>
                     <span class="soft">Referral or Invite</span>
                 </div>
+                {% if is_root_admin %}
                 <form action="{{ url_for('admin_signup_create_code') }}" method="post" class="code-form" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
@@ -103,6 +237,9 @@
 
                     <button type="submit" class="submit-btn">Create Code</button>
                 </form>
+                {% else %}
+                <p class="helper-note">Only root admins from <code>ADMIN_USER_EMAILS</code> can create or toggle signup codes.</p>
+                {% endif %}
             </article>
 
             <article class="panel codes-panel">
@@ -116,18 +253,20 @@
                     <article class="code-card">
                         <div class="code-head">
                             <p class="code-value">{{ code.code }}</p>
-                            <span class="chip{% if not code.is_active %} default{% endif %}">{{ "Active" if code.is_active else "Inactive" }}</span>
+                            <span class="chip{% if code.is_active %} success-chip{% else %} default{% endif %}">{{ "Active" if code.is_active else "Inactive" }}</span>
                         </div>
-                        <p class="pending-line">Link: {{ public_register_url }}?{{ signup_code_query_param }}={{ code.code }}</p>
+                        <p class="pending-line">Referral link: {{ public_register_url }}?{{ signup_code_query_param }}={{ code.code }}</p>
                         <p class="pending-line">Uses: {{ code.used_count }}{% if code.max_uses is not none %} / {{ code.max_uses }}{% else %} / unlimited{% endif %}</p>
                         <p class="pending-line">Expires: {{ code.expires_at.strftime("%Y-%m-%d %H:%M UTC") if code.expires_at else "Never" }}</p>
                         <p class="pending-line">Notes: {{ code.notes or "-" }}</p>
+                        {% if is_root_admin %}
                         <div class="inline-actions">
                             <form action="{{ url_for('admin_signup_toggle_code', code_id=code.id) }}" method="post">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="ghost-btn">{{ "Deactivate" if code.is_active else "Activate" }}</button>
                             </form>
                         </div>
+                        {% endif %}
                     </article>
                     {% endfor %}
                 </div>
@@ -136,106 +275,298 @@
                 {% endif %}
             </article>
         </section>
+        {% endif %}
     </div>
 </section>
 
 <style>
-    .panel-grid { display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.8rem;
-        align-items: start; }
+    .admin-access .dash-head,
+    .admin-access .panel {
+        border-radius: 16px;
+    }
 
-    .lower-grid { margin-top: 0.8rem; }
+    .admin-head-row {
+        align-items: flex-start;
+    }
 
-    .panel { border-radius: 14px;
-        padding: 0.9rem; }
-
-    h2 { margin: 0;
-        font-size: 1rem; }
-
-    .status-list,
-    .pending-list,
-    .codes-list { display: grid;
-        gap: 0.62rem;
-        margin: 0; }
-
-    .status-row,
-    .pending-card,
-    .code-card { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-        border-radius: 12px;
-        padding: 0.72rem;
-        background: color-mix(in srgb, var(--surface) 96%, transparent); }
-
-    .status-row { display: flex;
+    .admin-head-meta {
+        display: inline-flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 0.7rem; }
+        gap: 0.55rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
 
-    .status-row dt { font-size: 0.8rem;
+    .admin-kicker,
+    .summary-label,
+    .control-label,
+    .code-form label {
+        margin: 0;
+        font-size: 0.74rem;
         font-weight: 800;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
-        letter-spacing: 0.04em; }
+    }
 
-    .status-row dd { margin: 0;
-        font-weight: 700; }
+    .admin-summary-grid,
+    .admin-main-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.85rem;
+        align-items: start;
+    }
+
+    .admin-summary-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-bottom: 0.85rem;
+    }
+
+    .summary-card,
+    .control-panel {
+        padding: 0.95rem;
+    }
+
+    .summary-value {
+        margin: 0.3rem 0 0;
+        font-size: clamp(1.35rem, 2.1vw, 1.9rem);
+        font-weight: 800;
+    }
+
+    .summary-note,
+    .helper-note {
+        margin: 0.3rem 0 0;
+        font-size: 0.82rem;
+        color: var(--muted);
+    }
+
+    .control-panel {
+        margin-bottom: 0.85rem;
+    }
+
+    .control-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.7rem;
+    }
+
+    .control-item {
+        display: grid;
+        gap: 0.24rem;
+        padding: 0.72rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+    }
+
+    .admin-tabs {
+        display: inline-flex;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.85rem;
+    }
+
+    .admin-tab,
+    .admin-filter {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 0.85rem;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface) 78%, transparent);
+        color: var(--muted);
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        text-decoration: none;
+    }
+
+    .admin-tab.is-active,
+    .admin-filter.is-active,
+    .admin-tab:hover,
+    .admin-filter:hover {
+        color: var(--accent);
+        border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    }
+
+    .panel-head-stack {
+        align-items: flex-start;
+        gap: 0.7rem;
+        flex-direction: column;
+    }
+
+    .filter-row,
+    .inline-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .inline-actions form {
+        margin: 0;
+    }
+
+    .spotlight-panel,
+    .users-panel,
+    .create-code-panel,
+    .codes-panel {
+        padding: 0.95rem;
+    }
+
+    .pending-list,
+    .codes-list {
+        display: grid;
+        gap: 0.7rem;
+    }
 
     .pending-card,
-    .code-card { display: grid;
-        gap: 0.62rem; }
+    .code-card {
+        display: grid;
+        gap: 0.6rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 12px;
+        padding: 0.78rem;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+    }
 
     .pending-name,
-    .code-value { margin: 0;
-        font-size: 0.92rem;
-        font-weight: 800; }
+    .code-value {
+        margin: 0;
+        font-size: 0.95rem;
+        font-weight: 800;
+    }
 
-    .pending-line { margin: 0.18rem 0 0;
-        font-size: 0.8rem;
-        overflow-wrap: anywhere; }
+    .pending-line {
+        margin: 0.12rem 0 0;
+        font-size: 0.82rem;
+        overflow-wrap: anywhere;
+    }
 
-    .code-head { display: flex;
+    .code-head {
+        display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 0.7rem; }
+        gap: 0.65rem;
+    }
 
-    .code-form { display: grid;
-        gap: 0.62rem; }
+    .code-form {
+        display: grid;
+        gap: 0.7rem;
+    }
 
-    .code-form label { font-size: 0.78rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em; }
-
-    .code-form input { width: 100%;
-        border: 1px solid #c7d5cb;
+    .code-form input {
+        width: 100%;
+        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
         border-radius: 10px;
-        padding: 0.62rem 0.7rem;
-        font: inherit; }
+        padding: 0.72rem 0.78rem;
+        font: inherit;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        color: var(--ink);
+    }
 
-    .inline-actions { display: inline-flex;
-        align-items: center;
-        gap: 0.45rem;
-        flex-wrap: wrap; }
+    .admin-table-shell {
+        overflow: auto;
+    }
 
-    .chip { border: 1px solid #8bc8a5;
-        border-radius: 999px;
-        padding: 0.24rem 0.52rem;
-        font-size: 0.68rem;
-        font-weight: 700;
+    .admin-table {
+        width: 100%;
+        min-width: 980px;
+        border-collapse: collapse;
+    }
+
+    .admin-table th,
+    .admin-table td {
+        padding: 0.8rem 0.78rem;
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+        text-align: left;
+        vertical-align: top;
+        font-size: 0.84rem;
+    }
+
+    .admin-table th {
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
-        letter-spacing: 0.03em;
-        background: color-mix(in srgb, #3f9a69 16%, transparent);
-        color: #1f6b46; }
+        color: var(--muted);
+        background: color-mix(in srgb, var(--surface) 92%, transparent);
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
 
-    .chip.default { border-color: #d49e2f;
-        background: color-mix(in srgb, #f3b84a 24%, transparent);
-        color: #8a5a00; }
+    .user-cell {
+        display: grid;
+        gap: 0.16rem;
+    }
 
-    .helper-note { margin: 0;
-        font-size: 0.8rem; }
+    .user-cell span {
+        color: var(--muted);
+        overflow-wrap: anywhere;
+    }
+
+    .chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        border-radius: 999px;
+        padding: 0.22rem 0.56rem;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        background: color-mix(in srgb, var(--surface) 92%, transparent);
+        color: var(--muted);
+    }
+
+    .chip.success-chip {
+        border-color: color-mix(in srgb, var(--good) 48%, var(--border));
+        background: color-mix(in srgb, var(--good) 14%, var(--surface));
+        color: color-mix(in srgb, var(--good) 82%, white 18%);
+    }
+
+    .chip.danger-chip {
+        border-color: color-mix(in srgb, var(--bad) 44%, var(--border));
+        background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+        color: color-mix(in srgb, var(--bad) 82%, white 18%);
+    }
+
+    .chip.root-chip {
+        border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
+        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+        color: color-mix(in srgb, var(--accent) 82%, white 18%);
+    }
+
+    @media (max-width: 1180px) {
+        .admin-summary-grid,
+        .control-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
 
     @media (max-width: 980px) {
-        .panel-grid {
+        .admin-main-grid {
             grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 680px) {
+        .admin-summary-grid,
+        .control-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .admin-head-row {
+            flex-direction: column;
+        }
+
+        .admin-head-meta {
+            justify-content: flex-start;
         }
     }
 </style>

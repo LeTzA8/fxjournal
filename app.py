@@ -17,9 +17,9 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from auth_account import (
     build_external_url,
     generate_auth_token,
-    is_admin_email,
     register_public_auth_routes,
     send_email_placeholder,
+    user_has_admin_access,
 )
 from ai_service import (
     AIConfigError,
@@ -547,7 +547,7 @@ def inject_trade_account_context():
         "active_trade_account": getattr(g, "active_trade_account", None),
         "header_trade_accounts": getattr(g, "user_trade_accounts", []),
         "display_timezone_name": getattr(g, "display_timezone_name", get_app_timezone_name()),
-        "is_admin_user": bool(current_user and is_admin_email(current_user.email)),
+        "is_admin_user": user_has_admin_access(current_user),
     }
 
 
@@ -2574,7 +2574,6 @@ def delete_import_batch():
 if __name__ == "__main__":
     debug_mode = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
     app.run(debug=debug_mode)
-
 
 
 
