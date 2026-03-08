@@ -75,7 +75,7 @@
                     </div>
                 </dl>
                 {% if not email_verified %}
-                <p class="helper-note">Email not verified yet. Use the registration flow to create and verify a new account email.</p>
+                <p class="helper-note">Email not verified yet. Verify your current email before requesting an email change.</p>
                 {% endif %}
             </article>
 
@@ -87,6 +87,39 @@
 
                 {% if account_status and account_message %}
                 <p class="account-alert {{ account_status }}">{{ account_message }}</p>
+                {% endif %}
+
+                {% if pending_email %}
+                <div class="pending-email-box">
+                    <p class="pending-email-title">Pending Email Change</p>
+                    <p class="helper-note">Current email remains active until both verification links are completed.</p>
+                    <p class="pending-email-line"><strong>New email:</strong> {{ pending_email }}</p>
+                    <p class="pending-email-line">
+                        <strong>Current email confirmed:</strong>
+                        <span class="{{ 'good' if pending_email_change_current_verified else 'bad' }}">
+                            {{ "Yes" if pending_email_change_current_verified else "Waiting" }}
+                        </span>
+                    </p>
+                    <p class="pending-email-line">
+                        <strong>New email confirmed:</strong>
+                        <span class="{{ 'good' if pending_email_change_new_verified else 'bad' }}">
+                            {{ "Yes" if pending_email_change_new_verified else "Waiting" }}
+                        </span>
+                    </p>
+                    {% if pending_email_change_requested_at %}
+                    <p class="pending-email-line"><strong>Requested:</strong> {{ pending_email_change_requested_at.strftime("%Y-%m-%d %H:%M UTC") }}</p>
+                    {% endif %}
+                    {% if debug_email_change_current_link %}
+                    <p class="helper-note">Local current-email link: <a href="{{ debug_email_change_current_link }}">Confirm current email</a></p>
+                    {% endif %}
+                    {% if debug_email_change_new_link %}
+                    <p class="helper-note">Local new-email link: <a href="{{ debug_email_change_new_link }}">Confirm new email</a></p>
+                    {% endif %}
+                    <form action="{{ url_for('account_cancel_email_change') }}" method="post" class="pending-email-actions">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="ghost-btn danger-btn">Cancel Pending Email Change</button>
+                    </form>
+                </div>
                 {% endif %}
 
                 <form action="/account" method="post" class="account-form" data-themed-validation>
@@ -113,6 +146,7 @@
                         maxlength="120"
                         autocomplete="email"
                     >
+                    <p class="helper-note">Changing your email requires confirmation from both your current email address and your new email address.</p>
 
                     <div class="form-actions">
                         <button type="submit" class="submit-btn">Save Changes</button>
@@ -206,6 +240,32 @@
 
     .account-form { display: grid;
         gap: 0.64rem; }
+
+    .pending-email-box {
+        display: grid;
+        gap: 0.35rem;
+        margin-bottom: 0.8rem;
+        padding: 0.8rem;
+        border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    }
+
+    .pending-email-title {
+        margin: 0;
+        font-size: 0.88rem;
+        font-weight: 800;
+    }
+
+    .pending-email-line {
+        margin: 0;
+        font-size: 0.82rem;
+        overflow-wrap: anywhere;
+    }
+
+    .pending-email-actions {
+        margin: 0.25rem 0 0;
+    }
 
     .account-form label { font-size: 0.82rem;
         font-weight: 700; text-transform: uppercase;

@@ -10,6 +10,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from models import AllowedSignupEmailDomain, SignupCode, User, db
 
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
+TOKEN_PURPOSE_EMAIL_CHANGE = "email_change"
 PENDING_REGISTRATIONS = {}
 SIGNUP_STATUS_PENDING = "pending"
 SIGNUP_STATUS_APPROVED = "approved"
@@ -200,6 +201,22 @@ def generate_auth_token(email, purpose):
     return serializer.dumps({"email": (email or "").strip().lower(), "purpose": purpose})
 
 
+def generate_email_change_token(*, user_id, current_email, new_email, channel):
+    normalized_channel = str(channel or "").strip().lower()
+    if normalized_channel not in {"current", "new"}:
+        raise ValueError("Email change token channel must be 'current' or 'new'.")
+    serializer = get_token_serializer()
+    return serializer.dumps(
+        {
+            "purpose": TOKEN_PURPOSE_EMAIL_CHANGE,
+            "user_id": int(user_id),
+            "current_email": (current_email or "").strip().lower(),
+            "new_email": (new_email or "").strip().lower(),
+            "channel": normalized_channel,
+        }
+    )
+
+
 def generate_pending_registration_token(registration_id, email):
     serializer = get_token_serializer()
     return serializer.dumps(
@@ -225,6 +242,37 @@ def verify_auth_token(token, purpose, max_age_seconds):
 
     email = str(payload.get("email", "")).strip().lower()
     return email or None
+
+
+def verify_email_change_token(token, max_age_seconds):
+    serializer = get_token_serializer()
+    try:
+        payload = serializer.loads(token, max_age=max_age_seconds)
+    except (SignatureExpired, BadSignature):
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("purpose") != TOKEN_PURPOSE_EMAIL_CHANGE:
+        return None
+
+    try:
+        user_id = int(payload.get("user_id"))
+    except (TypeError, ValueError):
+        return None
+
+    current_email = str(payload.get("current_email", "")).strip().lower()
+    new_email = str(payload.get("new_email", "")).strip().lower()
+    channel = str(payload.get("channel", "")).strip().lower()
+    if not current_email or not new_email or channel not in {"current", "new"}:
+        return None
+
+    return {
+        "user_id": user_id,
+        "current_email": current_email,
+        "new_email": new_email,
+        "channel": channel,
+    }
 
 
 def verify_pending_registration_token(token, max_age_seconds):
@@ -1276,7 +1324,7 @@ def register_public_auth_routes(
         if request.method == "POST":
             email = request.form.get("email", "").strip().lower()
             generic_success = (
-                "If this email exists, a password reset link has been sent."
+                "Password reset request received. If the address matches an account, the email is on its way."
             )
             if not email:
                 error = "Email is required."

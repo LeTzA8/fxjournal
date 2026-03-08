@@ -17,9 +17,11 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from auth_account import (
     build_external_url,
     generate_auth_token,
+    generate_email_change_token,
     register_public_auth_routes,
     send_email_placeholder,
     user_has_admin_access,
+    verify_email_change_token,
 )
 from ai_service import (
     AIConfigError,
@@ -868,9 +870,17 @@ def account():
                 )
             )
 
+        conflicting_filters = [User.username == username]
+        if email != user.email:
+            conflicting_filters.extend(
+                [
+                    User.email == email,
+                    User.pending_email == email,
+                ]
+            )
         conflicting_user = User.query.filter(
             User.id != user.id,
-            or_(User.username == username, User.email == email),
+            or_(*conflicting_filters),
         ).first()
         if conflicting_user:
             return redirect(
@@ -882,8 +892,26 @@ def account():
             )
 
         username_changed = user.username != username
+        email_changed = user.email != email
         user.username = username
-        user.email = email
+
+        debug_email_change_current_link = ""
+        debug_email_change_new_link = ""
+
+        if email_changed:
+            if not user.email_verified:
+                return redirect(
+                    url_for(
+                        "account",
+                        account_status="error",
+                        account_message="Verify your current email before requesting an email change.",
+                    )
+                )
+
+            user.pending_email = email
+            user.pending_email_change_requested_at = datetime.utcnow()
+            user.pending_email_change_current_verified_at = None
+            user.pending_email_change_new_verified_at = None
 
         try:
             db.session.commit()
@@ -900,6 +928,62 @@ def account():
         if username_changed:
             session["username"] = username
 
+        if email_changed:
+            current_email_token = generate_email_change_token(
+                user_id=user.id,
+                current_email=user.email,
+                new_email=email,
+                channel="current",
+            )
+            new_email_token = generate_email_change_token(
+                user_id=user.id,
+                current_email=user.email,
+                new_email=email,
+                channel="new",
+            )
+            current_email_link = build_external_url(
+                url_for("account_confirm_email_change", token=current_email_token)
+            )
+            new_email_link = build_external_url(
+                url_for("account_confirm_email_change", token=new_email_token)
+            )
+
+            current_email_result = send_email_placeholder(
+                user.email,
+                "Confirm your current FX Journal email",
+                (
+                    f"Hi {user.username},\n\n"
+                    "You requested an email change for your FX Journal account.\n"
+                    "Confirm from your current email address using this link:\n"
+                    f"{current_email_link}\n\n"
+                    "Your new email will not be applied until both addresses are verified.\n"
+                    "If you did not request this, you can ignore this email."
+                ),
+            )
+            new_email_result = send_email_placeholder(
+                email,
+                "Confirm your new FX Journal email",
+                (
+                    f"Hi {user.username},\n\n"
+                    "You requested to use this email for your FX Journal account.\n"
+                    "Confirm your new email address using this link:\n"
+                    f"{new_email_link}\n\n"
+                    "Your new email will not be applied until both addresses are verified.\n"
+                    "If you did not request this, you can ignore this email."
+                ),
+            )
+
+            kwargs = {
+                "account_status": "info",
+                "account_message": "Email change requested. Confirm from both your current email and your new email to finish the update.",
+            }
+            if is_local_dev_environment():
+                if not current_email_result.get("sent"):
+                    kwargs["debug_email_change_current_link"] = current_email_link
+                if not new_email_result.get("sent"):
+                    kwargs["debug_email_change_new_link"] = new_email_link
+            return redirect(url_for("account", **kwargs))
+
         return redirect(
             url_for(
                 "account",
@@ -911,11 +995,23 @@ def account():
     account_status = request.args.get("account_status", "").strip().lower()
     account_message = request.args.get("account_message", "").strip()
     debug_reset_link = request.args.get("debug_reset_link", "").strip()
+    debug_email_change_current_link = request.args.get("debug_email_change_current_link", "").strip()
+    debug_email_change_new_link = request.args.get("debug_email_change_new_link", "").strip()
     if not (
         debug_reset_link.startswith("http://")
         or debug_reset_link.startswith("https://")
     ):
         debug_reset_link = ""
+    if not (
+        debug_email_change_current_link.startswith("http://")
+        or debug_email_change_current_link.startswith("https://")
+    ):
+        debug_email_change_current_link = ""
+    if not (
+        debug_email_change_new_link.startswith("http://")
+        or debug_email_change_new_link.startswith("https://")
+    ):
+        debug_email_change_new_link = ""
     if account_status not in {"success", "error", "info"}:
         account_status = ""
     if not account_message:
@@ -946,8 +1042,159 @@ def account():
         running_trades=max(total_trades - closed_trades, 0),
         imported_trades=imported_trades,
         debug_reset_link=debug_reset_link or None,
+        debug_email_change_current_link=debug_email_change_current_link or None,
+        debug_email_change_new_link=debug_email_change_new_link or None,
+        pending_email=user.pending_email,
+        pending_email_change_requested_at=user.pending_email_change_requested_at,
+        pending_email_change_current_verified=bool(user.pending_email_change_current_verified_at),
+        pending_email_change_new_verified=bool(user.pending_email_change_new_verified_at),
         user_trade_accounts=getattr(g, "user_trade_accounts", []),
         active_trade_account=getattr(g, "active_trade_account", None),
+    )
+
+
+@app.route("/account/email-change/cancel", methods=["POST"])
+@limiter.limit(
+    "5 per minute;20 per hour",
+    methods=["POST"],
+    error_message="Too many attempts. Please wait and try again.",
+)
+def account_cancel_email_change():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user = User.query.filter_by(id=session["user_id"]).first_or_404()
+    if not user.pending_email:
+        return redirect(
+            url_for(
+                "account",
+                account_status="info",
+                account_message="There is no pending email change to cancel.",
+            )
+        )
+
+    user.pending_email = None
+    user.pending_email_change_requested_at = None
+    user.pending_email_change_current_verified_at = None
+    user.pending_email_change_new_verified_at = None
+    db.session.commit()
+
+    return redirect(
+        url_for(
+            "account",
+            account_status="success",
+            account_message="Pending email change canceled.",
+        )
+    )
+
+
+@app.route("/account/email-change/<token>")
+def account_confirm_email_change(token):
+    max_age_seconds = env_int("EMAIL_VERIFY_TOKEN_MAX_AGE_SECONDS", 86400)
+    payload = verify_email_change_token(token, max_age_seconds=max_age_seconds)
+    if not payload:
+        return redirect(
+            url_for(
+                "account",
+                account_status="error",
+                account_message="Email change link is invalid or expired.",
+            )
+        )
+
+    user = User.query.filter_by(id=payload["user_id"]).first()
+    if not user:
+        return redirect(
+            url_for(
+                "login",
+                error="Email change link is invalid or expired.",
+            )
+        )
+
+    if user.email != payload["current_email"] or user.pending_email != payload["new_email"]:
+        if session.get("user_id") == user.id:
+            return redirect(
+                url_for(
+                    "account",
+                    account_status="error",
+                    account_message="This email change request is no longer active.",
+                )
+            )
+        return redirect(
+            url_for(
+                "login",
+                error="This email change request is no longer active.",
+            )
+        )
+
+    now_utc = datetime.utcnow()
+    if payload["channel"] == "current":
+        user.pending_email_change_current_verified_at = user.pending_email_change_current_verified_at or now_utc
+    else:
+        user.pending_email_change_new_verified_at = user.pending_email_change_new_verified_at or now_utc
+
+    if user.pending_email_change_current_verified_at and user.pending_email_change_new_verified_at:
+        conflicting_user = User.query.filter(
+            User.id != user.id,
+            or_(User.email == user.pending_email, User.pending_email == user.pending_email),
+        ).first()
+        if conflicting_user:
+            user.pending_email = None
+            user.pending_email_change_requested_at = None
+            user.pending_email_change_current_verified_at = None
+            user.pending_email_change_new_verified_at = None
+            db.session.commit()
+            if session.get("user_id") == user.id:
+                return redirect(
+                    url_for(
+                        "account",
+                        account_status="error",
+                        account_message="That new email is no longer available. Start the email change again.",
+                    )
+                )
+            return redirect(
+                url_for(
+                    "login",
+                    error="That new email is no longer available. Start the email change again.",
+                )
+            )
+
+        user.email = user.pending_email
+        user.email_verified = True
+        user.pending_email = None
+        user.pending_email_change_requested_at = None
+        user.pending_email_change_current_verified_at = None
+        user.pending_email_change_new_verified_at = None
+        db.session.commit()
+
+        if session.get("user_id") == user.id:
+            return redirect(
+                url_for(
+                    "account",
+                    account_status="success",
+                    account_message="Email address updated successfully.",
+                )
+            )
+        return redirect(
+            url_for(
+                "login",
+                success="Email address updated successfully. You can now log in with the new email.",
+            )
+        )
+
+    db.session.commit()
+    if session.get("user_id") == user.id:
+        return redirect(
+            url_for(
+                "account",
+                account_status="info",
+                account_message="One verification is complete. Confirm from the other email address to finish the change.",
+            )
+        )
+    return redirect(
+        url_for(
+            "login",
+            info="One verification is complete. Confirm from the other email address to finish the change.",
+        )
     )
 
 
@@ -979,7 +1226,7 @@ def account_password_reset_email():
 
     kwargs = {
         "account_status": "info",
-        "account_message": "If email sending is configured, a password reset link was sent to your account email.",
+        "account_message": "Password reset email sent to your account email.",
     }
     if is_local_dev_environment() and not email_result.get("sent"):
         kwargs["debug_reset_link"] = reset_link
@@ -2574,6 +2821,3 @@ def delete_import_batch():
 if __name__ == "__main__":
     debug_mode = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
     app.run(debug=debug_mode)
-
-
-

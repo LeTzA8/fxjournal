@@ -23,12 +23,17 @@ class User(db.Model):
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
     email_verified = db.Column(db.Boolean, nullable=False, default=False)
     is_admin = db.Column(db.Boolean, nullable=False, default=False, index=True)
     signup_status = db.Column(db.String(16), nullable=False, default="approved", index=True)
+    pending_email = db.Column(db.String(120), nullable=True, index=True)
+    pending_email_change_requested_at = db.Column(db.DateTime, nullable=True)
+    pending_email_change_current_verified_at = db.Column(db.DateTime, nullable=True)
+    pending_email_change_new_verified_at = db.Column(db.DateTime, nullable=True)
     signup_code_used = db.Column(db.String(32), nullable=True, index=True)
     approved_at = db.Column(db.DateTime, nullable=True)
     approved_by_user_id = db.Column(
