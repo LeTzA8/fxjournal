@@ -799,6 +799,12 @@
             }
 
             row.classList.toggle("hidden-row", !show);
+            if (!show) {
+                const hiddenCheckbox = row.querySelector(".trade-select");
+                if (hiddenCheckbox) {
+                    hiddenCheckbox.checked = false;
+                }
+            }
             if (show) {
                 visibleCount += 1;
             }
@@ -892,3 +898,4 @@
 })();
 </script>
 {% endblock %}
+
