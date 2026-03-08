@@ -416,23 +416,25 @@
     }
 
     const filterField = document.getElementById("filterField");
-    const pairFilter = document.getElementById("pairFilter");
+    const symbolFilter = document.getElementById("symbolFilter");
+    const strategyFilter = document.getElementById("strategyFilter");
     const dateFilter = document.getElementById("dateFilter");
     const sideFilter = document.getElementById("sideFilter");
-    const statusFilter = document.getElementById("statusFilter");
+    const sessionFilter = document.getElementById("sessionFilter");
     const applyFiltersBtn = document.getElementById("applyFilters");
     const clearFiltersBtn = document.getElementById("clearFilters");
     const sortSelect = document.getElementById("tradeSort");
     const valueSelects = {
-        pair: pairFilter,
+        symbol: symbolFilter,
+        strategy: strategyFilter,
         date: dateFilter,
         side: sideFilter,
-        status: statusFilter,
+        session: sessionFilter,
     };
 
     const noMatchRow = document.createElement("tr");
     noMatchRow.className = "no-match-row hidden-row";
-    noMatchRow.innerHTML = '<td colspan="8" class="muted">No trades match current filters.</td>';
+    noMatchRow.innerHTML = '<td colspan="6" class="muted">No trades match current filters.</td>';
     tbody.appendChild(noMatchRow);
 
     const toUpper = (value) => (value || "").toString().trim().toUpperCase();
@@ -462,14 +464,29 @@
     };
 
     fillSelect(
-        pairFilter,
-        unique(rows.map((row) => toUpper(row.dataset.pair))).sort(),
+        symbolFilter,
+        unique(rows.map((row) => toUpper(row.dataset.symbol))).sort(),
         "All Symbols"
+    );
+    fillSelect(
+        strategyFilter,
+        unique(rows.map((row) => row.dataset.strategy)).sort((a, b) => a.localeCompare(b)),
+        "All Strategies"
     );
     fillSelect(
         dateFilter,
         unique(rows.map((row) => row.dataset.date)).sort((a, b) => b.localeCompare(a)),
         "All Dates"
+    );
+    fillSelect(
+        sideFilter,
+        unique(rows.map((row) => row.dataset.side)).sort((a, b) => a.localeCompare(b)),
+        "All Sides"
+    );
+    fillSelect(
+        sessionFilter,
+        unique(rows.map((row) => row.dataset.session)).sort((a, b) => a.localeCompare(b)),
+        "All Sessions"
     );
 
     const updateValueControl = () => {
@@ -487,7 +504,7 @@
         if (type === "pnl") {
             return toNumber(row.dataset.pnl) ?? -Infinity;
         }
-        return toNumber(row.dataset.lot) ?? -Infinity;
+        return "";
     };
 
     const sortRows = () => {
@@ -509,14 +526,16 @@
         let visibleCount = 0;
         rows.forEach((row) => {
             let show = true;
-            if (filterType === "pair") {
-                show = !filterValue || toUpper(row.dataset.pair) === filterValue;
+            if (filterType === "symbol") {
+                show = !filterValue || toUpper(row.dataset.symbol) === filterValue;
+            } else if (filterType === "strategy") {
+                show = !filterValue || toUpper(row.dataset.strategy) === filterValue;
             } else if (filterType === "date") {
                 show = !rawValue || row.dataset.date === rawValue;
             } else if (filterType === "side") {
                 show = !filterValue || toUpper(row.dataset.side) === filterValue;
-            } else if (filterType === "status") {
-                show = !filterValue || toUpper(row.dataset.status) === filterValue;
+            } else if (filterType === "session") {
+                show = !filterValue || toUpper(row.dataset.session) === filterValue;
             }
 
             row.classList.toggle("hidden-row", !show);
@@ -564,4 +583,3 @@
     updateValueControl();
     applyAll();
 })();
-

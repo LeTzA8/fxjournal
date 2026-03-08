@@ -43,7 +43,6 @@ from models import (
 )
 from trading import (
     build_trade_analytics,
-    build_dashboard_insight,
     build_import_signature,
     calc_pnl_values,
     canonicalize_symbol,
@@ -690,11 +689,15 @@ def inject_trade_account_context():
     user_id = session.get("user_id")
     if user_id:
         current_user = User.query.filter_by(id=user_id).first()
+    current_page_path = request.full_path.rstrip("?")
+    if not current_page_path:
+        current_page_path = request.path or url_for("home")
     return {
         "active_trade_account": getattr(g, "active_trade_account", None),
         "header_trade_accounts": getattr(g, "user_trade_accounts", []),
         "display_timezone_name": getattr(g, "display_timezone_name", get_app_timezone_name()),
         "is_admin_user": user_has_admin_access(current_user),
+        "current_page_path": current_page_path,
     }
 
 
@@ -857,7 +860,8 @@ def home():
         account_size=active_trade_account.account_size if active_trade_account else None,
     )
     summary = analytics["summary"]
-    closed = [(record["trade"], record["pnl"]) for record in analytics["closed_records"]]
+    closed_records = analytics["closed_records"]
+    session_stats = analytics["session_stats"]
     now_local = to_display_timezone(datetime.utcnow(), timezone_name)
     trades_this_month = sum(
         1
@@ -868,32 +872,91 @@ def home():
     )
 
     recent_trades = []
-    size_label = get_trade_size_label(active_trade_account.account_type)
     for trade in user_trades:
         pnl_value = resolve_pnl(trade)
-        pips_value = resolve_pips(trade)
-        ticks_value = resolve_ticks(trade)
         opened_local = to_display_timezone(trade.opened_at, timezone_name)
         trade_date = opened_local.strftime("%d %b %Y") if opened_local else "-"
         trade_date_value = opened_local.strftime("%Y-%m-%d") if opened_local else ""
+        trade_profile = getattr(trade, "trade_profile", None)
+        trade_profile_version = getattr(trade, "trade_profile_version", None)
         recent_trades.append(
             {
-                "symbol": format_trade_symbol(trade),
-                "side": trade.side,
-                "entry_price": trade.entry_price,
-                "exit_price": trade.exit_price,
-                "lot_size": trade.lot_size,
-                "pnl": pnl_value,
-                "pips": pips_value,
-                "ticks": ticks_value,
                 "date": trade_date,
                 "date_value": trade_date_value,
-                "status": "Closed" if trade.exit_price is not None else "Running",
+                "symbol": format_trade_symbol(trade),
+                "trade_profile_label": (
+                    trade_profile_version.name
+                    if trade_profile_version is not None
+                    else (trade_profile.name if trade_profile is not None else "-")
+                ),
+                "side": trade.side,
+                "pnl": pnl_value,
+                "session_label": classify_trading_session(trade.opened_at) if trade.opened_at else "-",
             }
         )
 
     chart_points = analytics["daily_equity_curve"]
-    dashboard_insight = build_dashboard_insight(user_trades, closed)
+    current_week_start = now_local.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    ) - timedelta(days=now_local.weekday())
+    previous_week_start = current_week_start - timedelta(days=7)
+    previous_week_end = current_week_start
+
+    def summarize_week(records, start_local, end_local=None):
+        weekly_records = []
+        for record in records:
+            opened_local = record.get("opened_at_local")
+            if opened_local is None or opened_local < start_local:
+                continue
+            if end_local is not None and opened_local >= end_local:
+                continue
+            weekly_records.append(record)
+
+        trade_count = len(weekly_records)
+        wins = sum(1 for record in weekly_records if record["pnl"] > 0)
+        net_pnl = sum(record["pnl"] for record in weekly_records)
+        return {
+            "trade_count": trade_count,
+            "wins": wins,
+            "win_rate": (wins / trade_count * 100.0) if trade_count else None,
+            "net_pnl": net_pnl,
+        }
+
+    current_week_stats = summarize_week(closed_records, current_week_start)
+    previous_week_stats = summarize_week(
+        closed_records,
+        previous_week_start,
+        end_local=previous_week_end,
+    )
+    week_on_week_insight = "No prior completed trade week to compare yet."
+    if current_week_stats["trade_count"] and previous_week_stats["trade_count"]:
+        pnl_delta = current_week_stats["net_pnl"] - previous_week_stats["net_pnl"]
+        win_rate_delta = (
+            current_week_stats["win_rate"] - previous_week_stats["win_rate"]
+            if current_week_stats["win_rate"] is not None
+            and previous_week_stats["win_rate"] is not None
+            else None
+        )
+        trade_delta = current_week_stats["trade_count"] - previous_week_stats["trade_count"]
+        pnl_direction = "up" if pnl_delta > 0 else "down" if pnl_delta < 0 else "flat"
+        win_rate_text = (
+            f" Win rate {'improved' if win_rate_delta > 0 else 'fell' if win_rate_delta < 0 else 'held flat'} by {abs(win_rate_delta):.1f} pts."
+            if win_rate_delta is not None
+            else ""
+        )
+        volume_text = (
+            f" Trade count {'increased' if trade_delta > 0 else 'decreased' if trade_delta < 0 else 'matched last week'}"
+            + (f" by {abs(trade_delta)}." if trade_delta != 0 else ".")
+        )
+        week_on_week_insight = (
+            f"Net PnL is {pnl_direction} by ${abs(pnl_delta):.2f} versus last week."
+            f"{win_rate_text}{volume_text}"
+        )
+    elif current_week_stats["trade_count"]:
+        week_on_week_insight = "This is your first completed trade week with comparable dashboard data."
     weekly_ai_review = None
     weekly_ai_generated_at_label = ""
     weekly_ai_period_label = ""
@@ -943,13 +1006,14 @@ def home():
         net_pnl_week=summary["weekly_pnl"],
         account_pnl_total=summary["net_pnl"],
         trades_this_month=trades_this_month,
-        avg_rr_display=summary["risk_reward_display"],
-        avg_rr_known=summary["risk_reward_known"],
-        avg_rr_mode=summary["risk_reward_mode"],
+        avg_win=summary["avg_win"],
+        avg_loss_abs=summary["avg_loss_abs"],
         recent_trades=recent_trades,
-        size_label=size_label,
+        session_stats=session_stats[:4],
+        current_week_stats=current_week_stats,
+        previous_week_stats=previous_week_stats,
+        week_on_week_insight=week_on_week_insight,
         chart_points=chart_points,
-        dashboard_insight=dashboard_insight,
         weekly_ai_review=weekly_ai_review,
         weekly_ai_generated_at_label=weekly_ai_generated_at_label,
         weekly_ai_period_label=weekly_ai_period_label,
@@ -2068,11 +2132,7 @@ def contact():
         account_user=user,
     )
 
-@app.route("/dashboard/trades")
-def trades():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
+def render_trades_page(*, manage_mode=False):
     username = session.get("username", "User")
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
@@ -2148,7 +2208,6 @@ def trades():
     batch_delete_message = request.args.get("batch_delete_message", "").strip()
     batch_profile_status = request.args.get("batch_profile_status", "").strip().lower()
     batch_profile_message = request.args.get("batch_profile_message", "").strip()
-    manage_mode = request.args.get("manage", "").strip().lower() in {"1", "true", "yes", "on"}
     trade_account_status = request.args.get("trade_account_status", "").strip().lower()
     trade_account_message = request.args.get("trade_account_message", "").strip()
     if batch_delete_status not in {"success", "error", "info"}:
@@ -2207,6 +2266,20 @@ def trades():
     )
 
 
+@app.route("/dashboard/trades")
+def trades():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+    return render_trades_page(manage_mode=False)
+
+
+@app.route("/dashboard/trades/manage")
+def manage_trades():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+    return render_trades_page(manage_mode=True)
+
+
 @app.route("/dashboard/trades/bulk-delete", methods=["POST"])
 @limiter.limit(
     "6 per minute",
@@ -2228,8 +2301,7 @@ def bulk_delete_trades():
     if not selected_pubkeys:
         return redirect(
             url_for(
-                "trades",
-                manage="1",
+                "manage_trades",
                 batch_delete_status="error",
                 batch_delete_message="Select at least one trade to delete.",
             )
@@ -2248,8 +2320,7 @@ def bulk_delete_trades():
         db.session.rollback()
         return redirect(
             url_for(
-                "trades",
-                manage="1",
+                "manage_trades",
                 batch_delete_status="error",
                 batch_delete_message="Could not delete the selected trades right now. Please try again.",
             )
@@ -2263,8 +2334,7 @@ def bulk_delete_trades():
     )
     return redirect(
         url_for(
-            "trades",
-            manage="1",
+            "manage_trades",
             batch_delete_status=status,
             batch_delete_message=message,
         )
@@ -2293,8 +2363,7 @@ def batch_update_trade_profile():
     if not selected_pubkeys:
         return redirect(
             url_for(
-                "trades",
-                manage="1",
+                "manage_trades",
                 batch_profile_status="error",
                 batch_profile_message="Select at least one trade to update.",
             )
@@ -2311,8 +2380,7 @@ def batch_update_trade_profile():
         if not trades_to_update:
             return redirect(
                 url_for(
-                    "trades",
-                    manage="1",
+                    "manage_trades",
                     batch_profile_status="info",
                     batch_profile_message="No trades matched the selected rows.",
                 )
@@ -2326,8 +2394,7 @@ def batch_update_trade_profile():
         db.session.rollback()
         return redirect(
             url_for(
-                "trades",
-                manage="1",
+                "manage_trades",
                 batch_profile_status="error",
                 batch_profile_message=str(exc),
             )
@@ -2336,8 +2403,7 @@ def batch_update_trade_profile():
         db.session.rollback()
         return redirect(
             url_for(
-                "trades",
-                manage="1",
+                "manage_trades",
                 batch_profile_status="error",
                 batch_profile_message="Could not update the selected trade profiles right now.",
             )
@@ -2346,8 +2412,7 @@ def batch_update_trade_profile():
     action_label = "cleared" if not selected_profile_pubkey else "updated"
     return redirect(
         url_for(
-            "trades",
-            manage="1",
+            "manage_trades",
             batch_profile_status="success",
             batch_profile_message=(
                 f"Trade profile {action_label} for {len(trades_to_update)} trade"
@@ -2419,8 +2484,9 @@ def trade_accounts():
     )
 
 
+@app.route("/dashboard/strategies", methods=["GET", "POST"])
 @app.route("/dashboard/trade-profiles", methods=["GET", "POST"])
-def trade_profiles():
+def strategies():
     if not session.get("user_id"):
         return redirect(url_for("login"))
 
@@ -2435,7 +2501,7 @@ def trade_profiles():
             db.session.commit()
             return redirect(
                 url_for(
-                    "trade_profiles",
+                    "strategies",
                     trade_profile_status="success",
                     trade_profile_message="Trade profile created.",
                 )
@@ -2444,7 +2510,7 @@ def trade_profiles():
             db.session.rollback()
             return redirect(
                 url_for(
-                    "trade_profiles",
+                    "strategies",
                     trade_profile_status="error",
                     trade_profile_message=str(exc),
                 )
@@ -2453,7 +2519,7 @@ def trade_profiles():
             db.session.rollback()
             return redirect(
                 url_for(
-                    "trade_profiles",
+                    "strategies",
                     trade_profile_status="error",
                     trade_profile_message="Could not create the trade profile right now.",
                 )
@@ -2475,7 +2541,7 @@ def trade_profiles():
 
     return render_template(
         "trade_profiles.html",
-        title="Trade Profiles | FX Journal",
+        title="Strategies | FX Journal",
         username=username,
         trade_profiles=profiles,
         profile_versions=profile_versions,
@@ -2484,9 +2550,9 @@ def trade_profiles():
         trade_profile_message=trade_profile_message,
     )
 
-
+@app.route("/dashboard/strategies/<string:profile_pubkey>/edit", methods=["POST"])
 @app.route("/dashboard/trade-profiles/<string:profile_pubkey>/edit", methods=["POST"])
-def edit_trade_profile(profile_pubkey):
+def edit_strategy(profile_pubkey):
     if not session.get("user_id"):
         return redirect(url_for("login"))
 
@@ -2495,7 +2561,7 @@ def edit_trade_profile(profile_pubkey):
     if profile is None:
         return redirect(
             url_for(
-                "trade_profiles",
+                "strategies",
                 trade_profile_status="error",
                 trade_profile_message="Trade profile not found.",
             )
@@ -2508,7 +2574,7 @@ def edit_trade_profile(profile_pubkey):
         db.session.commit()
         return redirect(
             url_for(
-                "trade_profiles",
+                "strategies",
                 trade_profile_status="success",
                 trade_profile_message="Trade profile updated and versioned.",
             )
@@ -2517,7 +2583,7 @@ def edit_trade_profile(profile_pubkey):
         db.session.rollback()
         return redirect(
             url_for(
-                "trade_profiles",
+                "strategies",
                 edit=profile.pubkey,
                 trade_profile_status="error",
                 trade_profile_message=str(exc),
@@ -2527,16 +2593,16 @@ def edit_trade_profile(profile_pubkey):
         db.session.rollback()
         return redirect(
             url_for(
-                "trade_profiles",
+                "strategies",
                 edit=profile.pubkey,
                 trade_profile_status="error",
                 trade_profile_message="Could not update the trade profile right now.",
             )
         )
 
-
+@app.route("/dashboard/strategies/<string:profile_pubkey>/archive", methods=["POST"])
 @app.route("/dashboard/trade-profiles/<string:profile_pubkey>/archive", methods=["POST"])
-def archive_trade_profile(profile_pubkey):
+def archive_strategy(profile_pubkey):
     if not session.get("user_id"):
         return redirect(url_for("login"))
 
@@ -2545,7 +2611,7 @@ def archive_trade_profile(profile_pubkey):
     if profile is None:
         return redirect(
             url_for(
-                "trade_profiles",
+                "strategies",
                 trade_profile_status="error",
                 trade_profile_message="Trade profile not found.",
             )
@@ -2556,7 +2622,7 @@ def archive_trade_profile(profile_pubkey):
     db.session.commit()
     return redirect(
         url_for(
-            "trade_profiles",
+            "strategies",
             trade_profile_status="success",
             trade_profile_message="Trade profile archived.",
         )
@@ -3243,8 +3309,7 @@ def delete_import_batch():
     if not import_signature:
         return redirect(
             url_for(
-                "trades",
-                manage="1",
+                "manage_trades",
                 batch_delete_status="error",
                 batch_delete_message="Please select an import batch to delete.",
             )
@@ -3263,8 +3328,7 @@ def delete_import_batch():
         db.session.rollback()
         return redirect(
             url_for(
-                "trades",
-                manage="1",
+                "manage_trades",
                 batch_delete_status="error",
                 batch_delete_message="Could not delete the selected import batch right now. Please try again.",
             )
@@ -3278,8 +3342,7 @@ def delete_import_batch():
     )
     return redirect(
         url_for(
-            "trades",
-            manage="1",
+            "manage_trades",
             batch_delete_status=status,
             batch_delete_message=message,
         )

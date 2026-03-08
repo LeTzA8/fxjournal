@@ -17,6 +17,7 @@
             <li>Account details such as username, email address, hashed password, and account verification status.</li>
             <li>Trading journal data you choose to upload or enter, including trade account names, trade notes, import metadata, symbols, timestamps, pricing, position size, and performance metrics.</li>
             <li>Operational data such as IP address, browser or device metadata, display timezone, session activity, and logs needed for security, fraud prevention, troubleshooting, and performance.</li>
+            <li>Cookie, session, and similar technical data reasonably required to keep you signed in, protect the service, and remember basic product state.</li>
             <li>Feedback, support, and communication content you submit to us.</li>
         </ul>
 
@@ -45,6 +46,10 @@
             we can display prior outputs, prevent duplicate generations, troubleshoot failures, and improve feature
             quality over time.
         </p>
+        <p>
+            We do not use your journal data to provide services to other users. Any third-party processing described
+            here is limited to operating, securing, supporting, or improving the FX Journal service you use.
+        </p>
 
         <h2>4. Data Retention</h2>
         <p>
@@ -52,17 +57,25 @@
             disputes, and enforce agreements. You can also delete your account and related trade data from the app's
             account settings, subject to any legal retention obligations that still apply.
         </p>
+        <p>
+            Some residual data may remain temporarily in backups, logs, or security systems until those records are
+            rotated or deleted in the ordinary course.
+        </p>
 
         <h2>5. Security</h2>
         <p>
             We apply reasonable administrative, technical, and organizational controls to protect your information.
             No method of transmission or storage is completely secure, and we cannot guarantee absolute security.
         </p>
+        <p>
+            You are also responsible for keeping your password confidential and for using a secure device and email
+            account.
+        </p>
 
         <h2>6. Your Choices</h2>
         <p>
             You may update account information from your profile settings. You can also request access, correction,
-            or deletion of personal data by contacting us.
+            or deletion of personal data by using the <a href="{{ url_for('contact') }}">Contact</a> page.
         </p>
         <p>
             If you do not want journal content used for AI-assisted outputs, do not use those features and avoid
@@ -95,7 +108,8 @@
 
         <h2>10. Contact</h2>
         <p>
-            If you have questions about this Privacy Policy or your data, contact the FX Journal support team.
+            If you have questions about this Privacy Policy or your data, use the
+            <a href="{{ url_for('contact') }}">Contact</a> page.
         </p>
     </article>
 </section>

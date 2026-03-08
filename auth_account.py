@@ -335,11 +335,22 @@ def pop_pending_registration(registration_id):
     return PENDING_REGISTRATIONS.pop(registration_id, None)
 
 
+def _should_log_email_bodies():
+    app_env = os.getenv("APP_ENV", "").strip().lower()
+    flask_env = os.getenv("FLASK_ENV", "").strip().lower()
+    return (
+        _env_bool("FLASK_DEBUG", False)
+        or app_env in {"local", "development", "dev"}
+        or flask_env in {"local", "development", "dev"}
+    )
+
+
 def send_email_placeholder(to_email, subject, text_body, html_body=None):
     provider = os.getenv("EMAIL_PROVIDER", "placeholder").strip().lower()
     sender = os.getenv("EMAIL_FROM", "noreply@example.com").strip()
     send_enabled = os.getenv("EMAIL_SEND_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     api_key = os.getenv("RESEND_API_KEY", "").strip() or os.getenv("EMAIL_API_KEY", "").strip()
+    log_email_bodies = _should_log_email_bodies()
 
     if provider in {"console", "placeholder"} or not send_enabled:
         current_app.logger.info(
@@ -348,14 +359,16 @@ def send_email_placeholder(to_email, subject, text_body, html_body=None):
             sender,
             subject,
         )
-        current_app.logger.info("Email body:\n%s", text_body)
+        if log_email_bodies:
+            current_app.logger.info("Email body:\n%s", text_body)
         return {"sent": False, "mode": "placeholder"}
 
     if not api_key:
         current_app.logger.warning(
             "EMAIL_SEND_ENABLED is true but RESEND_API_KEY/EMAIL_API_KEY is missing. Using placeholder mode."
         )
-        current_app.logger.info("Email body:\n%s", text_body)
+        if log_email_bodies:
+            current_app.logger.info("Email body:\n%s", text_body)
         return {"sent": False, "mode": "missing_api_key"}
 
     if provider == "resend":
@@ -363,7 +376,8 @@ def send_email_placeholder(to_email, subject, text_body, html_body=None):
             import resend
         except ImportError:
             current_app.logger.warning("Resend SDK is not installed. Falling back to placeholder logging.")
-            current_app.logger.info("Email body:\n%s", text_body)
+            if log_email_bodies:
+                current_app.logger.info("Email body:\n%s", text_body)
             return {"sent": False, "mode": "missing_resend_sdk"}
 
         html_payload = html_body
@@ -388,13 +402,15 @@ def send_email_placeholder(to_email, subject, text_body, html_body=None):
             return {"sent": True, "mode": "resend", "response": response}
         except Exception as exc:
             current_app.logger.warning("Resend send failed: %s", exc)
-            current_app.logger.info("Email body:\n%s", text_body)
+            if log_email_bodies:
+                current_app.logger.info("Email body:\n%s", text_body)
             return {"sent": False, "mode": "resend_error"}
 
     current_app.logger.warning(
         "Email provider '%s' is configured but integration is not implemented.", provider
     )
-    current_app.logger.info("Email body:\n%s", text_body)
+    if log_email_bodies:
+        current_app.logger.info("Email body:\n%s", text_body)
     return {"sent": False, "mode": "not_implemented"}
 
 
@@ -680,6 +696,14 @@ def register_public_auth_routes(
             if not username or not email or not password:
                 return render_register_page(
                     error="All fields are required.",
+                    username=username,
+                    email=email,
+                    signup_code=signup_code_value,
+                )
+
+            if len(password) < 8:
+                return render_register_page(
+                    error="Password must be at least 8 characters.",
                     username=username,
                     email=email,
                     signup_code=signup_code_value,

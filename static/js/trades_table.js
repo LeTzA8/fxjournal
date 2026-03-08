@@ -1,23 +1,23 @@
 (function () {
-    const armButton = document.getElementById("batchDeleteArmButton");
+    const batchDeleteMode = document.getElementById("batchDeleteMode");
     const batchSelect = document.getElementById("import_signature");
-    const submitButton = document.getElementById("batchDeleteSubmit");
-    if (armButton && batchSelect && submitButton) {
-        let isArmed = false;
-
+    const openDeleteImportBatch = document.getElementById("openDeleteImportBatch");
+    const openDeleteSelectedTrades = document.getElementById("openDeleteSelectedTrades");
+    const selectedTradeCount = document.getElementById("selectedTradeCount");
+    if (batchSelect && batchDeleteMode && openDeleteSelectedTrades && openDeleteImportBatch) {
         const syncBatchDeleteState = () => {
-            batchSelect.disabled = !isArmed;
-            submitButton.disabled = !isArmed || !batchSelect.value;
-            armButton.classList.toggle("is-armed", isArmed);
-            submitButton.classList.toggle("is-armed", isArmed);
-            armButton.textContent = isArmed ? "Delete Mode On" : "Enable Delete";
-            if (!isArmed) {
+            const importedMode = batchDeleteMode.value === "imported";
+            batchSelect.hidden = !importedMode;
+            batchSelect.disabled = !importedMode;
+            openDeleteImportBatch.hidden = !importedMode;
+            openDeleteSelectedTrades.hidden = importedMode;
+            openDeleteImportBatch.disabled = !importedMode || !batchSelect.value;
+            if (!importedMode) {
                 batchSelect.value = "";
             }
         };
 
-        armButton.addEventListener("click", () => {
-            isArmed = !isArmed;
+        batchDeleteMode.addEventListener("change", () => {
             syncBatchDeleteState();
         });
 
@@ -27,8 +27,21 @@
 
     const bulkDeleteForm = document.querySelector(".bulk-delete-form");
     const selectVisibleTrades = document.getElementById("selectVisibleTrades");
-    const deleteSelectedTrades = document.getElementById("deleteSelectedTrades");
     const assignTradeProfileButton = document.getElementById("assignTradeProfileButton");
+    const deleteSelectedTradesDialog = document.getElementById("deleteSelectedTradesDialog");
+    const deleteSelectedTradesForm = document.getElementById("deleteSelectedTradesForm");
+    const deleteSelectedTradesInputs = document.getElementById("deleteSelectedTradesInputs");
+    const deleteSelectedTradesLead = document.getElementById("deleteSelectedTradesLead");
+    const deleteSelectedTradesConfirmation = document.getElementById("deleteSelectedTradesConfirmation");
+    const deleteSelectedTradesAcknowledge = document.getElementById("deleteSelectedTradesAcknowledge");
+    const cancelDeleteSelectedTrades = document.getElementById("cancelDeleteSelectedTrades");
+    const deleteImportBatchDialog = document.getElementById("deleteImportBatchDialog");
+    const deleteImportBatchForm = document.getElementById("deleteImportBatchForm");
+    const deleteImportBatchLead = document.getElementById("deleteImportBatchLead");
+    const deleteImportBatchSignature = document.getElementById("deleteImportBatchSignature");
+    const deleteImportBatchConfirmation = document.getElementById("deleteImportBatchConfirmation");
+    const deleteImportBatchAcknowledge = document.getElementById("deleteImportBatchAcknowledge");
+    const cancelDeleteImportBatch = document.getElementById("cancelDeleteImportBatch");
     const tradeCheckboxes = Array.from(document.querySelectorAll(".trade-select"));
 
     const table = document.querySelector(".trade-log table");
@@ -44,6 +57,7 @@
 
     const filterField = document.getElementById("filterField");
     const pairFilter = document.getElementById("pairFilter");
+    const strategyFilter = document.getElementById("strategyFilter");
     const dateFilter = document.getElementById("dateFilter");
     const sideFilter = document.getElementById("sideFilter");
     const sessionFilter = document.getElementById("sessionFilter");
@@ -52,6 +66,7 @@
     const sortSelect = document.getElementById("tradeSort");
     const valueSelects = {
         pair: pairFilter,
+        strategy: strategyFilter,
         date: dateFilter,
         side: sideFilter,
         session: sessionFilter,
@@ -95,6 +110,11 @@
         "All Symbols"
     );
     fillSelect(
+        strategyFilter,
+        unique(rows.map((row) => row.dataset.strategy)).sort((a, b) => a.localeCompare(b)),
+        "All Strategies"
+    );
+    fillSelect(
         dateFilter,
         unique(rows.map((row) => row.dataset.date)).sort((a, b) => b.localeCompare(a)),
         "All Dates"
@@ -135,19 +155,25 @@
     };
 
     const visibleTradeRows = () => rows.filter((row) => !row.classList.contains("hidden-row"));
+    const selectedTradeCheckboxes = () => tradeCheckboxes.filter((input) => input.checked);
 
     const syncBulkDeleteState = () => {
-        if (!deleteSelectedTrades) {
+        if (!openDeleteSelectedTrades) {
             if (assignTradeProfileButton) {
-                const selectedCount = tradeCheckboxes.filter((input) => input.checked).length;
+                const selectedCount = selectedTradeCheckboxes().length;
                 assignTradeProfileButton.disabled = selectedCount === 0;
             }
             return;
         }
-        const selectedCount = tradeCheckboxes.filter((input) => input.checked).length;
-        deleteSelectedTrades.disabled = selectedCount === 0;
+        const selectedCount = selectedTradeCheckboxes().length;
+        openDeleteSelectedTrades.disabled = selectedCount === 0;
         if (assignTradeProfileButton) {
             assignTradeProfileButton.disabled = selectedCount === 0;
+        }
+        if (selectedTradeCount) {
+            selectedTradeCount.textContent = selectedCount === 1
+                ? "1 trade selected"
+                : `${selectedCount} trades selected`;
         }
 
         if (!selectVisibleTrades) {
@@ -171,6 +197,8 @@
             let show = true;
             if (filterType === "pair") {
                 show = !filterValue || toUpper(row.dataset.pair) === filterValue;
+            } else if (filterType === "strategy") {
+                show = !filterValue || toUpper(row.dataset.strategy) === filterValue;
             } else if (filterType === "date") {
                 show = !rawValue || row.dataset.date === rawValue;
             } else if (filterType === "side") {
@@ -243,6 +271,134 @@
     tradeCheckboxes.forEach((checkbox) => {
         checkbox.addEventListener("change", syncBulkDeleteState);
     });
+
+    const populateDeleteDialog = () => {
+        if (!deleteSelectedTradesInputs || !deleteSelectedTradesLead) {
+            return;
+        }
+        const selected = selectedTradeCheckboxes();
+        deleteSelectedTradesInputs.innerHTML = "";
+        selected.forEach((input) => {
+            const hiddenInput = document.createElement("input");
+            hiddenInput.type = "hidden";
+            hiddenInput.name = "trade_pubkeys";
+            hiddenInput.value = input.value;
+            deleteSelectedTradesInputs.appendChild(hiddenInput);
+        });
+        const count = selected.length;
+        deleteSelectedTradesLead.textContent = count === 1
+            ? "This permanently deletes the 1 selected trade from your active account."
+            : `This permanently deletes the ${count} selected trades from your active account.`;
+        if (deleteSelectedTradesConfirmation) {
+            deleteSelectedTradesConfirmation.value = "";
+        }
+        if (deleteSelectedTradesAcknowledge) {
+            deleteSelectedTradesAcknowledge.checked = false;
+        }
+    };
+
+    if (openDeleteSelectedTrades && deleteSelectedTradesDialog) {
+        openDeleteSelectedTrades.addEventListener("click", () => {
+            if (!selectedTradeCheckboxes().length) {
+                return;
+            }
+            populateDeleteDialog();
+            if (typeof deleteSelectedTradesDialog.showModal === "function") {
+                deleteSelectedTradesDialog.showModal();
+            }
+        });
+    }
+
+    if (cancelDeleteSelectedTrades && deleteSelectedTradesDialog) {
+        cancelDeleteSelectedTrades.addEventListener("click", () => {
+            deleteSelectedTradesDialog.close();
+        });
+    }
+
+    if (deleteSelectedTradesDialog) {
+        deleteSelectedTradesDialog.addEventListener("click", (event) => {
+            const rect = deleteSelectedTradesDialog.getBoundingClientRect();
+            const isInside =
+                rect.top <= event.clientY &&
+                event.clientY <= rect.top + rect.height &&
+                rect.left <= event.clientX &&
+                event.clientX <= rect.left + rect.width;
+            if (!isInside) {
+                deleteSelectedTradesDialog.close();
+            }
+        });
+    }
+
+    if (deleteSelectedTradesForm) {
+        deleteSelectedTradesForm.addEventListener("submit", (event) => {
+            const confirmationValue = (deleteSelectedTradesConfirmation?.value || "").trim().toUpperCase();
+            const acknowledged = Boolean(deleteSelectedTradesAcknowledge?.checked);
+            if (!selectedTradeCheckboxes().length || confirmationValue !== "DELETE" || !acknowledged) {
+                event.preventDefault();
+            }
+        });
+    }
+
+    const populateImportBatchDialog = () => {
+        if (!batchSelect || !deleteImportBatchSignature || !deleteImportBatchLead) {
+            return false;
+        }
+        const selectedOption = batchSelect.options[batchSelect.selectedIndex];
+        const signature = batchSelect.value;
+        if (!signature) {
+            return false;
+        }
+        deleteImportBatchSignature.value = signature;
+        deleteImportBatchLead.textContent = `This permanently deletes every trade in ${selectedOption.textContent}.`;
+        if (deleteImportBatchConfirmation) {
+            deleteImportBatchConfirmation.value = "";
+        }
+        if (deleteImportBatchAcknowledge) {
+            deleteImportBatchAcknowledge.checked = false;
+        }
+        return true;
+    };
+
+    if (openDeleteImportBatch && deleteImportBatchDialog) {
+        openDeleteImportBatch.addEventListener("click", () => {
+            if (!populateImportBatchDialog()) {
+                return;
+            }
+            if (typeof deleteImportBatchDialog.showModal === "function") {
+                deleteImportBatchDialog.showModal();
+            }
+        });
+    }
+
+    if (cancelDeleteImportBatch && deleteImportBatchDialog) {
+        cancelDeleteImportBatch.addEventListener("click", () => {
+            deleteImportBatchDialog.close();
+        });
+    }
+
+    if (deleteImportBatchDialog) {
+        deleteImportBatchDialog.addEventListener("click", (event) => {
+            const rect = deleteImportBatchDialog.getBoundingClientRect();
+            const isInside =
+                rect.top <= event.clientY &&
+                event.clientY <= rect.top + rect.height &&
+                rect.left <= event.clientX &&
+                event.clientX <= rect.left + rect.width;
+            if (!isInside) {
+                deleteImportBatchDialog.close();
+            }
+        });
+    }
+
+    if (deleteImportBatchForm) {
+        deleteImportBatchForm.addEventListener("submit", (event) => {
+            const confirmationValue = (deleteImportBatchConfirmation?.value || "").trim().toUpperCase();
+            const acknowledged = Boolean(deleteImportBatchAcknowledge?.checked);
+            if (!deleteImportBatchSignature?.value || confirmationValue !== "DELETE" || !acknowledged) {
+                event.preventDefault();
+            }
+        });
+    }
 
     if (bulkDeleteForm) {
         bulkDeleteForm.addEventListener("submit", (event) => {

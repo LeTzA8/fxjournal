@@ -148,7 +148,7 @@
             <article class="panel overview-panel">
                 <div class="panel-head">
                     <div>
-                        <h2>Core Readout</h2>
+                        <h2>Performance Summary</h2>
                         <p class="panel-copy">High-signal stats for edge quality and downside control.</p>
                     </div>
                 </div>
@@ -588,13 +588,33 @@
     .analytics-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+            "equity equity"
+            "overview streak"
+            "chart session"
+            "pair pair"
+            "weekday sessiontable";
         gap: 0.9rem;
         align-items: start;
     }
 
     .equity-panel {
-        grid-column: 1 / -1;
+        grid-area: equity;
     }
+
+    .overview-panel { grid-area: overview; }
+
+    .streak-panel { grid-area: streak; }
+
+    .chart-panel { grid-area: chart; }
+
+    .session-panel { grid-area: session; }
+
+    .analytics-grid > .table-panel:nth-of-type(6) { grid-area: pair; }
+
+    .analytics-grid > .table-panel:nth-of-type(7) { grid-area: weekday; }
+
+    .analytics-grid > .table-panel:nth-of-type(8) { grid-area: sessiontable; }
 
     .panel-head {
         display: flex;
@@ -911,6 +931,15 @@
 
         .analytics-grid {
             grid-template-columns: 1fr;
+            grid-template-areas:
+                "equity"
+                "overview"
+                "streak"
+                "chart"
+                "session"
+                "pair"
+                "weekday"
+                "sessiontable";
         }
     }
 

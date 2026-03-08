@@ -401,6 +401,74 @@
             line-height: 1;
         }
 
+        .site-nav-group {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            padding-bottom: 0.55rem;
+            margin-bottom: -0.55rem;
+        }
+
+        .site-nav-group-toggle {
+            gap: 0.45rem;
+            cursor: default;
+        }
+
+        .site-nav-group-toggle::after {
+            content: "";
+            width: 0.45rem;
+            height: 0.45rem;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+            transform: rotate(45deg) translateY(-1px);
+            opacity: 0.8;
+        }
+
+        .site-nav-group-menu {
+            position: absolute;
+            top: calc(100% + 0.08rem);
+            left: 0;
+            min-width: 220px;
+            padding: 0.45rem;
+            border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+            border-radius: 14px;
+            background: color-mix(in srgb, var(--card) 97%, transparent);
+            box-shadow: 0 18px 34px rgba(2, 6, 23, 0.22);
+            display: grid;
+            gap: 0.28rem;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-6px);
+            transition: opacity 160ms ease, transform 160ms ease;
+            z-index: 20;
+        }
+
+        .site-nav-group::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: calc(100% - 0.08rem);
+            height: 0.7rem;
+        }
+
+        .site-nav-group:hover .site-nav-group-menu,
+        .site-nav-group:focus-within .site-nav-group-menu {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0);
+        }
+
+        .site-nav-sublink {
+            justify-content: flex-start;
+            min-height: 40px;
+            padding: 0 0.85rem;
+            border-radius: 10px;
+            text-transform: none;
+            letter-spacing: 0.01em;
+            font-size: 0.8rem;
+        }
+
         .site-nav-link:hover,
         .site-nav-link.active {
             color: var(--accent);
@@ -1214,22 +1282,34 @@
                     href="{{ url_for('home') }}"
                     class="site-nav-link{% if request.endpoint == 'home' %} active{% endif %}"
                 >Dashboard</a>
-                <a
-                    href="{{ url_for('trades') }}"
-                    class="site-nav-link{% if request.endpoint in ['trades', 'new_trade', 'trade_detail', 'edit_trade'] %} active{% endif %}"
-                >Trades</a>
+                <div class="site-nav-group">
+                    <a
+                        href="{{ url_for('trades') }}"
+                        class="site-nav-link site-nav-group-toggle{% if request.endpoint in ['trades', 'manage_trades', 'new_trade', 'trade_detail', 'edit_trade', 'trade_accounts', 'strategies', 'edit_strategy', 'archive_strategy'] %} active{% endif %}"
+                    >Trades</a>
+                    <div class="site-nav-group-menu" role="menu" aria-label="Trades navigation">
+                        <a
+                            href="{{ url_for('trades') }}"
+                            class="site-nav-link site-nav-sublink{% if request.endpoint in ['trades', 'new_trade', 'trade_detail', 'edit_trade'] %} active{% endif %}"
+                        >All Trades</a>
+                        <a
+                            href="{{ url_for('manage_trades') }}"
+                            class="site-nav-link site-nav-sublink{% if request.endpoint == 'manage_trades' %} active{% endif %}"
+                        >Trade Management</a>
+                        <a
+                            href="{{ url_for('trade_accounts') }}"
+                            class="site-nav-link site-nav-sublink{% if request.endpoint == 'trade_accounts' %} active{% endif %}"
+                        >Trade Accounts</a>
+                        <a
+                            href="{{ url_for('strategies') }}"
+                            class="site-nav-link site-nav-sublink{% if request.endpoint in ['strategies', 'edit_strategy', 'archive_strategy'] %} active{% endif %}"
+                        >Strategies</a>
+                    </div>
+                </div>
                 <a
                     href="{{ url_for('analytics') }}"
                     class="site-nav-link{% if request.endpoint == 'analytics' %} active{% endif %}"
                 >Analytics</a>
-                <a
-                    href="{{ url_for('trade_accounts') }}"
-                    class="site-nav-link{% if request.endpoint == 'trade_accounts' %} active{% endif %}"
-                >Trade Accounts</a>
-                <a
-                    href="{{ url_for('trade_profiles') }}"
-                    class="site-nav-link{% if request.endpoint in ['trade_profiles', 'edit_trade_profile', 'archive_trade_profile'] %} active{% endif %}"
-                >Trade Profiles</a>
                 {% if is_admin_user %}
                 <a
                     href="{{ url_for('admin_signup_users') }}"

@@ -5,10 +5,10 @@
 
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Trade Log</div>
+            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Trades</div>
             <div class="head-row">
                 <div>
-                    <h1>Trade Log</h1>
+                    <h1>Trades</h1>
                     <p class="welcome">Welcome, {{ username }}.</p>
                     <p class="subtitle">Review all executed and running trades in one place.</p>
                 </div>
@@ -28,7 +28,7 @@
                         {% if manage_mode %}
                         <a href="{{ url_for('trades') }}" class="manage-trades-btn is-active">Done</a>
                         {% else %}
-                        <a href="{{ url_for('trades', manage=1) }}" class="manage-trades-btn">Manage Trades</a>
+                        <a href="{{ url_for('manage_trades') }}" class="manage-trades-btn">Manage Trades</a>
                         {% endif %}
                     </div>
                 </div>
@@ -46,7 +46,7 @@
                     <div class="trade-account-switcher-group">
                         <form action="{{ url_for('switch_trade_account') }}" method="post" class="trade-account-switcher-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <input type="hidden" name="next" value="{{ url_for('trades') }}">
+                            <input type="hidden" name="next" value="{{ current_page_path }}">
                             <label for="tradeAccountSwitcher">Trade Account</label>
                             <select
                                 id="tradeAccountSwitcher"
@@ -73,6 +73,7 @@
                         <select id="filterField" aria-label="Filter by">
                             <option value="">No Filter</option>
                             <option value="pair">Symbol</option>
+                            <option value="strategy">Strategy</option>
                             <option value="date">Date</option>
                             <option value="side">Side</option>
                             <option value="session">Session</option>
@@ -80,6 +81,10 @@
 
                         <select id="pairFilter" class="filter-value" aria-label="Choose pair" hidden>
                             <option value="">All Symbols</option>
+                        </select>
+
+                        <select id="strategyFilter" class="filter-value" aria-label="Choose strategy" hidden>
+                            <option value="">All Strategies</option>
                         </select>
 
                         <select id="dateFilter" class="filter-value" aria-label="Choose date" hidden>
@@ -111,67 +116,87 @@
                     </div>
                 </div>
                 {% if manage_mode %}
-                <section class="manage-trades-panel" aria-label="Manage trades">
-                    <div class="manage-trades-copy">
-                        <p class="manage-title">Manage Trades</p>
-                        <p class="helper-note danger-note">
-                            Bulk attach or clear trade profiles, delete selected trades manually, or remove an imported batch for your active account.
-                        </p>
+                <p class="manage-trades-description">
+                    Manage mode lets you bulk attach or clear strategies, delete selected trades, or remove an imported batch for the active account.
+                </p>
+                {% endif %}
+                {% if manage_mode %}
+                <section class="manage-action-grid" aria-label="Manage trade actions">
+                    <div class="manage-action-card">
+                        <div class="manage-action-head">
+                            <div>
+                                <p class="manage-action-title">Batch Edit</p>
+                                <p class="manage-action-copy">Choose the trades you want to work on before applying a profile or deleting them.</p>
+                            </div>
+                        </div>
+                        <div class="batch-edit-fields">
+                            <label class="bulk-select-all">
+                                <input type="checkbox" id="selectVisibleTrades">
+                                <span>Select visible trades</span>
+                            </label>
+                            <p class="batch-selection-note" id="selectedTradeCount">0 trades selected</p>
+                        </div>
+                    </div>
+
+                    <div class="manage-action-card">
+                        <div class="manage-action-head">
+                            <div>
+                                <p class="manage-action-title">Batch Strategy</p>
+                                <p class="manage-action-copy">Attach the selected trades to one strategy, or clear the strategy link.</p>
+                            </div>
+                        </div>
+                        <div class="batch-profile-fields">
+                            <select id="batchTradeProfile" name="trade_profile_pubkey" form="bulkTradeActionsForm" aria-label="Choose strategy for selected trades">
+                                <option value="">Clear strategy</option>
+                                {% for profile in trade_profile_options %}
+                                <option value="{{ profile.pubkey }}">{{ profile.name }} (v{{ profile.current_version_number }})</option>
+                                {% endfor %}
+                            </select>
+                            <button
+                                type="submit"
+                                class="batch-assign-btn"
+                                id="assignTradeProfileButton"
+                                form="bulkTradeActionsForm"
+                                formaction="{{ url_for('batch_update_trade_profile') }}"
+                                formmethod="post"
+                                disabled
+                            >Apply Strategy</button>
+                        </div>
+                    </div>
+
+                    <div class="manage-action-card manage-action-card-danger">
+                        <div class="manage-action-head">
+                            <div>
+                                <p class="manage-action-title">Batch Delete</p>
+                                <p class="manage-action-copy">Choose whether to delete selected trades or an imported batch for this account.</p>
+                            </div>
+                        </div>
+                        <form action="{{ url_for('delete_import_batch') }}" method="post" class="batch-delete-form" data-themed-validation>
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <div class="batch-delete-fields">
+                                <select id="batchDeleteMode" aria-label="Choose batch delete mode">
+                                    <option value="selected">Selected Trades</option>
+                                    <option value="imported" {% if not import_batches %}disabled{% endif %}>Imported Batch</option>
+                                </select>
+                                <select id="import_signature" name="import_signature" {% if not import_batches %}disabled{% endif %} hidden>
+                                    <option value="">Select imported batch</option>
+                                    {% for batch in import_batches %}
+                                    <option value="{{ batch.signature }}">
+                                        {{ batch.imported_at_label }} - {{ batch.trade_count }} trade{% if batch.trade_count != 1 %}s{% endif %}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="batch-delete-actions">
+                                <button type="button" class="batch-delete-btn" id="openDeleteSelectedTrades" disabled>Delete Selected</button>
+                                <button type="button" class="batch-delete-btn" id="openDeleteImportBatch" disabled hidden>Delete Batch</button>
+                            </div>
+                        </form>
                     </div>
                 </section>
                 {% endif %}
-                {% if manage_mode and import_batches %}
-                <form action="{{ url_for('delete_import_batch') }}" method="post" class="batch-delete-form" data-themed-validation>
+                <form action="{{ url_for('bulk_delete_trades') }}" method="post" class="bulk-delete-form" id="bulkTradeActionsForm">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <div class="batch-delete-head">
-                        <label for="import_signature">Delete Imported Batch</label>
-                        <button type="button" class="batch-delete-arm-btn" id="batchDeleteArmButton" aria-controls="import_signature batchDeleteSubmit">
-                            Enable Delete
-                        </button>
-                    </div>
-                    <p class="helper-note danger-note">
-                        This deletes every imported trade in the selected batch for your active account.
-                    </p>
-                    <select id="import_signature" name="import_signature" required disabled>
-                        <option value="">Select imported batch</option>
-                        {% for batch in import_batches %}
-                        <option value="{{ batch.signature }}">
-                            {{ batch.imported_at_label }} - {{ batch.trade_count }} trade{% if batch.trade_count != 1 %}s{% endif %}
-                        </option>
-                        {% endfor %}
-                    </select>
-                    <button type="submit" class="batch-delete-btn" id="batchDeleteSubmit" disabled>Delete Batch</button>
-                </form>
-                {% endif %}
-                <form action="{{ url_for('bulk_delete_trades') }}" method="post" class="bulk-delete-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    {% if manage_mode %}
-                    <div class="bulk-delete-toolbar">
-                        <label class="bulk-select-all">
-                            <input type="checkbox" id="selectVisibleTrades">
-                            <span>Select visible trades</span>
-                        </label>
-                        <div class="bulk-manage-actions">
-                            <div class="batch-profile-fields">
-                                <select id="batchTradeProfile" name="trade_profile_pubkey" aria-label="Choose trade profile for selected trades">
-                                    <option value="">Clear trade profile</option>
-                                    {% for profile in trade_profile_options %}
-                                    <option value="{{ profile.pubkey }}">{{ profile.name }} (v{{ profile.current_version_number }})</option>
-                                    {% endfor %}
-                                </select>
-                                <button
-                                    type="submit"
-                                    class="batch-assign-btn"
-                                    id="assignTradeProfileButton"
-                                    formaction="{{ url_for('batch_update_trade_profile') }}"
-                                    formmethod="post"
-                                    disabled
-                                >Apply Profile</button>
-                            </div>
-                            <button type="submit" class="batch-delete-btn" id="deleteSelectedTrades" disabled>Delete Selected</button>
-                        </div>
-                    </div>
-                    {% endif %}
                 <div class="table-shell">
                     <table>
                         <thead>
@@ -181,7 +206,7 @@
                                 {% endif %}
                                 <th>Date</th>
                                 <th>Symbol</th>
-                                <th>Trade Profile</th>
+                                <th>Strategy</th>
                                 <th>Side</th>
                                 <th>Entry</th>
                                 <th>Exit</th>
@@ -198,6 +223,7 @@
                             <tr
                                 {% if trade.is_running %}class="running-trade"{% endif %}
                                 data-pair="{{ trade.symbol }}"
+                                data-strategy="{{ trade.trade_profile_label }}"
                                 data-side="{{ trade.side }}"
                                 data-date="{{ trade.opened_date_value }}"
                                 data-opened-at="{{ trade.opened_at_value }}"
@@ -289,6 +315,104 @@
     </div>
 </section>
 
+{% if manage_mode %}
+<dialog id="deleteSelectedTradesDialog" class="confirm-dialog" aria-labelledby="deleteSelectedTradesTitle">
+    <div class="confirm-dialog-shell">
+        <div class="panel-head">
+            <h2 id="deleteSelectedTradesTitle">Delete Selected Trades</h2>
+            <span class="soft">Danger Zone</span>
+        </div>
+        <p id="deleteSelectedTradesLead" class="helper-note danger-note">
+            This permanently deletes the currently selected trades from your active account.
+        </p>
+        <form
+            id="deleteSelectedTradesForm"
+            action="{{ url_for('bulk_delete_trades') }}"
+            method="post"
+            class="danger-form"
+            data-themed-validation
+        >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div id="deleteSelectedTradesInputs"></div>
+
+            <label for="deleteSelectedTradesConfirmation">
+                Type <strong>DELETE</strong> to confirm
+            </label>
+            <input
+                id="deleteSelectedTradesConfirmation"
+                name="delete_selected_trades_confirmation"
+                type="text"
+                placeholder="DELETE"
+                required
+                autocomplete="off"
+            >
+            <label class="delete-check">
+                <input
+                    id="deleteSelectedTradesAcknowledge"
+                    name="delete_selected_trades_acknowledge"
+                    type="checkbox"
+                    required
+                >
+                <span>I understand this permanently removes the selected trades from this account.</span>
+            </label>
+            <div class="inline-actions dialog-actions">
+                <button type="button" class="ghost-link btn-link" id="cancelDeleteSelectedTrades">Cancel</button>
+                <button type="submit" class="ghost-btn danger-btn" id="confirmDeleteSelectedTrades">Delete Selected Trades</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+{% endif %}
+
+{% if manage_mode %}
+<dialog id="deleteImportBatchDialog" class="confirm-dialog" aria-labelledby="deleteImportBatchTitle">
+    <div class="confirm-dialog-shell">
+        <div class="panel-head">
+            <h2 id="deleteImportBatchTitle">Delete Imported Batch</h2>
+            <span class="soft">Danger Zone</span>
+        </div>
+        <p id="deleteImportBatchLead" class="helper-note danger-note">
+            This permanently deletes every trade in the selected imported batch for your active account.
+        </p>
+        <form
+            id="deleteImportBatchForm"
+            action="{{ url_for('delete_import_batch') }}"
+            method="post"
+            class="danger-form"
+            data-themed-validation
+        >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="import_signature" id="deleteImportBatchSignature" value="">
+
+            <label for="deleteImportBatchConfirmation">
+                Type <strong>DELETE</strong> to confirm
+            </label>
+            <input
+                id="deleteImportBatchConfirmation"
+                name="delete_import_batch_confirmation"
+                type="text"
+                placeholder="DELETE"
+                required
+                autocomplete="off"
+            >
+            <label class="delete-check">
+                <input
+                    id="deleteImportBatchAcknowledge"
+                    name="delete_import_batch_acknowledge"
+                    type="checkbox"
+                    required
+                >
+                <span>I understand this permanently removes every trade in the selected imported batch.</span>
+            </label>
+            <div class="inline-actions dialog-actions">
+                <button type="button" class="ghost-link btn-link" id="cancelDeleteImportBatch">Cancel</button>
+                <button type="submit" class="ghost-btn danger-btn" id="confirmDeleteImportBatch">Delete Batch</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+{% endif %}
+
 <style>
     .panel-grid { display: grid;
         grid-template-columns: 1fr;
@@ -363,48 +487,52 @@
         padding-inline: 0.9rem;
         white-space: nowrap; }
 
-    .batch-delete-form { display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 0.45rem;
-        align-items: end;
-        margin-bottom: 0.75rem;
+    .manage-trades-description { margin: -0.05rem 0 0.6rem;
+        font-size: 0.8rem;
+        color: var(--muted); }
+
+    .manage-action-grid { display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.65rem;
+        margin-bottom: 0.72rem;
+        align-items: start; }
+
+    .manage-action-card { display: grid;
+        gap: 0.52rem;
+        align-content: start;
+        border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+        border-radius: 10px;
+        padding: 0.72rem;
+        background: color-mix(in srgb, var(--surface) 90%, transparent);
         min-width: 0; }
 
-    .manage-trades-panel { border: 1px solid color-mix(in srgb, var(--bad) 26%, var(--border));
-        border-radius: 12px;
-        padding: 0.72rem;
-        margin: 0 0 0.75rem;
-        background: color-mix(in srgb, var(--bad) 12%, var(--card)); }
+    .manage-action-card-danger { border-color: color-mix(in srgb, var(--bad) 24%, var(--border));
+        background: color-mix(in srgb, var(--bad) 5%, var(--card)); }
 
-    .manage-trades-copy { display: grid;
-        gap: 0.26rem; }
+    .manage-action-head { display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.4rem;
+        flex-wrap: wrap; }
 
-    .manage-title { margin: 0;
-        font-size: 0.82rem;
+    .manage-action-title { margin: 0;
+        font-size: 0.73rem;
         font-weight: 800;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.07em;
         text-transform: uppercase; }
 
-    .batch-delete-head {
-        grid-column: 1 / -1;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.6rem;
-        flex-wrap: wrap;
-    }
+    .manage-action-copy { margin: 0.18rem 0 0;
+        font-size: 0.73rem;
+        color: var(--muted);
+        line-height: 1.35; }
 
-    .batch-delete-form label { font-size: 0.76rem; font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em; }
-
-    .batch-delete-form .helper-note { grid-column: 1 / -1;
-        margin: 0; }
+    .batch-delete-form { min-width: 0; }
 
     .batch-delete-form select { border: 1px solid #c6d4ca;  border-radius: 8px;
         padding: 0.4rem 0.55rem;
         font-size: 0.78rem;
-        min-width: 0; }
+        min-width: 0;
+        width: 100%; }
 
     .batch-delete-form select:disabled {
         opacity: 0.6;
@@ -412,12 +540,14 @@
     }
 
     .batch-delete-btn { border: 1px solid #d6b4b2;  border-radius: 8px;
-        padding: 0.38rem 0.62rem;
-        font-size: 0.76rem;
-        font-weight: 700;
+        padding: 0.44rem 0.72rem;
+        font-size: 0.71rem;
+        font-weight: 800;
         text-transform: uppercase;
-        letter-spacing: 0.03em;
-        cursor: pointer; }
+        letter-spacing: 0.04em;
+        cursor: pointer;
+        min-height: 38px;
+        white-space: nowrap; }
 
     .bulk-delete-form { display: flex;
         flex-direction: column;
@@ -427,33 +557,47 @@
 
     .bulk-delete-toolbar { display: flex;
         align-items: center;
+        justify-content: flex-start;
+        gap: 0.6rem;
+        flex-wrap: wrap; }
+
+    .batch-edit-fields { display: flex;
+        align-items: center;
         justify-content: space-between;
         gap: 0.6rem;
         flex-wrap: wrap; }
 
-    .bulk-manage-actions { display: flex;
-        align-items: center;
-        gap: 0.6rem;
-        flex-wrap: wrap;
-        justify-content: flex-end; }
+    .batch-selection-note { margin: 0;
+        font-size: 0.73rem;
+        color: var(--muted); }
 
     .batch-profile-fields { display: flex;
         align-items: center;
         gap: 0.5rem;
-        flex-wrap: wrap; }
+        flex-wrap: nowrap; }
+
+    .batch-delete-fields,
+    .batch-delete-actions { display: grid;
+        gap: 0.42rem; }
+
+    .batch-delete-actions { grid-template-columns: repeat(2, minmax(0, auto));
+        justify-content: flex-start;
+        align-items: center; }
 
     .batch-profile-fields select { min-height: 40px;
-        min-width: min(280px, 100%);
+        min-width: 0;
+        flex: 1 1 220px;
         border: 1px solid #c6d4ca;
         border-radius: 8px;
         padding: 0.4rem 0.55rem;
-        font-size: 0.78rem; }
+        font-size: 0.75rem; }
 
     .bulk-select-all { display: inline-flex;
         align-items: center;
         gap: 0.45rem;
-        font-size: 0.82rem;
-        font-weight: 700; }
+        font-size: 0.75rem;
+        font-weight: 700;
+        white-space: nowrap; }
 
     .bulk-select-all input,
     .trade-select { width: 16px;
@@ -461,12 +605,14 @@
 
     .batch-delete-arm-btn { border: 1px solid #d6b4b2;
         border-radius: 8px;
-        padding: 0.38rem 0.62rem;
+        padding: 0.44rem 0.72rem;
         font-size: 0.72rem;
         font-weight: 800;
         letter-spacing: 0.04em;
         text-transform: uppercase;
-        cursor: pointer; }
+        cursor: pointer;
+        min-height: 38px;
+        white-space: nowrap; }
 
     .batch-delete-arm-btn.is-armed,
     .batch-delete-btn.is-armed {
@@ -481,15 +627,16 @@
 
     .batch-assign-btn { border: 1px solid color-mix(in srgb, var(--good) 54%, var(--border));
         border-radius: 8px;
-        padding: 0.4rem 0.72rem;
+        padding: 0.44rem 0.8rem;
         min-height: 40px;
-        font-size: 0.76rem;
+        font-size: 0.71rem;
         font-weight: 800;
         letter-spacing: 0.04em;
         text-transform: uppercase;
         cursor: pointer;
         background: color-mix(in srgb, var(--good) 14%, var(--card));
-        color: color-mix(in srgb, var(--good) 84%, white 16%); }
+        color: color-mix(in srgb, var(--good) 84%, white 16%);
+        white-space: nowrap; }
 
     .batch-assign-btn:disabled {
         opacity: 0.58;
@@ -497,6 +644,69 @@
     }
 
     .danger-note { color: #a04545; }
+
+    .confirm-dialog { border: 0;
+        padding: 0;
+        background: transparent;
+        max-width: min(560px, calc(100vw - 2rem));
+        width: 100%; }
+
+    .confirm-dialog::backdrop { background: rgba(14, 18, 24, 0.62);
+        backdrop-filter: blur(7px); }
+
+    .confirm-dialog-shell { display: grid;
+        gap: 0.85rem;
+        border: 1px solid color-mix(in srgb, var(--bad) 24%, var(--border));
+        border-radius: 18px;
+        padding: 1rem;
+        background: color-mix(in srgb, var(--card) 98%, transparent);
+        box-shadow: 0 28px 90px rgba(6, 12, 18, 0.34); }
+
+    .danger-form { display: grid;
+        gap: 0.62rem; }
+
+    .danger-form label { font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em; }
+
+    .danger-form input[type="text"] { border: 1px solid #d5b4b4;
+        border-radius: 10px;
+        padding: 0.58rem 0.66rem;
+        font: inherit; }
+
+    .delete-check { display: inline-flex;
+        align-items: flex-start;
+        gap: 0.45rem;
+        font-size: 0.8rem;
+        text-transform: none !important;
+        letter-spacing: 0 !important; }
+
+    .delete-check input { width: auto;
+        margin-top: 0.18rem; }
+
+    .danger-btn { border-color: #d78989;
+        color: #a93c3c; }
+
+    .btn-link { display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        padding: 0.46rem 0.72rem;
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        text-decoration: none;
+        cursor: pointer; }
+
+    .dialog-actions { justify-content: flex-end; }
+
+    .inline-actions { display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        flex-wrap: wrap; }
+
 .filter-row { display: grid;
         grid-template-columns: minmax(140px, 0.9fr) minmax(180px, 1fr) auto auto;
         gap: 0.6rem;
@@ -775,10 +985,13 @@
             max-width: none;
             min-width: 100%; }
 
-        .batch-delete-form { grid-template-columns: 1fr; }
+        .manage-action-grid { grid-template-columns: 1fr; }
+
+        .batch-edit-fields,
+        .batch-profile-fields { align-items: stretch;
+            flex-wrap: wrap; }
 
         .bulk-delete-toolbar,
-        .bulk-manage-actions,
         .batch-profile-fields { width: 100%;
             justify-content: flex-start; }
 

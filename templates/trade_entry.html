@@ -83,16 +83,16 @@
                     <input id="closed_at" name="closed_at" type="datetime-local" value="{{ closed_at_value }}">
                     <p class="field-help">Times are interpreted in {{ analytics_timezone }} and stored in UTC for analytics.</p>
 
-                    <label for="trade_profile_pubkey">Trade Profile</label>
+                    <label for="trade_profile_pubkey">Strategy</label>
                     <select id="trade_profile_pubkey" name="trade_profile_pubkey">
-                        <option value="">No profile attached</option>
+                        <option value="">No strategy attached</option>
                         {% for profile in trade_profile_options %}
                         <option value="{{ profile.pubkey }}" {% if selected_trade_profile_pubkey == profile.pubkey %}selected{% endif %}>
                             {{ profile.name }} (v{{ profile.current_version_number }})
                         </option>
                         {% endfor %}
                     </select>
-                    <p class="field-help">Trade profiles are managed separately. <a href="{{ url_for('trade_profiles') }}">Open Trade Profiles</a>.</p>
+                    <p class="field-help">Strategies are managed separately. <a href="{{ url_for('strategies') }}">Open Strategies</a>.</p>
 
                     <label for="trade_note">Trade Note</label>
                     <textarea id="trade_note" name="trade_note" rows="4" placeholder="Why you took this setup, mistakes, execution notes...">{{ trade.trade_note if trade and trade.trade_note else '' }}</textarea>
@@ -378,7 +378,5 @@
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/trade_import.js') }}"></script>
 {% endblock %}
-
-
 
 

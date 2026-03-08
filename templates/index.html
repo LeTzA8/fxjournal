@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
 {% block content %}
 <section class="dash-wrap">
@@ -8,7 +8,7 @@
             <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a></div>
             <div class="head-row">
                 <div>
-                    <h1>Forex Performance Dashboard</h1>
+                    <h1>Trading Performance Dashboard</h1>
                     <p class="welcome">Welcome, {{ username }}.</p>
                     <p class="subtitle">Track consistency, review execution, and spot edge drift early.</p>
                 </div>
@@ -44,262 +44,308 @@
                 <p class="metric-note">Based on opened date</p>
             </article>
             <article class="metric">
-                <p class="metric-label">Avg R:R</p>
-                <p class="metric-value">
-                    {% if avg_rr_display %}{{ avg_rr_display }}{% else %}-{% endif %}
-                </p>
+                <p class="metric-label">Average Winner vs Loser</p>
+                <div class="metric-split">
+                    <div class="metric-chip good">
+                        <span class="metric-chip-label">Winner</span>
+                        <span class="metric-chip-value">
+                            {% if avg_win is not none %}+${{ '%.2f'|format(avg_win) }}{% else %}-{% endif %}
+                        </span>
+                    </div>
+                    <div class="metric-chip bad">
+                        <span class="metric-chip-label">Loser</span>
+                        <span class="metric-chip-value">
+                            {% if avg_loss_abs is not none %}-${{ '%.2f'|format(avg_loss_abs) }}{% else %}-{% endif %}
+                        </span>
+                    </div>
+                </div>
                 <p class="metric-note">
-                    {% if avg_rr_mode == "account_percent" %}
-                    Avg loss % / avg win % of account
-                    {% elif avg_rr_mode == "money_ratio" %}
-                    Based on avg realized loss / avg realized win in money terms
+                    {% if avg_win is not none and avg_loss_abs is not none %}
+                    Average realized winner and loser across closed trades.
                     {% else %}
                     No closed win/loss data yet
                     {% endif %}
                 </p>
-                {% if avg_rr_mode != "account_percent" %}
-                <p class="metric-note">
-                    Add account size in <a href="{{ url_for('trade_accounts') }}">Trade Accounts</a> for a more accurate % based R:R.
-                </p>
-                {% endif %}
             </article>
         </section>
-
         <section class="panel-grid" data-reveal-row-step="140" data-reveal-col-step="90">
-            <article class="panel trade-log">
-                <div class="panel-head">
-                    <div class="panel-title-wrap">
-                        <h2>Trade Log</h2>
-                        {% if active_trade_account %}
-                        <p class="panel-account-note">Account: <strong>{{ active_trade_account.name }}</strong></p>
-                        {% endif %}
-                    </div>
-                    <a href="{{ url_for('trades') }}" class="trades-btn">View/Add Trades</a>
-                </div>
-                <div class="table-controls">
-                    <div id="tradeFilters" class="filter-row">
-                        <select id="filterField" aria-label="Filter by">
-                            <option value="">No Filter</option>
-                            <option value="pair">Symbol</option>
-                            <option value="date">Date</option>
-                            <option value="side">Side</option>
-                            <option value="status">Status</option>
-                        </select>
-
-                        <select id="pairFilter" class="filter-value" aria-label="Choose pair" hidden>
-                            <option value="">All Symbols</option>
-                        </select>
-
-                        <select id="dateFilter" class="filter-value" aria-label="Choose date" hidden>
-                            <option value="">All Dates</option>
-                        </select>
-
-                        <select id="sideFilter" class="filter-value" aria-label="Choose side" hidden>
-                            <option value="">All Sides</option>
-                            <option value="BUY">Buy</option>
-                            <option value="SELL">Sell</option>
-                        </select>
-
-                        <select id="statusFilter" class="filter-value" aria-label="Choose status" hidden>
-                            <option value="">All Status</option>
-                            <option value="Running">Running</option>
-                            <option value="Closed">Closed</option>
-                        </select>
-                        <button id="applyFilters" class="ghost-btn" type="button">Apply</button>
-                        <button id="clearFilters" class="ghost-btn" type="button">Clear</button>
-                    </div>
-                    <div class="sort-wrap">
-                        <label for="tradeSort">Sort</label>
-                        <select id="tradeSort" aria-label="Sort trades">
-                            <option value="date_desc">Date (Newest)</option>
-                            <option value="date_asc">Date (Oldest)</option>
-                            <option value="pnl_desc">PnL (High-Low)</option>
-                            <option value="pnl_asc">PnL (Low-High)</option>
-                            <option value="lot_desc">Size (High-Low)</option>
-                            <option value="lot_asc">Size (Low-High)</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="table-shell">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Symbol</th>
-                                <th>Side</th>
-                                <th>Entry</th>
-                                <th>Exit</th>
-                                <th>{{ size_label }}</th>
-                                <th>PnL</th>
-                                <th>Date</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if recent_trades %}
-                            {% for trade in recent_trades %}
-                            <tr
-                                data-pair="{{ trade.symbol }}"
-                                data-side="{{ trade.side }}"
-                                data-status="{{ trade.status }}"
-                                data-date="{{ trade.date_value }}"
-                                data-pnl="{{ trade.pnl if trade.pnl is not none else '' }}"
-                                data-lot="{{ trade.lot_size }}"
-                            >
-                                <td>{{ trade.symbol }}</td>
-                                <td>
-                                    {% if trade.side == "SELL" %}
-                                    <span class="tag sell">Sell</span>
-                                    {% else %}
-                                    <span class="tag buy">Buy</span>
-                                    {% endif %}
-                                </td>
-                                <td>{{ '%.5f'|format(trade.entry_price) }}</td>
-                                <td>
-                                    {% if trade.exit_price is not none %}
-                                    {{ '%.5f'|format(trade.exit_price) }}
-                                    {% else %}
-                                    -
-                                    {% endif %}
-                                </td>
-                                <td>{{ '%.2f'|format(trade.lot_size) }}</td>
-                                <td>
-                                    {% if trade.pnl is none %}
-                                    <span class="muted">-</span>
-                                    {% elif trade.pnl > 0 %}
-                                    <span class="good">+{{ '%.2f'|format(trade.pnl) }}</span>
-                                    {% elif trade.pnl < 0 %}
-                                    <span class="bad">{{ '%.2f'|format(trade.pnl) }}</span>
-                                    {% else %}
-                                    <span class="muted">0.00</span>
-                                    {% endif %}
-                                    {% if trade.pips is not none %}
-                                    <span class="pip-note">
-                                        ({{ '%+.1f'|format(trade.pips) }} pips)
-                                    </span>
-                                    {% elif trade.ticks is not none %}
-                                    <span class="pip-note">
-                                        ({{ '%+.1f'|format(trade.ticks) }} ticks)
-                                    </span>
-                                    {% endif %}
-                                </td>
-                                <td>{{ trade.date }}</td>
-                                <td>{{ trade.status }}</td>
-                            </tr>
-                            {% endfor %}
-                            {% else %}
-                            <tr class="empty-row">
-                                <td colspan="8" class="muted">No trades yet. Add your first trade.</td>
-                            </tr>
+            <div class="panel-column panel-column-main">
+                <article class="panel trade-log">
+                    <div class="panel-head">
+                        <div class="panel-title-wrap">
+                            <h2>Trades</h2>
+                            {% if active_trade_account %}
+                            <p class="panel-account-note">Account: <strong>{{ active_trade_account.name }}</strong></p>
                             {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </article>
-
-            <article class="panel pnl-panel">
-                <div class="panel-head">
-                    <h2>Equity Curve</h2>
-                    <div class="chart-range">
-                        <label for="equityRange">Range</label>
-                        <select id="equityRange" aria-label="Equity chart range">
-                            <option value="7" selected>7D</option>
-                            <option value="14">14D</option>
-                            <option value="21">21D</option>
-                            <option value="month">Month</option>
-                        </select>
+                        </div>
+                        <a href="{{ url_for('trades') }}" class="trades-btn">Open Trades</a>
                     </div>
-                </div>
-                <div class="line-chart-shell" id="pnlChartShell">
-                    <svg id="pnlLineChart" viewBox="0 0 600 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Account equity curve chart">
-                        <defs>
-                            <clipPath id="pnlPositiveClip">
-                                <rect id="pnlPositiveClipRect" x="0" y="0" width="600" height="110"></rect>
-                            </clipPath>
-                            <clipPath id="pnlNegativeClip">
-                                <rect id="pnlNegativeClipRect" x="0" y="110" width="600" height="110"></rect>
-                            </clipPath>
-                        </defs>
-                        <g id="pnlGrid"></g>
-                        <path id="pnlAreaPositive" class="chart-area positive" clip-path="url(#pnlPositiveClip)"></path>
-                        <path id="pnlAreaNegative" class="chart-area negative" clip-path="url(#pnlNegativeClip)"></path>
-                        <path id="pnlGlowPositive" class="chart-glow positive" clip-path="url(#pnlPositiveClip)"></path>
-                        <path id="pnlGlowNegative" class="chart-glow negative" clip-path="url(#pnlNegativeClip)"></path>
-                        <path id="pnlPathPositive" class="chart-path positive" clip-path="url(#pnlPositiveClip)"></path>
-                        <path id="pnlPathNegative" class="chart-path negative" clip-path="url(#pnlNegativeClip)"></path>
-                        <line id="pnlZeroLine" class="zero-line" x1="0" x2="600" y1="0" y2="0"></line>
-                        <g id="pnlYAxis"></g>
-                        <g id="pnlPoints"></g>
-                    </svg>
-                    <div id="pnlTooltip" class="pnl-tooltip" hidden></div>
-                </div>
-                <div id="pnlXAxis" class="chart-x-axis"></div>
-                <script id="pnlChartData" type="application/json">{{ chart_points|tojson }}</script>
-                <p class="summary">
-                    Overall account PnL:
-                    <strong class="{% if account_pnl_total > 0 %}good{% elif account_pnl_total < 0 %}bad{% endif %}">
-                        {% if account_pnl_total > 0 %}+{% endif %}${{ '%.2f'|format(account_pnl_total) }}
-                    </strong>
-                </p>
-            </article>
+                    <div class="table-controls">
+                        <div id="tradeFilters" class="filter-row">
+                            <select id="filterField" aria-label="Filter by">
+                                <option value="">No Filter</option>
+                                <option value="symbol">Symbol</option>
+                                <option value="strategy">Strategy</option>
+                                <option value="date">Date</option>
+                                <option value="side">Side</option>
+                                <option value="session">Session</option>
+                            </select>
 
-            <article class="panel insights-panel">
-                <div class="panel-head">
-                    <h2>Insights</h2>
-                    <span class="soft">Auto-generated</span>
-                </div>
-                <div class="insight-content">
-                    <p class="insight-title">{{ dashboard_insight.title }}</p>
-                    <p class="insight-body">{{ dashboard_insight.body }}</p>
-                </div>
-                <p class="insight-note">Refresh the dashboard for another insight.</p>
-            </article>
+                            <select id="symbolFilter" class="filter-value" aria-label="Choose symbol" hidden>
+                                <option value="">All Symbols</option>
+                            </select>
 
-            <article class="panel notes-panel">
-                <div class="panel-head">
-                    <h2>Weekly AI Review</h2>
-                    <span class="soft">Weekly Only</span>
-                </div>
-                <div class="insight-content session-ai-card">
-                    <p class="insight-title">
-                        {% if weekly_ai_review %}
-                        Latest Weekly Review
-                        {% else %}
-                        Waiting for Weekly Review
+                            <select id="strategyFilter" class="filter-value" aria-label="Choose strategy" hidden>
+                                <option value="">All Strategies</option>
+                            </select>
+
+                            <select id="dateFilter" class="filter-value" aria-label="Choose date" hidden>
+                                <option value="">All Dates</option>
+                            </select>
+
+                            <select id="sideFilter" class="filter-value" aria-label="Choose side" hidden>
+                                <option value="">All Sides</option>
+                                <option value="BUY">Buy</option>
+                                <option value="SELL">Sell</option>
+                            </select>
+
+                            <select id="sessionFilter" class="filter-value" aria-label="Choose session" hidden>
+                                <option value="">All Sessions</option>
+                            </select>
+                            <button id="applyFilters" class="ghost-btn" type="button">Apply</button>
+                            <button id="clearFilters" class="ghost-btn" type="button">Clear</button>
+                        </div>
+                        <div class="sort-wrap">
+                            <label for="tradeSort">Sort</label>
+                            <select id="tradeSort" aria-label="Sort trades">
+                                <option value="date_desc">Date (Newest)</option>
+                                <option value="date_asc">Date (Oldest)</option>
+                                <option value="pnl_desc">PnL (High-Low)</option>
+                                <option value="pnl_asc">PnL (Low-High)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="table-shell">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Symbol</th>
+                                    <th>Strategy</th>
+                                    <th>Side</th>
+                                    <th>PnL</th>
+                                    <th>Session</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if recent_trades %}
+                                {% for trade in recent_trades %}
+                                <tr
+                                    data-symbol="{{ trade.symbol }}"
+                                    data-strategy="{{ trade.trade_profile_label }}"
+                                    data-side="{{ trade.side }}"
+                                    data-date="{{ trade.date_value }}"
+                                    data-pnl="{{ trade.pnl if trade.pnl is not none else '' }}"
+                                    data-session="{{ trade.session_label }}"
+                                >
+                                    <td>{{ trade.date }}</td>
+                                    <td>{{ trade.symbol }}</td>
+                                    <td>{{ trade.trade_profile_label }}</td>
+                                    <td>
+                                        {% if trade.side == "SELL" %}
+                                        <span class="tag sell">Sell</span>
+                                        {% else %}
+                                        <span class="tag buy">Buy</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if trade.pnl is none %}
+                                        <span class="muted">-</span>
+                                        {% elif trade.pnl > 0 %}
+                                        <span class="good">+{{ '%.2f'|format(trade.pnl) }}</span>
+                                        {% elif trade.pnl < 0 %}
+                                        <span class="bad">{{ '%.2f'|format(trade.pnl) }}</span>
+                                        {% else %}
+                                        <span class="muted">0.00</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ trade.session_label }}</td>
+                                </tr>
+                                {% endfor %}
+                                {% else %}
+                                <tr class="empty-row">
+                                    <td colspan="6" class="muted">No trades yet. Add your first trade.</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+
+                <article class="panel week-panel">
+                    <div class="panel-head">
+                        <h2>Week on Week</h2>
+                        <span class="soft">Current vs Previous</span>
+                    </div>
+                    <div class="week-compare-grid">
+                        <article class="week-card">
+                            <p class="week-card-label">This Week</p>
+                            <p class="week-card-value {% if current_week_stats.net_pnl > 0 %}good{% elif current_week_stats.net_pnl < 0 %}bad{% endif %}">
+                                {% if current_week_stats.net_pnl > 0 %}+{% endif %}${{ '%.2f'|format(current_week_stats.net_pnl) }}
+                            </p>
+                            <p class="week-card-meta">
+                                {{ current_week_stats.trade_count }} trades
+                                {% if current_week_stats.win_rate is not none %}
+                                • {{ '%.1f'|format(current_week_stats.win_rate) }}% win
+                                {% endif %}
+                            </p>
+                        </article>
+                        <article class="week-card">
+                            <p class="week-card-label">Previous Week</p>
+                            <p class="week-card-value {% if previous_week_stats.net_pnl > 0 %}good{% elif previous_week_stats.net_pnl < 0 %}bad{% endif %}">
+                                {% if previous_week_stats.net_pnl > 0 %}+{% endif %}${{ '%.2f'|format(previous_week_stats.net_pnl) }}
+                            </p>
+                            <p class="week-card-meta">
+                                {{ previous_week_stats.trade_count }} trades
+                                {% if previous_week_stats.win_rate is not none %}
+                                • {{ '%.1f'|format(previous_week_stats.win_rate) }}% win
+                                {% endif %}
+                            </p>
+                        </article>
+                    </div>
+                    <div class="insight-content">
+                        <p class="insight-title">Comparison Insight</p>
+                        <p class="insight-body">{{ week_on_week_insight }}</p>
+                    </div>
+                </article>
+
+                <article class="panel sim-panel">
+                    <div class="panel-head">
+                        <h2>Simulated Trade Chart</h2>
+                        <span class="soon">Coming Soon</span>
+                    </div>
+                    <div class="sim-chart" aria-hidden="true">
+                        <div class="scanline"></div>
+                        <svg viewBox="0 0 600 220" role="img">
+                            <path d="M0 160 L60 148 L120 154 L180 134 L240 142 L300 102 L360 118 L420 86 L480 98 L540 78 L600 90" />
+                        </svg>
+                    </div>
+                    <p class="soft">Planned: per-trade replay with entry, SL, TP, and execution notes overlay.</p>
+                </article>
+            </div>
+
+            <div class="panel-column panel-column-side">
+                <article class="panel pnl-panel">
+                    <div class="panel-head">
+                        <h2>Equity Curve</h2>
+                        <div class="chart-range">
+                            <label for="equityRange">Range</label>
+                            <select id="equityRange" aria-label="Equity chart range">
+                                <option value="7" selected>7D</option>
+                                <option value="14">14D</option>
+                                <option value="21">21D</option>
+                                <option value="month">Month</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="line-chart-shell" id="pnlChartShell">
+                        <svg id="pnlLineChart" viewBox="0 0 600 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Account equity curve chart">
+                            <defs>
+                                <clipPath id="pnlPositiveClip">
+                                    <rect id="pnlPositiveClipRect" x="0" y="0" width="600" height="110"></rect>
+                                </clipPath>
+                                <clipPath id="pnlNegativeClip">
+                                    <rect id="pnlNegativeClipRect" x="0" y="110" width="600" height="110"></rect>
+                                </clipPath>
+                            </defs>
+                            <g id="pnlGrid"></g>
+                            <path id="pnlAreaPositive" class="chart-area positive" clip-path="url(#pnlPositiveClip)"></path>
+                            <path id="pnlAreaNegative" class="chart-area negative" clip-path="url(#pnlNegativeClip)"></path>
+                            <path id="pnlGlowPositive" class="chart-glow positive" clip-path="url(#pnlPositiveClip)"></path>
+                            <path id="pnlGlowNegative" class="chart-glow negative" clip-path="url(#pnlNegativeClip)"></path>
+                            <path id="pnlPathPositive" class="chart-path positive" clip-path="url(#pnlPositiveClip)"></path>
+                            <path id="pnlPathNegative" class="chart-path negative" clip-path="url(#pnlNegativeClip)"></path>
+                            <line id="pnlZeroLine" class="zero-line" x1="0" x2="600" y1="0" y2="0"></line>
+                            <g id="pnlYAxis"></g>
+                            <g id="pnlPoints"></g>
+                        </svg>
+                        <div id="pnlTooltip" class="pnl-tooltip" hidden></div>
+                    </div>
+                    <div id="pnlXAxis" class="chart-x-axis"></div>
+                    <script id="pnlChartData" type="application/json">{{ chart_points|tojson }}</script>
+                    <p class="summary">
+                        Overall account PnL:
+                        <strong class="{% if account_pnl_total > 0 %}good{% elif account_pnl_total < 0 %}bad{% endif %}">
+                            {% if account_pnl_total > 0 %}+{% endif %}${{ '%.2f'|format(account_pnl_total) }}
+                        </strong>
+                    </p>
+                </article>
+
+                <article class="panel notes-panel">
+                    <div class="panel-head">
+                        <h2>Weekly AI Review</h2>
+                        <span class="soft">Weekly Only</span>
+                    </div>
+                    <div class="insight-content session-ai-card">
+                        <p class="insight-title">
+                            {% if weekly_ai_review %}
+                            Latest Weekly Review
+                            {% else %}
+                            Waiting for Weekly Review
+                            {% endif %}
+                        </p>
+                        <p class="insight-body">
+                            {% if weekly_ai_review %}
+                            {{ weekly_ai_review.response_text }}
+                            {% else %}
+                            {{ weekly_ai_empty_message }}
+                            {% endif %}
+                        </p>
+                    </div>
+                    <p class="insight-note">
+                        This review uses the most recent eligible trade week on your active account, with older account history used as supporting context.
+                        {% if weekly_ai_period_label %}
+                        Reviewed trade week ending: {{ weekly_ai_period_label }}.
                         {% endif %}
                     </p>
-                    <p class="insight-body">
-                        {% if weekly_ai_review %}
-                        {{ weekly_ai_review.response_text }}
-                        {% else %}
-                        {{ weekly_ai_empty_message }}
-                        {% endif %}
-                    </p>
-                </div>
-                <p class="insight-note">
-                    This review uses the most recent eligible trade week on your active account, with older account history used as supporting context.
-                    {% if weekly_ai_period_label %}
-                    Reviewed trade week ending: {{ weekly_ai_period_label }}.
+                    {% if weekly_ai_generated_at_label %}
+                    <p class="insight-note">Latest generated: {{ weekly_ai_generated_at_label }}.</p>
                     {% endif %}
-                </p>
-                {% if weekly_ai_generated_at_label %}
-                <p class="insight-note">Latest generated: {{ weekly_ai_generated_at_label }}.</p>
-                {% endif %}
-                <p class="insight-note">NFA: For journaling and educational use only. This AI review is not financial or investment advice.</p>
-            </article>
+                    <p class="insight-note">NFA: For journaling and educational use only. This AI review is not financial or investment advice.</p>
+                </article>
 
-            <article class="panel sim-panel">
-                <div class="panel-head">
-                    <h2>Simulated Trade Chart</h2>
-                    <span class="soon">Coming Soon</span>
-                </div>
-                <div class="sim-chart" aria-hidden="true">
-                    <div class="scanline"></div>
-                    <svg viewBox="0 0 600 220" role="img">
-                        <path d="M0 160 L60 148 L120 154 L180 134 L240 142 L300 102 L360 118 L420 86 L480 98 L540 78 L600 90" />
-                    </svg>
-                </div>
-                <p class="soft">Planned: per-trade replay with entry, SL, TP, and execution notes overlay.</p>
-            </article>
+                <article class="panel sessions-panel">
+                    <div class="panel-head">
+                        <h2>Session Performance</h2>
+                        <span class="soft">Closed Trades</span>
+                    </div>
+                    {% if session_stats %}
+                    <div class="session-list">
+                        {% for session in session_stats %}
+                        <article class="session-row">
+                            <div>
+                                <p class="session-name">{{ session.name }}</p>
+                                <p class="session-meta">{{ session.count }} trades</p>
+                            </div>
+                            <div class="session-values">
+                                <span class="session-rate">
+                                    {% if session.win_rate is not none %}{{ '%.1f'|format(session.win_rate) }}% win{% else %}-{% endif %}
+                                </span>
+                                <span class="{% if session.net_pnl > 0 %}good{% elif session.net_pnl < 0 %}bad{% endif %}">
+                                    {% if session.net_pnl > 0 %}+{% endif %}${{ '%.2f'|format(session.net_pnl) }}
+                                </span>
+                            </div>
+                        </article>
+                        {% endfor %}
+                    </div>
+                    <p class="insight-note">Most active sessions on the current trade account.</p>
+                    {% else %}
+                    <div class="insight-content">
+                        <p class="insight-body">No closed trades yet, so session performance is still building.</p>
+                    </div>
+                    {% endif %}
+                </article>
+            </div>
         </section>
     </div>
 </section>
@@ -433,22 +479,43 @@
     .metric-note { margin: 0.35rem 0 0; font-size: 0.82rem;
         color: color-mix(in srgb, var(--muted) 90%, var(--ink));
         line-height: 1.45; }
+
+    .metric-split { display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.45rem;
+        margin-top: 0.5rem; }
+
+    .metric-chip { display: grid;
+        gap: 0.16rem;
+        padding: 0.55rem 0.65rem;
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent); }
+
+    .metric-chip-label { font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase; }
+
+    .metric-chip-value { font-size: 0.94rem;
+        font-weight: 800; }
 .bad { }
     .pip-note { display: block;
         margin-top: 0.12rem;
         font-size: 0.72rem;
         font-weight: 700; }
-
     .panel-grid { display: grid;
         grid-template-columns: 1.5fr 1fr;
         grid-template-areas:
             "trade pnl"
-            "trade insights"
             "trade notes"
-            "trade sim";
+            "week session"
+            "sim session";
         gap: 0.8rem;
         min-width: 0;
         align-items: start; }
+
+    .panel-column { display: contents; }
 
     .panel { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         border-radius: 18px;
@@ -467,7 +534,8 @@
     .trade-log .table-shell { flex: 1 1 auto;
         min-height: 0;
         overflow-y: auto;
-        overflow-x: auto; }
+        overflow-x: auto;
+        padding-left: 0.3rem; }
 
     .pnl-panel { grid-area: pnl;
         display: flex;
@@ -475,9 +543,13 @@
         height: clamp(340px, 54vh, 520px);
         min-height: 0; }
 
-    .insights-panel { grid-area: insights; }
+    .sessions-panel { grid-area: session; }
 
-    .notes-panel { grid-area: notes; }
+    .week-panel { grid-area: week; }
+
+    .notes-panel { grid-area: notes;
+        max-height: clamp(320px, 46vh, 420px);
+        overflow: auto; }
 
     .sim-panel { grid-area: sim; }
 
@@ -544,11 +616,19 @@
         border-collapse: collapse;
         min-width: 620px; }
 
+    .trade-log table { min-width: 560px; }
+
     th,
     td { text-align: left;
         padding: 0.52rem 0.45rem;
         border-bottom: 1px solid #e3ebe4;
         font-size: 0.84rem; }
+
+    .trade-log th:first-child,
+    .trade-log td:first-child { padding-left: 0.92rem; }
+
+    .trade-log th:last-child,
+    .trade-log td:last-child { padding-right: 0.85rem; }
 
     th { font-weight: 700;
         text-transform: uppercase;
@@ -728,6 +808,57 @@
         letter-spacing: 0.04em;
         font-weight: 700; }
 
+    .session-list { display: grid;
+        gap: 0.55rem; }
+
+    .session-row { display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.8rem;
+        padding: 0.65rem 0.75rem;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        background: color-mix(in srgb, var(--surface) 96%, transparent); }
+
+    .session-name,
+    .session-meta,
+    .week-card-label,
+    .week-card-meta { margin: 0; }
+
+    .session-name { font-weight: 800; }
+
+    .session-meta,
+    .week-card-meta { margin-top: 0.18rem;
+        font-size: 0.78rem;
+        color: color-mix(in srgb, var(--muted) 88%, var(--ink)); }
+
+    .session-values { display: grid;
+        justify-items: end;
+        gap: 0.14rem;
+        text-align: right; }
+
+    .session-rate { font-size: 0.78rem;
+        font-weight: 700; }
+
+    .week-compare-grid { display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.6rem;
+        margin-bottom: 0.7rem; }
+
+    .week-card { padding: 0.72rem 0.78rem;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        background: color-mix(in srgb, var(--surface) 96%, transparent); }
+
+    .week-card-label { font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase; }
+
+    .week-card-value { margin: 0.35rem 0 0;
+        font-size: 1.08rem;
+        font-weight: 800; }
+
     .sim-panel .soon { border: 1px solid #f0d799;
         padding: 0.2rem 0.5rem;
         border-radius: 999px;
@@ -777,13 +908,13 @@
         to { opacity: 1; transform: scale(1); } }
 
     @media (max-width: 1080px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-
         .panel-grid { grid-template-columns: 1fr;
             grid-template-areas:
                 "trade"
                 "pnl"
-                "insights"
                 "notes"
+                "session"
+                "week"
                 "sim"; }
 
         .trade-log,
@@ -809,6 +940,9 @@
         .panel-head { flex-wrap: wrap;
             align-items: flex-start; }
 
+        .metric-split,
+        .week-compare-grid { grid-template-columns: 1fr; }
+
         .table-shell { margin-inline: -0.1rem; }
 
         .trade-log .table-shell { max-height: min(52vh, 430px); } }
@@ -826,4 +960,5 @@
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/dashboard_page.js') }}"></script>
 {% endblock %}
+
 

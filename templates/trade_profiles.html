@@ -4,12 +4,12 @@
 <section class="dash-wrap">
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Trade Profiles</div>
+            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Strategies</div>
             <div class="head-row">
                 <div>
-                    <h1>Trade Profiles</h1>
+                    <h1>Strategies</h1>
                     <p class="welcome">Welcome, {{ username }}.</p>
-                    <p class="subtitle">Create and version the setups you want to attach to trades.</p>
+                    <p class="subtitle">Create and version the strategies you want to attach to trades.</p>
                 </div>
                 <div class="head-actions">
                     <a class="ghost-link" href="{{ url_for('trades') }}">Back to Trades</a>
@@ -21,7 +21,7 @@
         <section class="profile-grid">
             <article class="panel profile-list-panel">
                 <div class="panel-head">
-                    <h2>Profile Library</h2>
+                    <h2>Strategy Library</h2>
                     <span class="soft">{{ trade_profiles|length }} active</span>
                 </div>
                 {% if trade_profile_status and trade_profile_message %}
@@ -37,8 +37,8 @@
                                 <p class="profile-meta">v{{ profile.current_version_number }}</p>
                             </div>
                             <div class="profile-card-actions">
-                                <a href="{{ url_for('trade_profiles', edit=profile.pubkey) }}" class="edit-link">Edit</a>
-                                <form action="{{ url_for('archive_trade_profile', profile_pubkey=profile.pubkey) }}" method="post">
+                                <a href="{{ url_for('strategies', edit=profile.pubkey) }}" class="edit-link">Edit</a>
+                                <form action="{{ url_for('archive_strategy', profile_pubkey=profile.pubkey) }}" method="post">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="archive-btn">Archive</button>
                                 </form>
@@ -47,23 +47,23 @@
                         <p class="profile-description">{{ version.short_description if version and version.short_description else "No description added yet." }}</p>
                     </article>
                     {% else %}
-                    <p class="empty-copy">No trade profiles yet. Create your first one on the right.</p>
+                    <p class="empty-copy">No strategies yet. Create your first one on the right.</p>
                     {% endfor %}
                 </div>
             </article>
 
             <article class="panel profile-form-panel">
                 <div class="panel-head">
-                    <h2>{% if edit_target %}Edit Profile{% else %}New Profile{% endif %}</h2>
+                    <h2>{% if edit_target %}Edit Strategy{% else %}New Strategy{% endif %}</h2>
                     <span class="soft">{% if edit_target %}Creates new version{% else %}Version 1{% endif %}</span>
                 </div>
                 <form
-                    action="{% if edit_target %}{{ url_for('edit_trade_profile', profile_pubkey=edit_target.pubkey) }}{% else %}{{ url_for('trade_profiles') }}{% endif %}"
+                    action="{% if edit_target %}{{ url_for('edit_strategy', profile_pubkey=edit_target.pubkey) }}{% else %}{{ url_for('strategies') }}{% endif %}"
                     method="post"
                     class="profile-form"
                 >
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <label for="name">Profile Name</label>
+                    <label for="name">Strategy Name</label>
                     <input
                         id="name"
                         name="name"
@@ -74,7 +74,7 @@
                         required
                     >
 
-                    <label for="short_description">Short Description</label>
+                    <label for="short_description">Strategy Description</label>
                     <textarea
                         id="short_description"
                         name="short_description"
@@ -85,7 +85,7 @@
                     <div class="form-actions">
                         <button type="submit" class="submit-btn">{% if edit_target %}Save New Version{% else %}Create Profile{% endif %}</button>
                         {% if edit_target %}
-                        <a href="{{ url_for('trade_profiles') }}" class="ghost-link">Cancel</a>
+                        <a href="{{ url_for('strategies') }}" class="ghost-link">Cancel</a>
                         {% endif %}
                     </div>
                 </form>
@@ -95,9 +95,25 @@
 </section>
 
 <style>
+    .panel {
+        border-radius: 14px;
+        padding: 0.9rem;
+        min-width: 0;
+    }
+
+    h2 {
+        margin: 0;
+        font-size: 1rem;
+    }
+
     .profile-grid { display: grid;
         grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
         gap: 0.8rem; }
+
+    .profile-list-panel,
+    .profile-form-panel {
+        overflow: hidden;
+    }
 
     .profile-list,
     .profile-form { display: grid;
