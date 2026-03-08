@@ -28,6 +28,7 @@
     const bulkDeleteForm = document.querySelector(".bulk-delete-form");
     const selectVisibleTrades = document.getElementById("selectVisibleTrades");
     const deleteSelectedTrades = document.getElementById("deleteSelectedTrades");
+    const assignTradeProfileButton = document.getElementById("assignTradeProfileButton");
     const tradeCheckboxes = Array.from(document.querySelectorAll(".trade-select"));
 
     const table = document.querySelector(".trade-log table");
@@ -45,7 +46,7 @@
     const pairFilter = document.getElementById("pairFilter");
     const dateFilter = document.getElementById("dateFilter");
     const sideFilter = document.getElementById("sideFilter");
-    const statusFilter = document.getElementById("statusFilter");
+    const sessionFilter = document.getElementById("sessionFilter");
     const applyFiltersBtn = document.getElementById("applyFilters");
     const clearFiltersBtn = document.getElementById("clearFilters");
     const sortSelect = document.getElementById("tradeSort");
@@ -53,7 +54,7 @@
         pair: pairFilter,
         date: dateFilter,
         side: sideFilter,
-        status: statusFilter,
+        session: sessionFilter,
     };
 
     const noMatchRow = document.createElement("tr");
@@ -98,6 +99,11 @@
         unique(rows.map((row) => row.dataset.date)).sort((a, b) => b.localeCompare(a)),
         "All Dates"
     );
+    fillSelect(
+        sessionFilter,
+        unique(rows.map((row) => row.dataset.session)).sort(),
+        "All Sessions"
+    );
 
     const updateValueControl = () => {
         const active = filterField ? filterField.value : "";
@@ -109,7 +115,7 @@
 
     const getSortValue = (row, type) => {
         if (type === "date") {
-            return toDateMs(row.dataset.date) ?? -Infinity;
+            return toDateMs(row.dataset.openedAt) ?? -Infinity;
         }
         if (type === "pnl") {
             return toNumber(row.dataset.pnl) ?? -Infinity;
@@ -132,10 +138,17 @@
 
     const syncBulkDeleteState = () => {
         if (!deleteSelectedTrades) {
+            if (assignTradeProfileButton) {
+                const selectedCount = tradeCheckboxes.filter((input) => input.checked).length;
+                assignTradeProfileButton.disabled = selectedCount === 0;
+            }
             return;
         }
         const selectedCount = tradeCheckboxes.filter((input) => input.checked).length;
         deleteSelectedTrades.disabled = selectedCount === 0;
+        if (assignTradeProfileButton) {
+            assignTradeProfileButton.disabled = selectedCount === 0;
+        }
 
         if (!selectVisibleTrades) {
             return;
@@ -162,8 +175,8 @@
                 show = !rawValue || row.dataset.date === rawValue;
             } else if (filterType === "side") {
                 show = !filterValue || toUpper(row.dataset.side) === filterValue;
-            } else if (filterType === "status") {
-                show = !filterValue || toUpper(row.dataset.status) === filterValue;
+            } else if (filterType === "session") {
+                show = !filterValue || toUpper(row.dataset.session) === filterValue;
             }
 
             row.classList.toggle("hidden-row", !show);

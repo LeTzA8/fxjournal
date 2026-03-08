@@ -34,6 +34,8 @@ from models import (
     AIGeneratedResponse,
     Trade,
     TradeAccount,
+    TradeProfile,
+    TradeProfileVersion,
     User,
     db,
     generate_trade_account_pubkey,
@@ -45,7 +47,11 @@ from trading import (
     build_import_signature,
     calc_pnl_values,
     canonicalize_symbol,
+    classify_trading_session,
     derive_exit_price,
+    format_trade_price,
+    format_trade_size,
+    format_duration_minutes,
     format_trade_symbol,
     get_account_type_choices,
     get_timezone,
@@ -442,6 +448,145 @@ def build_unique_trade_account_pubkey(reserved_pubkeys=None):
             continue
         reserved.add(candidate)
         return candidate
+
+
+def build_unique_trade_profile_pubkey(reserved_pubkeys=None):
+    reserved = reserved_pubkeys if reserved_pubkeys is not None else set()
+    while True:
+        candidate = generate_trade_pubkey()
+        if candidate in reserved:
+            continue
+        exists = db.session.query(TradeProfile.id).filter_by(pubkey=candidate).first()
+        if exists:
+            continue
+        reserved.add(candidate)
+        return candidate
+
+
+def get_user_trade_profiles(user_id):
+    try:
+        return (
+            TradeProfile.query.filter_by(user_id=user_id, is_archived=False)
+            .order_by(TradeProfile.name.asc(), TradeProfile.id.asc())
+            .all()
+        )
+    except OperationalError:
+        db.session.rollback()
+        return []
+
+
+def get_trade_profile_version_snapshot(profile, version_number=None):
+    if profile is None:
+        return None
+    normalized_version = version_number or profile.current_version_number
+    version = (
+        TradeProfileVersion.query.filter_by(
+            trade_profile_id=profile.id,
+            version_number=normalized_version,
+        )
+        .order_by(TradeProfileVersion.id.desc())
+        .first()
+    )
+    if version is not None:
+        return version
+    return (
+        TradeProfileVersion.query.filter_by(trade_profile_id=profile.id)
+        .order_by(TradeProfileVersion.version_number.desc(), TradeProfileVersion.id.desc())
+        .first()
+    )
+
+
+def get_user_trade_profile_by_pubkey(user_id, profile_pubkey):
+    normalized_pubkey = str(profile_pubkey or "").strip()
+    if not normalized_pubkey:
+        return None
+    return TradeProfile.query.filter_by(
+        user_id=user_id,
+        pubkey=normalized_pubkey,
+        is_archived=False,
+    ).first()
+
+
+def resolve_trade_profile_form_state(user_id, trade=None):
+    attached_profile = getattr(trade, "trade_profile", None)
+    selected_profile_pubkey = ""
+    if attached_profile is not None:
+        selected_profile_pubkey = attached_profile.pubkey
+    return {
+        "trade_profile_options": get_user_trade_profiles(user_id),
+        "selected_trade_profile_pubkey": selected_profile_pubkey,
+    }
+
+
+def assign_trade_profile_to_trade(user_id, trade, profile_pubkey):
+    selected_profile = get_user_trade_profile_by_pubkey(user_id, profile_pubkey)
+    if not str(profile_pubkey or "").strip():
+        trade.trade_profile = None
+        trade.trade_profile_version = None
+        trade.trade_profile_id = None
+        trade.trade_profile_version_id = None
+        return
+    if selected_profile is None:
+        raise ValueError("Trade profile not found.")
+    current_version = get_trade_profile_version_snapshot(selected_profile)
+    if current_version is None:
+        raise ValueError("Trade profile has no version history.")
+    trade.trade_profile = selected_profile
+    trade.trade_profile_version = current_version
+
+
+def create_trade_profile(user_id, name, short_description=None):
+    normalized_name = str(name or "").strip()
+    if not normalized_name:
+        raise ValueError("Trade profile name is required.")
+    normalized_description = str(short_description or "").strip() or None
+    profile = TradeProfile(
+        pubkey=build_unique_trade_profile_pubkey(),
+        user_id=user_id,
+        name=normalized_name,
+        short_description=normalized_description,
+        current_version_number=1,
+    )
+    db.session.add(profile)
+    db.session.flush()
+    version = TradeProfileVersion(
+        trade_profile_id=profile.id,
+        version_number=1,
+        name=normalized_name,
+        short_description=normalized_description,
+    )
+    db.session.add(version)
+    db.session.flush()
+    return profile, version
+
+
+def update_trade_profile(profile, name, short_description=None):
+    normalized_name = str(name or "").strip()
+    if not normalized_name:
+        raise ValueError("Trade profile name is required.")
+    normalized_description = str(short_description or "").strip() or None
+    current_version = get_trade_profile_version_snapshot(profile)
+    if (
+        current_version is not None
+        and normalized_name == (current_version.name or "")
+        and normalized_description == current_version.short_description
+    ):
+        return current_version
+
+    next_version_number = max(int(profile.current_version_number or 0), 0) + 1
+    profile.name = normalized_name
+    profile.short_description = normalized_description
+    profile.current_version_number = next_version_number
+    profile.updated_at = datetime.utcnow()
+    version = TradeProfileVersion(
+        trade_profile_id=profile.id,
+        version_number=next_version_number,
+        name=normalized_name,
+        short_description=normalized_description,
+    )
+    db.session.add(version)
+    db.session.flush()
+    return version
 
 
 def delete_users_with_related_data(user_ids):
@@ -1946,25 +2091,63 @@ def trades():
 
     trade_rows = []
     size_label = get_trade_size_label(active_trade_account.account_type)
+    timezone_name = get_display_timezone_name()
     for trade in user_trades:
+        trade_account_type = get_trade_account_type(trade)
+        opened_at_local = to_display_timezone(trade.opened_at, timezone_name)
+        closed_at_local = to_display_timezone(trade.closed_at, timezone_name)
+        trade_profile = getattr(trade, "trade_profile", None)
+        trade_profile_version = getattr(trade, "trade_profile_version", None)
+        duration_minutes = None
+        if trade.opened_at is not None:
+            duration_end = trade.closed_at or datetime.utcnow()
+            if duration_end >= trade.opened_at:
+                duration_minutes = (duration_end - trade.opened_at).total_seconds() / 60.0
         trade_rows.append(
             {
                 "id": trade.id,
                 "pubkey": trade.pubkey,
+                "date_label": opened_at_local.strftime("%d %b %Y") if opened_at_local else "-",
                 "symbol": format_trade_symbol(trade),
+                "trade_profile_label": (
+                    trade_profile_version.name
+                    if trade_profile_version is not None
+                    else (trade_profile.name if trade_profile is not None else "-")
+                ),
                 "side": trade.side,
                 "entry_price": trade.entry_price,
+                "entry_price_display": format_trade_price(
+                    trade.entry_price,
+                    trade.symbol,
+                    instrument_type=trade_account_type,
+                    contract_code=trade.contract_code,
+                ),
                 "exit_price": trade.exit_price,
+                "exit_price_display": format_trade_price(
+                    trade.exit_price,
+                    trade.symbol,
+                    instrument_type=trade_account_type,
+                    contract_code=trade.contract_code,
+                ),
                 "lot_size": trade.lot_size,
+                "size_display": format_trade_size(trade.lot_size, trade_account_type),
                 "pnl": resolve_pnl(trade),
                 "pips": resolve_pips(trade),
                 "ticks": resolve_ticks(trade),
                 "opened_at": trade.opened_at,
+                "opened_at_value": opened_at_local.isoformat() if opened_at_local else "",
+                "opened_date_value": opened_at_local.strftime("%Y-%m-%d") if opened_at_local else "",
+                "closed_at": trade.closed_at,
+                "session_label": classify_trading_session(trade.opened_at) if trade.opened_at else "-",
+                "duration_label": format_duration_minutes(duration_minutes),
+                "is_running": trade.exit_price is None,
             }
         )
 
     batch_delete_status = request.args.get("batch_delete_status", "").strip().lower()
     batch_delete_message = request.args.get("batch_delete_message", "").strip()
+    batch_profile_status = request.args.get("batch_profile_status", "").strip().lower()
+    batch_profile_message = request.args.get("batch_profile_message", "").strip()
     manage_mode = request.args.get("manage", "").strip().lower() in {"1", "true", "yes", "on"}
     trade_account_status = request.args.get("trade_account_status", "").strip().lower()
     trade_account_message = request.args.get("trade_account_message", "").strip()
@@ -1972,6 +2155,10 @@ def trades():
         batch_delete_status = ""
     if not batch_delete_message:
         batch_delete_status = ""
+    if batch_profile_status not in {"success", "error", "info"}:
+        batch_profile_status = ""
+    if not batch_profile_message:
+        batch_profile_status = ""
     if trade_account_status not in {"success", "error", "info"}:
         trade_account_status = ""
     if not trade_account_message:
@@ -2012,8 +2199,11 @@ def trades():
         manage_mode=manage_mode,
         batch_delete_status=batch_delete_status,
         batch_delete_message=batch_delete_message,
+        batch_profile_status=batch_profile_status,
+        batch_profile_message=batch_profile_message,
         trade_account_status=trade_account_status,
         trade_account_message=trade_account_message,
+        trade_profile_options=get_user_trade_profiles(user_id),
     )
 
 
@@ -2081,6 +2271,92 @@ def bulk_delete_trades():
     )
 
 
+@app.route("/dashboard/trades/batch-profile", methods=["POST"])
+@limiter.limit(
+    "8 per minute",
+    methods=["POST"],
+    error_message="Too many batch profile updates. Please wait and try again.",
+)
+def batch_update_trade_profile():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    selected_pubkeys = [
+        value.strip()
+        for value in request.form.getlist("trade_pubkeys")
+        if value and value.strip()
+    ]
+    selected_profile_pubkey = request.form.get("trade_profile_pubkey", "").strip()
+
+    if not selected_pubkeys:
+        return redirect(
+            url_for(
+                "trades",
+                manage="1",
+                batch_profile_status="error",
+                batch_profile_message="Select at least one trade to update.",
+            )
+        )
+
+    try:
+        trades_to_update = (
+            Trade.query.filter(
+                Trade.user_id == user_id,
+                Trade.trade_account_id == active_trade_account.id,
+                Trade.pubkey.in_(selected_pubkeys),
+            ).all()
+        )
+        if not trades_to_update:
+            return redirect(
+                url_for(
+                    "trades",
+                    manage="1",
+                    batch_profile_status="info",
+                    batch_profile_message="No trades matched the selected rows.",
+                )
+            )
+
+        for trade in trades_to_update:
+            assign_trade_profile_to_trade(user_id, trade, selected_profile_pubkey)
+
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return redirect(
+            url_for(
+                "trades",
+                manage="1",
+                batch_profile_status="error",
+                batch_profile_message=str(exc),
+            )
+        )
+    except (OperationalError, IntegrityError):
+        db.session.rollback()
+        return redirect(
+            url_for(
+                "trades",
+                manage="1",
+                batch_profile_status="error",
+                batch_profile_message="Could not update the selected trade profiles right now.",
+            )
+        )
+
+    action_label = "cleared" if not selected_profile_pubkey else "updated"
+    return redirect(
+        url_for(
+            "trades",
+            manage="1",
+            batch_profile_status="success",
+            batch_profile_message=(
+                f"Trade profile {action_label} for {len(trades_to_update)} trade"
+                f"{'s' if len(trades_to_update) != 1 else ''}."
+            ),
+        )
+    )
+
+
 @app.route("/dashboard/trade-accounts")
 def trade_accounts():
     if not session.get("user_id"):
@@ -2140,6 +2416,150 @@ def trade_accounts():
         active_trade_account=active_trade_account,
         trade_account_status=trade_account_status,
         trade_account_message=trade_account_message,
+    )
+
+
+@app.route("/dashboard/trade-profiles", methods=["GET", "POST"])
+def trade_profiles():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    username = session.get("username", "User")
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        short_description = request.form.get("short_description", "").strip()
+        try:
+            create_trade_profile(user_id, name, short_description)
+            db.session.commit()
+            return redirect(
+                url_for(
+                    "trade_profiles",
+                    trade_profile_status="success",
+                    trade_profile_message="Trade profile created.",
+                )
+            )
+        except ValueError as exc:
+            db.session.rollback()
+            return redirect(
+                url_for(
+                    "trade_profiles",
+                    trade_profile_status="error",
+                    trade_profile_message=str(exc),
+                )
+            )
+        except (OperationalError, IntegrityError):
+            db.session.rollback()
+            return redirect(
+                url_for(
+                    "trade_profiles",
+                    trade_profile_status="error",
+                    trade_profile_message="Could not create the trade profile right now.",
+                )
+            )
+
+    profiles = get_user_trade_profiles(user_id)
+    edit_pubkey = request.args.get("edit", "").strip()
+    edit_target = next((profile for profile in profiles if profile.pubkey == edit_pubkey), None)
+    profile_versions = {}
+    for profile in profiles:
+        profile_versions[profile.id] = get_trade_profile_version_snapshot(profile)
+
+    trade_profile_status = request.args.get("trade_profile_status", "").strip().lower()
+    trade_profile_message = request.args.get("trade_profile_message", "").strip()
+    if trade_profile_status not in {"success", "error", "info"}:
+        trade_profile_status = ""
+    if not trade_profile_message:
+        trade_profile_status = ""
+
+    return render_template(
+        "trade_profiles.html",
+        title="Trade Profiles | FX Journal",
+        username=username,
+        trade_profiles=profiles,
+        profile_versions=profile_versions,
+        edit_target=edit_target,
+        trade_profile_status=trade_profile_status,
+        trade_profile_message=trade_profile_message,
+    )
+
+
+@app.route("/dashboard/trade-profiles/<string:profile_pubkey>/edit", methods=["POST"])
+def edit_trade_profile(profile_pubkey):
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    profile = get_user_trade_profile_by_pubkey(user_id, profile_pubkey)
+    if profile is None:
+        return redirect(
+            url_for(
+                "trade_profiles",
+                trade_profile_status="error",
+                trade_profile_message="Trade profile not found.",
+            )
+        )
+
+    name = request.form.get("name", "").strip()
+    short_description = request.form.get("short_description", "").strip()
+    try:
+        update_trade_profile(profile, name, short_description)
+        db.session.commit()
+        return redirect(
+            url_for(
+                "trade_profiles",
+                trade_profile_status="success",
+                trade_profile_message="Trade profile updated and versioned.",
+            )
+        )
+    except ValueError as exc:
+        db.session.rollback()
+        return redirect(
+            url_for(
+                "trade_profiles",
+                edit=profile.pubkey,
+                trade_profile_status="error",
+                trade_profile_message=str(exc),
+            )
+        )
+    except (OperationalError, IntegrityError):
+        db.session.rollback()
+        return redirect(
+            url_for(
+                "trade_profiles",
+                edit=profile.pubkey,
+                trade_profile_status="error",
+                trade_profile_message="Could not update the trade profile right now.",
+            )
+        )
+
+
+@app.route("/dashboard/trade-profiles/<string:profile_pubkey>/archive", methods=["POST"])
+def archive_trade_profile(profile_pubkey):
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+
+    user_id = session["user_id"]
+    profile = get_user_trade_profile_by_pubkey(user_id, profile_pubkey)
+    if profile is None:
+        return redirect(
+            url_for(
+                "trade_profiles",
+                trade_profile_status="error",
+                trade_profile_message="Trade profile not found.",
+            )
+        )
+
+    profile.is_archived = True
+    profile.updated_at = datetime.utcnow()
+    db.session.commit()
+    return redirect(
+        url_for(
+            "trade_profiles",
+            trade_profile_status="success",
+            trade_profile_message="Trade profile archived.",
+        )
     )
 
 @app.route("/dashboard/trades/new", methods=["GET", "POST"])
@@ -2220,6 +2640,14 @@ def new_trade():
             opened_at=opened_at,
             closed_at=closed_at,
         )
+        try:
+            assign_trade_profile_to_trade(
+                user_id,
+                trade,
+                request.form.get("trade_profile_pubkey", ""),
+            )
+        except ValueError:
+            return redirect(url_for("new_trade"))
         db.session.add(trade)
         db.session.commit()
         return redirect(url_for("trades"))
@@ -2231,10 +2659,13 @@ def new_trade():
     if not import_message:
         import_status = ""
 
+    profile_form_state = resolve_trade_profile_form_state(user_id)
+
     return render_template(
         "trade_entry.html",
         title="New Trade | FX Journal",
         username=session.get("username", "User"),
+        active_trade_account_name=active_trade_account.name,
         symbol_options=get_symbol_options(active_trade_account.account_type),
         account_type=normalize_account_type(active_trade_account.account_type),
         size_label=get_trade_size_label(active_trade_account.account_type),
@@ -2246,6 +2677,8 @@ def new_trade():
         opened_at_value="",
         closed_at_value="",
         analytics_timezone=get_display_timezone_name(),
+        trade_profile_options=profile_form_state["trade_profile_options"],
+        selected_trade_profile_pubkey=profile_form_state["selected_trade_profile_pubkey"],
     )
 
 
@@ -2636,6 +3069,8 @@ def trade_detail(trade_pubkey):
     timezone_name = get_display_timezone_name()
     opened_at_local = to_display_timezone(trade.opened_at, timezone_name)
     closed_at_local = to_display_timezone(trade.closed_at, timezone_name)
+    trade_profile = getattr(trade, "trade_profile", None)
+    trade_profile_version = getattr(trade, "trade_profile_version", None)
 
     return render_template(
         "trade_detail.html",
@@ -2652,6 +3087,25 @@ def trade_detail(trade_pubkey):
         trade_closed_at_label=closed_at_local.strftime("%d %b %Y %H:%M") if closed_at_local else "-",
         trade_source_timezone=trade.source_timezone or "Unknown",
         analytics_timezone=timezone_name,
+        trade_profile_name=(
+            trade_profile_version.name
+            if trade_profile_version is not None
+            else (trade_profile.name if trade_profile is not None else "-")
+        ),
+        trade_profile_version_label=(
+            f"v{trade_profile_version.version_number}"
+            if trade_profile_version is not None
+            else "-"
+        ),
+        trade_profile_description=(
+            trade_profile_version.short_description
+            if trade_profile_version is not None and trade_profile_version.short_description
+            else (
+                trade_profile.short_description
+                if trade_profile is not None and trade_profile.short_description
+                else "No trade profile attached to this trade."
+            )
+        ),
     )
 
 
@@ -2733,14 +3187,25 @@ def edit_trade(trade_pubkey):
         trade.opened_at = opened_at
         trade.closed_at = closed_at
         trade.source_timezone = input_timezone_name
+        try:
+            assign_trade_profile_to_trade(
+                user_id,
+                trade,
+                request.form.get("trade_profile_pubkey", ""),
+            )
+        except ValueError:
+            return redirect(url_for("edit_trade", trade_pubkey=trade.pubkey))
 
         db.session.commit()
         return redirect(url_for("trades"))
+
+    profile_form_state = resolve_trade_profile_form_state(user_id, trade=trade)
 
     return render_template(
         "trade_entry.html",
         title="Edit Trade | FX Journal",
         username=session.get("username", "User"),
+        active_trade_account_name=trade_account.name,
         symbol_options=get_symbol_options(trade_account.account_type, trade.symbol),
         account_type=normalize_account_type(trade_account.account_type),
         size_label=get_trade_size_label(trade_account.account_type),
@@ -2750,6 +3215,8 @@ def edit_trade(trade_pubkey):
         opened_at_value=format_local_datetime_input(trade.opened_at),
         closed_at_value=format_local_datetime_input(trade.closed_at),
         analytics_timezone=get_display_timezone_name(),
+        trade_profile_options=profile_form_state["trade_profile_options"],
+        selected_trade_profile_pubkey=profile_form_state["selected_trade_profile_pubkey"],
     )
 
 

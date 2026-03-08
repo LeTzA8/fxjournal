@@ -107,6 +107,7 @@ WEEKDAY_NAMES = [
     "Saturday",
     "Sunday",
 ]
+MARKET_WEEKDAY_NAMES = WEEKDAY_NAMES[:5]
 
 SESSION_DEFINITIONS = (
     {"name": "Sydney", "zone": "Australia/Sydney", "start_hour": 7, "end_hour": 16},
@@ -339,6 +340,45 @@ def format_trade_symbol(trade):
     if contract_code:
         return f"{symbol} ({contract_code})" if symbol and contract_code != symbol else contract_code
     return symbol
+
+
+def _decimal_places(step):
+    text = f"{float(step):.8f}".rstrip("0").rstrip(".")
+    if "." not in text:
+        return 0
+    return len(text.split(".", 1)[1])
+
+
+def _trim_decimal_text(text):
+    return text.rstrip("0").rstrip(".")
+
+
+def format_trade_price(value, symbol, instrument_type="CFD", contract_code=None):
+    if value is None:
+        return "-"
+
+    account_type = normalize_account_type(instrument_type)
+    numeric_value = float(value)
+    if account_type == "FUTURES":
+        spec = get_futures_symbol_spec(symbol=symbol, contract_code=contract_code)
+        decimals = _decimal_places(spec["tick_size"]) if spec and spec["tick_size"] > 0 else 2
+        return f"{numeric_value:.{decimals}f}"
+
+    sym = canonicalize_symbol(symbol, "CFD")
+    if is_fx_pair(sym):
+        decimals = 3 if sym.endswith("JPY") else 5
+        return f"{numeric_value:.{decimals}f}"
+
+    return _trim_decimal_text(f"{numeric_value:.2f}")
+
+
+def format_trade_size(value, account_type):
+    if value is None:
+        return "-"
+
+    normalized_type = normalize_account_type(account_type)
+    decimals = 2 if normalized_type == "FUTURES" else 2
+    return _trim_decimal_text(f"{float(value):.{decimals}f}")
 
 
 def normalize_header_name(value):
@@ -1441,8 +1481,8 @@ def build_trade_analytics(
         )
 
     weekday_buckets = {
-        name: {"label": name[:3], "count": 0, "wins": 0, "pnl": 0.0}
-        for name in WEEKDAY_NAMES
+        name: {"label": name[:3], "count": 0, "wins": 0, "losses": 0, "breakeven": 0, "pnl": 0.0}
+        for name in MARKET_WEEKDAY_NAMES
     }
     pair_buckets = defaultdict(lambda: {"count": 0, "wins": 0, "pnl": 0.0, "gross_profit": 0.0, "gross_loss": 0.0})
     session_buckets = defaultdict(lambda: {"count": 0, "wins": 0, "pnl": 0.0})
@@ -1454,6 +1494,10 @@ def build_trade_analytics(
             weekday_bucket["pnl"] += record["pnl"]
             if record["pnl"] > 0:
                 weekday_bucket["wins"] += 1
+            elif record["pnl"] < 0:
+                weekday_bucket["losses"] += 1
+            else:
+                weekday_bucket["breakeven"] += 1
 
         pair_bucket = pair_buckets[record["symbol"] or "Unknown"]
         pair_bucket["count"] += 1
@@ -1471,15 +1515,19 @@ def build_trade_analytics(
             session_bucket["wins"] += 1
 
     weekday_stats = []
-    for name in WEEKDAY_NAMES:
+    for name in MARKET_WEEKDAY_NAMES:
         bucket = weekday_buckets[name]
+        count = bucket["count"]
         weekday_stats.append(
             {
                 "name": name,
                 "label": bucket["label"],
-                "count": bucket["count"],
-                "win_rate": (bucket["wins"] / bucket["count"] * 100.0) if bucket["count"] else None,
-                "avg_pnl": (bucket["pnl"] / bucket["count"]) if bucket["count"] else None,
+                "count": count,
+                "wins": bucket["wins"],
+                "losses": bucket["losses"],
+                "breakeven": bucket["breakeven"],
+                "win_rate": (bucket["wins"] / count * 100.0) if count else None,
+                "avg_pnl": (bucket["pnl"] / count) if count else None,
                 "net_pnl": bucket["pnl"],
             }
         )

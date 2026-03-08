@@ -248,8 +248,12 @@
             return;
         }
 
-        const maxAbs = Math.max(...cleaned.map((item) => Math.abs(Number(options.value(item)))), 1);
-        const zeroY = pad.t + plotH / 2;
+        const minValue = Number.isFinite(Number(options.min)) ? Number(options.min) : Math.min(...cleaned.map((item) => Number(options.value(item))), 0);
+        const maxValue = Number.isFinite(Number(options.max)) ? Number(options.max) : Math.max(...cleaned.map((item) => Number(options.value(item))), 0);
+        const baselineValue = Number.isFinite(Number(options.baseline)) ? Number(options.baseline) : 0;
+        const valueSpan = Math.max(maxValue - minValue, 1);
+        const yFor = (value) => pad.t + ((maxValue - value) / valueSpan) * plotH;
+        const zeroY = yFor(baselineValue);
         const colW = plotW / cleaned.length;
         svg.innerHTML = "";
 
@@ -264,17 +268,19 @@
 
         cleaned.forEach((item, index) => {
             const value = Number(options.value(item));
-            const barH = Math.max((Math.abs(value) / maxAbs) * (plotH / 2 - 14), 2);
+            const distanceFromBaseline = Math.abs(value - baselineValue);
+            const maxDistance = Math.max(Math.abs(maxValue - baselineValue), Math.abs(baselineValue - minValue), 1);
+            const barH = Math.max((distanceFromBaseline / maxDistance) * (plotH / 2 - 14), 2);
             const x = pad.l + index * colW + colW * 0.15;
             const barW = colW * 0.7;
-            const y = value >= 0 ? zeroY - barH : zeroY;
+            const y = value >= baselineValue ? zeroY - barH : zeroY;
             const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
             rect.setAttribute("x", String(x));
             rect.setAttribute("y", String(y));
             rect.setAttribute("width", String(barW));
             rect.setAttribute("height", String(barH));
             rect.setAttribute("rx", "8");
-            rect.setAttribute("fill", value >= 0 ? "rgba(34, 197, 94, 0.72)" : "rgba(239, 68, 68, 0.72)");
+            rect.setAttribute("fill", value >= baselineValue ? "rgba(34, 197, 94, 0.72)" : "rgba(239, 68, 68, 0.72)");
             svg.appendChild(rect);
 
             const caption = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -289,7 +295,7 @@
 
             const topLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
             topLabel.setAttribute("x", String(x + barW / 2));
-            topLabel.setAttribute("y", String(value >= 0 ? y - 6 : y + barH + 14));
+            topLabel.setAttribute("y", String(value >= baselineValue ? y - 6 : y + barH + 14));
             topLabel.setAttribute("text-anchor", "middle");
             topLabel.setAttribute("font-size", "10");
             topLabel.setAttribute("font-weight", "700");
@@ -302,13 +308,15 @@
     renderEquityChart();
     renderBarChart("weekdayChart", weekdayData, {
         value: (item) => item.win_rate ?? 0,
+        min: 0,
+        max: 100,
+        baseline: 50,
         label: (item) => item.label || item.name?.slice(0, 3) || "",
         caption: (item) => item.count ? `${Number(item.win_rate ?? 0).toFixed(0)}%` : "0",
     });
     renderBarChart("sessionChart", sessionData, {
         value: (item) => item.net_pnl ?? 0,
         label: (item) => item.name || "",
-        caption: (item) => `${Number(item.net_pnl ?? 0) > 0 ? "+" : ""}${Number(item.net_pnl ?? 0).toFixed(0)}`,
+        caption: (item) => `$${Number(item.net_pnl ?? 0) > 0 ? "+" : ""}${Number(item.net_pnl ?? 0).toFixed(0)}`,
     });
 })();
-

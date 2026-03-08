@@ -47,6 +47,9 @@ class User(db.Model):
     trade_accounts = db.relationship(
         "TradeAccount", backref="user", lazy=True, cascade="all, delete-orphan"
     )
+    trade_profiles = db.relationship(
+        "TradeProfile", backref="user", lazy=True, cascade="all, delete-orphan"
+    )
     trades = db.relationship(
         "Trade", backref="user", lazy=True, cascade="all, delete-orphan"
     )
@@ -105,6 +108,7 @@ class Trade(db.Model):
             "trade_account_id",
             "import_signature",
         ),
+        db.Index("ix_trades_user_trade_profile", "user_id", "trade_profile_id"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -133,8 +137,93 @@ class Trade(db.Model):
     source_timezone = db.Column(db.String(64), nullable=True)
     contract_code = db.Column(db.String(24), nullable=True)
     trade_note = db.Column(db.Text, nullable=True)
+    trade_profile_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trade_profiles.id"),
+        nullable=True,
+        index=True,
+    )
+    trade_profile_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trade_profile_versions.id"),
+        nullable=True,
+        index=True,
+    )
     opened_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     closed_at = db.Column(db.DateTime, nullable=True)
+    trade_profile = db.relationship(
+        "TradeProfile",
+        foreign_keys=[trade_profile_id],
+        backref=db.backref("trades", lazy=True),
+    )
+    trade_profile_version = db.relationship(
+        "TradeProfileVersion",
+        foreign_keys=[trade_profile_version_id],
+        backref=db.backref("attached_trades", lazy=True),
+    )
+
+
+class TradeProfile(db.Model):
+    __tablename__ = "trade_profiles"
+    __table_args__ = (
+        db.Index("ix_trade_profiles_user_name", "user_id", "name"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    pubkey = db.Column(
+        db.String(24),
+        unique=True,
+        nullable=False,
+        index=True,
+        default=generate_trade_pubkey,
+    )
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    name = db.Column(db.String(80), nullable=False)
+    short_description = db.Column(db.Text, nullable=True)
+    current_version_number = db.Column(db.Integer, nullable=False, default=1)
+    is_archived = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+    versions = db.relationship(
+        "TradeProfileVersion",
+        backref="trade_profile",
+        lazy=True,
+        cascade="all, delete-orphan",
+        order_by="TradeProfileVersion.version_number.asc()",
+    )
+
+
+class TradeProfileVersion(db.Model):
+    __tablename__ = "trade_profile_versions"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "trade_profile_id",
+            "version_number",
+            name="uq_trade_profile_versions_profile_version",
+        ),
+        db.Index(
+            "ix_trade_profile_versions_profile_created",
+            "trade_profile_id",
+            "created_at",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    trade_profile_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trade_profiles.id"),
+        nullable=False,
+        index=True,
+    )
+    version_number = db.Column(db.Integer, nullable=False)
+    name = db.Column(db.String(80), nullable=False)
+    short_description = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
 
 class CFDSymbol(db.Model):

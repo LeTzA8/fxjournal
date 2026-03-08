@@ -1226,6 +1226,10 @@
                     href="{{ url_for('trade_accounts') }}"
                     class="site-nav-link{% if request.endpoint == 'trade_accounts' %} active{% endif %}"
                 >Trade Accounts</a>
+                <a
+                    href="{{ url_for('trade_profiles') }}"
+                    class="site-nav-link{% if request.endpoint in ['trade_profiles', 'edit_trade_profile', 'archive_trade_profile'] %} active{% endif %}"
+                >Trade Profiles</a>
                 {% if is_admin_user %}
                 <a
                     href="{{ url_for('admin_signup_users') }}"

@@ -35,6 +35,7 @@
 
                 <form action="{{ form_action }}" method="post" class="trade-form" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <p class="field-help">Active trade account: <strong>{{ active_trade_account_name }}</strong></p>
                     <p class="field-help">Active account type: <strong>{{ "Futures" if account_type == "FUTURES" else "CFD" }}</strong></p>
 
                     <label for="symbol">Symbol</label>
@@ -81,6 +82,17 @@
                     <label for="closed_at">Closed At</label>
                     <input id="closed_at" name="closed_at" type="datetime-local" value="{{ closed_at_value }}">
                     <p class="field-help">Times are interpreted in {{ analytics_timezone }} and stored in UTC for analytics.</p>
+
+                    <label for="trade_profile_pubkey">Trade Profile</label>
+                    <select id="trade_profile_pubkey" name="trade_profile_pubkey">
+                        <option value="">No profile attached</option>
+                        {% for profile in trade_profile_options %}
+                        <option value="{{ profile.pubkey }}" {% if selected_trade_profile_pubkey == profile.pubkey %}selected{% endif %}>
+                            {{ profile.name }} (v{{ profile.current_version_number }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <p class="field-help">Trade profiles are managed separately. <a href="{{ url_for('trade_profiles') }}">Open Trade Profiles</a>.</p>
 
                     <label for="trade_note">Trade Note</label>
                     <textarea id="trade_note" name="trade_note" rows="4" placeholder="Why you took this setup, mistakes, execution notes...">{{ trade.trade_note if trade and trade.trade_note else '' }}</textarea>
@@ -145,7 +157,7 @@
                             </div>
                             <div>
                                 <dt>Active Account</dt>
-                                <dd>{{ "Futures" if account_type == "FUTURES" else "CFD" }}</dd>
+                                <dd>{{ active_trade_account_name }} ({{ "Futures" if account_type == "FUTURES" else "CFD" }})</dd>
                             </div>
                             <div>
                                 <dt>Validation</dt>
@@ -366,9 +378,6 @@
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/trade_import.js') }}"></script>
 {% endblock %}
-
-
-
 
 
 

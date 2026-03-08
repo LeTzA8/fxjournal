@@ -67,7 +67,7 @@
                 <p class="kpi-label">Expectancy</p>
                 <p class="kpi-value {% if summary.expectancy and summary.expectancy > 0 %}good{% elif summary.expectancy and summary.expectancy < 0 %}bad{% endif %}">
                     {% if summary.expectancy is not none %}
-                    {{ '%+.2f'|format(summary.expectancy) }}
+                    ${{ '%+.2f'|format(summary.expectancy) }}
                     {% else %}
                     -
                     {% endif %}
@@ -250,7 +250,7 @@
                 <div class="panel-head">
                     <div>
                         <h2>Win Rate By Day</h2>
-                        <p class="panel-copy">Each bar uses your local analytics timezone.</p>
+                        <p class="panel-copy">The center line is 50%. Days above 50% are favorable; days below 50% skew loss-heavy.</p>
                     </div>
                 </div>
                 <div class="mini-chart-shell">
@@ -302,7 +302,7 @@
                                 <td>{{ pair.count }}</td>
                                 <td>{% if pair.win_rate is not none %}{{ '%.1f'|format(pair.win_rate) }}%{% else %}-{% endif %}</td>
                                 <td class="{% if pair.expectancy and pair.expectancy > 0 %}good{% elif pair.expectancy and pair.expectancy < 0 %}bad{% endif %}">
-                                    {% if pair.expectancy is not none %}{{ '%+.2f'|format(pair.expectancy) }}{% else %}-{% endif %}
+                                    {% if pair.expectancy is not none %}${{ '%+.2f'|format(pair.expectancy) }}{% else %}-{% endif %}
                                 </td>
                                 <td class="{% if pair.net_pnl > 0 %}good{% elif pair.net_pnl < 0 %}bad{% endif %}">
                                     {{ '%+.2f'|format(pair.net_pnl) }}
@@ -338,7 +338,9 @@
                             <tr>
                                 <td>{{ weekday.name }}</td>
                                 <td>{{ weekday.count }}</td>
-                                <td>{% if weekday.win_rate is not none %}{{ '%.1f'|format(weekday.win_rate) }}%{% else %}-{% endif %}</td>
+                                <td class="{% if weekday.win_rate and weekday.win_rate > 50 %}good{% elif weekday.win_rate is not none and weekday.win_rate < 50 %}bad{% endif %}">
+                                    {% if weekday.win_rate is not none %}{{ '%.1f'|format(weekday.win_rate) }}%{% else %}-{% endif %}
+                                </td>
                                 <td class="{% if weekday.avg_pnl and weekday.avg_pnl > 0 %}good{% elif weekday.avg_pnl and weekday.avg_pnl < 0 %}bad{% endif %}">
                                     {% if weekday.avg_pnl is not none %}{{ '%+.2f'|format(weekday.avg_pnl) }}{% else %}-{% endif %}
                                 </td>
@@ -380,10 +382,10 @@
                                 <td>{{ session_stat.count }}</td>
                                 <td>{% if session_stat.win_rate is not none %}{{ '%.1f'|format(session_stat.win_rate) }}%{% else %}-{% endif %}</td>
                                 <td class="{% if session_stat.expectancy and session_stat.expectancy > 0 %}good{% elif session_stat.expectancy and session_stat.expectancy < 0 %}bad{% endif %}">
-                                    {% if session_stat.expectancy is not none %}{{ '%+.2f'|format(session_stat.expectancy) }}{% else %}-{% endif %}
+                                    {% if session_stat.expectancy is not none %}${{ '%+.2f'|format(session_stat.expectancy) }}{% else %}-{% endif %}
                                 </td>
                                 <td class="{% if session_stat.net_pnl > 0 %}good{% elif session_stat.net_pnl < 0 %}bad{% endif %}">
-                                    {{ '%+.2f'|format(session_stat.net_pnl) }}
+                                    ${{ '%+.2f'|format(session_stat.net_pnl) }}
                                 </td>
                             </tr>
                             {% endfor %}
@@ -392,50 +394,6 @@
                 </div>
             </article>
 
-            <article class="panel history-panel">
-                <div class="panel-head">
-                    <div>
-                        <h2>Closed Trade History</h2>
-                        <p class="panel-copy">Recent closed trades with timing, session classification, and duration.</p>
-                    </div>
-                </div>
-                <div class="table-shell analytics-table-shell">
-                    <table class="analytics-table">
-                        <thead>
-                            <tr>
-                                <th>Pair</th>
-                                <th>Side</th>
-                                <th>Opened</th>
-                                <th>Session</th>
-                                <th>Duration</th>
-                                <th>Pips</th>
-                                <th>PnL</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for record in analytics.closed_records|reverse %}
-                            <tr>
-                                <td>{{ record.symbol }}</td>
-                                <td>{{ record.side }}</td>
-                                <td>{{ record.opened_label }}</td>
-                                <td>{{ record.session }}</td>
-                                <td>{{ record.duration_label }}</td>
-                                <td>
-                                    {% if record.pips is not none %}
-                                    {{ '%+.1f'|format(record.pips) }}
-                                    {% else %}
-                                    -
-                                    {% endif %}
-                                </td>
-                                <td class="{% if record.pnl > 0 %}good{% elif record.pnl < 0 %}bad{% endif %}">
-                                    {{ '%+.2f'|format(record.pnl) }}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </article>
         </section>
         {% endif %}
     </div>
@@ -634,8 +592,7 @@
         align-items: start;
     }
 
-    .equity-panel,
-    .history-panel {
+    .equity-panel {
         grid-column: 1 / -1;
     }
 
@@ -989,7 +946,3 @@
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/analytics_page.js') }}"></script>
 {% endblock %}
-
-
-
-

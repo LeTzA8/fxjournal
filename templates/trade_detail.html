@@ -69,6 +69,15 @@
                     <label for="source_timezone">Source Timezone</label>
                     <input id="source_timezone" type="text" value="{{ trade_source_timezone }}" readonly>
 
+                    <label for="trade_profile_name">Trade Profile</label>
+                    <input id="trade_profile_name" type="text" value="{{ trade_profile_name }}" readonly>
+
+                    <label for="trade_profile_version">Profile Version</label>
+                    <input id="trade_profile_version" type="text" value="{{ trade_profile_version_label }}" readonly>
+
+                    <label for="trade_profile_description">Profile Description</label>
+                    <textarea id="trade_profile_description" rows="4" readonly>{{ trade_profile_description }}</textarea>
+
                     <label for="trade_note">Trade Note</label>
                     <textarea id="trade_note" rows="5" readonly>{{ trade.trade_note if trade and trade.trade_note else 'No note added for this trade yet.' }}</textarea>
                 </form>
