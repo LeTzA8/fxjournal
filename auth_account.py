@@ -1063,13 +1063,17 @@ def register_public_auth_routes(
         if not user:
             return build_admin_redirect("users", "User not found.", "error")
 
+        current_status = normalize_signup_status(user.signup_status)
+        if current_status == SIGNUP_STATUS_APPROVED:
+            return build_admin_redirect("users", "That user is already approved.", "info")
+
         user.signup_status = SIGNUP_STATUS_APPROVED
         user.approved_at = datetime.utcnow()
         user.approved_by_user_id = admin_user.id
         db.session.commit()
         return build_admin_redirect(
             "users",
-            f"Approved {user.username}.",
+            f"{'Reactivated' if current_status in {SIGNUP_STATUS_REJECTED, SIGNUP_STATUS_SUSPENDED} else 'Approved'} {user.username}.",
             "success",
         )
 
@@ -1086,6 +1090,14 @@ def register_public_auth_routes(
         if user.id == admin_user.id:
             return build_admin_redirect("users", "You cannot reject your own account.", "error")
 
+        current_status = normalize_signup_status(user.signup_status)
+        if current_status != SIGNUP_STATUS_PENDING:
+            return build_admin_redirect(
+                "users",
+                "Only pending signups can be rejected. Approved accounts should be suspended instead.",
+                "error",
+            )
+
         user.signup_status = SIGNUP_STATUS_REJECTED
         user.approved_at = None
         user.approved_by_user_id = None
@@ -1093,6 +1105,37 @@ def register_public_auth_routes(
         return build_admin_redirect(
             "users",
             f"Rejected {user.username}.",
+            "info",
+        )
+
+    @app.route("/dashboard/admin/access/users/<int:user_id>/suspend", methods=["POST"])
+    def admin_signup_suspend_user(user_id):
+        admin_user = require_root_admin_user()
+        if admin_user is None:
+            return redirect(url_for("login"))
+
+        user = User.query.filter_by(id=user_id).first()
+        if not user:
+            return build_admin_redirect("users", "User not found.", "error")
+
+        if user.id == admin_user.id:
+            return build_admin_redirect("users", "You cannot suspend your own account.", "error")
+
+        current_status = normalize_signup_status(user.signup_status)
+        if current_status != SIGNUP_STATUS_APPROVED:
+            return build_admin_redirect(
+                "users",
+                "Only approved accounts can be suspended.",
+                "error",
+            )
+
+        user.signup_status = SIGNUP_STATUS_SUSPENDED
+        user.approved_at = None
+        user.approved_by_user_id = None
+        db.session.commit()
+        return build_admin_redirect(
+            "users",
+            f"Suspended {user.username}.",
             "info",
         )
 

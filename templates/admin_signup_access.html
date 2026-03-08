@@ -179,19 +179,29 @@
                                 <td>
                                     {% if is_root_admin %}
                                     <div class="inline-actions">
-                                        {% if user.signup_status != 'approved' %}
+                                        {% if user.signup_status == 'pending' %}
                                         <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="submit-btn">Approve</button>
                                         </form>
-                                        {% endif %}
-                                        {% if user.signup_status != 'rejected' %}
                                         <form action="{{ url_for('admin_signup_reject_user', user_id=user.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="ghost-btn danger-btn">Reject</button>
                                         </form>
                                         {% endif %}
-                                        {% if not is_root_email %}
+                                        {% if user.signup_status == 'approved' %}
+                                        <form action="{{ url_for('admin_signup_suspend_user', user_id=user.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="ghost-btn danger-btn">Suspend</button>
+                                        </form>
+                                        {% endif %}
+                                        {% if user.signup_status in ['rejected', 'suspended'] %}
+                                        <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="submit-btn">Reactivate</button>
+                                        </form>
+                                        {% endif %}
+                                        {% if user.signup_status == 'approved' and not is_root_email %}
                                         <form action="{{ url_for('admin_signup_toggle_user_admin', user_id=user.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="ghost-btn">{{ "Remove Admin" if user.is_admin else "Grant Admin" }}</button>
