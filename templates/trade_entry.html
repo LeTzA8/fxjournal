@@ -33,7 +33,7 @@
                     <span class="soft">{{ "Futures" if account_type == "FUTURES" else "CFD" }} Manual Input</span>
                 </div>
 
-                <form action="{{ form_action }}" method="post" class="trade-form">
+                <form action="{{ form_action }}" method="post" class="trade-form" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <p class="field-help">Active account type: <strong>{{ "Futures" if account_type == "FUTURES" else "CFD" }}</strong></p>
 
@@ -110,7 +110,7 @@
                 <p class="import-alert {{ import_status }}">{{ import_message }}</p>
                 {% endif %}
 
-                <form action="{{ url_for('import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form">
+                <form action="{{ url_for('import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook" }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label for="mt5_file">{% if account_type == "FUTURES" %}Tradovate Performance File{% else %}MT5 Report File{% endif %}</label>
                     <div id="mt5Dropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload trade import file" aria-controls="mt5_file">
@@ -427,192 +427,14 @@
         .trade-form input[type="date"] { font-size: 16px; } }
 </style>
 
-<script>
-(() => {
-    const dropzone = document.getElementById("mt5Dropzone");
-    const fileInput = document.getElementById("mt5_file");
-    const fileName = document.getElementById("mt5FileName");
-    const importProfile = document.getElementById("importProfile");
-    const platformValue = document.getElementById("importPlatformValue");
-    const marketValue = document.getElementById("importMarketValue");
-    const validationValue = document.getElementById("importValidationValue");
-    const submitButton = document.querySelector(".import-form .submit-btn");
-    if (!dropzone || !fileInput || !fileName || !importProfile || !platformValue || !marketValue || !validationValue || !submitButton) {
-        return;
-    }
-
-    const setFileName = (file) => {
-        fileName.textContent = file ? `Selected: ${file.name}` : "";
-    };
-
-    const setInvalid = (message) => {
-        fileInput.setCustomValidity(message || "");
-        if (message) {
-            fileInput.reportValidity();
-        }
-    };
-
-    const activeMarketType = {{ ("Futures" if account_type == "FUTURES" else "CFD") | tojson }};
-    const expectedUploadLabel = {{ ("Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook") | tojson }};
-    const tradovateHeaders = [
-        "symbol",
-        "buyFillId",
-        "sellFillId",
-        "qty",
-        "buyPrice",
-        "sellPrice",
-        "pnl",
-        "boughtTimestamp",
-        "soldTimestamp",
-    ];
-    const parseCsvHeader = (text) => {
-        const lines = String(text || "").split(/\r?\n/).filter((line) => line.trim());
-        if (!lines.length) {
-            return [];
-        }
-        return lines[0].split(",").map((part) => part.trim());
-    };
-    const looksLikeZipWorkbook = async (file) => {
-        try {
-            const bytes = new Uint8Array(await file.slice(0, 4).arrayBuffer());
-            return bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4B;
-        } catch {
-            return false;
-        }
-    };
-    const detectProfileFromFile = async (file) => {
-        if (!file) {
-            return null;
-        }
-
-        try {
-            const textSample = await file.slice(0, 8192).text();
-            const csvHeader = parseCsvHeader(textSample);
-            if (csvHeader.length && tradovateHeaders.every((header) => csvHeader.includes(header))) {
-                return { platform: "Tradovate", market: "Futures" };
-            }
-        } catch {
-            // Fall through to workbook detection.
-        }
-
-        if (await looksLikeZipWorkbook(file)) {
-            return { platform: "MetaTrader 5", market: "CFD" };
-        }
-
-        return null;
-    };
-    const setImportProfile = (file, detectedProfile, isValid) => {
-        if (!file || !detectedProfile) {
-            importProfile.hidden = true;
-            importProfile.classList.remove("valid", "invalid");
-            platformValue.textContent = "-";
-            marketValue.textContent = "-";
-            validationValue.textContent = "Waiting for file";
-            submitButton.disabled = true;
-            return;
-        }
-
-        importProfile.hidden = false;
-        importProfile.classList.toggle("valid", Boolean(isValid));
-        importProfile.classList.toggle("invalid", !isValid);
-        platformValue.textContent = detectedProfile.platform;
-        marketValue.textContent = detectedProfile.market;
-        validationValue.textContent = isValid
-            ? `Matches active ${activeMarketType} account`
-            : `Blocked: ${detectedProfile.market} file does not match active ${activeMarketType} account`;
-        submitButton.disabled = !isValid;
-    };
-
-    fileInput.addEventListener("change", async () => {
-        const file = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
-        if (!file) {
-            setFileName(null);
-            setInvalid("");
-            setImportProfile(null, null, false);
-            return;
-        }
-        submitButton.disabled = true;
-        const detectedProfile = await detectProfileFromFile(file);
-        if (!detectedProfile) {
-            setFileName(file);
-            fileInput.value = "";
-            setInvalid(`Unsupported file. Please use a ${expectedUploadLabel} that matches this ${activeMarketType} account.`);
-            setImportProfile(null, null, false);
-            return;
-        }
-        const isValid = detectedProfile.market === activeMarketType;
-        if (!isValid) {
-            setFileName(file);
-            setInvalid(`This ${detectedProfile.market} file does not match the active ${activeMarketType} account.`);
-            setImportProfile(file, detectedProfile, false);
-            return;
-        }
-        setInvalid("");
-        setFileName(file);
-        setImportProfile(file, detectedProfile, true);
-    });
-
-    ["dragenter", "dragover"].forEach((eventName) => {
-        dropzone.addEventListener(eventName, (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            dropzone.classList.add("drag-over");
-        });
-    });
-
-    ["dragleave", "dragend", "drop"].forEach((eventName) => {
-        dropzone.addEventListener(eventName, (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            dropzone.classList.remove("drag-over");
-        });
-    });
-
-    dropzone.addEventListener("drop", async (event) => {
-        const file = event.dataTransfer && event.dataTransfer.files ? event.dataTransfer.files[0] : null;
-        if (!file) {
-            return;
-        }
-        submitButton.disabled = true;
-        const detectedProfile = await detectProfileFromFile(file);
-        if (!detectedProfile) {
-            fileInput.value = "";
-            setFileName(file);
-            setInvalid(`Unsupported file. Please use a ${expectedUploadLabel} that matches this ${activeMarketType} account.`);
-            setImportProfile(null, null, false);
-            return;
-        }
-        const isValid = detectedProfile.market === activeMarketType;
-        if (!isValid) {
-            fileInput.value = "";
-            setFileName(file);
-            setInvalid(`This ${detectedProfile.market} file does not match the active ${activeMarketType} account.`);
-            setImportProfile(file, detectedProfile, false);
-            return;
-        }
-        setInvalid("");
-        try {
-            const transfer = new DataTransfer();
-            transfer.items.add(file);
-            fileInput.files = transfer.files;
-        } catch {
-            // Some browsers may block programmatic assignment; fallback keeps filename hint.
-        }
-        setFileName(file);
-        setImportProfile(file, detectedProfile, true);
-    });
-
-    dropzone.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            fileInput.click();
-        }
-    });
-
-    setImportProfile(null, null, false);
-})();
-</script>
 {% endblock %}
+
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/trade_import.js') }}"></script>
+{% endblock %}
+
+
+
 
 
 

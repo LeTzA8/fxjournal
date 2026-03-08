@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -191,6 +192,7 @@ CONTACT_CATEGORY_CHOICES = (
     "General Enquiry",
     "Other",
 )
+CONTACT_EMAIL_RE = re.compile(r"^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 
 
 def get_trade_size_label(account_type):
@@ -1460,91 +1462,79 @@ def delete_all_trade_accounts():
 
 
 @app.route("/contact", methods=["GET", "POST"])
-@app.route("/feedback", methods=["GET", "POST"])
 @limiter.limit(
     "3 per minute;20 per day",
     methods=["POST"],
     error_message="Too many contact submissions. Please wait and try again later.",
 )
 def contact():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
+    user = None
+    if session.get("user_id"):
+        user = User.query.filter_by(id=session["user_id"]).first()
 
-    user = User.query.filter_by(id=session["user_id"]).first_or_404()
     contact_subject = ""
     contact_category = CONTACT_CATEGORY_CHOICES[0]
     contact_body = ""
+    contact_email = user.email if user else ""
+
+    def render_contact(status="", message="", code=200):
+        return (
+            render_template(
+                "contact.html",
+                title="Contact | FX Journal",
+                username=session.get("username", "User"),
+                contact_status=status,
+                contact_message=message,
+                contact_subject=contact_subject,
+                contact_category=contact_category,
+                contact_body=contact_body,
+                contact_email=contact_email,
+                contact_category_choices=CONTACT_CATEGORY_CHOICES,
+                account_user=user,
+            ),
+            code,
+        )
 
     if request.method == "POST":
         contact_subject = request.form.get("subject", "").strip()
         contact_category = request.form.get("category", "").strip()
         contact_body = request.form.get("message", "").strip()
+        contact_email = (request.form.get("contact_email", "").strip().lower() if not user else user.email)
 
         if contact_category not in CONTACT_CATEGORY_CHOICES:
-            return (
-                render_template(
-                    "contact.html",
-                    title="Contact | FX Journal",
-                    username=session.get("username", "User"),
-                    contact_status="error",
-                    contact_message="Please choose a valid contact category.",
-                    contact_subject=contact_subject,
-                    contact_category=contact_category or CONTACT_CATEGORY_CHOICES[0],
-                    contact_body=contact_body,
-                    contact_category_choices=CONTACT_CATEGORY_CHOICES,
-                    account_user=user,
-                ),
+            return render_contact(
+                "error",
+                "Please choose a valid contact category.",
                 400,
             )
 
-        if not contact_subject or not contact_body:
-            return (
-                render_template(
-                    "contact.html",
-                    title="Contact | FX Journal",
-                    username=session.get("username", "User"),
-                    contact_status="error",
-                    contact_message="Subject and message are required.",
-                    contact_subject=contact_subject,
-                    contact_category=contact_category,
-                    contact_body=contact_body,
-                    contact_category_choices=CONTACT_CATEGORY_CHOICES,
-                    account_user=user,
-                ),
+        if not contact_subject or not contact_body or (not user and not contact_email):
+            return render_contact(
+                "error",
+                "Email, subject, and message are required." if not user else "Subject and message are required.",
                 400,
             )
 
         if len(contact_subject) > 120:
-            return (
-                render_template(
-                    "contact.html",
-                    title="Contact | FX Journal",
-                    username=session.get("username", "User"),
-                    contact_status="error",
-                    contact_message="Subject must be 120 characters or less.",
-                    contact_subject=contact_subject,
-                    contact_category=contact_category,
-                    contact_body=contact_body,
-                    contact_category_choices=CONTACT_CATEGORY_CHOICES,
-                    account_user=user,
-                ),
+            return render_contact(
+                "error",
+                "Subject must be 120 characters or less.",
                 400,
             )
 
         if len(contact_body) > 5000:
-            return (
-                render_template(
-                    "contact.html",
-                    title="Contact | FX Journal",
-                    username=session.get("username", "User"),
-                    contact_status="error",
-                    contact_message="Message must be 5000 characters or less.",
-                    contact_subject=contact_subject,
-                    contact_category=contact_category,
-                    contact_body=contact_body,
-                    contact_category_choices=CONTACT_CATEGORY_CHOICES,
-                    account_user=user,
-                ),
+            return render_contact(
+                "error",
+                "Message must be 5000 characters or less.",
+                400,
+            )
+
+        if not user and (
+            len(contact_email) > 120 or not CONTACT_EMAIL_RE.match(contact_email)
+        ):
+            return render_contact(
+                "error",
+                "Enter a valid contact email address.",
                 400,
             )
 
@@ -1553,21 +1543,9 @@ def contact():
             app.logger.warning(
                 "Contact submit blocked: FEEDBACK_TO_EMAIL is not configured."
             )
-            return (
-                render_template(
-                    "contact.html",
-                    title="Contact | FX Journal",
-                    username=session.get("username", "User"),
-                    contact_status="error",
-                    contact_message=(
-                        "Contact email destination is not configured yet."
-                    ),
-                    contact_subject=contact_subject,
-                    contact_category=contact_category,
-                    contact_body=contact_body,
-                    contact_category_choices=CONTACT_CATEGORY_CHOICES,
-                    account_user=user,
-                ),
+            return render_contact(
+                "error",
+                "Contact email destination is not configured yet.",
                 500,
             )
 
@@ -1577,13 +1555,27 @@ def contact():
             or request.remote_addr
             or "-"
         )
+        submitted_user_id = request.form.get("contact_user_id", "").strip()
+        submitted_user_email = request.form.get("contact_user_email", "").strip().lower()
+        if user:
+            actor_name = user.username
+            actor_user_id = str(user.id)
+            actor_email = user.email
+            actor_kind = "authenticated"
+        else:
+            actor_name = "Guest"
+            actor_user_id = submitted_user_id or "-"
+            actor_email = contact_email
+            actor_kind = "guest"
         email_subject = f"[FX Journal Contact] [{contact_category}] {contact_subject}"
         email_body = (
             "New contact submission\n\n"
             f"Submitted at: {submitted_at}\n"
-            f"Username: {user.username}\n"
-            f"User ID: {user.id}\n"
-            f"Account email: {user.email}\n"
+            f"Contact type: {actor_kind}\n"
+            f"Name: {actor_name}\n"
+            f"User ID: {actor_user_id}\n"
+            f"Contact email: {actor_email}\n"
+            f"Submitted hidden user email: {submitted_user_email or '-'}\n"
             f"Client IP: {requester_ip}\n"
             f"Category: {contact_category}\n"
             f"Subject: {contact_subject}\n\n"
@@ -1626,11 +1618,9 @@ def contact():
 
     contact_status = (
         request.args.get("contact_status", "").strip().lower()
-        or request.args.get("feedback_status", "").strip().lower()
     )
     contact_message = (
         request.args.get("contact_message", "").strip()
-        or request.args.get("feedback_message", "").strip()
     )
     if contact_status not in {"success", "error", "info"}:
         contact_status = ""
@@ -1646,10 +1636,10 @@ def contact():
         contact_subject=contact_subject,
         contact_category=contact_category,
         contact_body=contact_body,
+        contact_email=contact_email,
         contact_category_choices=CONTACT_CATEGORY_CHOICES,
         account_user=user,
     )
-
 
 @app.route("/dashboard/trades")
 def trades():
@@ -2536,5 +2526,10 @@ def delete_import_batch():
 if __name__ == "__main__":
     debug_mode = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
     app.run(debug=debug_mode)
+
+
+
+
+
 
 

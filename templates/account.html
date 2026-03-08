@@ -89,7 +89,7 @@
                 <p class="account-alert {{ account_status }}">{{ account_message }}</p>
                 {% endif %}
 
-                <form action="/account" method="post" class="account-form">
+                <form action="/account" method="post" class="account-form" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                     <label for="username">Username</label>
@@ -137,7 +137,7 @@
                 <p class="helper-note danger-note">
                     This permanently deletes your user profile, all trade accounts, all trades, and all linked AI reviews. This action cannot be undone.
                 </p>
-                <form action="{{ url_for('delete_account') }}" method="post" class="delete-account-form">
+                <form action="{{ url_for('delete_account') }}" method="post" class="delete-account-form" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label for="delete_confirmation">
                         Type <strong>DELETE</strong> to confirm
@@ -402,3 +402,4 @@
 </style>
 
 {% endblock %}
+

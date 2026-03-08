@@ -96,7 +96,7 @@
                 </div>
 
                 {% if edit_target %}
-                <form action="{{ url_for('update_trade_account', trade_account_pubkey=edit_target.pubkey) }}" method="post" class="create-form">
+                <form action="{{ url_for('update_trade_account', trade_account_pubkey=edit_target.pubkey) }}" method="post" class="create-form" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
 
@@ -145,7 +145,7 @@
                     </div>
                 </form>
                 {% else %}
-                <form action="{{ url_for('create_trade_account') }}" method="post" class="create-form">
+                <form action="{{ url_for('create_trade_account') }}" method="post" class="create-form" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
 
@@ -208,7 +208,7 @@
                     <p class="helper-note danger-note">
                         This permanently deletes <strong>{{ edit_target.name }}</strong>, its {{ edit_target_trade_count }} trade{% if edit_target_trade_count != 1 %}s{% endif %}, and {{ edit_target_ai_review_count }} linked AI review{% if edit_target_ai_review_count != 1 %}s{% endif %}.
                     </p>
-                    <form action="{{ url_for('delete_trade_account', trade_account_pubkey=edit_target.pubkey) }}" method="post" class="danger-form">
+                    <form action="{{ url_for('delete_trade_account', trade_account_pubkey=edit_target.pubkey) }}" method="post" class="danger-form" data-themed-validation>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
 
@@ -246,7 +246,7 @@
                     <p class="helper-note danger-note">
                         This deletes all {{ account_rows|length }} trade account{% if account_rows|length != 1 %}s{% endif %}, all {{ total_trade_count }} trade{% if total_trade_count != 1 %}s{% endif %}, and all {{ total_ai_review_count }} linked AI review{% if total_ai_review_count != 1 %}s{% endif %}. A fresh Main Account will be created immediately after.
                     </p>
-                    <form action="{{ url_for('delete_all_trade_accounts') }}" method="post" class="danger-form">
+                    <form action="{{ url_for('delete_all_trade_accounts') }}" method="post" class="danger-form" data-themed-validation>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
 
@@ -527,3 +527,4 @@
     }
 </style>
 {% endblock %}
+
