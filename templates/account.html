@@ -163,60 +163,8 @@
     </div>
 </section>
 
-<style>main { max-width: none;
-        margin: 0;
-        padding: 0;
-        min-height: 100vh; }
-
-    .dash-wrap { position: relative;
-        min-height: 100vh;
-        width: 100%;
-        overflow: hidden;
-        isolation: isolate;
-        padding: clamp(0.9rem, 2vw, 1.5rem);
-        perspective: 1100px; }
-
-    .dash-content { position: relative;
-        z-index: 1; }
-.dash-head { margin-bottom: 1rem; }
-
-    .crumb { font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em; font-weight: 700;
-        margin-bottom: 0.7rem; }
-
-    .crumb a { text-decoration: none;
-        border-bottom: 1px solid transparent; }
-
-    .crumb a:hover { border-bottom-color: currentColor; }
-
-    .head-row { display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem; }
-
-    h1 { margin: 0;
-        font-size: clamp(1.35rem, 2.3vw, 2rem); }
-
-    .subtitle { margin: 0.38rem 0 0; }
-
-    .welcome { margin: 0.45rem 0 0; font-size: 0.95rem;
-        font-weight: 700; }
-
-    .head-actions { display: flex;
-        align-items: center;
-        gap: 0.55rem; }
-
-    .head-actions form { margin: 0; }
-
-    .ghost-link { border: 1px solid #c6d4ca;  border-radius: 10px;
-        padding: 0.45rem 0.75rem;
-        font-weight: 700;
-        font-size: 0.78rem;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
-        text-decoration: none; }
-.logout-btn { border: 1px solid #d3b1ae;  border-radius: 8px;
+<style>
+    .logout-btn { border: 1px solid #d3b1ae;  border-radius: 8px;
         padding: 0.46rem 0.7rem;
         font-weight: 700;
         font-size: 0.72rem;
@@ -228,22 +176,12 @@
         gap: 0.8rem;
         align-items: start; }
 
-    .panel { border: 1px solid #d4ded6;
-        border-radius: 14px;
+    .panel { border-radius: 14px;
         padding: 0.9rem;
-        box-shadow: 0 10px 28px rgba(15, 55, 36, 0.08);
         min-width: 0; }
-
-    .panel-head { display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.8rem;
-        margin-bottom: 0.75rem; }
 
     h2 { margin: 0;
         font-size: 1rem; }
-
-    .soft { font-size: 0.8rem; }
 
     .profile-list { margin: 0;
         display: grid;
@@ -348,12 +286,6 @@
         color: #e3a6a2;
     }
 
-    .account-alert { margin: 0 0 0.7rem;
-        border-radius: 10px;
-        padding: 0.58rem 0.72rem;
-        font-size: 0.82rem;
-        font-weight: 700; }
-
     .account-alert.success { border: 1px solid #b5dcc2; }
 
     .account-alert.info { border: 1px solid #bfd8e7; }
@@ -402,4 +334,3 @@
 </style>
 
 {% endblock %}
-

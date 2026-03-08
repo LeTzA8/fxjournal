@@ -1,3 +1,6 @@
+{% set inferred_body_class = "app-layout" if session.get("user_id") else "auth-layout" %}
+{% set page_body_class = body_class|default(inferred_body_class, true) %}
+{% set is_app_layout = page_body_class == "app-layout" %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -9,14 +12,7 @@
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='tab-logo.png', v='1') }}">
     <script>
         (() => {
-            const storageKey = "fxj-theme";
-            const forcedTheme = "dark";
-            try {
-                document.documentElement.setAttribute("data-theme", forcedTheme);
-                localStorage.setItem(storageKey, forcedTheme);
-            } catch (_error) {
-                document.documentElement.setAttribute("data-theme", forcedTheme);
-            }
+            document.documentElement.setAttribute("data-theme", "dark");
             document.documentElement.classList.add("js-reveal-pending");
         })();
     </script>
@@ -331,12 +327,12 @@
         }
 
         .site-header-inner {
-            width: min(1200px, 100%);
+            width: min(1280px, 100%);
             margin: 0 auto;
             min-height: 68px;
             padding: 0.48rem clamp(0.75rem, 1.4vw, 1.2rem);
             display: grid;
-            grid-template-columns: minmax(180px, 1fr) auto minmax(220px, 1fr);
+            grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(200px, 240px);
             align-items: center;
             gap: 0.9rem;
             flex-wrap: nowrap;
@@ -380,9 +376,12 @@
         .site-nav {
             display: inline-flex;
             align-items: center;
-            gap: 0.42rem;
+            gap: 0.34rem;
             flex-wrap: wrap;
             justify-self: center;
+            justify-content: center;
+            width: 100%;
+            min-width: 0;
         }
 
         .site-nav-link {
@@ -417,10 +416,26 @@
             margin-left: 0;
             flex-wrap: wrap;
             justify-self: end;
+            justify-content: flex-end;
         }
 
         .site-header-actions form {
             margin: 0;
+        }
+
+        .site-header-actions .site-nav-link {
+            background: color-mix(in srgb, var(--bad) 10%, var(--card));
+            color: color-mix(in srgb, var(--bad) 82%, white 18%);
+            border-color: color-mix(in srgb, var(--bad) 42%, var(--border));
+            box-shadow: 0 8px 18px rgba(239, 68, 68, 0.1);
+        }
+
+        .site-header-actions .site-nav-link:hover,
+        .site-header-actions .site-nav-link.active {
+            background: color-mix(in srgb, var(--bad) 16%, var(--card));
+            color: color-mix(in srgb, var(--bad) 86%, white 14%);
+            border-color: color-mix(in srgb, var(--bad) 48%, var(--border));
+            box-shadow: 0 8px 18px rgba(239, 68, 68, 0.14);
         }
 
         .header-account-link {
@@ -504,6 +519,118 @@
             padding: 0;
         }
 
+        body.app-layout .dash-wrap {
+            position: relative;
+            min-height: 100vh;
+            width: 100%;
+            overflow: hidden;
+            isolation: isolate;
+            padding: clamp(0.9rem, 2vw, 1.5rem);
+            perspective: 1100px;
+        }
+
+        body.app-layout .dash-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        body.app-layout .dash-head {
+            margin-bottom: 1rem;
+            padding: 1rem 1.05rem 1.02rem;
+            border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+            border-radius: 18px;
+            background: color-mix(in srgb, var(--card) 97%, transparent);
+            box-shadow: 0 14px 32px rgba(2, 6, 23, 0.16);
+        }
+
+        body.app-layout .head-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+        }
+
+        body.app-layout h1 {
+            margin: 0;
+            font-size: clamp(1.35rem, 2.3vw, 2rem);
+            color: var(--ink);
+        }
+
+        body.app-layout .subtitle {
+            margin: 0.38rem 0 0;
+        }
+
+        body.app-layout .welcome {
+            margin: 0.45rem 0 0;
+            font-size: 0.95rem;
+            font-weight: 700;
+        }
+
+        body.app-layout .ghost-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 38px;
+            border: 1px solid #c6d4ca;
+            border-radius: 10px;
+            padding: 0.45rem 0.75rem;
+            font-weight: 700;
+            font-size: 0.78rem;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            text-decoration: none;
+        }
+
+        body.app-layout .panel {
+            border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+            background: color-mix(in srgb, var(--card) 97%, transparent);
+            box-shadow: 0 14px 32px rgba(2, 6, 23, 0.16);
+        }
+
+        body.app-layout .panel-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.8rem;
+            margin-bottom: 0.75rem;
+        }
+
+        body.app-layout .soft {
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        body.app-layout .table-shell {
+            width: 100%;
+            max-width: 100%;
+            border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+            border-radius: 14px;
+            background: color-mix(in srgb, var(--surface) 96%, transparent);
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
+        }
+
+        body.app-layout .trade-log .table-shell {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: auto;
+        }
+
+        body.app-layout .account-alert,
+        body.app-layout .batch-alert,
+        body.app-layout .contact-alert,
+        body.app-layout .import-alert {
+            margin: 0 0 0.75rem;
+            border-radius: 10px;
+            padding: 0.58rem 0.72rem;
+            font-size: 0.82rem;
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }
+
         body.app-layout .theme-fab {
             display: none;
         }
@@ -556,7 +683,7 @@
             .site-brand { grid-area: brand; }
             .site-nav {
                 grid-area: nav;
-                justify-content: flex-start;
+                justify-content: center;
                 width: 100%;
             }
 
@@ -625,10 +752,14 @@
 
         .notice.success {
             border: 1px solid #9fcead;
+            background: color-mix(in srgb, var(--good) 10%, var(--card));
+            color: color-mix(in srgb, var(--ink) 86%, var(--good) 14%);
         }
 
         .notice.error {
             border: 1px solid #e1b0ad;
+            background: color-mix(in srgb, var(--bad) 10%, var(--card));
+            color: color-mix(in srgb, var(--ink) 84%, var(--bad) 16%);
         }
 
         .switch-link {
@@ -686,6 +817,9 @@
             font-weight: 700;
             letter-spacing: 0.01em;
             cursor: pointer;
+            color: color-mix(in srgb, var(--good) 84%, white 16%);
+            background: color-mix(in srgb, var(--good) 16%, var(--card));
+            box-shadow: 0 10px 22px rgba(34, 197, 94, 0.14);
             transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
         }
 
@@ -764,6 +898,182 @@
             color: var(--bad);
         }
 
+        body.app-layout .good,
+        body.auth-layout .good,
+        body.landing-layout .good {
+            color: var(--good) !important;
+        }
+
+        body.app-layout .bad,
+        body.auth-layout .bad,
+        body.landing-layout .bad {
+            color: var(--bad) !important;
+        }
+
+        body.app-layout .pip-note,
+        body.auth-layout .pip-note,
+        body.landing-layout .pip-note {
+            color: color-mix(in srgb, var(--muted) 90%, var(--ink));
+        }
+
+        body.app-layout .tag,
+        body.auth-layout .tag,
+        body.landing-layout .tag {
+            color: var(--ink);
+        }
+
+        body.app-layout .tag.buy,
+        body.auth-layout .tag.buy,
+        body.landing-layout .tag.buy {
+            border: 1px solid color-mix(in srgb, var(--good) 52%, var(--border));
+            background: color-mix(in srgb, var(--good) 16%, var(--surface));
+            color: color-mix(in srgb, var(--good) 82%, white 18%);
+        }
+
+        body.app-layout .tag.sell,
+        body.auth-layout .tag.sell,
+        body.landing-layout .tag.sell {
+            border: 1px solid color-mix(in srgb, var(--bad) 46%, var(--border));
+            background: color-mix(in srgb, var(--bad) 12%, var(--surface));
+            color: color-mix(in srgb, var(--bad) 82%, white 18%);
+        }
+
+        body.app-layout .submit-btn,
+        body.app-layout .trades-btn,
+        body.app-layout .new-trade-btn,
+        body.auth-layout .submit-btn,
+        body.landing-layout .submit-btn,
+        body.landing-layout .trades-btn,
+        body.landing-layout .new-trade-btn {
+            background: color-mix(in srgb, var(--good) 16%, var(--card));
+            color: color-mix(in srgb, var(--good) 84%, white 16%);
+            border-color: color-mix(in srgb, var(--good) 62%, var(--border));
+            box-shadow: 0 10px 22px rgba(34, 197, 94, 0.14);
+        }
+
+        body.app-layout .submit-btn:hover,
+        body.app-layout .trades-btn:hover,
+        body.app-layout .new-trade-btn:hover,
+        body.auth-layout .submit-btn:hover,
+        body.landing-layout .submit-btn:hover,
+        body.landing-layout .trades-btn:hover,
+        body.landing-layout .new-trade-btn:hover {
+            background: color-mix(in srgb, var(--good) 22%, var(--card));
+        }
+
+        body.app-layout .ghost-btn,
+        body.app-layout .ghost-link,
+        body.app-layout .edit-btn,
+        body.auth-layout .ghost-btn,
+        body.auth-layout .ghost-link,
+        body.landing-layout .ghost-btn,
+        body.landing-layout .ghost-link,
+        body.landing-layout .edit-btn {
+            background: color-mix(in srgb, var(--surface) 78%, transparent);
+            color: var(--ink);
+            border-color: color-mix(in srgb, var(--border) 84%, transparent);
+            box-shadow: 0 6px 14px rgba(2, 6, 23, 0.08);
+        }
+
+        body.app-layout .ghost-btn:hover,
+        body.app-layout .ghost-link:hover,
+        body.app-layout .edit-btn:hover,
+        body.auth-layout .ghost-btn:hover,
+        body.auth-layout .ghost-link:hover,
+        body.landing-layout .ghost-btn:hover,
+        body.landing-layout .ghost-link:hover,
+        body.landing-layout .edit-btn:hover {
+            background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+            border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+            color: var(--accent);
+        }
+
+        body.app-layout .account-btn,
+        body.app-layout .view-btn,
+        body.auth-layout .account-btn,
+        body.landing-layout .account-btn,
+        body.landing-layout .view-btn {
+            background: color-mix(in srgb, var(--accent) 12%, var(--card));
+            color: var(--accent);
+            border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+            box-shadow: 0 8px 18px rgba(79, 70, 229, 0.12);
+        }
+
+        body.app-layout .account-btn:hover,
+        body.app-layout .view-btn:hover,
+        body.auth-layout .account-btn:hover,
+        body.landing-layout .account-btn:hover,
+        body.landing-layout .view-btn:hover {
+            background: color-mix(in srgb, var(--accent) 18%, var(--card));
+        }
+
+        body.app-layout .logout-btn,
+        body.app-layout .danger-btn,
+        body.app-layout .manage-trades-btn,
+        body.app-layout .batch-delete-btn,
+        body.app-layout .batch-delete-arm-btn,
+        body.auth-layout .logout-btn,
+        body.auth-layout .danger-btn,
+        body.landing-layout .logout-btn,
+        body.landing-layout .danger-btn {
+            background: color-mix(in srgb, var(--bad) 10%, var(--card));
+            color: color-mix(in srgb, var(--bad) 82%, white 18%);
+            border-color: color-mix(in srgb, var(--bad) 42%, var(--border));
+            box-shadow: 0 8px 18px rgba(239, 68, 68, 0.1);
+        }
+
+        body.app-layout .logout-btn:hover,
+        body.app-layout .danger-btn:hover,
+        body.app-layout .manage-trades-btn:hover,
+        body.app-layout .batch-delete-btn:hover,
+        body.app-layout .batch-delete-arm-btn:hover,
+        body.auth-layout .logout-btn:hover,
+        body.auth-layout .danger-btn:hover,
+        body.landing-layout .logout-btn:hover,
+        body.landing-layout .danger-btn:hover {
+            background: color-mix(in srgb, var(--bad) 16%, var(--card));
+        }
+
+        body.app-layout .manage-trades-btn.is-active,
+        body.app-layout .batch-delete-arm-btn.is-armed,
+        body.app-layout .batch-delete-btn.is-armed {
+            background: color-mix(in srgb, var(--bad) 16%, var(--card));
+            border-color: color-mix(in srgb, var(--bad) 54%, var(--border));
+        }
+
+        body.app-layout .account-alert.success,
+        body.app-layout .batch-alert.success,
+        body.app-layout .contact-alert.success,
+        body.app-layout .import-alert.success,
+        body.auth-layout .contact-alert.success,
+        body.auth-layout .account-alert.success,
+        body.auth-layout .import-alert.success {
+            background: color-mix(in srgb, var(--good) 10%, var(--card));
+            color: color-mix(in srgb, var(--ink) 86%, var(--good) 14%);
+        }
+
+        body.app-layout .account-alert.info,
+        body.app-layout .batch-alert.info,
+        body.app-layout .contact-alert.info,
+        body.app-layout .import-alert.info,
+        body.auth-layout .contact-alert.info,
+        body.auth-layout .account-alert.info,
+        body.auth-layout .import-alert.info {
+            background: color-mix(in srgb, var(--accent) 10%, var(--card));
+            color: color-mix(in srgb, var(--ink) 86%, var(--accent) 14%);
+        }
+
+        body.app-layout .account-alert.error,
+        body.app-layout .batch-alert.error,
+        body.app-layout .contact-alert.error,
+        body.app-layout .import-alert.error,
+        body.auth-layout .contact-alert.error,
+        body.auth-layout .account-alert.error,
+        body.auth-layout .import-alert.error {
+            background: color-mix(in srgb, var(--bad) 10%, var(--card));
+            color: color-mix(in srgb, var(--ink) 84%, var(--bad) 16%);
+        }
+
         input.is-invalid,
         select.is-invalid,
         textarea.is-invalid {
@@ -808,6 +1118,72 @@
             }
         }
     </style>
+    {% block head_extra %}{% endblock %}
+</head>
+<body class="{{ page_body_class }}">
+    <canvas id="neonRibbonCanvas" class="neon-ribbon-canvas" aria-hidden="true"></canvas>
+
+    {% if is_app_layout %}
+    <header class="site-header">
+        <div class="site-header-inner">
+            <a href="{{ url_for('landing') }}" class="site-brand" aria-label="FX Journal home">
+                <img
+                    src="{{ url_for('static', filename='site-logo.png') }}"
+                    alt="FX Journal"
+                    class="site-brand-logo"
+                >
+                <span class="site-brand-text">FX Journal</span>
+            </a>
+            <nav class="site-nav" aria-label="Primary">
+                <a
+                    href="{{ url_for('home') }}"
+                    class="site-nav-link{% if request.endpoint == 'home' %} active{% endif %}"
+                >Dashboard</a>
+                <a
+                    href="{{ url_for('trades') }}"
+                    class="site-nav-link{% if request.endpoint in ['trades', 'new_trade', 'trade_detail', 'edit_trade'] %} active{% endif %}"
+                >Trades</a>
+                <a
+                    href="{{ url_for('analytics') }}"
+                    class="site-nav-link{% if request.endpoint == 'analytics' %} active{% endif %}"
+                >Analytics</a>
+                <a
+                    href="{{ url_for('trade_accounts') }}"
+                    class="site-nav-link{% if request.endpoint == 'trade_accounts' %} active{% endif %}"
+                >Trade Accounts</a>
+                <a
+                    href="{{ url_for('contact') }}"
+                    class="site-nav-link{% if request.endpoint == 'contact' %} active{% endif %}"
+                >Contact</a>
+            </nav>
+            <div class="site-header-actions">
+                <a href="{{ url_for('account') }}" class="header-account-link">Account</a>
+                <form action="{{ url_for('logout') }}" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="site-nav-link">Log Out</button>
+                </form>
+            </div>
+        </div>
+    </header>
+    {% endif %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    {% if is_app_layout %}
+    <footer class="site-footer">
+        <div class="site-footer-inner">
+            <p class="site-footer-copy">FX Journal</p>
+            <nav class="site-footer-nav" aria-label="Footer">
+                <a href="{{ url_for('privacy_policy') }}">Privacy</a>
+                <a href="{{ url_for('terms_and_conditions') }}">Terms</a>
+                <a href="{{ url_for('contact') }}">Contact</a>
+            </nav>
+        </div>
+    </footer>
+    {% endif %}
+
     <script src="{{ url_for('static', filename='js/app_theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/equity_curve_shared.js') }}"></script>
     <script src="{{ url_for('static', filename='js/neon_ribbon.js') }}"></script>

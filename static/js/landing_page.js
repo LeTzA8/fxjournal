@@ -38,6 +38,7 @@
             span.setAttribute("aria-hidden", "true");
             span.style.setProperty("--word-index", String(index));
             span.style.setProperty("--word-base-delay", "80ms");
+            span.style.setProperty("--word-delay", `${80 + index * 40}ms`);
             fragment.appendChild(span);
             if (index < arr.length - 1) {
                 fragment.appendChild(document.createTextNode(" "));
@@ -140,61 +141,9 @@
         chartRoot.appendChild(fragment);
     };
 
-    const markReveal = (elements, baseDelay = 0, step = 80) => {
-        elements.forEach((el, index) => {
-            if (!el) {
-                return;
-            }
-            el.classList.add("landing-reveal");
-            el.dataset.revealDelay = String(baseDelay + index * step);
-        });
-    };
-
     splitHeroTitleWords();
     buildReplayChart();
     pauseConveyorIfNeeded();
-
-    const heroScope = document.querySelector(".landing-hero");
-    const featuresScope = document.getElementById("features");
-    const reviewsScope = document.getElementById("reviews");
-
-    if (heroScope) {
-        heroScope.setAttribute("data-reveal-scope", "");
-        heroScope.setAttribute("data-reveal-immediate", "");
-    }
-    if (featuresScope) {
-        featuresScope.setAttribute("data-reveal-scope", "");
-    }
-    if (reviewsScope) {
-        reviewsScope.setAttribute("data-reveal-scope", "");
-    }
-
-    const heroSequence = [
-        document.querySelector(".hero-badge"),
-        document.querySelector(".landing-hero .eyebrow"),
-        document.querySelector(".hero-title"),
-        document.querySelector(".landing-hero .lead"),
-        document.querySelector(".landing-copy"),
-        document.querySelector(".landing-actions"),
-        document.querySelector(".hero-hook"),
-    ].filter(Boolean);
-    markReveal(heroSequence, 40, 85);
-
-    const snapshotSequence = [
-        document.querySelector("#features .eyebrow"),
-        document.querySelector("#features h2"),
-        document.querySelector("#features .muted"),
-        ...Array.from(document.querySelectorAll(".feature-panel")),
-    ];
-    markReveal(snapshotSequence, 40, 70);
-
-    const reviewSequence = [
-        document.querySelector("#reviews .eyebrow"),
-        document.querySelector("#reviews h2"),
-        document.querySelector(".review-belt-shell"),
-        ...Array.from(document.querySelectorAll(".review-card")).slice(0, 4),
-    ];
-    markReveal(reviewSequence, 40, 70);
 
     const onMotionChange = () => {
         pauseConveyorIfNeeded();

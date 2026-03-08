@@ -37,9 +37,13 @@
             const baseDelay = Number(scope.dataset.revealBaseDelay || 0);
             const rowStep = Number(scope.dataset.revealRowStep || 60);
             const colStep = Number(scope.dataset.revealColStep || 34);
+            const rects = new Map();
+            items.forEach((item) => {
+                rects.set(item, item.getBoundingClientRect());
+            });
             const sorted = items.slice().sort((a, b) => {
-                const ra = a.getBoundingClientRect();
-                const rb = b.getBoundingClientRect();
+                const ra = rects.get(a);
+                const rb = rects.get(b);
                 if (Math.abs(ra.top - rb.top) > 2) {
                     return ra.top - rb.top;
                 }
@@ -48,7 +52,7 @@
 
             const rowAnchors = [];
             sorted.forEach((el) => {
-                const rect = el.getBoundingClientRect();
+                const rect = rects.get(el);
                 let rowIndex = rowAnchors.findIndex((top) => Math.abs(top - rect.top) < 24);
                 if (rowIndex === -1) {
                     rowAnchors.push(rect.top);
@@ -57,7 +61,7 @@
 
                 const colIndex = sorted
                     .filter((candidate) => {
-                        const c = candidate.getBoundingClientRect();
+                        const c = rects.get(candidate);
                         return Math.abs(c.top - rowAnchors[rowIndex]) < 24 && c.left < rect.left;
                     })
                     .length;
@@ -85,6 +89,7 @@
 
     if (prefersReducedMotion.matches) {
         markVisible(revealTargets);
+        document.documentElement.classList.remove("js-reveal-pending");
         return;
     }
 

@@ -23,7 +23,7 @@
             </div>
         </header>
 
-        <section class="metric-grid">
+        <section class="metric-grid" data-reveal-row-step="120" data-reveal-col-step="70">
             <article class="metric">
                 <p class="metric-label">Win Rate</p>
                 <p class="metric-value">{{ '%.1f'|format(win_rate) }}%</p>
@@ -65,7 +65,7 @@
             </article>
         </section>
 
-        <section class="panel-grid">
+        <section class="panel-grid" data-reveal-row-step="140" data-reveal-col-step="90">
             <article class="panel trade-log">
                 <div class="panel-head">
                     <div class="panel-title-wrap">
@@ -319,14 +319,12 @@
 
     .dash-content { position: relative;
         z-index: 1; }
-.dash-head { margin-bottom: 1rem;
+    .dash-head { margin-bottom: 1rem;
         padding: 1rem 1.05rem 1.02rem;
-        border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         border-radius: 18px;
-        background: color-mix(in srgb, var(--card) 34%, transparent);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        box-shadow: 0 12px 30px rgba(2, 6, 23, 0.14); }
+        background: color-mix(in srgb, var(--card) 97%, transparent);
+        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.16); }
 
     .crumb { font-size: 0.78rem;
         text-transform: uppercase;
@@ -417,13 +415,11 @@
         margin-bottom: 0.9rem;
         min-width: 0; }
 
-    .metric { border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    .metric { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         border-radius: 16px;
         padding: 0.85rem 0.9rem;
-        background: color-mix(in srgb, var(--card) 38%, transparent);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        box-shadow: 0 10px 24px rgba(2, 6, 23, 0.14); }
+        background: color-mix(in srgb, var(--card) 98%, transparent);
+        box-shadow: 0 12px 28px rgba(2, 6, 23, 0.16); }
 
     .metric-label { margin: 0;
         font-size: 0.8rem; text-transform: uppercase;
@@ -454,13 +450,11 @@
         min-width: 0;
         align-items: start; }
 
-    .panel { border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    .panel { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         border-radius: 18px;
         padding: 0.9rem;
-        background: color-mix(in srgb, var(--card) 34%, transparent);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.14);
+        background: color-mix(in srgb, var(--card) 97%, transparent);
+        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.16);
         min-width: 0;
         max-width: 100%; }
 
@@ -578,7 +572,11 @@
         height: auto;
         aspect-ratio: 600 / 220;
         border-radius: 10px;
-        border: 1px solid #d7e3d9; overflow: hidden; }
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        background:
+            radial-gradient(circle at top, color-mix(in srgb, var(--accent) 10%, transparent), transparent 58%),
+            color-mix(in srgb, var(--surface) 96%, transparent);
+        overflow: hidden; }
 
     .pnl-panel .line-chart-shell { flex: 1 1 auto;
         min-height: 200px; }
@@ -712,8 +710,10 @@
 
     .summary { margin: 0.6rem 0 0; font-size: 0.88rem; }
 
-    .insight-content { border: 1px solid #d7e3d9;
-        border-radius: 10px; padding: 0.7rem 0.75rem; }
+    .insight-content { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 10px;
+        padding: 0.7rem 0.75rem;
+        background: color-mix(in srgb, var(--surface) 95%, transparent); }
 
     .insight-title { margin: 0;
         font-size: 0.84rem;
@@ -739,7 +739,10 @@
     .sim-chart { position: relative;
         height: 190px;
         border-radius: 10px;
-        border: 1px solid #d8e3da; background-size: 22px 22px;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        background:
+            linear-gradient(180deg, color-mix(in srgb, var(--surface) 98%, transparent), color-mix(in srgb, var(--surface) 94%, transparent));
+        background-size: 22px 22px;
         overflow: hidden; }
 
     .sim-chart svg { width: 100%;
@@ -823,7 +826,4 @@
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/dashboard_page.js') }}"></script>
 {% endblock %}
-
-
-
 

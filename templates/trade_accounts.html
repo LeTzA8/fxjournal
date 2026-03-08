@@ -18,21 +18,29 @@
             </div>
         </header>
 
-        {% if trade_account_status and trade_account_message %}
-        <p class="account-alert {{ trade_account_status }}" role="status" aria-live="polite">{{ trade_account_message }}</p>
-        {% endif %}
+        <p
+            id="tradeAccountAlert"
+            class="account-alert{% if trade_account_status and trade_account_message %} {{ trade_account_status }}{% endif %}"
+            role="status"
+            aria-live="polite"
+            {% if not (trade_account_status and trade_account_message) %}hidden{% endif %}
+        >{% if trade_account_status and trade_account_message %}{{ trade_account_message }}{% endif %}</p>
 
         <section class="panel-grid">
             <article class="panel accounts-panel">
                 <div class="panel-head">
                     <h2>Current Accounts</h2>
-                    <span class="soft">{{ account_rows|length }} total</span>
+                    <span id="tradeAccountTotal" class="soft">{{ account_rows|length }} total</span>
                 </div>
 
                 {% if account_rows %}
-                <div class="account-list">
+                <div class="account-list" id="tradeAccountList">
                     {% for trade_account in account_rows %}
-                    <article class="account-card {% if active_trade_account and trade_account.id == active_trade_account.id %}active{% endif %}">
+                    <article
+                        class="account-card {% if active_trade_account and trade_account.id == active_trade_account.id %}active{% endif %}"
+                        data-trade-account-card
+                        data-trade-account-pubkey="{{ trade_account.pubkey }}"
+                    >
                         <div class="account-card-head">
                             <div>
                                 <p class="account-name">{{ trade_account.name }}</p>
@@ -48,17 +56,28 @@
                             </div>
                             <div class="chip-wrap">
                                 {% if active_trade_account and trade_account.id == active_trade_account.id %}
-                                <span class="chip">Active</span>
+                                <span class="chip active-chip">Active</span>
+                                {% else %}
+                                <span class="chip active-chip" hidden>Active</span>
                                 {% endif %}
                                 {% if trade_account.is_default %}
-                                <span class="chip default">Default</span>
+                                <span class="chip default default-chip">Default</span>
+                                {% else %}
+                                <span class="chip default default-chip" hidden>Default</span>
                                 {% endif %}
                             </div>
                         </div>
 
                         <div class="inline-actions">
                             {% if not (active_trade_account and trade_account.id == active_trade_account.id) %}
-                            <form action="{{ url_for('switch_trade_account') }}" method="post">
+                            <form action="{{ url_for('switch_trade_account') }}" method="post" class="switch-account-form">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
+                                <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+                                <button type="submit" class="ghost-btn">Switch</button>
+                            </form>
+                            {% else %}
+                            <form action="{{ url_for('switch_trade_account') }}" method="post" class="switch-account-form" hidden>
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
                                 <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
@@ -66,7 +85,13 @@
                             </form>
                             {% endif %}
                             {% if not trade_account.is_default %}
-                            <form action="{{ url_for('set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post">
+                            <form action="{{ url_for('set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="default-account-form">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+                                <button type="submit" class="ghost-btn">Set Default</button>
+                            </form>
+                            {% else %}
+                            <form action="{{ url_for('set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="default-account-form" hidden>
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
                                 <button type="submit" class="ghost-btn">Set Default</button>
@@ -77,8 +102,15 @@
                                 class="ghost-link btn-link"
                             >Edit</a>
                             <a
-                                href="{{ url_for('trade_accounts', edit=trade_account.pubkey) }}#danger-zone"
+                                href="{{ url_for('trade_accounts', edit=trade_account.pubkey, delete=trade_account.pubkey) }}#danger-zone"
                                 class="ghost-link btn-link danger-btn"
+                                data-open-delete-account-modal
+                                data-delete-account-pubkey="{{ trade_account.pubkey }}"
+                                data-delete-account-name="{{ trade_account.name }}"
+                                data-delete-trade-count="{{ account_trade_counts.get(trade_account.id, 0) }}"
+                                data-delete-review-count="{{ account_review_counts.get(trade_account.id, 0) }}"
+                                aria-haspopup="dialog"
+                                aria-controls="deleteTradeAccountDialog"
                             >Delete</a>
                         </div>
                     </article>
@@ -89,7 +121,11 @@
                 {% endif %}
             </article>
 
-            <article id="editor" class="panel create-panel">
+            <article
+                id="editor"
+                class="panel create-panel"
+                data-edit-target-pubkey="{% if edit_target %}{{ edit_target.pubkey }}{% endif %}"
+            >
                 <div class="panel-head">
                     <h2>{% if edit_target %}Edit Account{% else %}Create Account{% endif %}</h2>
                     <span class="soft">{% if edit_target %}Selected{% else %}New{% endif %}</span>
@@ -198,25 +234,25 @@
                 <hr class="section-divider">
                 <p class="helper-note">Tip: Use distinct names like <strong>Live</strong>, <strong>Demo</strong>, or <strong>Challenge</strong> for clarity.</p>
 
-                {% if edit_target %}
+                {% if delete_target %}
                 <hr class="section-divider">
                 <section id="danger-zone" class="danger-zone">
                     <div class="panel-head">
                         <h2>Delete This Account</h2>
-                        <span class="soft">Danger Zone</span>
+                        <span class="soft">Fallback</span>
                     </div>
                     <p class="helper-note danger-note">
-                        This permanently deletes <strong>{{ edit_target.name }}</strong>, its {{ edit_target_trade_count }} trade{% if edit_target_trade_count != 1 %}s{% endif %}, and {{ edit_target_ai_review_count }} linked AI review{% if edit_target_ai_review_count != 1 %}s{% endif %}.
+                        This permanently deletes <strong>{{ delete_target.name }}</strong>, its {{ delete_target_trade_count }} trade{% if delete_target_trade_count != 1 %}s{% endif %}, and {{ delete_target_ai_review_count }} linked AI review{% if delete_target_ai_review_count != 1 %}s{% endif %}.
                     </p>
-                    <form action="{{ url_for('delete_trade_account', trade_account_pubkey=edit_target.pubkey) }}" method="post" class="danger-form" data-themed-validation>
+                    <form action="{{ url_for('delete_trade_account', trade_account_pubkey=delete_target.pubkey) }}" method="post" class="danger-form" data-themed-validation>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
 
-                        <label for="delete_trade_account_confirmation">
+                        <label for="delete_trade_account_confirmation_fallback">
                             Type <strong>DELETE</strong> to confirm
                         </label>
                         <input
-                            id="delete_trade_account_confirmation"
+                            id="delete_trade_account_confirmation_fallback"
                             name="delete_trade_account_confirmation"
                             type="text"
                             placeholder="DELETE"
@@ -225,14 +261,17 @@
                         >
                         <label class="delete-check">
                             <input
-                                id="delete_trade_account_acknowledge"
+                                id="delete_trade_account_acknowledge_fallback"
                                 name="delete_trade_account_acknowledge"
                                 type="checkbox"
                                 required
                             >
                             <span>I understand this permanently removes this trade account and everything inside it.</span>
                         </label>
-                        <button type="submit" class="ghost-btn danger-btn">Delete This Trade Account</button>
+                        <div class="inline-actions">
+                            <button type="submit" class="ghost-btn danger-btn">Delete This Trade Account</button>
+                            <a href="{{ url_for('trade_accounts', edit=delete_target.pubkey) }}#editor" class="ghost-link btn-link">Cancel</a>
+                        </div>
                     </form>
                 </section>
                 {% endif %}
@@ -278,67 +317,55 @@
     </div>
 </section>
 
+<dialog id="deleteTradeAccountDialog" class="confirm-dialog" aria-labelledby="deleteTradeAccountTitle">
+    <div class="confirm-dialog-shell">
+        <div class="panel-head">
+            <h2 id="deleteTradeAccountTitle">Delete Trade Account</h2>
+            <span class="soft">Danger Zone</span>
+        </div>
+        <p id="deleteTradeAccountLead" class="helper-note danger-note">
+            This permanently deletes the selected trade account and everything linked to it.
+        </p>
+        <form
+            id="deleteTradeAccountForm"
+            method="post"
+            class="danger-form"
+            data-action-template="{{ url_for('delete_trade_account', trade_account_pubkey='__TRADE_ACCOUNT_PUBKEY__') }}"
+            data-themed-validation
+        >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+
+            <label for="deleteTradeAccountConfirmation">
+                Type <strong>DELETE</strong> to confirm
+            </label>
+            <input
+                id="deleteTradeAccountConfirmation"
+                name="delete_trade_account_confirmation"
+                type="text"
+                placeholder="DELETE"
+                required
+                autocomplete="off"
+            >
+            <label class="delete-check">
+                <input
+                    id="deleteTradeAccountAcknowledge"
+                    name="delete_trade_account_acknowledge"
+                    type="checkbox"
+                    required
+                >
+                <span>I understand this permanently removes this trade account and everything inside it.</span>
+            </label>
+            <p id="deleteTradeAccountStatus" class="account-alert error" role="alert" hidden></p>
+            <div class="dialog-actions inline-actions">
+                <button type="button" class="ghost-btn" id="cancelDeleteTradeAccount">Cancel</button>
+                <button type="submit" class="ghost-btn danger-btn" id="confirmDeleteTradeAccount">Delete This Trade Account</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
 <style>
-    main { max-width: none;
-        margin: 0;
-        padding: 0;
-        min-height: 100vh; }
-
-    .dash-wrap { position: relative;
-        min-height: 100vh;
-        width: 100%;
-        overflow: hidden;
-        isolation: isolate;
-        padding: clamp(0.9rem, 2vw, 1.5rem); }
-
-    .dash-content { position: relative;
-        z-index: 1; }
-
-    .dash-head { margin-bottom: 0.9rem; }
-
-    .crumb { font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-weight: 700;
-        margin-bottom: 0.7rem; }
-
-    .crumb a { text-decoration: none;
-        border-bottom: 1px solid transparent; }
-
-    .crumb a:hover { border-bottom-color: currentColor; }
-
-    .head-row { display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem; }
-
-    h1 { margin: 0;
-        font-size: clamp(1.35rem, 2.3vw, 2rem); }
-
-    .subtitle { margin: 0.38rem 0 0; }
-
-    .welcome { margin: 0.45rem 0 0;
-        font-size: 0.95rem;
-        font-weight: 700; }
-
-    .head-actions { display: flex;
-        align-items: center;
-        gap: 0.55rem; }
-
-    .ghost-link { border: 1px solid #c6d4ca;
-        border-radius: 10px;
-        padding: 0.45rem 0.75rem;
-        font-weight: 700;
-        font-size: 0.78rem;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
-        text-decoration: none; }
-
-    .account-alert { margin: 0 0 0.75rem;
-        border-radius: 10px;
-        padding: 0.58rem 0.72rem;
-        font-size: 0.82rem;
-        font-weight: 700; }
 
     .account-alert.success { border: 1px solid #b5dcc2; }
     .account-alert.info { border: 1px solid #bfd8e7; }
@@ -349,34 +376,26 @@
         gap: 0.8rem;
         align-items: start; }
 
-    .panel { border: 1px solid #d4ded6;
-        border-radius: 14px;
+    .panel { border-radius: 14px;
         padding: 0.9rem;
-        box-shadow: 0 10px 28px rgba(15, 55, 36, 0.08); }
-
-    .panel-head { display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.55rem;
-        margin-bottom: 0.7rem; }
+    }
 
     h2 { margin: 0;
         font-size: 1rem; }
 
-    .soft { font-size: 0.78rem; }
-
     .account-list { display: grid;
         gap: 0.58rem; }
 
-    .account-card { border: 1px solid #dfe8e1;
+    .account-card { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         border-radius: 12px;
         padding: 0.66rem;
+        background: color-mix(in srgb, var(--surface) 95%, transparent);
         display: grid;
         gap: 0.56rem; }
 
-    .account-card.active { border-color: #3f9a69;
-        background: color-mix(in srgb, #3f9a69 14%, transparent);
-        box-shadow: 0 0 0 2px color-mix(in srgb, #3f9a69 28%, transparent); }
+    .account-card.active { border-color: color-mix(in srgb, var(--good) 58%, var(--border));
+        background: color-mix(in srgb, var(--good) 12%, var(--card));
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--good) 18%, transparent); }
 
     .account-card.active .account-name { color: #2e8a5b; }
 
@@ -466,6 +485,23 @@
     .danger-zone { display: grid;
         gap: 0.62rem; }
 
+    .confirm-dialog { border: 0;
+        padding: 0;
+        background: transparent;
+        max-width: min(560px, calc(100vw - 2rem));
+        width: 100%; }
+
+    .confirm-dialog::backdrop { background: rgba(14, 18, 24, 0.62);
+        backdrop-filter: blur(7px); }
+
+    .confirm-dialog-shell { display: grid;
+        gap: 0.85rem;
+        border: 1px solid color-mix(in srgb, var(--bad) 24%, var(--border));
+        border-radius: 18px;
+        padding: 1rem;
+        background: color-mix(in srgb, var(--card) 98%, transparent);
+        box-shadow: 0 28px 90px rgba(6, 12, 18, 0.34); }
+
     .danger-form { display: grid;
         gap: 0.62rem; }
 
@@ -502,8 +538,10 @@
         text-transform: uppercase;
         text-decoration: none; }
 
+    .dialog-actions { justify-content: flex-end; }
+
     .section-divider { border: 0;
-        border-top: 1px solid #d9e4dc;
+        border-top: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         margin: 0.9rem 0 0.8rem; }
 
     .helper-note { margin: 0;
@@ -528,3 +566,6 @@
 </style>
 {% endblock %}
 
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/trade_accounts_page.js') }}"></script>
+{% endblock %}

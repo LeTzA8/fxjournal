@@ -30,33 +30,31 @@
         <div class="landing-auth-links">
             {% if user_logged_in %}
             <a href="{{ url_for('home') }}" class="ghost-btn">Dashboard</a>
-            <a href="{{ url_for('contact') }}" class="ghost-btn">Contact</a>
             <a href="{{ url_for('account') }}" class="submit-btn">Account</a>
             <form action="{{ url_for('logout') }}" method="post">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="ghost-btn logout-btn">Log Out</button>
             </form>
             {% else %}
-            <a href="{{ url_for('contact') }}" class="ghost-btn">Contact</a>
             <a href="{{ url_for('login') }}" class="ghost-btn">Log In</a>
             <a href="{{ url_for('register') }}" class="submit-btn">Start For Free</a>
             {% endif %}
         </div>
     </header>
 
-    <article class="landing-hero">
+    <article class="landing-hero" data-reveal-scope data-reveal-immediate>
         <div class="landing-hero-inner">
-            <p class="hero-badge">Live now: MT5 and Tradovate journaling with weekly AI review</p>
-            <p class="eyebrow">FX, CFD, and Futures Journal</p>
-            <h1 class="hero-title">Your trading edge deserves a full-screen command center.</h1>
-            <p class="muted lead">
+            <p class="hero-badge landing-reveal" data-reveal-delay="40">Live now: MT5 and Tradovate journaling with weekly AI review</p>
+            <p class="eyebrow landing-reveal" data-reveal-delay="125">FX, CFD, and Futures Journal</p>
+            <h1 class="hero-title landing-reveal" data-reveal-delay="210">Your trading edge deserves a full-screen command center.</h1>
+            <p class="muted lead landing-reveal" data-reveal-delay="295">
                 FX Journal helps you capture <span class="hero-inline-accent">every setup</span>, review
                 <span class="hero-inline-accent">execution quality</span>, and build a
                 <span class="hero-inline-accent">repeatable process</span>
                 from real trade data.
             </p>
 
-            <div class="landing-copy" id="workflow">
+            <div class="landing-copy landing-reveal" id="workflow" data-reveal-delay="380">
                 <p class="landing-copy-title">How you use it</p>
                 <ol>
                     <li>
@@ -83,7 +81,7 @@
                 </ol>
             </div>
 
-            <div class="landing-actions">
+            <div class="landing-actions landing-reveal" data-reveal-delay="465">
                 {% if user_logged_in %}
                 <a href="{{ url_for('home') }}" class="submit-btn">Open Dashboard</a>
                 <a href="{{ url_for('new_trade') }}" class="ghost-btn">Log New Trade</a>
@@ -94,7 +92,7 @@
                 {% endif %}
             </div>
 
-            <div class="hero-hook" aria-hidden="true">
+            <div class="hero-hook landing-reveal" data-reveal-delay="560" aria-hidden="true">
                 <div class="hook-glow"></div>
                 <div class="hook-lane"></div>
                 <div class="hook-candles">
@@ -128,46 +126,46 @@
         </div>
     </article>
 
-    <section class="landing-section" id="features" aria-labelledby="feature-showcase-title">
+    <section class="landing-section" id="features" aria-labelledby="feature-showcase-title" data-reveal-scope>
         <div class="landing-inner">
-            <p class="eyebrow">Feature showcase</p>
-            <h2 id="feature-showcase-title">Built for active trading journals</h2>
-            <p class="muted">
+            <p class="eyebrow landing-reveal" data-reveal-delay="40">Feature showcase</p>
+            <h2 id="feature-showcase-title" class="landing-reveal" data-reveal-delay="110">Built for active trading journals</h2>
+            <p class="muted landing-reveal" data-reveal-delay="180">
                 Everything needed to track execution quality across CFD and futures accounts, import broker history, and review performance from one clean flow.
             </p>
 
             <div class="feature-panels" role="list" aria-label="FX Journal feature highlights">
-                <article class="feature-panel" role="listitem">
+                <article class="feature-panel landing-reveal" role="listitem" data-reveal-delay="260">
                     <p class="feature-kicker">Import</p>
                     <h3>&#128229; MT5 and Tradovate Import</h3>
                     <p>Import MT5 Positions workbooks and Tradovate performance CSVs directly into the correct account. Duplicate checks help keep your journal clean when you re-import updated history.</p>
                     <p class="feature-detail">Built for fast history ingestion without manually rebuilding sessions, symbols, or timestamps.</p>
                 </article>
-                <article class="feature-panel" role="listitem">
+                <article class="feature-panel landing-reveal" role="listitem" data-reveal-delay="330">
                     <p class="feature-kicker">Accounts</p>
                     <h3>&#128450;&#65039; CFD and Futures Accounts</h3>
                     <p>Separate personal, funded, challenge, CFD, and futures accounts into clean buckets with their own stats, imports, and review flow.</p>
                     <p class="feature-detail">Switch active accounts quickly and keep each journal context isolated instead of mixing different rule sets together.</p>
                 </article>
-                <article class="feature-panel" role="listitem">
+                <article class="feature-panel landing-reveal" role="listitem" data-reveal-delay="400">
                     <p class="feature-kicker">Analytics</p>
                     <h3>&#128202; Dedicated Analytics Page</h3>
                     <p>Open a full analytics page for pair breakdowns, session behavior, risk-to-reward context, win rate, drawdown, and other account-specific performance views.</p>
                     <p class="feature-detail">Use it to spot where edge is actually coming from by session, pair, weekday, and streak behavior.</p>
                 </article>
-                <article class="feature-panel" role="listitem">
+                <article class="feature-panel landing-reveal" role="listitem" data-reveal-delay="470">
                     <p class="feature-kicker">Review</p>
                     <h3>&#128200; Readable Equity Curve Review</h3>
                     <p>Visualize streaks, drawdowns, and recovery phases with a centered zero baseline and rough PnL markers so consistency shifts stand out quickly.</p>
                     <p class="feature-detail">The curve is tuned for fast scanning, so positive and negative performance phases are easier to read at a glance.</p>
                 </article>
-                <article class="feature-panel" role="listitem">
+                <article class="feature-panel landing-reveal" role="listitem" data-reveal-delay="540">
                     <p class="feature-kicker">AI</p>
                     <h3>&#129302; Weekly AI Review</h3>
                     <p>Generate one weekly account-level review from completed trade data and notes, focused on sessions, pairs, recurring mistakes, and the clearest next-step rule.</p>
                     <p class="feature-detail">Recent weekly behavior stays primary, while trailing history adds context for pair strength, session edge, and repeat mistakes.</p>
                 </article>
-                <article class="feature-panel" role="listitem">
+                <article class="feature-panel landing-reveal" role="listitem" data-reveal-delay="610">
                     <p class="feature-kicker">Workflow</p>
                     <h3>&#128736;&#65039; Notes, Imports, and Account Control</h3>
                     <p>Keep trade notes tied to outcomes, switch between accounts quickly, and remove old accounts without leaving linked trades or AI reviews behind.</p>
@@ -177,28 +175,28 @@
         </div>
     </section>
 
-    <section class="landing-section" id="reviews" aria-labelledby="user-reviews-title">
+    <section class="landing-section" id="reviews" aria-labelledby="user-reviews-title" data-reveal-scope>
         <div class="landing-inner">
-            <p class="eyebrow">User reviews</p>
-            <h2 id="user-reviews-title">What traders are saying</h2>
-            <div class="review-belt-shell">
+            <p class="eyebrow landing-reveal" data-reveal-delay="40">User reviews</p>
+            <h2 id="user-reviews-title" class="landing-reveal" data-reveal-delay="110">What traders are saying</h2>
+            <div class="review-belt-shell landing-reveal" data-reveal-delay="180">
                 <div class="review-belt">
-                    <article class="review-card">
+                    <article class="review-card landing-reveal" data-reveal-delay="250">
                         <p>*****</p>
                         <p>"Finally a clean flow for recording every entry. My review time is under five minutes."</p>
                         <p class="reviewer">Maya, FX Day Trader</p>
                     </article>
-                    <article class="review-card">
+                    <article class="review-card landing-reveal" data-reveal-delay="320">
                         <p>*****</p>
                         <p>"The equity and trade summaries immediately highlighted my biggest risk leak."</p>
                         <p class="reviewer">Daniel, Swing Trader</p>
                     </article>
-                    <article class="review-card">
+                    <article class="review-card landing-reveal" data-reveal-delay="390">
                         <p>*****</p>
                         <p>"Simple enough for daily use, disciplined enough for serious review."</p>
                         <p class="reviewer">Chen, Position Trader</p>
                     </article>
-                    <article class="review-card">
+                    <article class="review-card landing-reveal" data-reveal-delay="460">
                         <p>*****</p>
                         <p>"I finally understand my post-breakout entries with the notes tied to outcomes."</p>
                         <p class="reviewer">Liam, London Session Trader</p>
@@ -664,30 +662,54 @@
         font-size: clamp(2.3rem, 6.8vw, 5.8rem);
         line-height: 1.02;
         letter-spacing: -0.03em;
+        color: var(--ink);
     }
 
     .hero-title {
         perspective: 900px;
+        color: var(--ink);
     }
 
     .hero-title .hero-word:nth-child(2),
     .hero-title .hero-word:nth-child(3) {
-        color: color-mix(in srgb, var(--accent) 84%, #ffffff);
-        text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent);
+        --hero-word-final-color: color-mix(in srgb, var(--accent) 84%, #ffffff);
+        --hero-word-final-shadow: 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent);
     }
 
     .hero-title .hero-word:nth-child(6),
     .hero-title .hero-word:nth-child(7),
     .hero-title .hero-word:nth-child(8) {
-        text-decoration: underline;
-        text-decoration-thickness: 0.14em;
-        text-decoration-color: color-mix(in srgb, var(--accent) 70%, var(--accent-hover));
-        text-underline-offset: 0.12em;
+        --hero-underline-color: color-mix(in srgb, var(--accent) 70%, var(--accent-hover));
+        --hero-word-final-color: color-mix(in srgb, var(--ink) 90%, var(--accent) 10%);
     }
 
     .hero-word {
         display: inline-block;
         white-space: nowrap;
+        position: relative;
+        color: var(--hero-word-final-color, color-mix(in srgb, var(--ink) 96%, #c7d2fe));
+        text-shadow: var(--hero-word-final-shadow, 0 0 0 transparent);
+    }
+
+    .hero-title .hero-word:nth-child(6)::after,
+    .hero-title .hero-word:nth-child(7)::after,
+    .hero-title .hero-word:nth-child(8)::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -0.12em;
+        height: 0.11em;
+        border-radius: 999px;
+        background: linear-gradient(
+            90deg,
+            color-mix(in srgb, var(--hero-underline-color, var(--accent)) 84%, #ffffff 16%),
+            var(--hero-underline-color, var(--accent))
+        );
+        transform: scaleX(0.05);
+        transform-origin: 0 50%;
+        opacity: 0;
+        box-shadow: 0 0 12px color-mix(in srgb, var(--hero-underline-color, var(--accent)) 32%, transparent);
     }
 
     body.landing-layout.js-landing-animate .hero-word {
@@ -695,17 +717,41 @@
         transform: translateY(0.85em) rotateX(16deg);
         transform-origin: 50% 100%;
         filter: blur(9px);
+        color: rgba(255, 255, 255, 0.98);
+        text-shadow: 0 0 24px rgba(255, 255, 255, 0.12);
         transition:
             opacity 760ms cubic-bezier(.22, .61, .36, 1),
             transform 760ms cubic-bezier(.22, .61, .36, 1),
-            filter 560ms cubic-bezier(.22, .61, .36, 1);
-        transition-delay: calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms));
+            filter 560ms cubic-bezier(.22, .61, .36, 1),
+            color 980ms cubic-bezier(.22, .61, .36, 1),
+            text-shadow 980ms cubic-bezier(.22, .61, .36, 1);
+        transition-delay:
+            var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))),
+            var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))),
+            var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))),
+            calc(var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))) + 180ms),
+            calc(var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))) + 180ms);
     }
 
     body.landing-layout.js-landing-animate .hero-title.is-visible .hero-word {
         opacity: 1;
         transform: translateY(0) rotateX(0deg);
         filter: blur(0);
+        color: var(--hero-word-final-color, color-mix(in srgb, var(--ink) 96%, #c7d2fe));
+        text-shadow: var(--hero-word-final-shadow, 0 0 0 transparent);
+    }
+
+    body.landing-layout.js-landing-animate .hero-title.is-visible .hero-word:nth-child(6)::after,
+    body.landing-layout.js-landing-animate .hero-title.is-visible .hero-word:nth-child(7)::after,
+    body.landing-layout.js-landing-animate .hero-title.is-visible .hero-word:nth-child(8)::after {
+        opacity: 1;
+        transform: scaleX(1);
+        transition:
+            transform 620ms cubic-bezier(.22, .61, .36, 1),
+            opacity 260ms ease;
+        transition-delay:
+            calc(var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))) + 360ms),
+            calc(var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))) + 360ms);
     }
 
     .landing-hero .lead {
@@ -1290,6 +1336,14 @@
             animation: none !important;
         }
 
+        .hero-title .hero-word:nth-child(6)::after,
+        .hero-title .hero-word:nth-child(7)::after,
+        .hero-title .hero-word:nth-child(8)::after {
+            opacity: 1 !important;
+            transform: scaleX(1) !important;
+            transition: none !important;
+        }
+
         .hook-glow,
         .candle,
         .hook-trend path,
@@ -1305,7 +1359,3 @@
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/landing_page.js') }}"></script>
 {% endblock %}
-
-
-
-

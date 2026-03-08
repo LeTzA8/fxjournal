@@ -4,12 +4,12 @@ from datetime import datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dotenv import load_dotenv
-from flask import Flask, g, redirect, render_template, request, session, url_for
+from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, OperationalError
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -1292,19 +1292,41 @@ def update_trade_account(trade_account_pubkey):
     error_message="Too many trade account deletion attempts. Please wait and try again.",
 )
 def delete_trade_account(trade_account_pubkey):
+    wants_json_response = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    def build_redirect_url(status, message):
+        return append_query_params(
+            get_safe_internal_next("trade_accounts"),
+            trade_account_status=status,
+            trade_account_message=message,
+        )
+
+    def respond_with_status(status, message, status_code=400):
+        redirect_url = build_redirect_url(status, message)
+        if wants_json_response:
+            payload = {
+                "ok": status == "success",
+                "message": message,
+                "redirect_url": redirect_url,
+            }
+            return jsonify(payload), status_code
+        return redirect(redirect_url)
+
     if not session.get("user_id"):
+        if wants_json_response:
+            return jsonify(
+                {
+                    "ok": False,
+                    "message": "Your session expired. Please sign in again.",
+                    "redirect_url": url_for("login"),
+                }
+            ), 401
         return redirect(url_for("login"))
 
     user_id = session["user_id"]
     account = get_user_trade_account_by_pubkey(user_id, trade_account_pubkey)
     if not account:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="Trade account not found.",
-            )
-        )
+        return respond_with_status("error", "Trade account not found.", 404)
 
     account_rows = get_user_trade_accounts(user_id)
     remaining_accounts = [row for row in account_rows if row.id != account.id]
@@ -1321,14 +1343,9 @@ def delete_trade_account(trade_account_pubkey):
     confirmation_text = request.form.get("delete_trade_account_confirmation", "").strip().upper()
     acknowledged = request.form.get("delete_trade_account_acknowledge") == "on"
     if confirmation_text != "DELETE" or not acknowledged:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message=(
-                    f"To delete '{account.name}', type DELETE and tick the confirmation checkbox."
-                ),
-            )
+        return respond_with_status(
+            "error",
+            f"To delete '{account.name}', type DELETE and tick the confirmation checkbox.",
         )
 
     try:
@@ -1364,12 +1381,10 @@ def delete_trade_account(trade_account_pubkey):
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="Could not delete that trade account right now. Please try again.",
-            )
+        return respond_with_status(
+            "error",
+            "Could not delete that trade account right now. Please try again.",
+            500,
         )
 
     if next_active_account is not None:
@@ -1384,17 +1399,31 @@ def delete_trade_account(trade_account_pubkey):
         else ""
     )
     replacement_msg = " A fresh Main Account was created." if replacement_created else ""
-    return redirect(
-        append_query_params(
-            get_safe_internal_next("trade_accounts"),
-            trade_account_status="success",
-            trade_account_message=(
-                f"Deleted trade account '{deleted_name}', {deleted_trade_count} linked trade"
-                f"{'' if deleted_trade_count == 1 else 's'}{review_msg}."
-                f"{replacement_msg}"
-            ),
-        )
+    success_message = (
+        f"Deleted trade account '{deleted_name}', {deleted_trade_count} linked trade"
+        f"{'' if deleted_trade_count == 1 else 's'}{review_msg}."
+        f"{replacement_msg}"
     )
+    if wants_json_response:
+        default_trade_account = next_active_account if replacement_created else next(
+            (row for row in remaining_accounts if row.is_default),
+            None,
+        )
+        redirect_url = build_redirect_url("success", success_message)
+        return jsonify(
+            {
+                "ok": True,
+                "message": success_message,
+                "redirect_url": redirect_url,
+                "deleted_pubkey": trade_account_pubkey,
+                "remaining_account_count": len(remaining_accounts) + (1 if replacement_created else 0),
+                "active_trade_account_pubkey": next_active_account.pubkey if next_active_account else None,
+                "default_trade_account_pubkey": default_trade_account.pubkey if default_trade_account else None,
+                "replacement_created": replacement_created,
+                "requires_reload": replacement_created,
+            }
+        )
+    return redirect(build_redirect_url("success", success_message))
 
 
 @app.route("/dashboard/trade-accounts/delete-all", methods=["POST"])
@@ -1807,21 +1836,31 @@ def trade_accounts():
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_rows = get_user_trade_accounts(user_id)
+    account_trade_counts = dict(
+        db.session.query(Trade.trade_account_id, func.count(Trade.id))
+        .filter_by(user_id=user_id)
+        .group_by(Trade.trade_account_id)
+        .all()
+    )
+    account_review_counts = dict(
+        db.session.query(AIGeneratedResponse.trade_account_id, func.count(AIGeneratedResponse.id))
+        .filter_by(user_id=user_id)
+        .group_by(AIGeneratedResponse.trade_account_id)
+        .all()
+    )
     edit_pubkey = request.args.get("edit", "").strip() or request.args.get("edit_id", "").strip()
+    delete_pubkey = request.args.get("delete", "").strip() or request.args.get("delete_id", "").strip()
     edit_target = None
-    edit_target_trade_count = 0
-    edit_target_ai_review_count = 0
+    delete_target = None
+    delete_target_trade_count = 0
+    delete_target_ai_review_count = 0
     if edit_pubkey:
         edit_target = next((account for account in account_rows if account.pubkey == edit_pubkey), None)
-    if edit_target:
-        edit_target_trade_count = Trade.query.filter_by(
-            user_id=user_id,
-            trade_account_id=edit_target.id,
-        ).count()
-        edit_target_ai_review_count = AIGeneratedResponse.query.filter_by(
-            user_id=user_id,
-            trade_account_id=edit_target.id,
-        ).count()
+    if delete_pubkey:
+        delete_target = next((account for account in account_rows if account.pubkey == delete_pubkey), None)
+    if delete_target:
+        delete_target_trade_count = account_trade_counts.get(delete_target.id, 0)
+        delete_target_ai_review_count = account_review_counts.get(delete_target.id, 0)
     total_trade_count = Trade.query.filter_by(user_id=user_id).count()
     total_ai_review_count = AIGeneratedResponse.query.filter_by(user_id=user_id).count()
     trade_account_status = request.args.get("trade_account_status", "").strip().lower()
@@ -1836,10 +1875,13 @@ def trade_accounts():
         title="Trade Accounts | FX Journal",
         username=session.get("username", "User"),
         account_rows=account_rows,
+        account_trade_counts=account_trade_counts,
+        account_review_counts=account_review_counts,
         account_type_choices=get_account_type_choices(),
         edit_target=edit_target,
-        edit_target_trade_count=edit_target_trade_count,
-        edit_target_ai_review_count=edit_target_ai_review_count,
+        delete_target=delete_target,
+        delete_target_trade_count=delete_target_trade_count,
+        delete_target_ai_review_count=delete_target_ai_review_count,
         total_trade_count=total_trade_count,
         total_ai_review_count=total_ai_review_count,
         active_trade_account=active_trade_account,
@@ -2526,8 +2568,6 @@ def delete_import_batch():
 if __name__ == "__main__":
     debug_mode = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
     app.run(debug=debug_mode)
-
-
 
 
 
