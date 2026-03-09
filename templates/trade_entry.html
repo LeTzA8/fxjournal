@@ -108,7 +108,34 @@
             <article class="panel import-panel">
                 <div class="panel-head">
                     <h2>{% if account_type == "FUTURES" %}Import from Tradovate{% else %}Import from MetaTrader 5{% endif %}</h2>
-                    <span class="soft">{% if account_type == "FUTURES" %}CSV Upload{% else %}XLSX Upload{% endif %}</span>
+                    <div class="panel-head-meta">
+                        <div class="help-popover">
+                            <button
+                                type="button"
+                                class="help-trigger"
+                                aria-label="{% if account_type == 'FUTURES' %}How to export a Tradovate performance file{% else %}How to export a MetaTrader 5 workbook{% endif %}"
+                            >?</button>
+                            <div class="help-card" role="note">
+                                <p class="help-card-title">{% if account_type == "FUTURES" %}Export from Tradovate{% else %}Export from MT5{% endif %}</p>
+                                <ol class="help-card-list">
+                                    {% if account_type == "FUTURES" %}
+                                    <li>Open the <strong>Performance</strong> area in Tradovate.</li>
+                                    <li>Set the account and date range you want to export.</li>
+                                    <li>Use the export/download action for the performance table.</li>
+                                    <li>Save the file as a <strong>.csv</strong>.</li>
+                                    <li>Upload that CSV here.</li>
+                                    {% else %}
+                                    <li>Open the <strong>Toolbox</strong> window in MetaTrader 5 (<strong>Ctrl+T</strong>).</li>
+                                    <li>In the <strong>History</strong> tab, right-click inside the table.</li>
+                                    <li>Select <strong>Report</strong>.</li>
+                                    <li>Choose <strong>Open XML (MS Office Excel 2007)</strong>.</li>
+                                    <li>Save the file, then upload it here.</li>
+                                    {% endif %}
+                                </ol>
+                            </div>
+                        </div>
+                        <span class="soft">{% if account_type == "FUTURES" %}CSV Upload{% else %}XLSX Upload{% endif %}</span>
+                    </div>
                 </div>
                 <p class="field-help">
                     {% if account_type == "FUTURES" %}
@@ -213,6 +240,10 @@
         max-width: 520px;
         align-self: center; }
 
+    .panel-head-meta { display: inline-flex;
+        align-items: center;
+        gap: 0.5rem; }
+
     h2 { margin: 0;
         font-size: 1rem; }
 
@@ -288,6 +319,57 @@
         text-overflow: ellipsis; }
 
     .import-help { margin: 0; font-size: 0.82rem; }
+
+    .help-popover { position: relative;
+        display: inline-flex;
+        align-items: center; }
+
+    .help-trigger { width: 1.55rem;
+        height: 1.55rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #c6d4ca;
+        border-radius: 999px;
+        padding: 0;
+        font: inherit;
+        font-size: 0.82rem;
+        font-weight: 800;
+        line-height: 1;
+        cursor: help; }
+
+    .help-card { position: absolute;
+        top: calc(100% + 0.45rem);
+        right: 0;
+        z-index: 4;
+        width: min(320px, calc(100vw - 3rem));
+        padding: 0.72rem 0.78rem;
+        border: 1px solid #c7d5cb;
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--card) 98%, transparent);
+        box-shadow: 0 14px 28px rgba(2, 6, 23, 0.18);
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-4px);
+        transition: opacity 150ms ease, transform 150ms ease; }
+
+    .help-card-title { margin: 0 0 0.45rem;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase; }
+
+    .help-card-list { margin: 0;
+        padding-left: 1.05rem;
+        display: grid;
+        gap: 0.32rem;
+        font-size: 0.8rem;
+        line-height: 1.45; }
+
+    .help-popover:hover .help-card,
+    .help-popover:focus-within .help-card { opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0); }
 
     .import-profile { margin: 0;
         border: 1px solid #d4ded6;
@@ -378,5 +460,3 @@
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/trade_import.js') }}"></script>
 {% endblock %}
-
-
