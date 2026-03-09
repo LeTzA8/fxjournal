@@ -58,6 +58,32 @@ class User(db.Model):
     )
 
 
+class ContactSubmission(db.Model):
+    __tablename__ = "contact_submissions"
+    __table_args__ = (
+        db.Index(
+            "ix_contact_submissions_delivery_sent_created",
+            "delivery_sent",
+            "created_at",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    contact_email = db.Column(db.String(120), nullable=False)
+    category = db.Column(db.String(64), nullable=False)
+    subject = db.Column(db.String(120), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    delivery_sent = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    delivery_mode = db.Column(db.String(32), nullable=False, default="unknown")
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+
 class TradeAccount(db.Model):
     __tablename__ = "trade_accounts"
     __table_args__ = (

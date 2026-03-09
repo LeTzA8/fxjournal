@@ -233,7 +233,6 @@
                     <p class="soft">Planned: per-trade replay with entry, SL, TP, and execution notes overlay.</p>
                 </article>
             </div>
-
             <div class="panel-column panel-column-side">
                 <article class="panel pnl-panel">
                     <div class="panel-head">
@@ -294,13 +293,7 @@
                             Waiting for Weekly Review
                             {% endif %}
                         </p>
-                        <p class="insight-body">
-                            {% if weekly_ai_review %}
-                            {{ weekly_ai_review.response_text }}
-                            {% else %}
-                            {{ weekly_ai_empty_message }}
-                            {% endif %}
-                        </p>
+                        <p class="insight-body">{% if weekly_ai_review %}{{ weekly_ai_review.response_text|trim }}{% else %}{{ weekly_ai_empty_message|trim }}{% endif %}</p>
                     </div>
                     <p class="insight-note">
                         This review uses the most recent eligible trade week on your active account, with older account history used as supporting context.
@@ -505,17 +498,15 @@
         font-size: 0.72rem;
         font-weight: 700; }
     .panel-grid { display: grid;
-        grid-template-columns: 1.5fr 1fr;
-        grid-template-areas:
-            "trade pnl"
-            "trade notes"
-            "week session"
-            "sim session";
+        grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
         gap: 0.8rem;
         min-width: 0;
         align-items: start; }
 
-    .panel-column { display: contents; }
+    .panel-column { display: grid;
+        gap: 0.8rem;
+        min-width: 0;
+        align-content: start; }
 
     .panel { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         border-radius: 18px;
@@ -525,8 +516,7 @@
         min-width: 0;
         max-width: 100%; }
 
-    .trade-log { grid-area: trade;
-        display: flex;
+    .trade-log { display: flex;
         flex-direction: column;
         height: clamp(420px, 72vh, 760px);
         min-height: 0; }
@@ -537,21 +527,14 @@
         overflow-x: auto;
         padding-left: 0.3rem; }
 
-    .pnl-panel { grid-area: pnl;
-        display: flex;
+    .pnl-panel { display: flex;
         flex-direction: column;
         height: clamp(340px, 54vh, 520px);
         min-height: 0; }
 
-    .sessions-panel { grid-area: session; }
-
-    .week-panel { grid-area: week; }
-
-    .notes-panel { grid-area: notes;
+    .notes-panel {
         max-height: clamp(320px, 46vh, 420px);
         overflow: auto; }
-
-    .sim-panel { grid-area: sim; }
 
     .panel-head { display: flex;
         align-items: center;
@@ -891,8 +874,7 @@
         width: 2px; box-shadow: 0 0 20px #3fb476;
         animation: sweep 2.8s linear infinite; }
 
-    .session-ai-card { min-height: 100%;
-        display: grid;
+    .session-ai-card { display: grid;
         align-content: start; }
 
     .session-ai-card .insight-body { white-space: pre-line; }
@@ -908,14 +890,9 @@
         to { opacity: 1; transform: scale(1); } }
 
     @media (max-width: 1080px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .panel-grid { grid-template-columns: 1fr;
-            grid-template-areas:
-                "trade"
-                "pnl"
-                "notes"
-                "session"
-                "week"
-                "sim"; }
+        .panel-grid { grid-template-columns: 1fr; }
+
+        .panel-column { gap: 0.8rem; }
 
         .trade-log,
         .pnl-panel { height: auto; }
@@ -958,7 +935,6 @@
 {% endblock %}
 
 {% block page_scripts %}
+<script src="{{ url_for('static', filename='js/trade_filters_shared.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard_page.js') }}"></script>
 {% endblock %}
-
-

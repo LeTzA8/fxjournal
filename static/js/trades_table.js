@@ -78,7 +78,12 @@
     noMatchRow.innerHTML = `<td colspan="${columnCount}" class="muted">No trades match current filters.</td>`;
     tbody.appendChild(noMatchRow);
 
-    const toUpper = (value) => (value || "").toString().trim().toUpperCase();
+    const tradeFiltersShared = window.FXJTradeFiltersShared;
+    if (!tradeFiltersShared) {
+        return;
+    }
+
+    const toUpper = tradeFiltersShared.toUpper;
     const toNumber = (value) => {
         const num = Number(value);
         return Number.isFinite(num) ? num : null;
@@ -88,49 +93,44 @@
         const ms = Date.parse(value);
         return Number.isFinite(ms) ? ms : null;
     };
-    const unique = (items) => Array.from(new Set(items.filter(Boolean)));
-    const fillSelect = (select, values, allLabel) => {
-        if (!select) return;
-        select.innerHTML = "";
-        const allOption = document.createElement("option");
-        allOption.value = "";
-        allOption.textContent = allLabel;
-        select.appendChild(allOption);
-        values.forEach((value) => {
-            const option = document.createElement("option");
-            option.value = value;
-            option.textContent = value;
-            select.appendChild(option);
-        });
-    };
+    tradeFiltersShared.populateSelects([
+        {
+            select: pairFilter,
+            rows,
+            allLabel: "All Symbols",
+            getValue: (row) => toUpper(row.dataset.pair),
+            sortValues: (a, b) => a.localeCompare(b),
+        },
+        {
+            select: strategyFilter,
+            rows,
+            allLabel: "All Strategies",
+            getValue: (row) => row.dataset.strategy,
+            sortValues: (a, b) => a.localeCompare(b),
+        },
+        {
+            select: dateFilter,
+            rows,
+            allLabel: "All Dates",
+            getValue: (row) => row.dataset.date,
+            sortValues: (a, b) => b.localeCompare(a),
+        },
+        {
+            select: sessionFilter,
+            rows,
+            allLabel: "All Sessions",
+            getValue: (row) => row.dataset.session,
+            sortValues: (a, b) => a.localeCompare(b),
+        },
+    ]);
 
-    fillSelect(
-        pairFilter,
-        unique(rows.map((row) => toUpper(row.dataset.pair))).sort(),
-        "All Symbols"
-    );
-    fillSelect(
-        strategyFilter,
-        unique(rows.map((row) => row.dataset.strategy)).sort((a, b) => a.localeCompare(b)),
-        "All Strategies"
-    );
-    fillSelect(
-        dateFilter,
-        unique(rows.map((row) => row.dataset.date)).sort((a, b) => b.localeCompare(a)),
-        "All Dates"
-    );
-    fillSelect(
-        sessionFilter,
-        unique(rows.map((row) => row.dataset.session)).sort(),
-        "All Sessions"
-    );
-
-    const updateValueControl = () => {
-        const active = filterField ? filterField.value : "";
-        Object.entries(valueSelects).forEach(([key, select]) => {
-            if (!select) return;
-            select.hidden = key !== active;
-        });
+    const updateValueControl = () => tradeFiltersShared.updateValueControl(filterField, valueSelects);
+    const filterFieldMap = {
+        pair: { datasetKey: "pair" },
+        strategy: { datasetKey: "strategy" },
+        date: { datasetKey: "date", normalize: (value) => value || "" },
+        side: { datasetKey: "side" },
+        session: { datasetKey: "session" },
     };
 
     const getSortValue = (row, type) => {
@@ -190,23 +190,10 @@
     const applyFilters = () => {
         const filterType = filterField ? filterField.value : "";
         const rawValue = filterType && valueSelects[filterType] ? valueSelects[filterType].value : "";
-        const filterValue = toUpper(rawValue);
 
         let visibleCount = 0;
         rows.forEach((row) => {
-            let show = true;
-            if (filterType === "pair") {
-                show = !filterValue || toUpper(row.dataset.pair) === filterValue;
-            } else if (filterType === "strategy") {
-                show = !filterValue || toUpper(row.dataset.strategy) === filterValue;
-            } else if (filterType === "date") {
-                show = !rawValue || row.dataset.date === rawValue;
-            } else if (filterType === "side") {
-                show = !filterValue || toUpper(row.dataset.side) === filterValue;
-            } else if (filterType === "session") {
-                show = !filterValue || toUpper(row.dataset.session) === filterValue;
-            }
-
+            const show = tradeFiltersShared.rowMatchesFilter(row, filterType, rawValue, filterFieldMap);
             row.classList.toggle("hidden-row", !show);
             if (!show) {
                 const hiddenCheckbox = row.querySelector(".trade-select");

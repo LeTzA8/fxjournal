@@ -68,7 +68,7 @@
                     placeholder="Describe the issue, question, or request."
                 >{{ contact_body or '' }}</textarea>
 
-                <p class="helper-note">This sends directly to the project contact inbox.{% if not account_user %} Include an email you actively check if you want a reply.{% endif %}</p>
+                <p class="helper-note">This sends directly to the project contact inbox at <a href="mailto:support@myfxjournal.com">support@myfxjournal.com</a>.{% if not account_user %} Include an email you actively check if you want a reply.{% endif %}</p>
 
                 <div class="form-actions">
                     <button type="submit" class="submit-btn">Send Message</button>
@@ -264,5 +264,3 @@
     }
 </style>
 {% endblock %}
-
-
