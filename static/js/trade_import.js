@@ -106,7 +106,7 @@
         if (!detectedProfile) {
             setFileName(file);
             fileInput.value = "";
-            setInvalid(`Unsupported file. Please use a ${expectedUploadLabel} that matches this ${activeMarketType} account.`);
+            setInvalid(`We could not recognize that file. Please use a ${expectedUploadLabel} that matches this ${activeMarketType} account.`);
             setImportProfile(null, null, false);
             return;
         }
@@ -148,7 +148,7 @@
         if (!detectedProfile) {
             fileInput.value = "";
             setFileName(file);
-            setInvalid(`Unsupported file. Please use a ${expectedUploadLabel} that matches this ${activeMarketType} account.`);
+            setInvalid(`We could not recognize that file. Please use a ${expectedUploadLabel} that matches this ${activeMarketType} account.`);
             setImportProfile(null, null, false);
             return;
         }
@@ -181,5 +181,4 @@
 
     setImportProfile(null, null, false);
 })();
-
 

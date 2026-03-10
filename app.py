@@ -1,6 +1,8 @@
 import os
 import re
-from datetime import datetime, timedelta
+import sqlite3
+import hashlib
+from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dotenv import load_dotenv
@@ -9,8 +11,10 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
-from sqlalchemy import func, or_
+from sqlalchemy import event, func, or_
 from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.orm import selectinload
+from sqlalchemy.engine import Engine
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -73,6 +77,19 @@ from trading import (
 load_dotenv()
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def utcnow_naive():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+@event.listens_for(Engine, "connect")
+def enable_sqlite_foreign_keys(dbapi_connection, _connection_record):
+    if not isinstance(dbapi_connection, sqlite3.Connection):
+        return
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 
 def env_bool(name, default=False):
@@ -161,7 +178,7 @@ def send_error_notification_email(error):
     if not error_to_email:
         return
 
-    occurred_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    occurred_at = utcnow_naive().strftime("%Y-%m-%d %H:%M:%S UTC")
     app_env = os.getenv("APP_ENV", "").strip() or os.getenv("FLASK_ENV", "").strip() or "unknown"
     endpoint = request.endpoint or "-" if request else "-"
     route_pattern = request.url_rule.rule if request and request.url_rule else "-"
@@ -280,6 +297,42 @@ def build_trade_duplicate_key(
         opened_at.isoformat() if opened_at else None,
         closed_at.isoformat() if closed_at else None,
     )
+
+
+def build_trade_import_dedupe_key(
+    *,
+    account_type,
+    symbol,
+    contract_code=None,
+    side,
+    entry_price,
+    exit_price,
+    lot_size,
+    opened_at,
+    closed_at,
+    pnl,
+    mt5_position=None,
+):
+    normalized_account_type = normalize_account_type(account_type)
+    if normalized_account_type == "CFD":
+        position_text = str(mt5_position or "").strip()
+        if not position_text:
+            return None
+        payload = f"cfd:{position_text}"
+    else:
+        duplicate_key = build_trade_duplicate_key(
+            symbol=symbol,
+            contract_code=contract_code,
+            side=side,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            lot_size=lot_size,
+            opened_at=opened_at,
+            closed_at=closed_at,
+            pnl=pnl,
+        )
+        payload = "futures:" + repr(duplicate_key)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def get_user_trade_accounts(user_id):
@@ -622,7 +675,7 @@ def update_trade_profile(profile, name, short_description=None):
     profile.name = normalized_name
     profile.short_description = normalized_description
     profile.current_version_number = next_version_number
-    profile.updated_at = datetime.utcnow()
+    profile.updated_at = utcnow_naive()
     version = TradeProfileVersion(
         trade_profile_id=profile.id,
         version_number=next_version_number,
@@ -639,23 +692,25 @@ def delete_users_with_related_data(user_ids):
     if not normalized_ids:
         return 0
 
-    AIGeneratedResponse.query.filter(AIGeneratedResponse.user_id.in_(normalized_ids)).delete(
-        synchronize_session=False
+    users = (
+        User.query.options(
+            selectinload(User.trades),
+            selectinload(User.trade_accounts),
+            selectinload(User.trade_profiles).selectinload(TradeProfile.versions),
+            selectinload(User.ai_generated_responses),
+        )
+        .filter(User.id.in_(normalized_ids))
+        .all()
     )
-    Trade.query.filter(Trade.user_id.in_(normalized_ids)).delete(
-        synchronize_session=False
-    )
-    TradeAccount.query.filter(TradeAccount.user_id.in_(normalized_ids)).delete(
-        synchronize_session=False
-    )
-    return User.query.filter(User.id.in_(normalized_ids)).delete(
-        synchronize_session=False
-    )
+    for user in users:
+        db.session.delete(user)
+    db.session.flush()
+    return len(users)
 
 
 def purge_expired_unverified_users():
     max_age_seconds = env_int("EMAIL_VERIFY_TOKEN_MAX_AGE_SECONDS", 86400)
-    cutoff = datetime.utcnow() - timedelta(seconds=max_age_seconds)
+    cutoff = utcnow_naive() - timedelta(seconds=max_age_seconds)
     expired_user_ids = [
         user_id
         for user_id, in db.session.query(User.id).filter(
@@ -793,7 +848,7 @@ def handle_rate_limit(_error):
                 "login.html",
                 title="Login | FX Journal",
                 body_class="auth-layout",
-                error="Too many login attempts. Please wait a minute and try again.",
+                error="Too many sign-in attempts. Please wait a minute and try again.",
                 success=success_message or None,
             ),
             429,
@@ -909,7 +964,7 @@ def home():
     summary = analytics["summary"]
     closed_records = analytics["closed_records"]
     session_stats = analytics["session_stats"]
-    now_local = to_display_timezone(datetime.utcnow(), timezone_name)
+    now_local = to_display_timezone(utcnow_naive(), timezone_name)
     trades_this_month = sum(
         1
         for trade in user_trades
@@ -1008,7 +1063,7 @@ def home():
     weekly_ai_generated_at_label = ""
     weekly_ai_period_label = ""
     weekly_ai_empty_message = (
-        "Your weekly AI review appears once this account has an eligible trade week. It uses the most recent eligible week with trades for the active account."
+        "Your weekly AI review will appear once this account has an eligible trade week. It uses the most recent completed week with trades on the active account."
     )
 
     try:
@@ -1029,7 +1084,7 @@ def home():
             user_id=user_id,
             trade_account_id=active_trade_account.id if active_trade_account else None,
         ) or get_weekly_dashboard_period()
-        weekly_ai_empty_message = "Weekly AI review is temporarily unavailable."
+        weekly_ai_empty_message = "Weekly AI review is temporarily unavailable. Please try again in a little while."
 
     if weekly_ai_review and weekly_ai_review.generated_at:
         generated_local = to_display_timezone(weekly_ai_review.generated_at, timezone_name)
@@ -1160,12 +1215,12 @@ def account():
                     url_for(
                         "account",
                         account_status="error",
-                        account_message="Verify your current email before requesting an email change.",
+                        account_message="Please verify your current email address before requesting an email change.",
                     )
                 )
 
             user.pending_email = email
-            user.pending_email_change_requested_at = datetime.utcnow()
+            user.pending_email_change_requested_at = utcnow_naive()
             user.pending_email_change_current_verified_at = None
             user.pending_email_change_new_verified_at = None
 
@@ -1231,7 +1286,7 @@ def account():
 
             kwargs = {
                 "account_status": "info",
-                "account_message": "Email change requested. Confirm from both your current email and your new email to finish the update.",
+                "account_message": "Email change requested. Please confirm from both your current email and your new email to complete the update.",
             }
             if is_local_dev_environment():
                 if not current_email_result.get("sent"):
@@ -1244,7 +1299,7 @@ def account():
             url_for(
                 "account",
                 account_status="success",
-                account_message="Account details updated.",
+                account_message="Account details updated successfully.",
             )
         )
 
@@ -1353,7 +1408,7 @@ def account_confirm_email_change(token):
             url_for(
                 "account",
                 account_status="error",
-                account_message="Email change link is invalid or expired.",
+                account_message="This email change link is invalid or has expired.",
             )
         )
 
@@ -1362,7 +1417,7 @@ def account_confirm_email_change(token):
         return redirect(
             url_for(
                 "login",
-                error="Email change link is invalid or expired.",
+                error="This email change link is invalid or has expired.",
             )
         )
 
@@ -1382,7 +1437,7 @@ def account_confirm_email_change(token):
             )
         )
 
-    now_utc = datetime.utcnow()
+    now_utc = utcnow_naive()
     if payload["channel"] == "current":
         user.pending_email_change_current_verified_at = user.pending_email_change_current_verified_at or now_utc
     else:
@@ -1404,13 +1459,13 @@ def account_confirm_email_change(token):
                     url_for(
                         "account",
                         account_status="error",
-                        account_message="That new email is no longer available. Start the email change again.",
+                        account_message="That new email address is no longer available. Please start the email change again.",
                     )
                 )
             return redirect(
                 url_for(
                     "login",
-                    error="That new email is no longer available. Start the email change again.",
+                    error="That new email address is no longer available. Please start the email change again.",
                 )
             )
 
@@ -1433,7 +1488,7 @@ def account_confirm_email_change(token):
         return redirect(
             url_for(
                 "login",
-                success="Email address updated successfully. You can now log in with the new email.",
+                success="Your email address has been updated. You can now sign in with the new email.",
             )
         )
 
@@ -1443,13 +1498,13 @@ def account_confirm_email_change(token):
             url_for(
                 "account",
                 account_status="info",
-                account_message="One verification is complete. Confirm from the other email address to finish the change.",
+                account_message="One verification step is complete. Please confirm from the other email address to finish the change.",
             )
         )
     return redirect(
         url_for(
             "login",
-            info="One verification is complete. Confirm from the other email address to finish the change.",
+            info="One verification step is complete. Please confirm from the other email address to finish the change.",
         )
     )
 
@@ -1481,7 +1536,7 @@ def account_password_reset_email():
     email_result = send_email_placeholder(user.email, email_subject, email_body)
 
     if email_result.get("sent"):
-        account_message = "Password reset email sent to your account email."
+        account_message = "Password reset email sent to your account email address."
     elif is_local_dev_environment():
         account_message = (
             "Password reset link captured in server logs. Email delivery is disabled in this environment."
@@ -1521,7 +1576,7 @@ def delete_account():
                 "account",
                 account_status="error",
                 account_message=(
-                    "To delete your account, type DELETE and tick the confirmation checkbox."
+                    "To delete your account, type DELETE and check the confirmation box."
                 ),
             )
         )
@@ -1535,7 +1590,7 @@ def delete_account():
             url_for(
                 "account",
                 account_status="error",
-                account_message="Could not delete account right now. Please try again.",
+                account_message="Could not delete your account right now. Please try again.",
             )
         )
 
@@ -1543,7 +1598,7 @@ def delete_account():
     return redirect(
         url_for(
             "login",
-            success="Your account and all related trade, account, and AI review data were deleted.",
+            success="Your account and all related trades, trade accounts, and AI reviews have been deleted.",
         )
     )
 
@@ -1666,7 +1721,7 @@ def create_trade_account():
         append_query_params(
             get_safe_internal_next("trade_accounts"),
             trade_account_status="success",
-            trade_account_message=f"Trade account '{new_account.name}' added.",
+            trade_account_message=f"Trade account '{new_account.name}' created successfully.",
         )
     )
 
@@ -1699,7 +1754,7 @@ def set_default_trade_account(trade_account_pubkey):
         append_query_params(
             get_safe_internal_next("trade_accounts"),
             trade_account_status="info",
-            trade_account_message=f"Default trade account set to '{selected.name}'.",
+            trade_account_message=f"Default trade account updated to '{selected.name}'.",
         )
     )
 
@@ -1798,7 +1853,7 @@ def update_trade_account(trade_account_pubkey):
         append_query_params(
             get_safe_internal_next("trade_accounts"),
             trade_account_status="success",
-            trade_account_message=f"Trade account '{account.name}' updated.",
+            trade_account_message=f"Trade account '{account.name}' updated successfully.",
         )
     )
 
@@ -1863,7 +1918,7 @@ def delete_trade_account(trade_account_pubkey):
     if confirmation_text != "DELETE" or not acknowledged:
         return respond_with_status(
             "error",
-            f"To delete '{account.name}', type DELETE and tick the confirmation checkbox.",
+            f"To delete '{account.name}', type DELETE and check the confirmation box.",
         )
 
     try:
@@ -1962,7 +2017,7 @@ def delete_all_trade_accounts():
             append_query_params(
                 get_safe_internal_next("trade_accounts"),
                 trade_account_status="error",
-                trade_account_message="Type DELETE and tick the confirmation checkbox to remove every trade account.",
+                trade_account_message="Type DELETE and check the confirmation box to remove all trade accounts.",
             )
         )
 
@@ -1970,9 +2025,22 @@ def delete_all_trade_accounts():
     account_count = TradeAccount.query.filter_by(user_id=user_id).count()
     ai_review_count = AIGeneratedResponse.query.filter_by(user_id=user_id).count()
     try:
-        AIGeneratedResponse.query.filter_by(user_id=user_id).delete(synchronize_session=False)
-        Trade.query.filter_by(user_id=user_id).delete(synchronize_session=False)
-        TradeAccount.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+        orphan_ai_reviews = AIGeneratedResponse.query.filter_by(
+            user_id=user_id,
+            trade_account_id=None,
+        ).all()
+        orphan_trades = Trade.query.filter_by(
+            user_id=user_id,
+            trade_account_id=None,
+        ).all()
+        account_rows = TradeAccount.query.filter_by(user_id=user_id).all()
+
+        for ai_review in orphan_ai_reviews:
+            db.session.delete(ai_review)
+        for trade in orphan_trades:
+            db.session.delete(trade)
+        for account in account_rows:
+            db.session.delete(account)
 
         replacement_account = TradeAccount(
             pubkey=build_unique_trade_account_pubkey(),
@@ -2119,7 +2187,7 @@ def contact():
                 500,
             )
 
-        submitted_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        submitted_at = utcnow_naive().strftime("%Y-%m-%d %H:%M:%S UTC")
         requester_ip = (
             request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
             or request.remote_addr
@@ -2165,7 +2233,7 @@ def contact():
                 url_for(
                     "contact",
                     contact_status="success",
-                    contact_message="Message sent. I will review it as soon as possible.",
+                    contact_message="Your message has been sent. I will review it as soon as possible.",
                 )
             )
 
@@ -2180,7 +2248,7 @@ def contact():
         if not persisted and not is_local_dev_environment():
             return render_contact(
                 "error",
-                "Message could not be delivered or stored right now. Please try again later.",
+                "Your message could not be delivered or saved right now. Please try again later.",
                 503,
             )
 
@@ -2199,7 +2267,7 @@ def contact():
             url_for(
                 "contact",
                 contact_status="info",
-                contact_message="Message received, but email delivery is currently unavailable.",
+                contact_message="Your message was received, but email delivery is currently unavailable.",
             )
         )
 
@@ -2256,7 +2324,7 @@ def render_trades_page(*, manage_mode=False):
         trade_profile_version = getattr(trade, "trade_profile_version", None)
         duration_minutes = None
         if trade.opened_at is not None:
-            duration_end = trade.closed_at or datetime.utcnow()
+            duration_end = trade.closed_at or utcnow_naive()
             if duration_end >= trade.opened_at:
                 duration_minutes = (duration_end - trade.opened_at).total_seconds() / 60.0
         trade_rows.append(
@@ -2399,18 +2467,21 @@ def bulk_delete_trades():
             url_for(
                 "manage_trades",
                 batch_delete_status="error",
-                batch_delete_message="Select at least one trade to delete.",
+                batch_delete_message="Please select at least one trade to delete.",
             )
         )
 
     try:
-        deleted = (
+        trades_to_delete = (
             Trade.query.filter(
                 Trade.user_id == user_id,
                 Trade.trade_account_id == active_trade_account.id,
                 Trade.pubkey.in_(selected_pubkeys),
-            ).delete(synchronize_session=False)
+            ).all()
         )
+        deleted = len(trades_to_delete)
+        for trade in trades_to_delete:
+            db.session.delete(trade)
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()
@@ -2426,7 +2497,7 @@ def bulk_delete_trades():
     message = (
         f"Deleted {deleted} selected trade{'s' if deleted != 1 else ''}."
         if deleted > 0
-        else "No trades matched the selected rows."
+        else "No matching trades were found in the selected rows."
     )
     return redirect(
         url_for(
@@ -2461,7 +2532,7 @@ def batch_update_trade_profile():
             url_for(
                 "manage_trades",
                 batch_profile_status="error",
-                batch_profile_message="Select at least one trade to update.",
+                batch_profile_message="Please select at least one trade to update.",
             )
         )
 
@@ -2599,7 +2670,7 @@ def strategies():
                 url_for(
                     "strategies",
                     trade_profile_status="success",
-                    trade_profile_message="Trade profile created.",
+                    trade_profile_message="Trade profile created successfully.",
                 )
             )
         except ValueError as exc:
@@ -2617,7 +2688,7 @@ def strategies():
                 url_for(
                     "strategies",
                     trade_profile_status="error",
-                    trade_profile_message="Could not create the trade profile right now.",
+                    trade_profile_message="Could not create the trade profile right now. Please try again.",
                 )
             )
 
@@ -2672,7 +2743,7 @@ def edit_strategy(profile_pubkey):
             url_for(
                 "strategies",
                 trade_profile_status="success",
-                trade_profile_message="Trade profile updated and versioned.",
+                trade_profile_message="Trade profile updated successfully and saved as a new version.",
             )
         )
     except ValueError as exc:
@@ -2692,7 +2763,7 @@ def edit_strategy(profile_pubkey):
                 "strategies",
                 edit=profile.pubkey,
                 trade_profile_status="error",
-                trade_profile_message="Could not update the trade profile right now.",
+                trade_profile_message="Could not update the trade profile right now. Please try again.",
             )
         )
 
@@ -2714,13 +2785,13 @@ def archive_strategy(profile_pubkey):
         )
 
     profile.is_archived = True
-    profile.updated_at = datetime.utcnow()
+    profile.updated_at = utcnow_naive()
     db.session.commit()
     return redirect(
         url_for(
             "strategies",
             trade_profile_status="success",
-            trade_profile_message="Trade profile archived.",
+            trade_profile_message="Trade profile archived successfully.",
         )
     )
 
@@ -2759,7 +2830,7 @@ def new_trade():
         if opened_at is None:
             opened_at = parse_local_datetime_input(request.form.get("trade_date", "").strip())
         if opened_at is None:
-            opened_at = datetime.utcnow()
+            opened_at = utcnow_naive()
         closed_at = parse_local_datetime_input(request.form.get("closed_at", "").strip())
         if status != "closed":
             closed_at = None
@@ -2870,9 +2941,9 @@ def import_trade_file():
                 "new_trade",
                 import_status="error",
                 import_message=(
-                    "Please choose a Tradovate .csv file to upload."
+                    "Please choose a Tradovate CSV file to upload."
                     if account_type == "FUTURES"
-                    else "Please choose an MT5 .xlsx file to upload."
+                    else "Please choose an MT5 XLSX file to upload."
                 ),
             )
         )
@@ -2886,7 +2957,7 @@ def import_trade_file():
                 url_for(
                     "new_trade",
                     import_status="error",
-                    import_message="Unsupported or unrecognized import file. Use an MT5 Positions workbook or Tradovate Performance CSV.",
+                    import_message="We could not recognize that import file. Please use an MT5 Positions workbook or a Tradovate Performance CSV.",
                 )
             )
 
@@ -2897,9 +2968,9 @@ def import_trade_file():
                     "new_trade",
                     import_status="error",
                     import_message=(
-                        f"Detected {detected_profile.get('platform', 'unknown')} "
-                        f"{detected_profile.get('market_type', 'import')} file, "
-                        f"but the active account is {account_type.title()}."
+                        f"This file was identified as a {detected_profile.get('platform', 'unknown')} "
+                        f"{detected_profile.get('market_type', 'import')} import, "
+                        f"but the active account is set to {account_type.title()}."
                     ),
                 )
             )
@@ -2917,9 +2988,9 @@ def import_trade_file():
                     "new_trade",
                     import_status="error",
                     import_message=(
-                        "No valid trade rows found in this Tradovate CSV."
+                        "No valid trade rows were found in this Tradovate CSV."
                         if account_type == "FUTURES"
-                        else "No valid trade rows found in this MT5 file."
+                        else "No valid trade rows were found in this MT5 file."
                     ),
                 )
             )
@@ -3084,6 +3155,19 @@ def import_trade_file():
                     symbol=symbol,
                     mt5_position=mt5_position,
                     import_signature=import_signature,
+                    import_dedupe_key=build_trade_import_dedupe_key(
+                        account_type=account_type,
+                        symbol=symbol,
+                        contract_code=contract_code,
+                        side=side,
+                        entry_price=entry_price,
+                        exit_price=exit_price,
+                        lot_size=lot_size,
+                        opened_at=opened_at,
+                        closed_at=closed_at,
+                        pnl=pnl,
+                        mt5_position=mt5_position,
+                    ),
                     contract_code=contract_code,
                     side=side,
                     entry_price=float(entry_price),
@@ -3114,7 +3198,7 @@ def import_trade_file():
                     "new_trade",
                     import_status="error",
                     import_message=(
-                        f"No trades imported. Parsed {len(parsed_rows)} rows, "
+                        f"No trades were imported. Parsed {len(parsed_rows)} rows and "
                         f"skipped {skipped_rows + validation_skipped + duplicate_count}."
                         f"{symbol_msg}"
                     ),
@@ -3159,14 +3243,14 @@ def import_trade_file():
             uncertain_bits.append(f"missing open time {validation_reasons['missing_open_time']}")
         uncertain_msg = ""
         if uncertain_bits:
-            uncertain_msg = " Data uncertainty checks: " + ", ".join(uncertain_bits) + "."
+            uncertain_msg = " Validation details: " + ", ".join(uncertain_bits) + "."
 
         return redirect(
             url_for(
                 "new_trade",
                 import_status=status,
                 import_message=(
-                    f"Imported {len(insert_batch)} trades from "
+                    f"Imported {len(insert_batch)} trade{'s' if len(insert_batch) != 1 else ''} from "
                     f"{'Tradovate CSV' if account_type == 'FUTURES' else 'Positions'}. "
                     f"Parsed rows: {len(parsed_rows)}/{total_rows}. "
                     f"Skipped: {skipped_rows + validation_skipped}. "
@@ -3174,6 +3258,18 @@ def import_trade_file():
                     f" Import signature: {import_signature}."
                     f"{symbol_msg}"
                     f"{uncertain_msg}"
+                ),
+            )
+        )
+    except IntegrityError as exc:
+        db.session.rollback()
+        app.logger.warning("Trade import blocked by integrity constraint: %s", exc)
+        return redirect(
+            url_for(
+                "new_trade",
+                import_status="info",
+                import_message=(
+                    "Some trades in this upload already exist on the active account. The import was stopped to avoid creating duplicates."
                 ),
             )
         )
@@ -3209,9 +3305,9 @@ def import_trade_file():
                 "new_trade",
                 import_status="error",
                 import_message=(
-                    "Upload processing failed. Check Tradovate CSV format and try again."
+                    "We could not process that upload. Please check the Tradovate CSV format and try again."
                     if account_type == "FUTURES"
-                    else "Upload processing failed. Check MT5 export format and try again."
+                    else "We could not process that upload. Please check the MT5 export format and try again."
                 ) + extra_detail,
             )
         )
@@ -3412,13 +3508,16 @@ def delete_import_batch():
         )
 
     try:
-        deleted = (
+        trades_to_delete = (
             Trade.query.filter_by(
                 user_id=user_id,
                 trade_account_id=active_trade_account.id,
                 import_signature=import_signature,
-            ).delete(synchronize_session=False)
+            ).all()
         )
+        deleted = len(trades_to_delete)
+        for trade in trades_to_delete:
+            db.session.delete(trade)
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()
@@ -3434,7 +3533,7 @@ def delete_import_batch():
     message = (
         f"Deleted {deleted} imported trade{'s' if deleted != 1 else ''} from the selected batch."
         if deleted > 0
-        else f"No trades found for the selected import batch."
+        else "No trades were found for the selected import batch."
     )
     return redirect(
         url_for(
@@ -3447,4 +3546,3 @@ def delete_import_batch():
 if __name__ == "__main__":
     debug_mode = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
     app.run(debug=debug_mode)
-

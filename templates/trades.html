@@ -303,7 +303,12 @@
                             {% endfor %}
                             {% else %}
                             <tr class="empty-row">
-                                <td colspan="{% if manage_mode %}12{% else %}11{% endif %}">No trades yet. Add your first trade.</td>
+                                <td colspan="{% if manage_mode %}12{% else %}11{% endif %}">
+                                    <div class="empty-table-state">
+                                        <p>No trades yet.</p>
+                                        <p class="empty-table-state-note">Add your first trade or import account history to start reviewing execution, filtering results, and managing batches here.</p>
+                                    </div>
+                                </td>
                             </tr>
                             {% endif %}
                         </tbody>
@@ -924,7 +929,13 @@
     .view-btn { border: 1px solid #c8d6de; }
 .edit-btn { border: 1px solid #c6d4ca; }
 .empty-row td { text-align: center; padding: 1rem 0.45rem;
-        font-style: italic; }
+        font-style: normal; }
+.empty-table-state { display: grid;
+        gap: 0.22rem; }
+.empty-table-state p { margin: 0; }
+.empty-table-state-note { font-size: 0.88rem;
+        line-height: 1.45;
+        color: var(--muted); }
 
     @media (max-width: 1080px) { .trade-log { height: auto; }
 

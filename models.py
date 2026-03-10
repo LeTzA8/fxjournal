@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import secrets
 
 from flask_sqlalchemy import SQLAlchemy
@@ -19,11 +19,15 @@ def generate_trade_account_pubkey():
     return secrets.token_hex(TRADE_ACCOUNT_PUBKEY_BYTES)
 
 
+def utcnow_naive():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class User(db.Model):
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
@@ -81,7 +85,7 @@ class ContactSubmission(db.Model):
     body = db.Column(db.Text, nullable=False)
     delivery_sent = db.Column(db.Boolean, nullable=False, default=False, index=True)
     delivery_mode = db.Column(db.String(32), nullable=False, default="unknown")
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, index=True)
 
 
 class TradeAccount(db.Model):
@@ -89,6 +93,13 @@ class TradeAccount(db.Model):
     __table_args__ = (
         db.Index("ix_trade_accounts_user_name", "user_id", "name"),
         db.Index("ix_trade_accounts_user_external", "user_id", "external_account_id"),
+        db.Index(
+            "uq_trade_accounts_one_default_per_user",
+            "user_id",
+            unique=True,
+            sqlite_where=db.text("is_default = 1"),
+            postgresql_where=db.text("is_default"),
+        ),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -122,6 +133,15 @@ class Trade(db.Model):
         db.Index("ix_trades_user_trade_account", "user_id", "trade_account_id"),
         db.Index("ix_trades_user_mt5_position", "user_id", "mt5_position"),
         db.Index("ix_trades_user_import_signature", "user_id", "import_signature"),
+        db.Index(
+            "uq_trades_user_account_import_dedupe",
+            "user_id",
+            "trade_account_id",
+            "import_dedupe_key",
+            unique=True,
+            sqlite_where=db.text("import_dedupe_key IS NOT NULL"),
+            postgresql_where=db.text("import_dedupe_key IS NOT NULL"),
+        ),
         db.Index(
             "ix_trades_user_account_mt5_position",
             "user_id",
@@ -160,6 +180,7 @@ class Trade(db.Model):
     pnl = db.Column(db.Float, nullable=True)
     mt5_position = db.Column(db.String(64), nullable=True, index=True)
     import_signature = db.Column(db.String(80), nullable=True, index=True)
+    import_dedupe_key = db.Column(db.String(64), nullable=True, index=True)
     source_timezone = db.Column(db.String(64), nullable=True)
     contract_code = db.Column(db.String(24), nullable=True)
     trade_note = db.Column(db.Text, nullable=True)
@@ -175,7 +196,7 @@ class Trade(db.Model):
         nullable=True,
         index=True,
     )
-    opened_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    opened_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
     closed_at = db.Column(db.DateTime, nullable=True)
     trade_profile = db.relationship(
         "TradeProfile",
@@ -208,12 +229,12 @@ class TradeProfile(db.Model):
     short_description = db.Column(db.Text, nullable=True)
     current_version_number = db.Column(db.Integer, nullable=False, default=1)
     is_archived = db.Column(db.Boolean, nullable=False, default=False)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
     updated_at = db.Column(
         db.DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
     )
     versions = db.relationship(
         "TradeProfileVersion",
@@ -249,7 +270,7 @@ class TradeProfileVersion(db.Model):
     version_number = db.Column(db.Integer, nullable=False)
     name = db.Column(db.String(80), nullable=False)
     short_description = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
 
 
 class CFDSymbol(db.Model):
@@ -289,7 +310,7 @@ class SignupCode(db.Model):
     max_uses = db.Column(db.Integer, nullable=True)
     used_count = db.Column(db.Integer, nullable=False, default=0)
     expires_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
 
 
 class FuturesSymbol(db.Model):
@@ -315,7 +336,7 @@ class AIPromptHistory(db.Model):
     prompt_sha256 = db.Column(db.String(64), unique=True, nullable=False, index=True)
     prompt_text = db.Column(db.Text, nullable=False)
     source_path = db.Column(db.String(255), nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
     generated_responses = db.relationship(
         "AIGeneratedResponse",
         backref="prompt_history",
@@ -376,4 +397,4 @@ class AIGeneratedResponse(db.Model):
     source_last_trade_id = db.Column(db.Integer, nullable=True)
     period_start_utc = db.Column(db.DateTime, nullable=True)
     period_end_utc = db.Column(db.DateTime, nullable=True)
-    generated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    generated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)

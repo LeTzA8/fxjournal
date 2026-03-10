@@ -44,10 +44,10 @@
                                 </form>
                             </div>
                         </div>
-                        <p class="profile-description">{{ version.short_description if version and version.short_description else "No description added yet." }}</p>
+                        <p class="profile-description">{{ version.short_description if version and version.short_description else "No description added yet. Include the setup idea, trigger, or rules you want to remember when tagging trades." }}</p>
                     </article>
                     {% else %}
-                    <p class="empty-copy">No strategies yet. Create your first one on the right.</p>
+                    <p class="empty-copy">No strategies yet. Create your first one on the right, then attach it to trades so you can review performance by setup instead of memory.</p>
                     {% endfor %}
                 </div>
             </article>
@@ -57,6 +57,9 @@
                     <h2>{% if edit_target %}Edit Strategy{% else %}New Strategy{% endif %}</h2>
                     <span class="soft">{% if edit_target %}Creates new version{% else %}Version 1{% endif %}</span>
                 </div>
+                {% if not edit_target %}
+                <p class="empty-copy">Start with the setup name and a short description of the entry model, confirmation, or execution rules you want to track.</p>
+                {% endif %}
                 <form
                     action="{% if edit_target %}{{ url_for('edit_strategy', profile_pubkey=edit_target.pubkey) }}{% else %}{{ url_for('strategies') }}{% endif %}"
                     method="post"

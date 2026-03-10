@@ -36,7 +36,8 @@
         {% if summary.closed_trades == 0 %}
         <section class="panel empty-state">
             <h2>No closed trades yet</h2>
-            <p>Analytics unlock after you log at least one closed trade with realized PnL. Open trades are still tracked on the trade journal.</p>
+            <p>Analytics become available after you log at least one closed trade with realized PnL. Open trades are still tracked in the journal, but closed trades are what power the breakdowns here.</p>
+            <p>Start by adding a completed trade or importing account history, then come back here to review win rate, session behavior, symbols, and drawdown context.</p>
             <div class="empty-actions">
                 <a href="{{ url_for('new_trade') }}" class="trades-btn">Add Trade</a>
                 <a href="{{ url_for('trades') }}" class="ghost-btn">Open Journal</a>

@@ -1,6 +1,6 @@
 import os
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask import abort, current_app, redirect, render_template, request, session, url_for
 from sqlalchemy import or_
@@ -30,6 +30,10 @@ VALID_SIGNUP_CODE_MODES = {
     SIGNUP_CODE_MODE_OPTIONAL,
     SIGNUP_CODE_MODE_REQUIRED,
 }
+
+
+def utcnow_naive():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _env_int(name, default):
@@ -119,7 +123,7 @@ def find_signup_code(code_value):
 def is_signup_code_usable(code_row):
     if not code_row or not code_row.is_active:
         return False
-    if code_row.expires_at and code_row.expires_at <= datetime.utcnow():
+    if code_row.expires_at and code_row.expires_at <= utcnow_naive():
         return False
     if code_row.max_uses is not None and code_row.used_count >= code_row.max_uses:
         return False
@@ -295,7 +299,7 @@ def verify_pending_registration_token(token, max_age_seconds):
 
 
 def cleanup_pending_registrations(max_age_seconds):
-    now = datetime.utcnow()
+    now = utcnow_naive()
     expired = []
     for registration_id, item in PENDING_REGISTRATIONS.items():
         created_at = item.get("created_at")
@@ -318,7 +322,7 @@ def create_pending_registration(username, email, password_hash):
         "username": username,
         "email": email,
         "password_hash": password_hash,
-        "created_at": datetime.utcnow(),
+        "created_at": utcnow_naive(),
     }
     return registration_id
 
@@ -579,7 +583,7 @@ def register_public_auth_routes(
     @limiter.limit(
         "8 per minute;40 per hour",
         methods=["POST"],
-        error_message="Too many login attempts. Please wait and try again.",
+        error_message="Too many sign-in attempts. Please wait and try again.",
     )
     def login():
         if session.get("user_id"):
@@ -605,7 +609,7 @@ def register_public_auth_routes(
                 if os.getenv("REQUIRE_EMAIL_VERIFICATION", "true").strip().lower() in {"1", "true", "yes", "on"} and not user.email_verified:
                     session["pending_verify_email"] = user.email
                     return render_login_page(
-                        error="Please verify your email before logging in.",
+                        error="Please verify your email address before signing in.",
                         success=success_message,
                         info=info_message or None,
                         email=email,
@@ -614,22 +618,22 @@ def register_public_auth_routes(
                 if signup_status == SIGNUP_STATUS_PENDING:
                     return render_login_page(
                         success=success_message,
-                        info="Your account is verified, but it is still waiting for manual approval.",
+                        info="Your email has been verified. Your account is now waiting for approval.",
                         email=email,
                     )
                 if signup_status == SIGNUP_STATUS_REJECTED:
                     return render_login_page(
-                        error="Your registration was not approved. Contact support if you think this is a mistake.",
+                        error="Your registration was not approved. Contact support if you believe this is a mistake.",
                         success=success_message,
                         email=email,
                     )
                 if signup_status == SIGNUP_STATUS_SUSPENDED:
                     return render_login_page(
-                        error="This account is currently suspended. Contact support for help.",
+                        error="This account is currently suspended. Contact support if you need help.",
                         success=success_message,
                         email=email,
                     )
-                user.last_login_at = datetime.utcnow()
+                user.last_login_at = utcnow_naive()
                 session["user_id"] = user.id
                 session["username"] = user.username
                 active_account, _accounts = resolve_active_trade_account(user.id)
@@ -687,7 +691,7 @@ def register_public_auth_routes(
                     )
             elif signup_code_mode == SIGNUP_CODE_MODE_REQUIRED:
                 return render_register_page(
-                    error="A valid referral code is required to register right now.",
+                    error="A valid referral code is required to create an account right now.",
                     username=username,
                     email=email,
                     signup_code=signup_code_value,
@@ -735,7 +739,7 @@ def register_public_auth_routes(
                 existing_status = normalize_signup_status(existing_user.signup_status)
                 if existing_user.email == email and existing_status == SIGNUP_STATUS_REJECTED:
                     return render_register_page(
-                        error="This email already has a rejected registration. Contact support if you need help.",
+                        error="This email is linked to a rejected registration. Contact support if you need help.",
                         username=username,
                         email=email,
                         signup_code=signup_code_value,
@@ -789,8 +793,8 @@ def register_public_auth_routes(
                 email_verified=False,
                 signup_status=initial_signup_status,
                 signup_code_used=signup_code_row.code if signup_code_row else None,
-                approved_at=datetime.utcnow() if initial_signup_status == SIGNUP_STATUS_APPROVED else None,
-                verification_sent_at=datetime.utcnow(),
+                approved_at=utcnow_naive() if initial_signup_status == SIGNUP_STATUS_APPROVED else None,
+                verification_sent_at=utcnow_naive(),
             )
             db.session.add(user)
             try:
@@ -861,7 +865,7 @@ def register_public_auth_routes(
                     url_for(
                         "login",
                         verified="1",
-                        info="Email verified. Your account is waiting for approval.",
+                        info="Your email has been verified. Your account is now waiting for approval.",
                     )
                 )
             else:
@@ -875,7 +879,7 @@ def register_public_auth_routes(
                 return redirect(
                     url_for(
                         "register",
-                        error="Verification session expired. Please register again.",
+                        error="Your verification session has expired. Please register again.",
                     )
                 )
             pending_email = pending["email"]
@@ -904,7 +908,7 @@ def register_public_auth_routes(
                     return redirect(
                         url_for(
                             "register",
-                            error="Verification session expired. Please register again.",
+                            error="Your verification session has expired. Please register again.",
                         )
                     )
                 if user.email_verified:
@@ -962,7 +966,7 @@ def register_public_auth_routes(
                 return redirect(
                     url_for(
                         "register",
-                        error="Verification link is invalid or expired. Please register again.",
+                        error="This verification link is invalid or has expired. Please register again.",
                     )
                 )
 
@@ -973,7 +977,7 @@ def register_public_auth_routes(
                 return redirect(
                     url_for(
                         "register",
-                        error="Verification payload mismatch. Please register again.",
+                        error="We could not verify this registration request. Please register again.",
                     )
                 )
 
@@ -993,7 +997,7 @@ def register_public_auth_routes(
                 return redirect(
                     url_for(
                         "register",
-                        error="Username or email is no longer available. Please register again.",
+                        error="That username or email is no longer available. Please register again.",
                     )
                 )
 
@@ -1004,8 +1008,8 @@ def register_public_auth_routes(
                 password=pending["password_hash"],
                 email_verified=True,
                 signup_status=initial_signup_status,
-                approved_at=datetime.utcnow() if initial_signup_status == SIGNUP_STATUS_APPROVED else None,
-                verification_sent_at=datetime.utcnow(),
+                approved_at=utcnow_naive() if initial_signup_status == SIGNUP_STATUS_APPROVED else None,
+                verification_sent_at=utcnow_naive(),
             )
             db.session.add(user)
             db.session.commit()
@@ -1020,7 +1024,7 @@ def register_public_auth_routes(
                 url_for(
                     "login",
                     verified="1",
-                    info="Email verified. Your account is waiting for approval.",
+                    info="Your email has been verified. Your account is now waiting for approval.",
                 )
             )
 
@@ -1033,7 +1037,7 @@ def register_public_auth_routes(
             return redirect(
                 url_for(
                     "register",
-                    error="Verification link is invalid or expired. Please register again.",
+                    error="This verification link is invalid or has expired. Please register again.",
                 )
             )
 
@@ -1042,7 +1046,7 @@ def register_public_auth_routes(
             return redirect(
                 url_for(
                     "register",
-                    error="Verification link is invalid or expired. Please register again.",
+                    error="This verification link is invalid or has expired. Please register again.",
                 )
             )
 
@@ -1063,7 +1067,7 @@ def register_public_auth_routes(
             url_for(
                 "login",
                 verified="1",
-                info="Email verified. Your account is waiting for approval.",
+                info="Your email has been verified. Your account is now waiting for approval.",
             )
         )
 
@@ -1140,7 +1144,7 @@ def register_public_auth_routes(
             return build_admin_redirect("users", "That user is already approved.", "info")
 
         user.signup_status = SIGNUP_STATUS_APPROVED
-        user.approved_at = datetime.utcnow()
+        user.approved_at = utcnow_naive()
         user.approved_by_user_id = admin_user.id
         db.session.commit()
         return build_admin_redirect(
@@ -1397,7 +1401,7 @@ def register_public_auth_routes(
                 "reset_password.html",
                 title="Reset Password | FX Journal",
                 body_class="auth-layout",
-                error="Reset link is invalid or expired.",
+                error="This password reset link is invalid or has expired.",
                 token_valid=False,
             )
 
@@ -1407,7 +1411,7 @@ def register_public_auth_routes(
                 "reset_password.html",
                 title="Reset Password | FX Journal",
                 body_class="auth-layout",
-                error="Reset link is invalid or expired.",
+                error="This password reset link is invalid or has expired.",
                 token_valid=False,
             )
 

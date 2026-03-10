@@ -28,6 +28,10 @@ WEEKLY_ACTIVITY_LOOKBACK_DAYS = 3
 logger = logging.getLogger(__name__)
 
 
+def utcnow_naive():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class AIConfigError(RuntimeError):
     pass
 
@@ -353,7 +357,7 @@ def build_trade_payload(
         )
 
     payload = {
-        "generated_at": format_utc_timestamp(datetime.utcnow()),
+        "generated_at": format_utc_timestamp(utcnow_naive()),
         "period_start_utc": format_utc_timestamp(period_start_utc),
         "period_end_utc": format_utc_timestamp(period_end_utc),
         "historical_context": _build_historical_context(

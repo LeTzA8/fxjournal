@@ -117,7 +117,7 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <p class="helper-note">No accounts yet. Create your first one in the panel on the right.</p>
+                <p class="helper-note">No trade accounts yet. Create your first one in the panel on the right, then set it as your working account for trades, imports, and analytics.</p>
                 {% endif %}
             </article>
 
@@ -130,6 +130,9 @@
                     <h2>{% if edit_target %}Edit Account{% else %}Create Account{% endif %}</h2>
                     <span class="soft">{% if edit_target %}Selected{% else %}New{% endif %}</span>
                 </div>
+                {% if not edit_target %}
+                <p class="helper-note">Use one account per broker, challenge, or funded program so your stats stay separated and easier to review.</p>
+                {% endif %}
 
                 {% if edit_target %}
                 <form action="{{ url_for('update_trade_account', trade_account_pubkey=edit_target.pubkey) }}" method="post" class="create-form" data-themed-validation>

@@ -63,7 +63,7 @@
                     {% if avg_win is not none and avg_loss_abs is not none %}
                     Average realized winner and loser across closed trades.
                     {% else %}
-                    No closed win/loss data yet
+                    Closed win/loss averages will appear after you log completed winners and losers.
                     {% endif %}
                 </p>
             </article>
@@ -174,7 +174,12 @@
                                 {% endfor %}
                                 {% else %}
                                 <tr class="empty-row">
-                                    <td colspan="6" class="muted">No trades yet. Add your first trade.</td>
+                                    <td colspan="6">
+                                        <div class="empty-state-copy">
+                                            <p>No trades yet.</p>
+                                            <p class="empty-state-note">Add your first trade to start building dashboard stats, session breakdowns, and weekly review history.</p>
+                                        </div>
+                                    </td>
                                 </tr>
                                 {% endif %}
                             </tbody>
@@ -334,7 +339,7 @@
                     <p class="insight-note">Most active sessions on the current trade account.</p>
                     {% else %}
                     <div class="insight-content">
-                        <p class="insight-body">No closed trades yet, so session performance is still building.</p>
+                        <p class="insight-body">Session performance will appear once you log closed trades on this account. Start with a few completed trades to compare win rate, volume, and net PnL by session.</p>
                     </div>
                     {% endif %}
                 </article>
@@ -820,8 +825,15 @@
         gap: 0.14rem;
         text-align: right; }
 
-    .session-rate { font-size: 0.78rem;
-        font-weight: 700; }
+.session-rate { font-size: 0.78rem;
+    font-weight: 700; }
+.empty-state-copy { display: grid;
+    gap: 0.22rem;
+    text-align: center; }
+.empty-state-copy p { margin: 0; }
+.empty-state-note { color: var(--muted);
+    font-size: 0.88rem;
+    line-height: 1.45; }
 
     .week-compare-grid { display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));

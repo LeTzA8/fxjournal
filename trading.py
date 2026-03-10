@@ -78,6 +78,10 @@ ACCOUNT_TYPE_CHOICES = ("CFD", "FUTURES")
 FUTURES_MONTH_CODES = frozenset({"F", "G", "H", "J", "K", "M", "N", "Q", "U", "V", "X", "Z"})
 MT5_DEFAULT_SOURCE_TIMEZONE_NAME = "GMT+2"
 MT5_DEFAULT_SOURCE_TIMEZONE = timezone(timedelta(hours=2), name=MT5_DEFAULT_SOURCE_TIMEZONE_NAME)
+
+
+def utcnow_naive():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 try:
     TRADOVATE_DEFAULT_SOURCE_TIMEZONE_NAME = "America/Chicago"
     TRADOVATE_DEFAULT_SOURCE_TIMEZONE = ZoneInfo(TRADOVATE_DEFAULT_SOURCE_TIMEZONE_NAME)
@@ -517,7 +521,7 @@ def parse_mt5_position_value(value):
 
 
 def build_import_signature(prefix="mt5"):
-    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    timestamp = utcnow_naive().strftime("%Y%m%d%H%M%S")
     random_tail = os.urandom(4).hex()
     return f"{prefix}_{timestamp}_{random_tail}"
 
@@ -1324,7 +1328,7 @@ def build_trade_analytics(
     account_size=None,
 ):
     display_timezone = get_timezone(display_timezone_name)
-    now_utc = ensure_utc_aware(now_utc or datetime.utcnow())
+    now_utc = ensure_utc_aware(now_utc or utcnow_naive())
     now_local = now_utc.astimezone(display_timezone)
     week_start_local = (now_local - timedelta(days=now_local.weekday())).replace(
         hour=0,
