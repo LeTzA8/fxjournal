@@ -163,8 +163,8 @@ def send_error_notification_email(error):
 
     occurred_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
     app_env = os.getenv("APP_ENV", "").strip() or os.getenv("FLASK_ENV", "").strip() or "unknown"
-    path = request.path if request else "-"
     endpoint = request.endpoint or "-" if request else "-"
+    route_pattern = request.url_rule.rule if request and request.url_rule else "-"
     method = request.method if request else "-"
     user_id = session.get("user_id", "-") if request else "-"
     remote_addr = (
@@ -172,14 +172,14 @@ def send_error_notification_email(error):
         or request.remote_addr
         or "-"
     ) if request else "-"
-    subject = f"[FX Journal Error] {type(error).__name__} on {path}"
+    subject = f"[FX Journal Error] {type(error).__name__} on {endpoint}"
     body = (
         "Unhandled application error\n\n"
         f"Occurred at: {occurred_at}\n"
         f"Environment: {app_env}\n"
         f"Method: {method}\n"
-        f"Path: {path}\n"
         f"Endpoint: {endpoint}\n"
+        f"Route pattern: {route_pattern}\n"
         f"User ID: {user_id}\n"
         f"Client IP: {remote_addr}\n"
         f"Exception type: {type(error).__name__}\n"
@@ -3447,3 +3447,4 @@ def delete_import_batch():
 if __name__ == "__main__":
     debug_mode = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes"}
     app.run(debug=debug_mode)
+
