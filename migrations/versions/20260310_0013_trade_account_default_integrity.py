@@ -26,7 +26,7 @@ def upgrade() -> None:
                 """
                 SELECT user_id
                 FROM trade_accounts
-                WHERE is_default = 1
+                WHERE is_default IS TRUE
                 GROUP BY user_id
                 HAVING COUNT(*) > 1
                 """
@@ -40,7 +40,7 @@ def upgrade() -> None:
                 """
                 SELECT id
                 FROM trade_accounts
-                WHERE user_id = :user_id AND is_default = 1
+                WHERE user_id = :user_id AND is_default IS TRUE
                 ORDER BY id ASC
                 """
             ),
@@ -53,7 +53,7 @@ def upgrade() -> None:
                 UPDATE trade_accounts
                 SET is_default = 0
                 WHERE user_id = :user_id
-                  AND is_default = 1
+                  AND is_default IS TRUE
                   AND id <> :keep_id
                 """
             ),
@@ -65,7 +65,7 @@ def upgrade() -> None:
         "trade_accounts",
         ["user_id"],
         unique=True,
-        sqlite_where=sa.text("is_default = 1"),
+        sqlite_where=sa.text("is_default IS TRUE"),
         postgresql_where=sa.text("is_default"),
     )
 
