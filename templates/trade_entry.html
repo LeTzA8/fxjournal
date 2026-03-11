@@ -67,8 +67,17 @@
                     <label for="lot_size">{{ size_label }}</label>
                     <input id="lot_size" name="lot_size" type="number" step="0.01" placeholder="0.10" value="{{ trade.lot_size if trade else '' }}" required>
 
+                    <label for="stop_loss">Stop Loss</label>
+                    <input id="stop_loss" name="stop_loss" type="number" step="0.00001" placeholder="Optional" value="{{ trade.stop_loss if trade and trade.stop_loss is not none else '' }}">
+
+                    <label for="take_profit">Take Profit</label>
+                    <input id="take_profit" name="take_profit" type="number" step="0.00001" placeholder="Optional" value="{{ trade.take_profit if trade and trade.take_profit is not none else '' }}">
+
                     <label for="pnl">PnL</label>
                     <input id="pnl" name="pnl" type="number" step="0.01" placeholder="Optional manual value" value="{{ trade.pnl if trade and trade.pnl is not none else '' }}">
+
+                    <label for="commission">Commission / Fees</label>
+                    <input id="commission" name="commission" type="number" step="0.01" placeholder="Optional, e.g. -3.50" value="{{ trade.commission if trade and trade.commission is not none else '' }}">
 
                     <label for="status">Status</label>
                     <select id="status" name="status" required>

@@ -42,11 +42,23 @@
                     <label for="exit_price">Exit Price</label>
                     <input id="exit_price" type="text" value="{{ '%.5f'|format(trade.exit_price) if trade and trade.exit_price is not none else 'Open' }}" readonly>
 
+                    <label for="stop_loss">Stop Loss</label>
+                    <input id="stop_loss" type="text" value="{{ '%.5f'|format(trade.stop_loss) if trade and trade.stop_loss is not none else '-' }}" readonly>
+
+                    <label for="take_profit">Take Profit</label>
+                    <input id="take_profit" type="text" value="{{ '%.5f'|format(trade.take_profit) if trade and trade.take_profit is not none else '-' }}" readonly>
+
                     <label for="lot_size">{{ trade_size_label }}</label>
                     <input id="lot_size" type="text" value="{{ '%.2f'|format(trade.lot_size) if trade and trade.lot_size is not none else '' }}" readonly>
 
-                    <label for="pnl">PnL</label>
+                    <label for="pnl">PnL (Gross)</label>
                     <input id="pnl" type="text" value="{% if trade_pnl is not none %}{{ '%.2f'|format(trade_pnl) }}{% else %}-{% endif %}" readonly>
+
+                    <label for="commission">Commission / Fees</label>
+                    <input id="commission" type="text" value="{% if trade and trade.commission is not none %}{{ '%.2f'|format(trade.commission) }}{% else %}-{% endif %}" readonly>
+
+                    <label for="net_pnl">Net PnL</label>
+                    <input id="net_pnl" type="text" value="{% if trade_pnl is not none %}{{ '%.2f'|format(trade_pnl + (trade.commission or 0)) }}{% else %}-{% endif %}" readonly>
 
                     <label for="pips">Pips (FX only)</label>
                     <input id="pips" type="text" value="{% if trade_pips is not none %}{{ '%+.1f'|format(trade_pips) }} pips{% else %}-{% endif %}" readonly>

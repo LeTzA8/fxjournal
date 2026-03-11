@@ -80,7 +80,7 @@
                         name="short_description"
                         rows="6"
                         placeholder="Short summary of the setup, trigger, or the latest version change..."
-                    >{% if edit_target %}{{ edit_target.short_description or "" }}{% endif %}</textarea>
+                    >{% if edit_target %}{% set edit_version = profile_versions.get(edit_target.id) %}{{ edit_version.short_description if edit_version and edit_version.short_description else "" }}{% endif %}</textarea>
 
                     <div class="form-actions">
                         <button type="submit" class="submit-btn">{% if edit_target %}Save New Version{% else %}Create Profile{% endif %}</button>

@@ -312,6 +312,12 @@ def new_trade():
         trade_note = request.form.get("trade_note", "").strip()
         pnl = request.form.get("pnl", "").strip()
         pnl = float(pnl) if pnl else None
+        stop_loss = request.form.get("stop_loss", "").strip()
+        stop_loss = float(stop_loss) if stop_loss else None
+        take_profit = request.form.get("take_profit", "").strip()
+        take_profit = float(take_profit) if take_profit else None
+        commission = request.form.get("commission", "").strip()
+        commission = float(commission) if commission else None
         opened_at = parse_local_datetime_input(request.form.get("opened_at", "").strip())
         if opened_at is None:
             opened_at = parse_local_datetime_input(
@@ -357,6 +363,9 @@ def new_trade():
             lot_size=lot_size,
             trade_note=trade_note,
             pnl=pnl,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            commission=commission,
             exit_price=exit_price,
             opened_at=opened_at,
             closed_at=closed_at,
@@ -655,6 +664,9 @@ def import_trade_file():
                     exit_price=float(exit_price) if exit_price is not None else None,
                     lot_size=float(lot_size),
                     pnl=float(pnl) if pnl is not None else None,
+                    stop_loss=float(row.get("stop_loss")) if row.get("stop_loss") is not None else None,
+                    take_profit=float(row.get("take_profit")) if row.get("take_profit") is not None else None,
+                    commission=float(row.get("commission")) if row.get("commission") is not None else None,
                     opened_at=opened_at,
                     closed_at=closed_at,
                     trade_note=(
@@ -836,11 +848,7 @@ def trade_detail(trade_pubkey):
             trade_profile_version.short_description
             if trade_profile_version is not None
             and trade_profile_version.short_description
-            else (
-                trade_profile.short_description
-                if trade_profile is not None and trade_profile.short_description
-                else "No trade profile attached to this trade."
-            )
+            else "No trade profile attached to this trade."
         ),
     )
 
@@ -881,6 +889,12 @@ def edit_trade(trade_pubkey):
         trade_note = request.form.get("trade_note", "").strip()
         pnl = request.form.get("pnl", "").strip()
         pnl = float(pnl) if pnl else None
+        stop_loss = request.form.get("stop_loss", "").strip()
+        stop_loss = float(stop_loss) if stop_loss else None
+        take_profit = request.form.get("take_profit", "").strip()
+        take_profit = float(take_profit) if take_profit else None
+        commission = request.form.get("commission", "").strip()
+        commission = float(commission) if commission else None
         opened_at = parse_local_datetime_input(request.form.get("opened_at", "").strip())
         if opened_at is None:
             opened_at = parse_local_datetime_input(
@@ -925,6 +939,9 @@ def edit_trade(trade_pubkey):
         trade.lot_size = lot_size
         trade.trade_note = trade_note
         trade.pnl = pnl
+        trade.stop_loss = stop_loss
+        trade.take_profit = take_profit
+        trade.commission = commission
         trade.opened_at = opened_at
         trade.closed_at = closed_at
         trade.source_timezone = input_timezone_name

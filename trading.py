@@ -68,7 +68,11 @@ MT5_COLUMN_ALIASES = {
     "lot_size": {"volume", "lots", "lot"},
     "entry_price": {"open price", "price", "entry price"},
     "exit_price": {"close price", "exit price", "price close"},
+    "stop_loss": {"s l", "stop loss", "sl"},
+    "take_profit": {"t p", "take profit", "tp"},
     "pnl": {"profit", "p/l", "pl", "net profit"},
+    "commission": {"commission"},
+    "swap": {"swap"},
     "opened_at": {"time", "date", "open time", "opened at", "time open"},
     "closed_at": {"close time", "closed at", "time close", "closing time", "closed time"},
 }
@@ -637,7 +641,15 @@ def parse_mt5_rows(rows):
         lot_size = parse_float_value(col("lot_size"))
         entry_price = parse_float_value(col("entry_price"))
         exit_price = parse_float_value(col("exit_price"))
+        stop_loss = parse_float_value(col("stop_loss"))
+        take_profit = parse_float_value(col("take_profit"))
         pnl = parse_float_value(col("pnl"))
+        commission_raw = parse_float_value(col("commission"))
+        swap_raw = parse_float_value(col("swap"))
+        # Combine commission + swap into a single total fees value.
+        commission = None
+        if commission_raw is not None or swap_raw is not None:
+            commission = (commission_raw or 0.0) + (swap_raw or 0.0)
         opened_at, opened_source_timezone = parse_source_datetime_value(
             col("opened_at"),
             MT5_DEFAULT_SOURCE_TIMEZONE,
@@ -667,7 +679,10 @@ def parse_mt5_rows(rows):
                 "lot_size": lot_size,
                 "entry_price": entry_price,
                 "exit_price": exit_price,
+                "stop_loss": stop_loss,
+                "take_profit": take_profit,
                 "pnl": pnl,
+                "commission": commission,
                 "opened_at": opened_at,
                 "closed_at": closed_at,
                 "source_timezone": source_timezone,
@@ -863,6 +878,7 @@ def parse_tradovate_csv_stream(file_stream):
         buy_price = parse_float_value(row.get("buyPrice"))
         sell_price = parse_float_value(row.get("sellPrice"))
         pnl = parse_float_value(row.get("pnl"))
+        commission = parse_float_value(row.get("totalFees")) or parse_float_value(row.get("fees"))
         buy_fill_id = parse_mt5_position_value(row.get("buyFillId"))
         sell_fill_id = parse_mt5_position_value(row.get("sellFillId"))
 
@@ -902,7 +918,10 @@ def parse_tradovate_csv_stream(file_stream):
                 "lot_size": qty,
                 "entry_price": entry_price,
                 "exit_price": exit_price,
+                "stop_loss": None,
+                "take_profit": None,
                 "pnl": pnl,
+                "commission": commission,
                 "opened_at": opened_at,
                 "closed_at": closed_at,
                 "source_timezone": source_timezone,

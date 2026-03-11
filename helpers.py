@@ -506,7 +506,6 @@ def create_trade_profile(user_id, name, short_description=None):
         pubkey=build_unique_trade_profile_pubkey(),
         user_id=user_id,
         name=normalized_name,
-        short_description=normalized_description,
         current_version_number=1,
     )
     db.session.add(profile)
@@ -537,7 +536,6 @@ def update_trade_profile(profile, name, short_description=None):
 
     next_version_number = max(int(profile.current_version_number or 0), 0) + 1
     profile.name = normalized_name
-    profile.short_description = normalized_description
     profile.current_version_number = next_version_number
     profile.updated_at = utcnow_naive()
     version = TradeProfileVersion(
