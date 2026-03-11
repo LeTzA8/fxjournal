@@ -1288,6 +1288,16 @@
             .field-error {
                 font-size: 0.8rem;
             }
+
+            body.app-layout .head-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            body.app-layout .panel-head {
+                flex-wrap: wrap;
+                align-items: flex-start;
+            }
         }
 
         @media (max-width: 540px) {
@@ -1325,35 +1335,35 @@
             </a>
             <nav class="site-nav" aria-label="Primary">
                 <a
-                    href="{{ url_for('home') }}"
+                    href="{{ url_for('dashboard.home') }}"
                     class="site-nav-link{% if request.endpoint == 'home' %} active{% endif %}"
                 >Dashboard</a>
                 <div class="site-nav-group">
                     <a
-                        href="{{ url_for('trades') }}"
+                        href="{{ url_for('trades.trades') }}"
                         class="site-nav-link site-nav-group-toggle{% if request.endpoint in ['trades', 'manage_trades', 'new_trade', 'trade_detail', 'edit_trade', 'trade_accounts', 'strategies', 'edit_strategy', 'archive_strategy'] %} active{% endif %}"
                     >Trades</a>
                     <div class="site-nav-group-menu" role="menu" aria-label="Trades navigation">
                         <a
-                            href="{{ url_for('trades') }}"
+                            href="{{ url_for('trades.trades') }}"
                             class="site-nav-link site-nav-sublink{% if request.endpoint in ['trades', 'new_trade', 'trade_detail', 'edit_trade'] %} active{% endif %}"
                         >All Trades</a>
                         <a
-                            href="{{ url_for('manage_trades') }}"
+                            href="{{ url_for('trades.manage_trades') }}"
                             class="site-nav-link site-nav-sublink{% if request.endpoint == 'manage_trades' %} active{% endif %}"
                         >Trade Management</a>
                         <a
-                            href="{{ url_for('trade_accounts') }}"
+                            href="{{ url_for('trade_accounts.trade_accounts') }}"
                             class="site-nav-link site-nav-sublink{% if request.endpoint == 'trade_accounts' %} active{% endif %}"
                         >Trade Accounts</a>
                         <a
-                            href="{{ url_for('strategies') }}"
+                            href="{{ url_for('trade_profiles.strategies') }}"
                             class="site-nav-link site-nav-sublink{% if request.endpoint in ['strategies', 'edit_strategy', 'archive_strategy'] %} active{% endif %}"
                         >Strategies</a>
                     </div>
                 </div>
                 <a
-                    href="{{ url_for('analytics') }}"
+                    href="{{ url_for('dashboard.analytics') }}"
                     class="site-nav-link{% if request.endpoint == 'analytics' %} active{% endif %}"
                 >Analytics</a>
                 {% if is_admin_user %}
@@ -1363,12 +1373,12 @@
                 >Admin</a>
                 {% endif %}
                 <a
-                    href="{{ url_for('contact') }}"
+                    href="{{ url_for('contact.contact') }}"
                     class="site-nav-link{% if request.endpoint == 'contact' %} active{% endif %}"
                 >Contact</a>
             </nav>
             <div class="site-header-actions">
-                <a href="{{ url_for('account') }}" class="header-account-link">Account</a>
+                <a href="{{ url_for('account.account') }}" class="header-account-link">Account</a>
                 <form action="{{ url_for('logout') }}" method="post">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="site-nav-link">Log Out</button>
@@ -1398,7 +1408,7 @@
             <nav class="site-footer-nav" aria-label="Footer">
                 <a href="{{ url_for('privacy_policy') }}">Privacy</a>
                 <a href="{{ url_for('terms_and_conditions') }}">Terms</a>
-                <a href="{{ url_for('contact') }}">Contact</a>
+                <a href="{{ url_for('contact.contact') }}">Contact</a>
             </nav>
         </div>
     </footer>

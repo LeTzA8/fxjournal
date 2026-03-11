@@ -5,7 +5,7 @@
 
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Trades / Trade Detail</div>
+            <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a> / Trades / Trade Detail</div>
             <div class="head-row">
                 <div>
                     <h1>Trade Details</h1>
@@ -13,8 +13,8 @@
                     <p class="subtitle">Review this trade setup, execution values, and your notes.</p>
                 </div>
                 <div class="head-actions">
-                    <a class="ghost-link" href="{{ url_for('trades') }}">Back to Trades</a>
-                    <a class="ghost-link" href="{{ url_for('account') }}">Account</a>
+                    <a class="ghost-link" href="{{ url_for('trades.trades') }}">Back to Trades</a>
+                    <a class="ghost-link" href="{{ url_for('account.account') }}">Account</a>
                 </div>
             </div>
         </header>

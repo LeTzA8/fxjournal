@@ -5,7 +5,7 @@
 
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Trades / {% if form_mode == 'edit' %}Edit Trade{% else %}New Manual Entry{% endif %}</div>
+            <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a> / Trades / {% if form_mode == 'edit' %}Edit Trade{% else %}New Manual Entry{% endif %}</div>
             <div class="head-row">
                 <div>
                     <h1>{% if form_mode == 'edit' %}Edit Trade{% else %}Manual Trade Entry{% endif %}</h1>
@@ -19,9 +19,9 @@
                     </p>
                 </div>
                 <div class="head-actions">
-                    <a class="ghost-link" href="{{ url_for('home') }}">Back to Dashboard</a>
-                    <a class="ghost-link" href="{{ url_for('trades') }}">Back to Trades</a>
-                    <a class="ghost-link" href="{{ url_for('account') }}">Account</a>
+                    <a class="ghost-link" href="{{ url_for('dashboard.home') }}">Back to Dashboard</a>
+                    <a class="ghost-link" href="{{ url_for('trades.trades') }}">Back to Trades</a>
+                    <a class="ghost-link" href="{{ url_for('account.account') }}">Account</a>
                 </div>
             </div>
         </header>
@@ -92,7 +92,7 @@
                         </option>
                         {% endfor %}
                     </select>
-                    <p class="field-help">Strategies are managed separately. <a href="{{ url_for('strategies') }}">Open Strategies</a>.</p>
+                    <p class="field-help">Strategies are managed separately. <a href="{{ url_for('trade_profiles.strategies') }}">Open Strategies</a>.</p>
 
                     <label for="trade_note">Trade Note</label>
                     <textarea id="trade_note" name="trade_note" rows="4" placeholder="Why you took this setup, mistakes, execution notes...">{{ trade.trade_note if trade and trade.trade_note else '' }}</textarea>
@@ -145,7 +145,7 @@
                     {% endif %}
                 </p>
 
-                <form action="{{ url_for('import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook" }}">
+                <form action="{{ url_for('trades.import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook" }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label for="mt5_file">{% if account_type == "FUTURES" %}Tradovate Performance File{% else %}MT5 Report File{% endif %}</label>
                     <div id="mt5Dropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload trade import file" aria-controls="mt5_file">
@@ -447,6 +447,8 @@
             align-items: flex-start; }
 
         .panel { max-width: none; }
+
+        .form-actions { flex-wrap: wrap; }
 
         .trade-form input[type="date"] { font-size: 16px; } }
 </style>

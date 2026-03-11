@@ -5,7 +5,7 @@
 
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Account</div>
+            <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a> / Account</div>
             <div class="head-row">
                 <div>
                     <h1>Account Settings</h1>
@@ -13,8 +13,8 @@
                     <p class="subtitle">Review your profile details and update them anytime.</p>
                 </div>
                 <div class="head-actions">
-                    <a class="ghost-link" href="{{ url_for('home') }}">Back to Dashboard</a>
-                    <a class="ghost-link" href="{{ url_for('trades') }}">Trades</a>
+                    <a class="ghost-link" href="{{ url_for('dashboard.home') }}">Back to Dashboard</a>
+                    <a class="ghost-link" href="{{ url_for('trades.trades') }}">Trades</a>
                     <form action="{{ url_for('logout') }}" method="post">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="logout-btn">Log Out</button>
@@ -111,7 +111,7 @@
                     {% if debug_email_change_new_link %}
                     <p class="helper-note">Local new-email link: <a href="{{ debug_email_change_new_link }}">Confirm new email</a></p>
                     {% endif %}
-                    <form action="{{ url_for('account_cancel_email_change') }}" method="post" class="pending-email-actions">
+                    <form action="{{ url_for('account.account_cancel_email_change') }}" method="post" class="pending-email-actions">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="ghost-btn danger-btn">Cancel Pending Email Change</button>
                     </form>
@@ -167,7 +167,7 @@
                 <p class="helper-note danger-note">
                     This permanently deletes your user profile, all trade accounts, all trades, and all linked AI reviews. This action cannot be undone.
                 </p>
-                <form action="{{ url_for('delete_account') }}" method="post" class="delete-account-form" data-themed-validation>
+                <form action="{{ url_for('account.delete_account') }}" method="post" class="delete-account-form" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label for="delete_confirmation">
                         Type <strong>DELETE</strong> to confirm

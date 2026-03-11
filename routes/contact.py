@@ -71,14 +71,12 @@ def contact():
     contact_body = ""
     contact_email = user.email if user else ""
 
-    def render_contact(status="", message="", code=200):
+    def render_contact(code=200):
         return (
             render_template(
                 "contact.html",
                 title="Contact | FX Journal",
                 username=session.get("username", "User"),
-                contact_status=status,
-                contact_message=message,
                 contact_subject=contact_subject,
                 contact_category=contact_category,
                 contact_body=contact_body,
@@ -96,52 +94,39 @@ def contact():
         contact_email = (request.form.get("contact_email", "").strip().lower() if not user else user.email)
 
         if contact_category not in CONTACT_CATEGORY_CHOICES:
-            return render_contact(
-                "error",
-                "Please choose a valid contact category.",
-                400,
-            )
+            flash("Please choose a valid contact category.", "error")
+            return render_contact(400)
 
         if not contact_subject or not contact_body or (not user and not contact_email):
-            return render_contact(
+            flash(
+                "Email, subject, and message are required."
+                if not user
+                else "Subject and message are required.",
                 "error",
-                "Email, subject, and message are required." if not user else "Subject and message are required.",
-                400,
             )
+            return render_contact(400)
 
         if len(contact_subject) > 120:
-            return render_contact(
-                "error",
-                "Subject must be 120 characters or less.",
-                400,
-            )
+            flash("Subject must be 120 characters or less.", "error")
+            return render_contact(400)
 
         if len(contact_body) > 5000:
-            return render_contact(
-                "error",
-                "Message must be 5000 characters or less.",
-                400,
-            )
+            flash("Message must be 5000 characters or less.", "error")
+            return render_contact(400)
 
         if not user and (
             len(contact_email) > 120 or not CONTACT_EMAIL_RE.match(contact_email)
         ):
-            return render_contact(
-                "error",
-                "Enter a valid contact email address.",
-                400,
-            )
+            flash("Enter a valid contact email address.", "error")
+            return render_contact(400)
 
         contact_to_email = os.getenv("FEEDBACK_TO_EMAIL", "").strip().lower()
         if not contact_to_email:
             current_app.logger.warning(
                 "Contact submit blocked: FEEDBACK_TO_EMAIL is not configured."
             )
-            return render_contact(
-                "error",
-                "Contact email destination is not configured yet.",
-                500,
-            )
+            flash("Contact email destination is not configured yet.", "error")
+            return render_contact(500)
 
         submitted_at = utcnow_naive().strftime("%Y-%m-%d %H:%M:%S UTC")
         requester_ip = (
@@ -197,11 +182,11 @@ def contact():
             email_result=email_result,
         )
         if not persisted and not is_local_dev_environment():
-            return render_contact(
-                "error",
+            flash(
                 "Your message could not be delivered or saved right now. Please try again later.",
-                503,
+                "error",
             )
+            return render_contact(503)
 
         if is_local_dev_environment():
             flash("Message captured in server logs. Email delivery is disabled in this environment.", "info")

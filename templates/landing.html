@@ -25,12 +25,12 @@
             <a href="#workflow">Workflow</a>
             <a href="#features">Features</a>
             <a href="#founder">About the creator</a>
-            <a href="{{ url_for('contact') }}">Contact</a>
+            <a href="{{ url_for('contact.contact') }}">Contact</a>
         </nav>
         <div class="landing-auth-links">
             {% if user_logged_in %}
-            <a href="{{ url_for('home') }}" class="ghost-btn">Dashboard</a>
-            <a href="{{ url_for('account') }}" class="submit-btn">Account</a>
+            <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Dashboard</a>
+            <a href="{{ url_for('account.account') }}" class="submit-btn">Account</a>
             <form action="{{ url_for('logout') }}" method="post">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="ghost-btn logout-btn">Log Out</button>
@@ -85,12 +85,12 @@
 
             <div class="landing-actions landing-reveal" data-reveal-delay="465">
                 {% if user_logged_in %}
-                <a href="{{ url_for('home') }}" class="submit-btn">Open Dashboard</a>
-                <a href="{{ url_for('new_trade') }}" class="ghost-btn">Log New Trade</a>
-                <a href="{{ url_for('contact') }}" class="ghost-btn">Contact</a>
+                <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>
+                <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Log New Trade</a>
+                <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Contact</a>
                 {% else %}
                 <a href="{{ url_for('register') }}" class="submit-btn hero-cta">Try Now</a>
-                <a href="{{ url_for('contact') }}" class="ghost-btn">Ask a Question</a>
+                <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask a Question</a>
                 {% endif %}
             </div>
 

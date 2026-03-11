@@ -39,8 +39,8 @@
             <p>Analytics become available after you log at least one closed trade with realized PnL. Open trades are still tracked in the journal, but closed trades are what power the breakdowns here.</p>
             <p>Start by adding a completed trade or importing account history, then come back here to review win rate, session behavior, symbols, and drawdown context.</p>
             <div class="empty-actions">
-                <a href="{{ url_for('new_trade') }}" class="trades-btn">Add Trade</a>
-                <a href="{{ url_for('trades') }}" class="ghost-btn">Open Journal</a>
+                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Add Trade</a>
+                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
             </div>
         </section>
         {% else %}
@@ -187,11 +187,11 @@
                 {% elif summary.risk_reward_mode == "money_ratio" %}
                 <p class="context-note">
                     Risk:Reward is currently based on average realized loss versus average realized win in money terms.
-                    Add account size in <a href="{{ url_for('trade_accounts') }}">Trade Accounts</a> to switch this to a more accurate % of account view.
+                    Add account size in <a href="{{ url_for('trade_accounts.trade_accounts') }}">Trade Accounts</a> to switch this to a more accurate % of account view.
                 </p>
                 {% else %}
                 <p class="context-note">
-                    Risk:Reward needs both wins and losses. Add closed trades first, then add account size in <a href="{{ url_for('trade_accounts') }}">Trade Accounts</a> for a % of account view.
+                    Risk:Reward needs both wins and losses. Add closed trades first, then add account size in <a href="{{ url_for('trade_accounts.trade_accounts') }}">Trade Accounts</a> for a % of account view.
                 </p>
                 {% endif %}
 

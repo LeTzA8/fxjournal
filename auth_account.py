@@ -1,7 +1,7 @@
 import os
 import secrets
 
-from flask import abort, current_app, redirect, render_template, request, session, url_for
+from flask import abort, current_app, flash, redirect, render_template, request, session, url_for
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -483,22 +483,9 @@ def register_public_auth_routes(
 
     def build_admin_redirect(section="users", message="", status="info"):
         endpoint = "admin_signup_codes" if section == "codes" else "admin_signup_users"
-        return redirect(
-            url_for(
-                endpoint,
-                admin_status=status,
-                admin_message=message,
-            )
-        )
-
-    def parse_admin_notice():
-        admin_status = request.args.get("admin_status", "").strip().lower()
-        admin_message = request.args.get("admin_message", "").strip()
-        if admin_status not in {"success", "error", "info"}:
-            admin_status = ""
-        if not admin_message:
-            admin_status = ""
-        return admin_status, admin_message
+        if message:
+            flash(message, status)
+        return redirect(url_for(endpoint))
 
     def build_admin_overview():
         return {
@@ -512,13 +499,10 @@ def register_public_auth_routes(
         }
 
     def render_admin_page(*, admin_user, section, **extra_context):
-        admin_status, admin_message = parse_admin_notice()
         return render_template(
             "admin_signup_access.html",
             title="Access Control | FX Journal",
             username=admin_user.username,
-            admin_status=admin_status,
-            admin_message=admin_message,
             section=section,
             is_root_admin=user_has_root_admin_access(admin_user),
             root_admin_emails=get_admin_user_emails(),
@@ -566,18 +550,7 @@ def register_public_auth_routes(
     )
     def login():
         if session.get("user_id"):
-            return redirect(url_for("home"))
-
-        verified = request.args.get("verified") == "1"
-        reset_done = request.args.get("reset") == "1"
-        success_message = request.args.get("success", "").strip()
-        info_message = request.args.get("info", "").strip()
-
-        if not success_message and not info_message:
-            if reset_done:
-                success_message = "Password reset successful. Please log in."
-            elif verified:
-                success_message = "Email verified. You can now log in."
+            return redirect(url_for("dashboard.home"))
 
         if request.method == "POST":
             email = request.form.get("email", "").strip().lower()
@@ -589,27 +562,22 @@ def register_public_auth_routes(
                     session["pending_verify_email"] = user.email
                     return render_login_page(
                         error="Please verify your email address before signing in.",
-                        success=success_message,
-                        info=info_message or None,
                         email=email,
                     )
                 signup_status = normalize_signup_status(user.signup_status)
                 if signup_status == SIGNUP_STATUS_PENDING:
                     return render_login_page(
-                        success=success_message,
                         info="Your email has been verified. Your account is now waiting for approval.",
                         email=email,
                     )
                 if signup_status == SIGNUP_STATUS_REJECTED:
                     return render_login_page(
                         error="Your registration was not approved. Contact support if you believe this is a mistake.",
-                        success=success_message,
                         email=email,
                     )
                 if signup_status == SIGNUP_STATUS_SUSPENDED:
                     return render_login_page(
                         error="This account is currently suspended. Contact support if you need help.",
-                        success=success_message,
                         email=email,
                     )
                 user.last_login_at = utcnow_naive()
@@ -618,33 +586,24 @@ def register_public_auth_routes(
                 active_account, _accounts = resolve_active_trade_account(user.id)
                 session["active_trade_account_id"] = active_account.id
                 db.session.commit()
-                return redirect(url_for("home"))
+                return redirect(url_for("dashboard.home"))
 
             return render_login_page(
                 error="Invalid email or password.",
-                success=success_message,
-                info=info_message or None,
                 email=email,
             )
-        return render_login_page(
-            success=success_message,
-            info=info_message or None,
-        )
+        return render_login_page()
 
     @app.route("/register", methods=["GET", "POST"])
     def register():
         if session.get("user_id"):
-            return redirect(url_for("home"))
-
-        error_message = request.args.get("error", "").strip()
-        info_message = request.args.get("info", "").strip()
+            return redirect(url_for("dashboard.home"))
         query_param = get_signup_code_query_param()
         signup_code_prefill = normalize_signup_code(request.args.get(query_param, ""))
 
         if get_registration_paused():
             return render_register_page(
-                error=error_message or None,
-                info=info_message or "New registrations are temporarily paused.",
+                info="New registrations are temporarily paused.",
                 signup_code=signup_code_prefill,
             )
 
@@ -752,7 +711,8 @@ def register_public_auth_routes(
                         email_subject,
                         email_body,
                     )
-                    verify_kwargs = {"sent": "1"}
+                    flash("Verification email sent. Please check your inbox.", "success")
+                    verify_kwargs = {}
                     if is_local_dev_environment() and not email_result.get("sent"):
                         verify_kwargs["verify_link"] = verify_link
                     return redirect(url_for("verify_email_pending", **verify_kwargs))
@@ -806,14 +766,13 @@ def register_public_auth_routes(
             )
             email_result = send_email_placeholder(user.email, email_subject, email_body)
 
-            verify_kwargs = {"sent": "1"}
+            flash("Verification email sent. Please check your inbox.", "success")
+            verify_kwargs = {}
             if is_local_dev_environment() and not email_result.get("sent"):
                 verify_kwargs["verify_link"] = verify_link
             return redirect(url_for("verify_email_pending", **verify_kwargs))
 
         return render_register_page(
-            error=error_message or None,
-            info=info_message or None,
             signup_code=signup_code_prefill,
         )
 
@@ -839,14 +798,14 @@ def register_public_auth_routes(
             elif user.email_verified:
                 session.pop("pending_verify_email", None)
                 if normalize_signup_status(user.signup_status) == SIGNUP_STATUS_APPROVED:
-                    return redirect(url_for("login", verified="1"))
-                return redirect(
-                    url_for(
-                        "login",
-                        verified="1",
-                        info="Your email has been verified. Your account is now waiting for approval.",
-                    )
+                    flash("Email verified. You can now log in.", "success")
+                    return redirect(url_for("login"))
+                flash("Email verified. You can now log in.", "success")
+                flash(
+                    "Your email has been verified. Your account is now waiting for approval.",
+                    "info",
                 )
+                return redirect(url_for("login"))
             else:
                 pending_username = user.username
                 awaiting_approval = normalize_signup_status(user.signup_status) == SIGNUP_STATUS_PENDING
@@ -855,22 +814,14 @@ def register_public_auth_routes(
             pending_id = session.get("pending_registration_id", "").strip()
             pending = get_pending_registration(pending_id)
             if not pending:
-                return redirect(
-                    url_for(
-                        "register",
-                        error="Your verification session has expired. Please register again.",
-                    )
-                )
+                flash("Your verification session has expired. Please register again.", "error")
+                return redirect(url_for("register"))
             pending_email = pending["email"]
             pending_username = pending["username"]
             using_legacy_pending = True
             awaiting_approval = get_initial_signup_status() == SIGNUP_STATUS_PENDING
 
-        success = (
-            "Verification email sent. Please check your inbox."
-            if request.args.get("sent") == "1"
-            else ""
-        )
+        success = ""
         error = ""
         debug_verify_link = request.args.get("verify_link", "").strip()
 
@@ -884,15 +835,12 @@ def register_public_auth_routes(
                 user = User.query.filter_by(email=pending_email).first()
                 if not user:
                     session.pop("pending_verify_email", None)
-                    return redirect(
-                        url_for(
-                            "register",
-                            error="Your verification session has expired. Please register again.",
-                        )
-                    )
+                    flash("Your verification session has expired. Please register again.", "error")
+                    return redirect(url_for("register"))
                 if user.email_verified:
                     session.pop("pending_verify_email", None)
-                    return redirect(url_for("login", verified="1"))
+                    flash("Email verified. You can now log in.", "success")
+                    return redirect(url_for("login"))
                 verify_token = generate_auth_token(
                     pending_email,
                     token_purpose_verify_email,
@@ -942,23 +890,15 @@ def register_public_auth_routes(
             registration_id = pending_payload["registration_id"]
             pending = get_pending_registration(registration_id)
             if not pending:
-                return redirect(
-                    url_for(
-                        "register",
-                        error="This verification link is invalid or has expired. Please register again.",
-                    )
-                )
+                flash("This verification link is invalid or has expired. Please register again.", "error")
+                return redirect(url_for("register"))
 
             if pending["email"] != pending_payload["email"]:
                 pop_pending_registration(registration_id)
                 if session.get("pending_registration_id") == registration_id:
                     session.pop("pending_registration_id", None)
-                return redirect(
-                    url_for(
-                        "register",
-                        error="We could not verify this registration request. Please register again.",
-                    )
-                )
+                flash("We could not verify this registration request. Please register again.", "error")
+                return redirect(url_for("register"))
 
             existing_user = User.query.filter(
                 or_(User.username == pending["username"], User.email == pending["email"])
@@ -972,13 +912,13 @@ def register_public_auth_routes(
                     and existing_user.email == pending["email"]
                     and existing_user.email_verified
                 ):
-                    return redirect(url_for("login", verified="1"))
-                return redirect(
-                    url_for(
-                        "register",
-                        error="That username or email is no longer available. Please register again.",
-                    )
+                    flash("Email verified. You can now log in.", "success")
+                    return redirect(url_for("login"))
+                flash(
+                    "That username or email is no longer available. Please register again.",
+                    "error",
                 )
+                return redirect(url_for("register"))
 
             initial_signup_status = get_initial_signup_status()
             user = User(
@@ -998,14 +938,14 @@ def register_public_auth_routes(
                 session.pop("pending_registration_id", None)
 
             if normalize_signup_status(user.signup_status) == SIGNUP_STATUS_APPROVED:
-                return redirect(url_for("login", verified="1"))
-            return redirect(
-                url_for(
-                    "login",
-                    verified="1",
-                    info="Your email has been verified. Your account is now waiting for approval.",
-                )
+                flash("Email verified. You can now log in.", "success")
+                return redirect(url_for("login"))
+            flash("Email verified. You can now log in.", "success")
+            flash(
+                "Your email has been verified. Your account is now waiting for approval.",
+                "info",
             )
+            return redirect(url_for("login"))
 
         email = verify_auth_token(
             token=token,
@@ -1013,21 +953,13 @@ def register_public_auth_routes(
             max_age_seconds=max_age_seconds,
         )
         if not email:
-            return redirect(
-                url_for(
-                    "register",
-                    error="This verification link is invalid or has expired. Please register again.",
-                )
-            )
+            flash("This verification link is invalid or has expired. Please register again.", "error")
+            return redirect(url_for("register"))
 
         user = User.query.filter_by(email=email).first()
         if not user:
-            return redirect(
-                url_for(
-                    "register",
-                    error="This verification link is invalid or has expired. Please register again.",
-                )
-            )
+            flash("This verification link is invalid or has expired. Please register again.", "error")
+            return redirect(url_for("register"))
 
         if not user.email_verified:
             user.email_verified = True
@@ -1041,14 +973,14 @@ def register_public_auth_routes(
             session.pop("pending_verify_email", None)
 
         if normalize_signup_status(user.signup_status) == SIGNUP_STATUS_APPROVED:
-            return redirect(url_for("login", verified="1"))
-        return redirect(
-            url_for(
-                "login",
-                verified="1",
-                info="Your email has been verified. Your account is now waiting for approval.",
-            )
+            flash("Email verified. You can now log in.", "success")
+            return redirect(url_for("login"))
+        flash("Email verified. You can now log in.", "success")
+        flash(
+            "Your email has been verified. Your account is now waiting for approval.",
+            "info",
         )
+        return redirect(url_for("login"))
 
     @app.route("/dashboard/admin/access")
     def admin_signup_access():
@@ -1425,7 +1357,8 @@ def register_public_auth_routes(
 
             user.password = generate_password_hash(new_password)
             db.session.commit()
-            return redirect(url_for("login", reset="1"))
+            flash("Password reset successful. Please log in.", "success")
+            return redirect(url_for("login"))
 
         return render_template(
             "reset_password.html",

@@ -218,12 +218,8 @@ def account_confirm_email_change(token):
 
     user = User.query.filter_by(id=payload["user_id"]).first()
     if not user:
-        return redirect(
-            url_for(
-                "login",
-                error="This email change link is invalid or has expired.",
-            )
-        )
+        flash("This email change link is invalid or has expired.", "error")
+        return redirect(url_for("login"))
 
     if user.email != payload["current_email"] or user.pending_email != payload["new_email"]:
         if session.get("user_id") == user.id:

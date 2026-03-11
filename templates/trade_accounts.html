@@ -4,7 +4,7 @@
 <section class="dash-wrap">
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Trade Accounts</div>
+            <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a> / Trade Accounts</div>
             <div class="head-row">
                 <div>
                     <h1>Trade Accounts</h1>
@@ -12,8 +12,8 @@
                     <p class="subtitle">Manage your account list here, then switch quickly from Trades.</p>
                 </div>
                 <div class="head-actions">
-                    <a class="ghost-link" href="{{ url_for('trades') }}">Back to Trades</a>
-                    <a class="ghost-link" href="{{ url_for('home') }}">Dashboard</a>
+                    <a class="ghost-link" href="{{ url_for('trades.trades') }}">Back to Trades</a>
+                    <a class="ghost-link" href="{{ url_for('dashboard.home') }}">Dashboard</a>
                 </div>
             </div>
         </header>
@@ -62,14 +62,14 @@
 
                         <div class="inline-actions">
                             {% if not (active_trade_account and trade_account.id == active_trade_account.id) %}
-                            <form action="{{ url_for('switch_trade_account') }}" method="post" class="switch-account-form">
+                            <form action="{{ url_for('trade_accounts.switch_trade_account') }}" method="post" class="switch-account-form">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
                                 <input type="hidden" name="next" value="{{ current_page_path }}">
                                 <button type="submit" class="ghost-btn">Switch</button>
                             </form>
                             {% else %}
-                            <form action="{{ url_for('switch_trade_account') }}" method="post" class="switch-account-form" hidden>
+                            <form action="{{ url_for('trade_accounts.switch_trade_account') }}" method="post" class="switch-account-form" hidden>
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
                                 <input type="hidden" name="next" value="{{ current_page_path }}">
@@ -77,24 +77,24 @@
                             </form>
                             {% endif %}
                             {% if not trade_account.is_default %}
-                            <form action="{{ url_for('set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="default-account-form">
+                            <form action="{{ url_for('trade_accounts.set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="default-account-form">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+                                <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
                                 <button type="submit" class="ghost-btn">Set Default</button>
                             </form>
                             {% else %}
-                            <form action="{{ url_for('set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="default-account-form" hidden>
+                            <form action="{{ url_for('trade_accounts.set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="default-account-form" hidden>
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+                                <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
                                 <button type="submit" class="ghost-btn">Set Default</button>
                             </form>
                             {% endif %}
                             <a
-                                href="{{ url_for('trade_accounts', edit=trade_account.pubkey) }}#editor"
+                                href="{{ url_for('trade_accounts.trade_accounts', edit=trade_account.pubkey) }}#editor"
                                 class="ghost-link btn-link"
                             >Edit</a>
                             <a
-                                href="{{ url_for('trade_accounts', edit=trade_account.pubkey, delete=trade_account.pubkey) }}#danger-zone"
+                                href="{{ url_for('trade_accounts.trade_accounts', edit=trade_account.pubkey, delete=trade_account.pubkey) }}#danger-zone"
                                 class="ghost-link btn-link danger-btn"
                                 data-open-delete-account-modal
                                 data-delete-account-pubkey="{{ trade_account.pubkey }}"
@@ -127,9 +127,9 @@
                 {% endif %}
 
                 {% if edit_target %}
-                <form action="{{ url_for('update_trade_account', trade_account_pubkey=edit_target.pubkey) }}" method="post" class="create-form" data-themed-validation>
+                <form action="{{ url_for('trade_accounts.update_trade_account', trade_account_pubkey=edit_target.pubkey) }}" method="post" class="create-form" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+                    <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
 
                     <label for="trade_account_name">Account Name</label>
                     <input
@@ -172,13 +172,13 @@
 
                     <div class="inline-actions">
                         <button type="submit" class="submit-btn">Save Changes</button>
-                        <a href="{{ url_for('trade_accounts') }}" class="ghost-link btn-link">Cancel</a>
+                        <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-link btn-link">Cancel</a>
                     </div>
                 </form>
                 {% else %}
-                <form action="{{ url_for('create_trade_account') }}" method="post" class="create-form" data-themed-validation>
+                <form action="{{ url_for('trade_accounts.create_trade_account') }}" method="post" class="create-form" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+                    <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
 
                     <label for="trade_account_name">Account Name</label>
                     <input
@@ -239,9 +239,9 @@
                     <p class="helper-note danger-note">
                         This permanently deletes <strong>{{ delete_target.name }}</strong>, its {{ delete_target_trade_count }} trade{% if delete_target_trade_count != 1 %}s{% endif %}, and {{ delete_target_ai_review_count }} linked AI review{% if delete_target_ai_review_count != 1 %}s{% endif %}.
                     </p>
-                    <form action="{{ url_for('delete_trade_account', trade_account_pubkey=delete_target.pubkey) }}" method="post" class="danger-form" data-themed-validation>
+                    <form action="{{ url_for('trade_accounts.delete_trade_account', trade_account_pubkey=delete_target.pubkey) }}" method="post" class="danger-form" data-themed-validation>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+                        <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
 
                         <label for="delete_trade_account_confirmation_fallback">
                             Type <strong>DELETE</strong> to confirm
@@ -265,7 +265,7 @@
                         </label>
                         <div class="inline-actions">
                             <button type="submit" class="ghost-btn danger-btn">Delete This Trade Account</button>
-                            <a href="{{ url_for('trade_accounts', edit=delete_target.pubkey) }}#editor" class="ghost-link btn-link">Cancel</a>
+                            <a href="{{ url_for('trade_accounts.trade_accounts', edit=delete_target.pubkey) }}#editor" class="ghost-link btn-link">Cancel</a>
                         </div>
                     </form>
                 </section>
@@ -280,9 +280,9 @@
                     <p class="helper-note danger-note">
                         This deletes all {{ account_rows|length }} trade account{% if account_rows|length != 1 %}s{% endif %}, all {{ total_trade_count }} trade{% if total_trade_count != 1 %}s{% endif %}, and all {{ total_ai_review_count }} linked AI review{% if total_ai_review_count != 1 %}s{% endif %}. A fresh Main Account will be created immediately after.
                     </p>
-                    <form action="{{ url_for('delete_all_trade_accounts') }}" method="post" class="danger-form" data-themed-validation>
+                    <form action="{{ url_for('trade_accounts.delete_all_trade_accounts') }}" method="post" class="danger-form" data-themed-validation>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+                        <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
 
                         <label for="delete_all_trade_accounts_confirmation">
                             Type <strong>DELETE</strong> to confirm
@@ -325,11 +325,11 @@
             id="deleteTradeAccountForm"
             method="post"
             class="danger-form"
-            data-action-template="{{ url_for('delete_trade_account', trade_account_pubkey='__TRADE_ACCOUNT_PUBKEY__') }}"
+            data-action-template="{{ url_for('trade_accounts.delete_trade_account', trade_account_pubkey='__TRADE_ACCOUNT_PUBKEY__') }}"
             data-themed-validation
         >
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="next" value="{{ url_for('trade_accounts') }}">
+            <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
 
             <label for="deleteTradeAccountConfirmation">
                 Type <strong>DELETE</strong> to confirm
