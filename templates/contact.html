@@ -4,7 +4,7 @@
 <section class="contact-shell{% if not account_user %} contact-shell-public{% endif %}">
     <div class="contact-stack">
         <header class="contact-head">
-            <div class="crumb"><a href="{{ url_for('home') if account_user else url_for('landing') }}">{{ "Dashboard" if account_user else "Landing" }}</a> / Contact</div>
+            <div class="crumb"><a href="{{ url_for('dashboard.home') if account_user else url_for('landing') }}">{{ "Dashboard" if account_user else "Landing" }}</a> / Contact</div>
             <h1>Contact</h1>
             {% if account_user %}
             <p class="welcome">Signed in as {{ account_user.username }}.</p>
@@ -16,13 +16,7 @@
         </header>
 
         <article class="contact-card{% if not account_user %} contact-card-public{% endif %}">
-            {% if contact_status and contact_message %}
-            <p class="contact-alert {{ contact_status }}" role="status" aria-live="polite">
-                {{ contact_message }}
-            </p>
-            {% endif %}
-
-            <form action="{{ url_for('contact') }}" method="post" class="contact-form" data-themed-validation>
+            <form action="{{ url_for('contact.contact') }}" method="post" class="contact-form" data-themed-validation>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 {% if account_user %}
                 <input type="hidden" name="contact_user_id" value="{{ account_user.id }}">
@@ -72,7 +66,7 @@
 
                 <div class="form-actions">
                     <button type="submit" class="submit-btn">Send Message</button>
-                    <a class="ghost-link" href="{{ url_for('home') if account_user else url_for('landing') }}">Cancel</a>
+                    <a class="ghost-link" href="{{ url_for('dashboard.home') if account_user else url_for('landing') }}">Cancel</a>
                 </div>
             </form>
         </article>

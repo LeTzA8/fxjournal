@@ -5,7 +5,7 @@
 
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Trades</div>
+            <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a> / Trades</div>
             <div class="head-row">
                 <div>
                     <h1>Trades</h1>
@@ -13,8 +13,8 @@
                     <p class="subtitle">Review all executed and running trades in one place.</p>
                 </div>
                 <div class="head-actions">
-                    <a class="ghost-link" href="{{ url_for('home') }}">Back to Dashboard</a>
-                    <a class="ghost-link" href="{{ url_for('account') }}">Account</a>
+                    <a class="ghost-link" href="{{ url_for('dashboard.home') }}">Back to Dashboard</a>
+                    <a class="ghost-link" href="{{ url_for('account.account') }}">Account</a>
                 </div>
             </div>
         </header>
@@ -24,27 +24,18 @@
                 <div class="panel-head">
                     <h2>All Trades</h2>
                     <div class="table-actions">
-                        <a href="{{ url_for('new_trade') }}" class="new-trade-btn">New Trade</a>
+                        <a href="{{ url_for('trades.new_trade') }}" class="new-trade-btn">New Trade</a>
                         {% if manage_mode %}
-                        <a href="{{ url_for('trades') }}" class="manage-trades-btn is-active">Done</a>
+                        <a href="{{ url_for('trades.trades') }}" class="manage-trades-btn is-active">Done</a>
                         {% else %}
-                        <a href="{{ url_for('manage_trades') }}" class="manage-trades-btn">Manage Trades</a>
+                        <a href="{{ url_for('trades.manage_trades') }}" class="manage-trades-btn">Manage Trades</a>
                         {% endif %}
                     </div>
                 </div>
-                {% if batch_delete_status and batch_delete_message %}
-                <p class="batch-alert {{ batch_delete_status }}" role="status" aria-live="polite">{{ batch_delete_message }}</p>
-                {% endif %}
-                {% if batch_profile_status and batch_profile_message %}
-                <p class="batch-alert {{ batch_profile_status }}" role="status" aria-live="polite">{{ batch_profile_message }}</p>
-                {% endif %}
-                {% if trade_account_status and trade_account_message %}
-                <p class="batch-alert {{ trade_account_status }}" role="status" aria-live="polite">{{ trade_account_message }}</p>
-                {% endif %}
                 {% if header_trade_accounts %}
                 <section class="trade-account-switcher" aria-label="Trade account switcher">
                     <div class="trade-account-switcher-group">
-                        <form action="{{ url_for('switch_trade_account') }}" method="post" class="trade-account-switcher-form">
+                        <form action="{{ url_for('trade_accounts.switch_trade_account') }}" method="post" class="trade-account-switcher-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="next" value="{{ current_page_path }}">
                             <label for="tradeAccountSwitcher">Trade Account</label>
@@ -64,7 +55,7 @@
                                 {% endfor %}
                             </select>
                         </form>
-                        <a href="{{ url_for('trade_accounts') }}" class="new-trade-btn trade-account-manage-btn">Manage Accounts</a>
+                        <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="new-trade-btn trade-account-manage-btn">Manage Accounts</a>
                     </div>
                 </section>
                 {% endif %}
@@ -157,7 +148,7 @@
                                 class="batch-assign-btn"
                                 id="assignTradeProfileButton"
                                 form="bulkTradeActionsForm"
-                                formaction="{{ url_for('batch_update_trade_profile') }}"
+                                formaction="{{ url_for('trades.batch_update_trade_profile') }}"
                                 formmethod="post"
                                 disabled
                             >Apply Strategy</button>
@@ -171,7 +162,7 @@
                                 <p class="manage-action-copy">Choose whether to delete selected trades or an imported batch for this account.</p>
                             </div>
                         </div>
-                        <form action="{{ url_for('delete_import_batch') }}" method="post" class="batch-delete-form" data-themed-validation>
+                        <form action="{{ url_for('trades.delete_import_batch') }}" method="post" class="batch-delete-form" data-themed-validation>
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <div class="batch-delete-fields">
                                 <select id="batchDeleteMode" aria-label="Choose batch delete mode">
@@ -195,7 +186,7 @@
                     </div>
                 </section>
                 {% endif %}
-                <form action="{{ url_for('bulk_delete_trades') }}" method="post" class="bulk-delete-form" id="bulkTradeActionsForm">
+                <form action="{{ url_for('trades.bulk_delete_trades') }}" method="post" class="bulk-delete-form" id="bulkTradeActionsForm">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="table-shell">
                     <table>
@@ -295,8 +286,8 @@
                                 </td>
                                 <td>
                                     <div class="row-actions">
-                                        <a href="{{ url_for('trade_detail', trade_pubkey=trade.pubkey) }}" class="view-btn">View</a>
-                                        <a href="{{ url_for('edit_trade', trade_pubkey=trade.pubkey) }}" class="edit-btn">Edit</a>
+                                        <a href="{{ url_for('trades.trade_detail', trade_pubkey=trade.pubkey) }}" class="view-btn">View</a>
+                                        <a href="{{ url_for('trades.edit_trade', trade_pubkey=trade.pubkey) }}" class="edit-btn">Edit</a>
                                     </div>
                                 </td>
                             </tr>
@@ -332,7 +323,7 @@
         </p>
         <form
             id="deleteSelectedTradesForm"
-            action="{{ url_for('bulk_delete_trades') }}"
+            action="{{ url_for('trades.bulk_delete_trades') }}"
             method="post"
             class="danger-form"
             data-themed-validation
@@ -381,7 +372,7 @@
         </p>
         <form
             id="deleteImportBatchForm"
-            action="{{ url_for('delete_import_batch') }}"
+            action="{{ url_for('trades.delete_import_batch') }}"
             method="post"
             class="danger-form"
             data-themed-validation

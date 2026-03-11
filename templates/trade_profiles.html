@@ -4,7 +4,7 @@
 <section class="dash-wrap">
     <div class="dash-content">
         <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('home') }}">Dashboard</a> / Strategies</div>
+            <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a> / Strategies</div>
             <div class="head-row">
                 <div>
                     <h1>Strategies</h1>
@@ -12,8 +12,8 @@
                     <p class="subtitle">Create and version the strategies you want to attach to trades.</p>
                 </div>
                 <div class="head-actions">
-                    <a class="ghost-link" href="{{ url_for('trades') }}">Back to Trades</a>
-                    <a class="ghost-link" href="{{ url_for('account') }}">Account</a>
+                    <a class="ghost-link" href="{{ url_for('trades.trades') }}">Back to Trades</a>
+                    <a class="ghost-link" href="{{ url_for('account.account') }}">Account</a>
                 </div>
             </div>
         </header>
@@ -24,9 +24,6 @@
                     <h2>Strategy Library</h2>
                     <span class="soft">{{ trade_profiles|length }} active</span>
                 </div>
-                {% if trade_profile_status and trade_profile_message %}
-                <p class="profile-alert {{ trade_profile_status }}">{{ trade_profile_message }}</p>
-                {% endif %}
                 <div class="profile-list">
                     {% for profile in trade_profiles %}
                     {% set version = profile_versions.get(profile.id) %}
@@ -37,8 +34,8 @@
                                 <p class="profile-meta">v{{ profile.current_version_number }}</p>
                             </div>
                             <div class="profile-card-actions">
-                                <a href="{{ url_for('strategies', edit=profile.pubkey) }}" class="edit-link">Edit</a>
-                                <form action="{{ url_for('archive_strategy', profile_pubkey=profile.pubkey) }}" method="post">
+                                <a href="{{ url_for('trade_profiles.strategies', edit=profile.pubkey) }}" class="edit-link">Edit</a>
+                                <form action="{{ url_for('trade_profiles.archive_strategy', profile_pubkey=profile.pubkey) }}" method="post">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="archive-btn">Archive</button>
                                 </form>
@@ -61,7 +58,7 @@
                 <p class="empty-copy">Start with the setup name and a short description of the entry model, confirmation, or execution rules you want to track.</p>
                 {% endif %}
                 <form
-                    action="{% if edit_target %}{{ url_for('edit_strategy', profile_pubkey=edit_target.pubkey) }}{% else %}{{ url_for('strategies') }}{% endif %}"
+                    action="{% if edit_target %}{{ url_for('trade_profiles.edit_strategy', profile_pubkey=edit_target.pubkey) }}{% else %}{{ url_for('trade_profiles.strategies') }}{% endif %}"
                     method="post"
                     class="profile-form"
                 >
@@ -88,7 +85,7 @@
                     <div class="form-actions">
                         <button type="submit" class="submit-btn">{% if edit_target %}Save New Version{% else %}Create Profile{% endif %}</button>
                         {% if edit_target %}
-                        <a href="{{ url_for('strategies') }}" class="ghost-link">Cancel</a>
+                        <a href="{{ url_for('trade_profiles.strategies') }}" class="ghost-link">Cancel</a>
                         {% endif %}
                     </div>
                 </form>
