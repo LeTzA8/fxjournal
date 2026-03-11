@@ -85,10 +85,6 @@
                     <span class="soft">Secure Form</span>
                 </div>
 
-                {% if account_status and account_message %}
-                <p class="account-alert {{ account_status }}">{{ account_message }}</p>
-                {% endif %}
-
                 {% if pending_email %}
                 <div class="pending-email-box">
                     <p class="pending-email-title">Pending Email Change</p>

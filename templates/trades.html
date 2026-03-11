@@ -32,15 +32,6 @@
                         {% endif %}
                     </div>
                 </div>
-                {% if batch_delete_status and batch_delete_message %}
-                <p class="batch-alert {{ batch_delete_status }}" role="status" aria-live="polite">{{ batch_delete_message }}</p>
-                {% endif %}
-                {% if batch_profile_status and batch_profile_message %}
-                <p class="batch-alert {{ batch_profile_status }}" role="status" aria-live="polite">{{ batch_profile_message }}</p>
-                {% endif %}
-                {% if trade_account_status and trade_account_message %}
-                <p class="batch-alert {{ trade_account_status }}" role="status" aria-live="polite">{{ trade_account_message }}</p>
-                {% endif %}
                 {% if header_trade_accounts %}
                 <section class="trade-account-switcher" aria-label="Trade account switcher">
                     <div class="trade-account-switcher-group">

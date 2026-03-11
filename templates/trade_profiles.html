@@ -24,9 +24,6 @@
                     <h2>Strategy Library</h2>
                     <span class="soft">{{ trade_profiles|length }} active</span>
                 </div>
-                {% if trade_profile_status and trade_profile_message %}
-                <p class="profile-alert {{ trade_profile_status }}">{{ trade_profile_message }}</p>
-                {% endif %}
                 <div class="profile-list">
                     {% for profile in trade_profiles %}
                     {% set version = profile_versions.get(profile.id) %}

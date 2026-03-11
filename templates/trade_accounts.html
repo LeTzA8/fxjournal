@@ -18,14 +18,6 @@
             </div>
         </header>
 
-        <p
-            id="tradeAccountAlert"
-            class="account-alert{% if trade_account_status and trade_account_message %} {{ trade_account_status }}{% endif %}"
-            role="status"
-            aria-live="polite"
-            {% if not (trade_account_status and trade_account_message) %}hidden{% endif %}
-        >{% if trade_account_status and trade_account_message %}{{ trade_account_message }}{% endif %}</p>
-
         <section class="panel-grid">
             <article class="panel accounts-panel">
                 <div class="panel-head">
