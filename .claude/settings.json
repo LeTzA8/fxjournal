@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/Scripts/python -c \"import flask_limiter; print\\(flask_limiter.__version__\\)\")",
+      "Bash(.venv/Scripts/python -m pytest tests/ -q)"
+    ]
+  }
+}

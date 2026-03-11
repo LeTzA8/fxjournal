@@ -1,12 +1,9 @@
 import os
-import os
 import re
 import sqlite3
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 from flask import Flask, flash, g, redirect, render_template, request, session, url_for
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import event
@@ -32,6 +29,7 @@ from helpers import (
     sanitize_error_message,
 )
 
+from extensions import limiter
 from routes import all_blueprints
 from utils import env_bool, env_int, utcnow_naive
 
@@ -119,11 +117,7 @@ db.init_app(app)
 migrate = Migrate(app, db, directory="migrations", compare_type=True)
 csrf = CSRFProtect(app)
 # For production, set RATELIMIT_STORAGE_URI to Redis for shared counters.
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=[],
-    storage_uri=os.getenv("RATELIMIT_STORAGE_URI", "memory://"),
-)
+app.config.setdefault("RATELIMIT_STORAGE_URI", os.getenv("RATELIMIT_STORAGE_URI", "memory://"))
 limiter.init_app(app)
 
 TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
