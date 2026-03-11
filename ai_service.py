@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from models import AIGeneratedResponse, AIPromptHistory, Trade, User, db
 from trading import build_trade_analytics, format_trade_symbol, resolve_pnl
+from utils import utcnow_naive
 
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
@@ -26,10 +27,6 @@ WEEKLY_CUTOFF_HOUR = 17
 WEEKLY_CUTOFF_MINUTE = 30
 WEEKLY_ACTIVITY_LOOKBACK_DAYS = 3
 logger = logging.getLogger(__name__)
-
-
-def utcnow_naive():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class AIConfigError(RuntimeError):

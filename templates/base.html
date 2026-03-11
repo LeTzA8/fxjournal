@@ -687,6 +687,7 @@
             overflow-x: auto;
         }
 
+        .flash-alert,
         body.app-layout .account-alert,
         body.app-layout .batch-alert,
         body.app-layout .contact-alert,
@@ -1184,6 +1185,7 @@
             border-color: color-mix(in srgb, var(--bad) 54%, var(--border));
         }
 
+        .flash-alert.success,
         body.app-layout .account-alert.success,
         body.app-layout .batch-alert.success,
         body.app-layout .contact-alert.success,
@@ -1195,6 +1197,7 @@
             color: color-mix(in srgb, var(--ink) 86%, var(--good) 14%);
         }
 
+        .flash-alert.info,
         body.app-layout .account-alert.info,
         body.app-layout .batch-alert.info,
         body.app-layout .contact-alert.info,
@@ -1206,6 +1209,7 @@
             color: color-mix(in srgb, var(--ink) 86%, var(--accent) 14%);
         }
 
+        .flash-alert.error,
         body.app-layout .account-alert.error,
         body.app-layout .batch-alert.error,
         body.app-layout .contact-alert.error,
@@ -1375,6 +1379,15 @@
     {% endif %}
 
     <main>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-messages" style="padding:0 1rem;max-width:900px;margin:0 auto;">
+            {% for category, message in messages %}
+            <p class="flash-alert {{ category }}" role="status" aria-live="polite">{{ message }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
         {% block content %}{% endblock %}
     </main>
 

@@ -1,7 +1,8 @@
-from datetime import datetime, timezone
 import secrets
 
 from flask_sqlalchemy import SQLAlchemy
+
+from utils import utcnow_naive  # noqa: F401 – re-exported for existing callers
 
 
 db = SQLAlchemy()
@@ -17,10 +18,6 @@ def generate_trade_pubkey():
 
 def generate_trade_account_pubkey():
     return secrets.token_hex(TRADE_ACCOUNT_PUBKEY_BYTES)
-
-
-def utcnow_naive():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class User(db.Model):

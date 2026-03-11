@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dotenv import load_dotenv
-from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, flash, g, get_flashed_messages, jsonify, redirect, render_template, request, session, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_migrate import Migrate
@@ -74,13 +74,9 @@ from trading import (
     to_display_timezone,
 )
 
+from utils import TRUE_VALUES, env_bool, env_int, login_required, utcnow_naive
+
 load_dotenv()
-
-TRUE_VALUES = {"1", "true", "yes", "on"}
-
-
-def utcnow_naive():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @event.listens_for(Engine, "connect")
@@ -90,23 +86,6 @@ def enable_sqlite_foreign_keys(dbapi_connection, _connection_record):
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
-
-
-def env_bool(name, default=False):
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in TRUE_VALUES
-
-
-def env_int(name, default):
-    value = os.getenv(name)
-    if value is None:
-        return default
-    try:
-        return int(value.strip())
-    except (TypeError, ValueError):
-        return default
 
 
 def get_app_timezone_name():
@@ -738,9 +717,16 @@ def _is_same_origin(url_value):
     return parsed.netloc == request.host
 
 
+_last_purge_time = None
+
+
 @app.before_request
 def cleanup_expired_unverified_accounts():
-    purge_expired_unverified_users()
+    global _last_purge_time
+    now = utcnow_naive()
+    if not _last_purge_time or (now - _last_purge_time).total_seconds() >= 900:
+        _last_purge_time = now
+        purge_expired_unverified_users()
 
     pending_email = session.get("pending_verify_email", "").strip().lower()
     if pending_email and not User.query.filter_by(email=pending_email).first():
@@ -829,13 +815,8 @@ def set_display_timezone():
 @app.errorhandler(RequestEntityTooLarge)
 def handle_large_upload(_error):
     if session.get("user_id"):
-        return redirect(
-            url_for(
-                "new_trade",
-                import_status="error",
-                import_message=f"File too large. Max upload is {max_upload_mb} MB.",
-            )
-        )
+        flash(f"File too large. Max upload is {max_upload_mb} MB.", "error")
+        return redirect(url_for("new_trade"))
     return redirect(url_for("login"))
 
 
@@ -934,10 +915,8 @@ register_public_auth_routes(
 
 
 @app.route("/dashboard")
+@login_required
 def home():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     username = session.get("username", "User")
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
@@ -1124,10 +1103,8 @@ def home():
 
 
 @app.route("/dashboard/analytics")
+@login_required
 def analytics():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
     timezone_name = get_display_timezone_name()
@@ -1162,10 +1139,8 @@ def analytics():
 
 
 @app.route("/account", methods=["GET", "POST"])
+@login_required
 def account():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user = User.query.filter_by(id=session["user_id"]).first_or_404()
 
     if request.method == "POST":
@@ -1173,13 +1148,8 @@ def account():
         email = request.form.get("email", "").strip().lower()
 
         if not username or not email:
-            return redirect(
-                url_for(
-                    "account",
-                    account_status="error",
-                    account_message="Username and email are required.",
-                )
-            )
+            flash("Username and email are required.", "error")
+            return redirect(url_for("account"))
 
         conflicting_filters = [User.username == username]
         if email != user.email:
@@ -1194,13 +1164,8 @@ def account():
             or_(*conflicting_filters),
         ).first()
         if conflicting_user:
-            return redirect(
-                url_for(
-                    "account",
-                    account_status="error",
-                    account_message="Username or email is already in use.",
-                )
-            )
+            flash("Username or email is already in use.", "error")
+            return redirect(url_for("account"))
 
         username_changed = user.username != username
         email_changed = user.email != email
@@ -1211,13 +1176,8 @@ def account():
 
         if email_changed:
             if not user.email_verified:
-                return redirect(
-                    url_for(
-                        "account",
-                        account_status="error",
-                        account_message="Please verify your current email address before requesting an email change.",
-                    )
-                )
+                flash("Please verify your current email address before requesting an email change.", "error")
+                return redirect(url_for("account"))
 
             user.pending_email = email
             user.pending_email_change_requested_at = utcnow_naive()
@@ -1228,13 +1188,8 @@ def account():
             db.session.commit()
         except OperationalError:
             db.session.rollback()
-            return redirect(
-                url_for(
-                    "account",
-                    account_status="error",
-                    account_message="Could not save account changes. Please try again.",
-                )
-            )
+            flash("Could not save account changes. Please try again.", "error")
+            return redirect(url_for("account"))
 
         if username_changed:
             session["username"] = username
@@ -1284,10 +1239,8 @@ def account():
                 ),
             )
 
-            kwargs = {
-                "account_status": "info",
-                "account_message": "Email change requested. Please confirm from both your current email and your new email to complete the update.",
-            }
+            flash("Email change requested. Please confirm from both your current email and your new email to complete the update.", "info")
+            kwargs = {}
             if is_local_dev_environment():
                 if not current_email_result.get("sent"):
                     kwargs["debug_email_change_current_link"] = current_email_link
@@ -1295,16 +1248,8 @@ def account():
                     kwargs["debug_email_change_new_link"] = new_email_link
             return redirect(url_for("account", **kwargs))
 
-        return redirect(
-            url_for(
-                "account",
-                account_status="success",
-                account_message="Account details updated successfully.",
-            )
-        )
-
-    account_status = request.args.get("account_status", "").strip().lower()
-    account_message = request.args.get("account_message", "").strip()
+        flash("Account details updated successfully.", "success")
+        return redirect(url_for("account"))
     debug_reset_link = request.args.get("debug_reset_link", "").strip()
     debug_email_change_current_link = request.args.get("debug_email_change_current_link", "").strip()
     debug_email_change_new_link = request.args.get("debug_email_change_new_link", "").strip()
@@ -1323,10 +1268,6 @@ def account():
         or debug_email_change_new_link.startswith("https://")
     ):
         debug_email_change_new_link = ""
-    if account_status not in {"success", "error", "info"}:
-        account_status = ""
-    if not account_message:
-        account_status = ""
 
     total_trades = Trade.query.filter_by(user_id=user.id).count()
     closed_trades = (
@@ -1346,8 +1287,6 @@ def account():
         username=session.get("username", "User"),
         account_user=user,
         email_verified=bool(user.email_verified),
-        account_status=account_status,
-        account_message=account_message,
         total_trades=total_trades,
         closed_trades=closed_trades,
         running_trades=max(total_trades - closed_trades, 0),
@@ -1370,19 +1309,12 @@ def account():
     methods=["POST"],
     error_message="Too many attempts. Please wait and try again.",
 )
+@login_required
 def account_cancel_email_change():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user = User.query.filter_by(id=session["user_id"]).first_or_404()
     if not user.pending_email:
-        return redirect(
-            url_for(
-                "account",
-                account_status="info",
-                account_message="There is no pending email change to cancel.",
-            )
-        )
+        flash("There is no pending email change to cancel.", "info")
+        return redirect(url_for("account"))
 
     user.pending_email = None
     user.pending_email_change_requested_at = None
@@ -1390,13 +1322,8 @@ def account_cancel_email_change():
     user.pending_email_change_new_verified_at = None
     db.session.commit()
 
-    return redirect(
-        url_for(
-            "account",
-            account_status="success",
-            account_message="Pending email change canceled.",
-        )
-    )
+    flash("Pending email change canceled.", "success")
+    return redirect(url_for("account"))
 
 
 @app.route("/account/email-change/<token>")
@@ -1404,13 +1331,8 @@ def account_confirm_email_change(token):
     max_age_seconds = env_int("EMAIL_VERIFY_TOKEN_MAX_AGE_SECONDS", 86400)
     payload = verify_email_change_token(token, max_age_seconds=max_age_seconds)
     if not payload:
-        return redirect(
-            url_for(
-                "account",
-                account_status="error",
-                account_message="This email change link is invalid or has expired.",
-            )
-        )
+        flash("This email change link is invalid or has expired.", "error")
+        return redirect(url_for("account"))
 
     user = User.query.filter_by(id=payload["user_id"]).first()
     if not user:
@@ -1423,19 +1345,10 @@ def account_confirm_email_change(token):
 
     if user.email != payload["current_email"] or user.pending_email != payload["new_email"]:
         if session.get("user_id") == user.id:
-            return redirect(
-                url_for(
-                    "account",
-                    account_status="error",
-                    account_message="This email change request is no longer active.",
-                )
-            )
-        return redirect(
-            url_for(
-                "login",
-                error="This email change request is no longer active.",
-            )
-        )
+            flash("This email change request is no longer active.", "error")
+            return redirect(url_for("account"))
+        flash("This email change request is no longer active.", "error")
+        return redirect(url_for("login"))
 
     now_utc = utcnow_naive()
     if payload["channel"] == "current":
@@ -1454,20 +1367,10 @@ def account_confirm_email_change(token):
             user.pending_email_change_current_verified_at = None
             user.pending_email_change_new_verified_at = None
             db.session.commit()
+            flash("That new email address is no longer available. Please start the email change again.", "error")
             if session.get("user_id") == user.id:
-                return redirect(
-                    url_for(
-                        "account",
-                        account_status="error",
-                        account_message="That new email address is no longer available. Please start the email change again.",
-                    )
-                )
-            return redirect(
-                url_for(
-                    "login",
-                    error="That new email address is no longer available. Please start the email change again.",
-                )
-            )
+                return redirect(url_for("account"))
+            return redirect(url_for("login"))
 
         user.email = user.pending_email
         user.email_verified = True
@@ -1478,35 +1381,17 @@ def account_confirm_email_change(token):
         db.session.commit()
 
         if session.get("user_id") == user.id:
-            return redirect(
-                url_for(
-                    "account",
-                    account_status="success",
-                    account_message="Email address updated successfully.",
-                )
-            )
-        return redirect(
-            url_for(
-                "login",
-                success="Your email address has been updated. You can now sign in with the new email.",
-            )
-        )
+            flash("Email address updated successfully.", "success")
+            return redirect(url_for("account"))
+        flash("Your email address has been updated. You can now sign in with the new email.", "success")
+        return redirect(url_for("login"))
 
     db.session.commit()
     if session.get("user_id") == user.id:
-        return redirect(
-            url_for(
-                "account",
-                account_status="info",
-                account_message="One verification step is complete. Please confirm from the other email address to finish the change.",
-            )
-        )
-    return redirect(
-        url_for(
-            "login",
-            info="One verification step is complete. Please confirm from the other email address to finish the change.",
-        )
-    )
+        flash("One verification step is complete. Please confirm from the other email address to finish the change.", "info")
+        return redirect(url_for("account"))
+    flash("One verification step is complete. Please confirm from the other email address to finish the change.", "info")
+    return redirect(url_for("login"))
 
 
 @app.route("/account/password-reset-email", methods=["POST"])
@@ -1515,10 +1400,8 @@ def account_confirm_email_change(token):
     methods=["POST"],
     error_message="Too many attempts. Please wait and try again.",
 )
+@login_required
 def account_password_reset_email():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user = User.query.filter_by(id=session["user_id"]).first_or_404()
     reset_token = generate_auth_token(
         email=user.email,
@@ -1544,10 +1427,8 @@ def account_password_reset_email():
     else:
         account_message = "Password reset requested, but email delivery is currently unavailable."
 
-    kwargs = {
-        "account_status": "info",
-        "account_message": account_message,
-    }
+    flash(account_message, "info")
+    kwargs = {}
     if is_local_dev_environment() and not email_result.get("sent"):
         kwargs["debug_reset_link"] = reset_link
     return redirect(url_for("account", **kwargs))
@@ -1559,10 +1440,8 @@ def account_password_reset_email():
     methods=["POST"],
     error_message="Too many account deletion attempts. Please wait and try again.",
 )
+@login_required
 def delete_account():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user = User.query.filter_by(id=session["user_id"]).first()
     if not user:
         session.clear()
@@ -1571,43 +1450,25 @@ def delete_account():
     confirmation_text = request.form.get("delete_confirmation", "").strip().upper()
     acknowledged = request.form.get("delete_acknowledge") == "on"
     if confirmation_text != "DELETE" or not acknowledged:
-        return redirect(
-            url_for(
-                "account",
-                account_status="error",
-                account_message=(
-                    "To delete your account, type DELETE and check the confirmation box."
-                ),
-            )
-        )
+        flash("To delete your account, type DELETE and check the confirmation box.", "error")
+        return redirect(url_for("account"))
 
     try:
         delete_users_with_related_data([user.id])
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()
-        return redirect(
-            url_for(
-                "account",
-                account_status="error",
-                account_message="Could not delete your account right now. Please try again.",
-            )
-        )
+        flash("Could not delete your account right now. Please try again.", "error")
+        return redirect(url_for("account"))
 
     session.clear()
-    return redirect(
-        url_for(
-            "login",
-            success="Your account and all related trades, trade accounts, and AI reviews have been deleted.",
-        )
-    )
+    flash("Your account and all related trades, trade accounts, and AI reviews have been deleted.", "success")
+    return redirect(url_for("login"))
 
 
 @app.route("/dashboard/trade-accounts/switch", methods=["POST"])
+@login_required
 def switch_trade_account():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     requested_account_id = request.form.get("trade_account_id", "").strip()
     requested_account_pubkey = request.form.get("trade_account_pubkey", "").strip()
     _active, _accounts = resolve_active_trade_account(
@@ -1627,10 +1488,8 @@ def switch_trade_account():
     methods=["POST"],
     error_message="Too many trade account actions. Please wait and try again.",
 )
+@login_required
 def create_trade_account():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user_id = session["user_id"]
     account_name = normalize_trade_account_name(request.form.get("trade_account_name"))
     account_type = normalize_account_type(request.form.get("account_type"))
@@ -1640,49 +1499,24 @@ def create_trade_account():
     try:
         account_size = parse_trade_account_size(request.form.get("account_size"))
     except ValueError:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="Account size must be a positive number or left blank.",
-            )
-        )
+        flash("Account size must be a positive number or left blank.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
 
     if not account_name:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="Trade account name is required.",
-            )
-        )
+        flash("Trade account name is required.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
     if len(account_name) > 80:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="Trade account name must be 80 characters or less.",
-            )
-        )
+        flash("Trade account name must be 80 characters or less.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
     if external_account_id and len(external_account_id) > 80:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="External account ID must be 80 characters or less.",
-            )
-        )
+        flash("External account ID must be 80 characters or less.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
 
     existing_accounts = get_user_trade_accounts(user_id)
     lowered_name = account_name.lower()
     if any(normalize_trade_account_name(account.name).lower() == lowered_name for account in existing_accounts):
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="A trade account with that name already exists.",
-            )
-        )
+        flash("A trade account with that name already exists.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
 
     lowered_external = external_account_id.lower()
     if external_account_id and any(
@@ -1690,13 +1524,8 @@ def create_trade_account():
         for account in existing_accounts
         if account.external_account_id
     ):
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="That external account ID is already linked.",
-            )
-        )
+        flash("That external account ID is already linked.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
 
     wants_default = request.form.get("set_as_default", "").strip().lower() in TRUE_VALUES
     is_default = wants_default or not existing_accounts
@@ -1717,30 +1546,18 @@ def create_trade_account():
     db.session.commit()
 
     session["active_trade_account_id"] = new_account.id
-    return redirect(
-        append_query_params(
-            get_safe_internal_next("trade_accounts"),
-            trade_account_status="success",
-            trade_account_message=f"Trade account '{new_account.name}' created successfully.",
-        )
-    )
+    flash(f"Trade account '{new_account.name}' created successfully.", "success")
+    return redirect(get_safe_internal_next("trade_accounts"))
 
 
 @app.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/default", methods=["POST"])
+@login_required
 def set_default_trade_account(trade_account_pubkey):
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user_id = session["user_id"]
     selected = get_user_trade_account_by_pubkey(user_id, trade_account_pubkey)
     if not selected:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="Trade account not found.",
-            )
-        )
+        flash("Trade account not found.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
 
     TradeAccount.query.filter_by(user_id=user_id).update(
         {"is_default": False},
@@ -1750,30 +1567,18 @@ def set_default_trade_account(trade_account_pubkey):
     db.session.commit()
     session["active_trade_account_id"] = selected.id
 
-    return redirect(
-        append_query_params(
-            get_safe_internal_next("trade_accounts"),
-            trade_account_status="info",
-            trade_account_message=f"Default trade account updated to '{selected.name}'.",
-        )
-    )
+    flash(f"Default trade account updated to '{selected.name}'.", "info")
+    return redirect(get_safe_internal_next("trade_accounts"))
 
 
 @app.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/update", methods=["POST"])
+@login_required
 def update_trade_account(trade_account_pubkey):
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user_id = session["user_id"]
     account = get_user_trade_account_by_pubkey(user_id, trade_account_pubkey)
     if not account:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="Trade account not found.",
-            )
-        )
+        flash("Trade account not found.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
 
     account_name = normalize_trade_account_name(request.form.get("trade_account_name"))
     account_type = normalize_account_type(request.form.get("account_type"))
@@ -1783,38 +1588,18 @@ def update_trade_account(trade_account_pubkey):
     try:
         account_size = parse_trade_account_size(request.form.get("account_size"))
     except ValueError:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="Account size must be a positive number or left blank.",
-            )
-        )
+        flash("Account size must be a positive number or left blank.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
 
     if not account_name:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="Trade account name is required.",
-            )
-        )
+        flash("Trade account name is required.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
     if len(account_name) > 80:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="Trade account name must be 80 characters or less.",
-            )
-        )
+        flash("Trade account name must be 80 characters or less.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
     if external_account_id and len(external_account_id) > 80:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="External account ID must be 80 characters or less.",
-            )
-        )
+        flash("External account ID must be 80 characters or less.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
 
     existing_accounts = get_user_trade_accounts(user_id)
     lowered_name = account_name.lower()
@@ -1822,13 +1607,8 @@ def update_trade_account(trade_account_pubkey):
         if existing.id == account.id:
             continue
         if normalize_trade_account_name(existing.name).lower() == lowered_name:
-            return redirect(
-                append_query_params(
-                    get_safe_internal_next("trade_accounts"),
-                    trade_account_status="error",
-                    trade_account_message="A trade account with that name already exists.",
-                )
-            )
+            flash("A trade account with that name already exists.", "error")
+            return redirect(get_safe_internal_next("trade_accounts"))
 
     lowered_external = external_account_id.lower()
     if external_account_id:
@@ -1836,26 +1616,16 @@ def update_trade_account(trade_account_pubkey):
             if existing.id == account.id or not existing.external_account_id:
                 continue
             if normalize_trade_account_name(existing.external_account_id).lower() == lowered_external:
-                return redirect(
-                    append_query_params(
-                        get_safe_internal_next("trade_accounts"),
-                        trade_account_status="error",
-                        trade_account_message="That external account ID is already linked.",
-                    )
-                )
+                flash("That external account ID is already linked.", "error")
+                return redirect(get_safe_internal_next("trade_accounts"))
 
     account.name = account_name
     account.external_account_id = external_account_id or None
     account.account_size = account_size
     account.account_type = account_type
     db.session.commit()
-    return redirect(
-        append_query_params(
-            get_safe_internal_next("trade_accounts"),
-            trade_account_status="success",
-            trade_account_message=f"Trade account '{account.name}' updated successfully.",
-        )
-    )
+    flash(f"Trade account '{account.name}' updated successfully.", "success")
+    return redirect(get_safe_internal_next("trade_accounts"))
 
 
 @app.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/delete", methods=["POST"])
@@ -1864,18 +1634,12 @@ def update_trade_account(trade_account_pubkey):
     methods=["POST"],
     error_message="Too many trade account deletion attempts. Please wait and try again.",
 )
+@login_required
 def delete_trade_account(trade_account_pubkey):
     wants_json_response = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
-    def build_redirect_url(status, message):
-        return append_query_params(
-            get_safe_internal_next("trade_accounts"),
-            trade_account_status=status,
-            trade_account_message=message,
-        )
-
     def respond_with_status(status, message, status_code=400):
-        redirect_url = build_redirect_url(status, message)
+        redirect_url = get_safe_internal_next("trade_accounts")
         if wants_json_response:
             payload = {
                 "ok": status == "success",
@@ -1883,18 +1647,8 @@ def delete_trade_account(trade_account_pubkey):
                 "redirect_url": redirect_url,
             }
             return jsonify(payload), status_code
+        flash(message, status)
         return redirect(redirect_url)
-
-    if not session.get("user_id"):
-        if wants_json_response:
-            return jsonify(
-                {
-                    "ok": False,
-                    "message": "Your session expired. Please sign in again.",
-                    "redirect_url": url_for("login"),
-                }
-            ), 401
-        return redirect(url_for("login"))
 
     user_id = session["user_id"]
     account = get_user_trade_account_by_pubkey(user_id, trade_account_pubkey)
@@ -1982,7 +1736,7 @@ def delete_trade_account(trade_account_pubkey):
             (row for row in remaining_accounts if row.is_default),
             None,
         )
-        redirect_url = build_redirect_url("success", success_message)
+        redirect_url = get_safe_internal_next("trade_accounts")
         return jsonify(
             {
                 "ok": True,
@@ -1996,7 +1750,8 @@ def delete_trade_account(trade_account_pubkey):
                 "requires_reload": replacement_created,
             }
         )
-    return redirect(build_redirect_url("success", success_message))
+    flash(success_message, "success")
+    return redirect(get_safe_internal_next("trade_accounts"))
 
 
 @app.route("/dashboard/trade-accounts/delete-all", methods=["POST"])
@@ -2005,21 +1760,14 @@ def delete_trade_account(trade_account_pubkey):
     methods=["POST"],
     error_message="Too many destructive account actions. Please wait and try again.",
 )
+@login_required
 def delete_all_trade_accounts():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user_id = session["user_id"]
     confirmation_text = request.form.get("delete_all_trade_accounts_confirmation", "").strip().upper()
     acknowledged = request.form.get("delete_all_trade_accounts_acknowledge") == "on"
     if confirmation_text != "DELETE" or not acknowledged:
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="Type DELETE and check the confirmation box to remove all trade accounts.",
-            )
-        )
+        flash("Type DELETE and check the confirmation box to remove all trade accounts.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
 
     trade_count = Trade.query.filter_by(user_id=user_id).count()
     account_count = TradeAccount.query.filter_by(user_id=user_id).count()
@@ -2053,27 +1801,18 @@ def delete_all_trade_accounts():
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()
-        return redirect(
-            append_query_params(
-                get_safe_internal_next("trade_accounts"),
-                trade_account_status="error",
-                trade_account_message="Could not delete every trade account right now. Please try again.",
-            )
-        )
+        flash("Could not delete every trade account right now. Please try again.", "error")
+        return redirect(get_safe_internal_next("trade_accounts"))
 
     session["active_trade_account_id"] = replacement_account.id
 
-    return redirect(
-        append_query_params(
-            get_safe_internal_next("trade_accounts"),
-            trade_account_status="success",
-            trade_account_message=(
-                f"Deleted {account_count} trade accounts, {trade_count} linked trades, and "
-                f"{ai_review_count} linked AI review{'s' if ai_review_count != 1 else ''}. "
-                "A fresh Main Account was created."
-            ),
-        )
+    flash(
+        f"Deleted {account_count} trade accounts, {trade_count} linked trades, and "
+        f"{ai_review_count} linked AI review{'s' if ai_review_count != 1 else ''}. "
+        "A fresh Main Account was created.",
+        "success",
     )
+    return redirect(get_safe_internal_next("trade_accounts"))
 
 
 @app.route("/contact", methods=["GET", "POST"])
@@ -2229,13 +1968,8 @@ def contact():
         )
 
         if email_result.get("sent"):
-            return redirect(
-                url_for(
-                    "contact",
-                    contact_status="success",
-                    contact_message="Your message has been sent. I will review it as soon as possible.",
-                )
-            )
+            flash("Your message has been sent. I will review it as soon as possible.", "success")
+            return redirect(url_for("contact"))
 
         persisted = persist_contact_submission(
             actor_user_id=actor_user_id,
@@ -2253,41 +1987,16 @@ def contact():
             )
 
         if is_local_dev_environment():
-            return redirect(
-                url_for(
-                    "contact",
-                    contact_status="info",
-                    contact_message=(
-                        "Message captured in server logs. Email delivery is disabled in this environment."
-                    ),
-                )
-            )
+            flash("Message captured in server logs. Email delivery is disabled in this environment.", "info")
+            return redirect(url_for("contact"))
 
-        return redirect(
-            url_for(
-                "contact",
-                contact_status="info",
-                contact_message="Your message was received, but email delivery is currently unavailable.",
-            )
-        )
-
-    contact_status = (
-        request.args.get("contact_status", "").strip().lower()
-    )
-    contact_message = (
-        request.args.get("contact_message", "").strip()
-    )
-    if contact_status not in {"success", "error", "info"}:
-        contact_status = ""
-    if not contact_message:
-        contact_status = ""
+        flash("Your message was received, but email delivery is currently unavailable.", "info")
+        return redirect(url_for("contact"))
 
     return render_template(
         "contact.html",
         title="Contact | FX Journal",
         username=session.get("username", "User"),
-        contact_status=contact_status,
-        contact_message=contact_message,
         contact_subject=contact_subject,
         contact_category=contact_category,
         contact_body=contact_body,
@@ -2368,25 +2077,6 @@ def render_trades_page(*, manage_mode=False):
             }
         )
 
-    batch_delete_status = request.args.get("batch_delete_status", "").strip().lower()
-    batch_delete_message = request.args.get("batch_delete_message", "").strip()
-    batch_profile_status = request.args.get("batch_profile_status", "").strip().lower()
-    batch_profile_message = request.args.get("batch_profile_message", "").strip()
-    trade_account_status = request.args.get("trade_account_status", "").strip().lower()
-    trade_account_message = request.args.get("trade_account_message", "").strip()
-    if batch_delete_status not in {"success", "error", "info"}:
-        batch_delete_status = ""
-    if not batch_delete_message:
-        batch_delete_status = ""
-    if batch_profile_status not in {"success", "error", "info"}:
-        batch_profile_status = ""
-    if not batch_profile_message:
-        batch_profile_status = ""
-    if trade_account_status not in {"success", "error", "info"}:
-        trade_account_status = ""
-    if not trade_account_message:
-        trade_account_status = ""
-
     import_batch_map = {}
     for trade in user_trades:
         signature = (trade.import_signature or "").strip()
@@ -2420,27 +2110,19 @@ def render_trades_page(*, manage_mode=False):
         size_label=size_label,
         import_batches=import_batches,
         manage_mode=manage_mode,
-        batch_delete_status=batch_delete_status,
-        batch_delete_message=batch_delete_message,
-        batch_profile_status=batch_profile_status,
-        batch_profile_message=batch_profile_message,
-        trade_account_status=trade_account_status,
-        trade_account_message=trade_account_message,
         trade_profile_options=get_user_trade_profiles(user_id),
     )
 
 
 @app.route("/dashboard/trades")
+@login_required
 def trades():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
     return render_trades_page(manage_mode=False)
 
 
 @app.route("/dashboard/trades/manage")
+@login_required
 def manage_trades():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
     return render_trades_page(manage_mode=True)
 
 
@@ -2450,10 +2132,8 @@ def manage_trades():
     methods=["POST"],
     error_message="Too many trade deletion attempts. Please wait and try again.",
 )
+@login_required
 def bulk_delete_trades():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
     selected_pubkeys = [
@@ -2463,13 +2143,8 @@ def bulk_delete_trades():
     ]
 
     if not selected_pubkeys:
-        return redirect(
-            url_for(
-                "manage_trades",
-                batch_delete_status="error",
-                batch_delete_message="Please select at least one trade to delete.",
-            )
-        )
+        flash("Please select at least one trade to delete.", "error")
+        return redirect(url_for("manage_trades"))
 
     try:
         trades_to_delete = (
@@ -2485,13 +2160,8 @@ def bulk_delete_trades():
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()
-        return redirect(
-            url_for(
-                "manage_trades",
-                batch_delete_status="error",
-                batch_delete_message="Could not delete the selected trades right now. Please try again.",
-            )
-        )
+        flash("Could not delete the selected trades right now. Please try again.", "error")
+        return redirect(url_for("manage_trades"))
 
     status = "success" if deleted > 0 else "info"
     message = (
@@ -2499,11 +2169,10 @@ def bulk_delete_trades():
         if deleted > 0
         else "No matching trades were found in the selected rows."
     )
+    flash(message, status)
     return redirect(
         url_for(
             "manage_trades",
-            batch_delete_status=status,
-            batch_delete_message=message,
         )
     )
 
@@ -2514,10 +2183,8 @@ def bulk_delete_trades():
     methods=["POST"],
     error_message="Too many batch profile updates. Please wait and try again.",
 )
+@login_required
 def batch_update_trade_profile():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
     selected_pubkeys = [
@@ -2528,13 +2195,8 @@ def batch_update_trade_profile():
     selected_profile_pubkey = request.form.get("trade_profile_pubkey", "").strip()
 
     if not selected_pubkeys:
-        return redirect(
-            url_for(
-                "manage_trades",
-                batch_profile_status="error",
-                batch_profile_message="Please select at least one trade to update.",
-            )
-        )
+        flash("Please select at least one trade to update.", "error")
+        return redirect(url_for("manage_trades"))
 
     try:
         trades_to_update = (
@@ -2545,13 +2207,8 @@ def batch_update_trade_profile():
             ).all()
         )
         if not trades_to_update:
-            return redirect(
-                url_for(
-                    "manage_trades",
-                    batch_profile_status="info",
-                    batch_profile_message="No trades matched the selected rows.",
-                )
-            )
+            flash("No trades matched the selected rows.", "info")
+            return redirect(url_for("manage_trades"))
 
         for trade in trades_to_update:
             assign_trade_profile_to_trade(user_id, trade, selected_profile_pubkey)
@@ -2559,41 +2216,25 @@ def batch_update_trade_profile():
         db.session.commit()
     except ValueError as exc:
         db.session.rollback()
-        return redirect(
-            url_for(
-                "manage_trades",
-                batch_profile_status="error",
-                batch_profile_message=str(exc),
-            )
-        )
+        flash(str(exc), "error")
+        return redirect(url_for("manage_trades"))
     except (OperationalError, IntegrityError):
         db.session.rollback()
-        return redirect(
-            url_for(
-                "manage_trades",
-                batch_profile_status="error",
-                batch_profile_message="Could not update the selected trade profiles right now.",
-            )
-        )
+        flash("Could not update the selected trade profiles right now.", "error")
+        return redirect(url_for("manage_trades"))
 
     action_label = "cleared" if not selected_profile_pubkey else "updated"
-    return redirect(
-        url_for(
-            "manage_trades",
-            batch_profile_status="success",
-            batch_profile_message=(
-                f"Trade profile {action_label} for {len(trades_to_update)} trade"
-                f"{'s' if len(trades_to_update) != 1 else ''}."
-            ),
-        )
+    flash(
+        f"Trade profile {action_label} for {len(trades_to_update)} trade"
+        f"{'s' if len(trades_to_update) != 1 else ''}.",
+        "success",
     )
+    return redirect(url_for("manage_trades"))
 
 
 @app.route("/dashboard/trade-accounts")
+@login_required
 def trade_accounts():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_rows = get_user_trade_accounts(user_id)
@@ -2624,12 +2265,6 @@ def trade_accounts():
         delete_target_ai_review_count = account_review_counts.get(delete_target.id, 0)
     total_trade_count = Trade.query.filter_by(user_id=user_id).count()
     total_ai_review_count = AIGeneratedResponse.query.filter_by(user_id=user_id).count()
-    trade_account_status = request.args.get("trade_account_status", "").strip().lower()
-    trade_account_message = request.args.get("trade_account_message", "").strip()
-    if trade_account_status not in {"success", "error", "info"}:
-        trade_account_status = ""
-    if not trade_account_message:
-        trade_account_status = ""
 
     return render_template(
         "trade_accounts.html",
@@ -2646,17 +2281,13 @@ def trade_accounts():
         total_trade_count=total_trade_count,
         total_ai_review_count=total_ai_review_count,
         active_trade_account=active_trade_account,
-        trade_account_status=trade_account_status,
-        trade_account_message=trade_account_message,
     )
 
 
 @app.route("/dashboard/strategies", methods=["GET", "POST"])
 @app.route("/dashboard/trade-profiles", methods=["GET", "POST"])
+@login_required
 def strategies():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user_id = session["user_id"]
     username = session.get("username", "User")
 
@@ -2666,31 +2297,16 @@ def strategies():
         try:
             create_trade_profile(user_id, name, short_description)
             db.session.commit()
-            return redirect(
-                url_for(
-                    "strategies",
-                    trade_profile_status="success",
-                    trade_profile_message="Trade profile created successfully.",
-                )
-            )
+            flash("Trade profile created successfully.", "success")
+            return redirect(url_for("strategies"))
         except ValueError as exc:
             db.session.rollback()
-            return redirect(
-                url_for(
-                    "strategies",
-                    trade_profile_status="error",
-                    trade_profile_message=str(exc),
-                )
-            )
+            flash(str(exc), "error")
+            return redirect(url_for("strategies"))
         except (OperationalError, IntegrityError):
             db.session.rollback()
-            return redirect(
-                url_for(
-                    "strategies",
-                    trade_profile_status="error",
-                    trade_profile_message="Could not create the trade profile right now. Please try again.",
-                )
-            )
+            flash("Could not create the trade profile right now. Please try again.", "error")
+            return redirect(url_for("strategies"))
 
     profiles = get_user_trade_profiles(user_id)
     edit_pubkey = request.args.get("edit", "").strip()
@@ -2699,13 +2315,6 @@ def strategies():
     for profile in profiles:
         profile_versions[profile.id] = get_trade_profile_version_snapshot(profile)
 
-    trade_profile_status = request.args.get("trade_profile_status", "").strip().lower()
-    trade_profile_message = request.args.get("trade_profile_message", "").strip()
-    if trade_profile_status not in {"success", "error", "info"}:
-        trade_profile_status = ""
-    if not trade_profile_message:
-        trade_profile_status = ""
-
     return render_template(
         "trade_profiles.html",
         title="Strategies | FX Journal",
@@ -2713,92 +2322,53 @@ def strategies():
         trade_profiles=profiles,
         profile_versions=profile_versions,
         edit_target=edit_target,
-        trade_profile_status=trade_profile_status,
-        trade_profile_message=trade_profile_message,
     )
 
 @app.route("/dashboard/strategies/<string:profile_pubkey>/edit", methods=["POST"])
 @app.route("/dashboard/trade-profiles/<string:profile_pubkey>/edit", methods=["POST"])
+@login_required
 def edit_strategy(profile_pubkey):
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user_id = session["user_id"]
     profile = get_user_trade_profile_by_pubkey(user_id, profile_pubkey)
     if profile is None:
-        return redirect(
-            url_for(
-                "strategies",
-                trade_profile_status="error",
-                trade_profile_message="Trade profile not found.",
-            )
-        )
+        flash("Trade profile not found.", "error")
+        return redirect(url_for("strategies"))
 
     name = request.form.get("name", "").strip()
     short_description = request.form.get("short_description", "").strip()
     try:
         update_trade_profile(profile, name, short_description)
         db.session.commit()
-        return redirect(
-            url_for(
-                "strategies",
-                trade_profile_status="success",
-                trade_profile_message="Trade profile updated successfully and saved as a new version.",
-            )
-        )
+        flash("Trade profile updated successfully and saved as a new version.", "success")
+        return redirect(url_for("strategies"))
     except ValueError as exc:
         db.session.rollback()
-        return redirect(
-            url_for(
-                "strategies",
-                edit=profile.pubkey,
-                trade_profile_status="error",
-                trade_profile_message=str(exc),
-            )
-        )
+        flash(str(exc), "error")
+        return redirect(url_for("strategies", edit=profile.pubkey))
     except (OperationalError, IntegrityError):
         db.session.rollback()
-        return redirect(
-            url_for(
-                "strategies",
-                edit=profile.pubkey,
-                trade_profile_status="error",
-                trade_profile_message="Could not update the trade profile right now. Please try again.",
-            )
-        )
+        flash("Could not update the trade profile right now. Please try again.", "error")
+        return redirect(url_for("strategies", edit=profile.pubkey))
 
 @app.route("/dashboard/strategies/<string:profile_pubkey>/archive", methods=["POST"])
 @app.route("/dashboard/trade-profiles/<string:profile_pubkey>/archive", methods=["POST"])
+@login_required
 def archive_strategy(profile_pubkey):
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
-
     user_id = session["user_id"]
     profile = get_user_trade_profile_by_pubkey(user_id, profile_pubkey)
     if profile is None:
-        return redirect(
-            url_for(
-                "strategies",
-                trade_profile_status="error",
-                trade_profile_message="Trade profile not found.",
-            )
-        )
+        flash("Trade profile not found.", "error")
+        return redirect(url_for("strategies"))
 
     profile.is_archived = True
     profile.updated_at = utcnow_naive()
     db.session.commit()
-    return redirect(
-        url_for(
-            "strategies",
-            trade_profile_status="success",
-            trade_profile_message="Trade profile archived successfully.",
-        )
-    )
+    flash("Trade profile archived successfully.", "success")
+    return redirect(url_for("strategies"))
 
 @app.route("/dashboard/trades/new", methods=["GET", "POST"])
+@login_required
 def new_trade():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
 
@@ -2885,13 +2455,6 @@ def new_trade():
         db.session.commit()
         return redirect(url_for("trades"))
 
-    import_status = request.args.get("import_status", "").strip().lower()
-    import_message = request.args.get("import_message", "").strip()
-    if import_status not in {"success", "error", "info"}:
-        import_status = ""
-    if not import_message:
-        import_status = ""
-
     profile_form_state = resolve_trade_profile_form_state(user_id)
 
     return render_template(
@@ -2902,8 +2465,6 @@ def new_trade():
         symbol_options=get_symbol_options(active_trade_account.account_type),
         account_type=normalize_account_type(active_trade_account.account_type),
         size_label=get_trade_size_label(active_trade_account.account_type),
-        import_status=import_status,
-        import_message=import_message,
         trade=None,
         form_action=url_for("new_trade"),
         form_mode="new",
@@ -2916,9 +2477,8 @@ def new_trade():
 
 
 @app.route("/dashboard/import", methods=["POST"])
+@login_required
 def import_trade_file():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_type = normalize_account_type(active_trade_account.account_type)
@@ -2936,44 +2496,31 @@ def import_trade_file():
 
     uploaded_file = request.files.get("mt5_file")
     if not uploaded_file or not uploaded_file.filename:
-        return redirect(
-            url_for(
-                "new_trade",
-                import_status="error",
-                import_message=(
-                    "Please choose a Tradovate CSV file to upload."
-                    if account_type == "FUTURES"
-                    else "Please choose an MT5 XLSX file to upload."
-                ),
-            )
+        flash(
+            "Please choose a Tradovate CSV file to upload."
+            if account_type == "FUTURES"
+            else "Please choose an MT5 XLSX file to upload.",
+            "error",
         )
+        return redirect(url_for("new_trade"))
 
     try:
         import_stage = "detect_profile"
         uploaded_file.stream.seek(0)
         detected_profile = detect_trade_import_profile(uploaded_file.stream)
         if detected_profile is None:
-            return redirect(
-                url_for(
-                    "new_trade",
-                    import_status="error",
-                    import_message="We could not recognize that import file. Please use an MT5 Positions workbook or a Tradovate Performance CSV.",
-                )
-            )
+            flash("We could not recognize that import file. Please use an MT5 Positions workbook or a Tradovate Performance CSV.", "error")
+            return redirect(url_for("new_trade"))
 
         detected_account_type = normalize_account_type(detected_profile.get("account_type"))
         if detected_account_type != account_type:
-            return redirect(
-                url_for(
-                    "new_trade",
-                    import_status="error",
-                    import_message=(
-                        f"This file was identified as a {detected_profile.get('platform', 'unknown')} "
-                        f"{detected_profile.get('market_type', 'import')} import, "
-                        f"but the active account is set to {account_type.title()}."
-                    ),
-                )
+            flash(
+                f"This file was identified as a {detected_profile.get('platform', 'unknown')} "
+                f"{detected_profile.get('market_type', 'import')} import, "
+                f"but the active account is set to {account_type.title()}.",
+                "error",
             )
+            return redirect(url_for("new_trade"))
 
         uploaded_file.stream.seek(0)
         parser_name = detected_profile.get("parser")
@@ -2983,17 +2530,13 @@ def import_trade_file():
         else:
             parsed_rows, total_rows, skipped_rows = parse_mt5_xlsx_stream(uploaded_file.stream)
         if not parsed_rows:
-            return redirect(
-                url_for(
-                    "new_trade",
-                    import_status="error",
-                    import_message=(
-                        "No valid trade rows were found in this Tradovate CSV."
-                        if account_type == "FUTURES"
-                        else "No valid trade rows were found in this MT5 file."
-                    ),
-                )
+            flash(
+                "No valid trade rows were found in this Tradovate CSV."
+                if account_type == "FUTURES"
+                else "No valid trade rows were found in this MT5 file.",
+                "error",
             )
+            return redirect(url_for("new_trade"))
 
         allowed_symbols = set(get_symbol_options(active_trade_account.account_type))
         failed_symbols = set()
@@ -3193,17 +2736,13 @@ def import_trade_file():
                 if extra > 0:
                     shown = f"{shown}, +{extra} more"
                 symbol_msg = f" Unrecognized symbols: {shown}."
-            return redirect(
-                url_for(
-                    "new_trade",
-                    import_status="error",
-                    import_message=(
-                        f"No trades were imported. Parsed {len(parsed_rows)} rows and "
-                        f"skipped {skipped_rows + validation_skipped + duplicate_count}."
-                        f"{symbol_msg}"
-                    ),
-                )
+            flash(
+                f"No trades were imported. Parsed {len(parsed_rows)} rows and "
+                f"skipped {skipped_rows + validation_skipped + duplicate_count}."
+                f"{symbol_msg}",
+                "error",
             )
+            return redirect(url_for("new_trade"))
 
         import_stage = "commit_import"
         db.session.add_all(insert_batch)
@@ -3245,34 +2784,23 @@ def import_trade_file():
         if uncertain_bits:
             uncertain_msg = " Validation details: " + ", ".join(uncertain_bits) + "."
 
-        return redirect(
-            url_for(
-                "new_trade",
-                import_status=status,
-                import_message=(
-                    f"Imported {len(insert_batch)} trade{'s' if len(insert_batch) != 1 else ''} from "
-                    f"{'Tradovate CSV' if account_type == 'FUTURES' else 'Positions'}. "
-                    f"Parsed rows: {len(parsed_rows)}/{total_rows}. "
-                    f"Skipped: {skipped_rows + validation_skipped}. "
-                    f"{'Duplicate trades' if account_type == 'FUTURES' else 'Duplicate positions'}: {duplicate_count}."
-                    f" Import signature: {import_signature}."
-                    f"{symbol_msg}"
-                    f"{uncertain_msg}"
-                ),
-            )
+        flash(
+            f"Imported {len(insert_batch)} trade{'s' if len(insert_batch) != 1 else ''} from "
+            f"{'Tradovate CSV' if account_type == 'FUTURES' else 'Positions'}. "
+            f"Parsed rows: {len(parsed_rows)}/{total_rows}. "
+            f"Skipped: {skipped_rows + validation_skipped}. "
+            f"{'Duplicate trades' if account_type == 'FUTURES' else 'Duplicate positions'}: {duplicate_count}."
+            f" Import signature: {import_signature}."
+            f"{symbol_msg}"
+            f"{uncertain_msg}",
+            status,
         )
+        return redirect(url_for("new_trade"))
     except IntegrityError as exc:
         db.session.rollback()
         app.logger.warning("Trade import blocked by integrity constraint: %s", exc)
-        return redirect(
-            url_for(
-                "new_trade",
-                import_status="info",
-                import_message=(
-                    "Some trades in this upload already exist on the active account. The import was stopped to avoid creating duplicates."
-                ),
-            )
-        )
+        flash("Some trades in this upload already exist on the active account. The import was stopped to avoid creating duplicates.", "info")
+        return redirect(url_for("new_trade"))
     except Exception as exc:
         db.session.rollback()
         app.logger.exception(
@@ -3300,23 +2828,20 @@ def import_trade_file():
         extra_detail = ""
         if is_local_dev_environment():
             extra_detail = f" Details: {str(exc).strip()[:240]}"
-        return redirect(
-            url_for(
-                "new_trade",
-                import_status="error",
-                import_message=(
-                    "We could not process that upload. Please check the Tradovate CSV format and try again."
-                    if account_type == "FUTURES"
-                    else "We could not process that upload. Please check the MT5 export format and try again."
-                ) + extra_detail,
-            )
+        flash(
+            (
+                "We could not process that upload. Please check the Tradovate CSV format and try again."
+                if account_type == "FUTURES"
+                else "We could not process that upload. Please check the MT5 export format and try again."
+            ) + extra_detail,
+            "error",
         )
+        return redirect(url_for("new_trade"))
 
 
 @app.route("/dashboard/trades/<string:trade_pubkey>")
+@login_required
 def trade_detail(trade_pubkey):
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
     user_id = session["user_id"]
 
     trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
@@ -3368,9 +2893,8 @@ def trade_detail(trade_pubkey):
 
 
 @app.route("/dashboard/trades/<string:trade_pubkey>/edit", methods=["GET", "POST"])
+@login_required
 def edit_trade(trade_pubkey):
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
     user_id = session["user_id"]
 
     trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
@@ -3479,9 +3003,8 @@ def edit_trade(trade_pubkey):
 
 
 @app.route("/dashboard/trades/<string:trade_pubkey>/delete", methods=["POST"])
+@login_required
 def delete_trade(trade_pubkey):
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
     user_id = session["user_id"]
 
     trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
@@ -3491,21 +3014,15 @@ def delete_trade(trade_pubkey):
 
 
 @app.route("/dashboard/imports/delete", methods=["POST"])
+@login_required
 def delete_import_batch():
-    if not session.get("user_id"):
-        return redirect(url_for("login"))
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
 
     import_signature = request.form.get("import_signature", "").strip()
     if not import_signature:
-        return redirect(
-            url_for(
-                "manage_trades",
-                batch_delete_status="error",
-                batch_delete_message="Please select an import batch to delete.",
-            )
-        )
+        flash("Please select an import batch to delete.", "error")
+        return redirect(url_for("manage_trades"))
 
     try:
         trades_to_delete = (
@@ -3521,13 +3038,8 @@ def delete_import_batch():
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()
-        return redirect(
-            url_for(
-                "manage_trades",
-                batch_delete_status="error",
-                batch_delete_message="Could not delete the selected import batch right now. Please try again.",
-            )
-        )
+        flash("Could not delete the selected import batch right now. Please try again.", "error")
+        return redirect(url_for("manage_trades"))
 
     status = "success" if deleted > 0 else "info"
     message = (
@@ -3535,13 +3047,8 @@ def delete_import_batch():
         if deleted > 0
         else "No trades were found for the selected import batch."
     )
-    return redirect(
-        url_for(
-            "manage_trades",
-            batch_delete_status=status,
-            batch_delete_message=message,
-        )
-    )
+    flash(message, status)
+    return redirect(url_for("manage_trades"))
 
 if __name__ == "__main__":
     debug_mode = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes"}

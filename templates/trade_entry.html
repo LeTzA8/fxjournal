@@ -145,10 +145,6 @@
                     {% endif %}
                 </p>
 
-                {% if import_status and import_message %}
-                <p class="import-alert {{ import_status }}">{{ import_message }}</p>
-                {% endif %}
-
                 <form action="{{ url_for('import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook" }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label for="mt5_file">{% if account_type == "FUTURES" %}Tradovate Performance File{% else %}MT5 Report File{% endif %}</label>

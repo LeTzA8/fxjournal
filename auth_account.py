@@ -1,6 +1,5 @@
 import os
 import secrets
-from datetime import datetime, timezone
 
 from flask import abort, current_app, redirect, render_template, request, session, url_for
 from sqlalchemy import or_
@@ -8,6 +7,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
 from models import AllowedSignupEmailDomain, SignupCode, User, db
+from utils import env_bool as _env_bool, env_int as _env_int, utcnow_naive
 
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
 TOKEN_PURPOSE_EMAIL_CHANGE = "email_change"
@@ -30,27 +30,6 @@ VALID_SIGNUP_CODE_MODES = {
     SIGNUP_CODE_MODE_OPTIONAL,
     SIGNUP_CODE_MODE_REQUIRED,
 }
-
-
-def utcnow_naive():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def _env_int(name, default):
-    value = os.getenv(name)
-    if value is None:
-        return default
-    try:
-        return int(value.strip())
-    except (TypeError, ValueError):
-        return default
-
-
-def _env_bool(name, default=False):
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def get_registration_paused():
