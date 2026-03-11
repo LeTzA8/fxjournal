@@ -1,188 +1,208 @@
 # FX Journal
 
-#### Description:
+FX Journal is a Flask trading journal for logging trades, reviewing performance, and organizing activity by trade account. It supports both CFD/FX workflows and futures workflows, including MT5 XLSX imports for CFD accounts and Tradovate CSV imports for futures accounts.
 
-FX Journal is a full-stack web application designed to help traders journal and visualize trading performance in a clean and structured way. The app supports account-based access, per-user trade history, and performance tracking backed by PostgreSQL.
+## What It Does
 
----
+- Secure account system with registration, email verification, login, logout, and password reset
+- Account management with email-change confirmation flow and account deletion
+- Multi-account journaling with per-user trade accounts and active-account switching
+- Manual trade entry and editing for CFD and futures trades
+- Trade profile / strategy management with version history
+- Dashboard and analytics views driven from stored trade history
+- AI-generated weekly dashboard review support
+- Import pipelines for:
+  - MT5 Positions XLSX
+  - Tradovate Performance CSV
+- Deduplication safeguards for imported trades
+- Contact form with persistence fallback when email delivery is unavailable
+- Rate-limited destructive and sensitive actions
 
-## Core Features
+## Current App Structure
 
-### Authentication
+The app no longer keeps all route logic in one file.
 
-The project includes a complete authentication system:
+- `app.py`
+  Slim app bootstrap: Flask config, extension initialization, middleware, error handlers, blueprint registration
+- `auth_account.py`
+  Public/auth routes and admin access-control routes
+- `routes/`
+  Domain blueprints for dashboard, trades, trade accounts, trade profiles, account, and contact
+- `helpers.py`
+  Shared route helpers for timezone handling, trade account resolution, pubkey lookups, trade profile helpers, dedupe keys, and account cleanup
+- `utils.py`
+  Shared low-level utilities such as environment parsing, `utcnow_naive()`, and `@login_required`
+- `trading.py`
+  Trading math, symbol metadata, analytics, and import parsers
+- `models.py`
+  SQLAlchemy models
+- `tests/`
+  Pytest coverage for trading math, import parsing, and auth token flows
 
-- User registration
-- Email verification flow
-- Secure login and logout
-- Password hashing
-- Session-based authentication
-- Forgot/reset password flow
+## Main Route Groups
 
-User credentials are securely stored, and sessions maintain login state across requests.
+### Public and Auth
 
----
+- `/`
+- `/login`
+- `/register`
+- `/verify-email/pending`
+- `/verify-email/<token>`
+- `/password/forgot`
+- `/password/reset/<token>`
+- `/logout`
+- `/privacy`
+- `/terms`
 
-### Public Landing (`/`)
+### Dashboard
 
-The root route is a public landing page with entry points to login/register and dashboard shortcuts for signed-in users.
+- `/dashboard`
+- `/dashboard/analytics`
 
----
+### Trades
 
-### Dashboard (`/dashboard`)
+- `/dashboard/trades`
+- `/dashboard/trades/manage`
+- `/dashboard/trades/new`
+- `/dashboard/trades/<trade_pubkey>`
+- `/dashboard/trades/<trade_pubkey>/edit`
+- `/dashboard/trades/<trade_pubkey>/delete`
+- `/dashboard/trades/bulk-delete`
+- `/dashboard/trades/batch-profile`
+- `/dashboard/import`
+- `/dashboard/imports/delete`
 
-The dashboard is the authenticated home page. It provides a summary of trading performance, including:
+### Trade Accounts
 
-- Total profit/loss
-- Win rate
-- Number of trades
-- Weekly and monthly metrics
-- Average risk-reward ratio (RR)
-- Equity chart points derived from closed trades
+- `/dashboard/trade-accounts`
+- `/dashboard/trade-accounts/switch`
+- `/dashboard/trade-accounts/<trade_account_pubkey>/default`
+- `/dashboard/trade-accounts/<trade_account_pubkey>/update`
+- `/dashboard/trade-accounts/<trade_account_pubkey>/delete`
+- `/dashboard/trade-accounts/delete-all`
 
-All statistics are calculated dynamically from user trade data.
+### Trade Profiles / Strategies
 
----
+- `/dashboard/trade-profiles`
+- `/dashboard/strategies`
+- `/dashboard/trade-profiles/<profile_pubkey>/edit`
+- `/dashboard/trade-profiles/<profile_pubkey>/archive`
 
-### Trades (`/dashboard/trades`)
+### Account and Contact
 
-The trades area supports:
+- `/account`
+- `/account/email-change/cancel`
+- `/account/email-change/<token>`
+- `/account/password-reset-email`
+- `/account/delete`
+- `/contact`
 
-- Viewing historical trades
-- Filtering and sorting
-- Creating new trades (`/dashboard/trades/new`)
-- Editing trades (`/dashboard/trades/<int:trade_id>/edit`)
-- Deleting trades (`/dashboard/trades/<int:trade_id>/delete`)
-- MT5 `.xlsx` import (`/dashboard/import`)
-- Imported batch deletion (`/dashboard/imports/delete`)
+## Tech Stack
 
-This implements full CRUD using SQLAlchemy ORM connected to PostgreSQL.
+- Python
+- Flask
+- SQLAlchemy
+- Flask-Migrate / Alembic
+- Flask-WTF
+- Flask-Limiter
+- Jinja templates
+- PostgreSQL in deployed environments
+- SQLite fallback for local development
 
----
+## Data Model Highlights
 
-### Individual Trade View (`/dashboard/trades/<int:trade_id>`)
+The app stores more than just users and trades. Core entities include:
 
-Users can open an individual trade to review:
+- `User`
+- `Trade`
+- `TradeAccount`
+- `TradeProfile`
+- `TradeProfileVersion`
+- `CFDSymbol`
+- `FuturesSymbol`
+- `ContactSubmission`
+- AI review history models
 
-- Entry and exit price
-- Position size
-- Profit/loss
-- Pips and risk context
-- Trade notes
+Trades are tied to a user and a trade account. Futures trades can also carry a contract code. Imported trades store import signatures and dedupe keys to prevent accidental re-imports.
 
-This supports both quantitative tracking and qualitative journaling.
+## Imports and Trading Logic
 
----
+FX Journal includes custom parsing and math logic for trade journaling:
 
-### Account (`/account`)
+- PnL calculation for FX, metals, and futures
+- Pip calculation for standard and JPY pairs
+- Tick calculation for futures contracts
+- Exit-price derivation from desired PnL
+- Import profile detection before parsing
+- Trade deduplication across repeated imports
 
-Users can update profile data (username/email), review account stats, and trigger a password reset email from the account area.
+The test suite includes fixed-value examples for these calculations so the expected math is visible and easy to verify.
 
----
+## Local Setup
 
-### Feedback (`/feedback`)
+1. Create and activate a virtual environment.
+2. Install dependencies:
 
-Signed-in users can submit product feedback from a dedicated form. Submissions are emailed via the configured email provider (Resend when enabled).
+```bash
+pip install -r requirements.txt
+```
 
----
+3. Configure environment variables.
 
-## Route Map (`app.py`)
+The app reads from `.env`. Important variables include:
 
-| Method(s) | Route | Purpose |
-|---|---|---|
-| `GET` | `/` | Public landing page |
-| `GET` | `/dashboard` | Authenticated dashboard |
-| `GET`, `POST` | `/login` | User login |
-| `GET`, `POST` | `/register` | User registration |
-| `GET`, `POST` | `/verify-email/pending` | Verification pending + resend flow |
-| `GET` | `/verify-email/resend` | Alias redirect to verification pending |
-| `GET` | `/verify-email/<token>` | Verify email token |
-| `GET`, `POST` | `/password/forgot` | Request password reset email |
-| `GET`, `POST` | `/password/reset/<token>` | Reset password with token |
-| `POST` | `/logout` | Logout current session |
-| `GET`, `POST` | `/account` | Account profile and updates |
-| `POST` | `/account/password-reset-email` | Send reset email from account page |
-| `GET`, `POST` | `/feedback` | Submit product feedback email |
-| `GET` | `/dashboard/trades` | Trades list |
-| `GET`, `POST` | `/dashboard/trades/new` | Create trade |
-| `POST` | `/dashboard/import` | Import MT5 `.xlsx` trades |
-| `GET` | `/dashboard/trades/<int:trade_id>` | Trade detail |
-| `GET`, `POST` | `/dashboard/trades/<int:trade_id>/edit` | Edit trade |
-| `POST` | `/dashboard/trades/<int:trade_id>/delete` | Delete single trade |
-| `POST` | `/dashboard/imports/delete` | Delete imported trade batch |
+- `SECRET_KEY`
+- `TOKEN_SALT`
+- `DATABASE_URL`
+- `RATELIMIT_STORAGE_URI`
+- `MAX_UPLOAD_MB`
+- `APP_ENV`
+- `FEEDBACK_TO_EMAIL`
 
----
+4. Run migrations:
 
-## Technical Design
+```bash
+flask --app app db upgrade
+```
 
-The application is built using:
+5. Start the app:
 
-- Python (Flask)
-- SQLAlchemy ORM
-- PostgreSQL
-- HTML, CSS, and Bootstrap
-- Jinja templating
+```bash
+flask --app app run
+```
 
-### Backend
+If `DATABASE_URL` is not set, the app falls back to local SQLite for development.
 
-Flask routes in `app.py` handle HTTP requests and server-rendered pages.
+## Testing
 
-SQLAlchemy models represent database tables, including:
+Pytest is configured for the project.
 
-- `users`
-- `trades` (linked to users via foreign key)
+Run the test suite with:
 
-Foreign key relationships enforce data integrity between users and their trades.
+```bash
+pytest -v
+```
 
----
+Current automated coverage focuses on:
 
-### Database Choice
+- trading math
+- import parsing
+- auth token generation and verification
 
-PostgreSQL was chosen instead of SQLite to simulate a production-oriented environment with stronger concurrency and scalability characteristics.
+## Design Goals
 
----
+FX Journal is built to stay practical rather than overloaded:
 
-### Deployment
+- clean journaling workflow
+- account-aware organization
+- understandable analytics
+- import support for common retail platforms
+- maintainable Flask structure with shared helpers and blueprints
 
-The application is deployed on a cloud platform and connected to a managed PostgreSQL instance. Environment variables are used for sensitive configuration.
+## Notes
 
----
-
-## Design Philosophy
-
-Many trading journals are complex and expensive. FX Journal focuses on:
-
-- Simplicity
-- Clear statistics
-- Minimal UI clutter
-- Practical usability
-
-The objective is a clean and understandable system rather than an overly feature-heavy one.
-
----
-
-## Future Improvements
-
-Possible future enhancements include:
-
-- CSV import support in addition to MT5 Excel import
-- Advanced analytics and charts
-- Performance breakdown by instrument/session
-- API endpoints for integrations
-
----
-
-## Educational Value
-
-This project demonstrates:
-
-- Full-stack development
-- Authentication and session management
-- Relational database design
-- ORM abstraction
-- Server-side rendering
-- Deployment with persistent storage
-
----
+- Flash messages are used for one-time UI feedback after redirects.
+- Sensitive POST endpoints are rate limited.
+- Public and authenticated flows share the same app but are organized by domain.
 
 Note: Portions of this README were refined with assistance from AI tools (ChatGPT/OpenAI Codex).
