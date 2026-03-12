@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 import trading
-from trading import calc_pnl_values, derive_exit_price, resolve_pips, resolve_ticks
+from trading import build_rr_summary, calc_pnl_values, derive_exit_price, resolve_pips, resolve_ticks
 
 
 def make_trade(**overrides):
@@ -13,6 +13,8 @@ def make_trade(**overrides):
         "side": "BUY",
         "entry_price": 1.10000,
         "exit_price": 1.10500,
+        "stop_loss": None,
+        "take_profit": None,
         "lot_size": 1.0,
         "contract_code": None,
         "trade_account": trade_account,
@@ -187,3 +189,34 @@ def test_resolve_ticks_for_futures_trade(monkeypatch):
     )
 
     assert resolve_ticks(trade) == pytest.approx(10.0)
+
+
+def test_build_rr_summary_returns_empty_state_until_three_valid_trades():
+    trades = [
+        make_trade(entry_price=100.0, exit_price=110.0, stop_loss=95.0, take_profit=115.0),
+        make_trade(entry_price=100.0, exit_price=108.0, stop_loss=95.0, take_profit=112.0),
+    ]
+
+    summary = build_rr_summary(trades)
+
+    assert summary["trades_with_data"] == 2
+    assert summary["avg_planned_rr"] == 2.7
+    assert summary["avg_actual_rr"] == 1.8
+    assert summary["rr_capture_ratio"] == 0.67
+    assert summary["advice"] == "Set stop loss and take profit on your trades to unlock RR analysis."
+
+
+def test_build_rr_summary_returns_mid_tier_capture_advice():
+    trades = [
+        make_trade(entry_price=100.0, exit_price=112.0, stop_loss=90.0, take_profit=120.0),
+        make_trade(entry_price=100.0, exit_price=108.0, stop_loss=90.0, take_profit=115.0),
+        make_trade(entry_price=100.0, exit_price=109.0, stop_loss=95.0, take_profit=110.0),
+    ]
+
+    summary = build_rr_summary(trades)
+
+    assert summary["trades_with_data"] == 3
+    assert summary["avg_planned_rr"] == 1.83
+    assert summary["avg_actual_rr"] == 1.27
+    assert summary["rr_capture_ratio"] == 0.69
+    assert summary["advice"] == "You're close to your planned RR but leaving some on the table. Tighten your exit process - trust the levels you set pre-trade."

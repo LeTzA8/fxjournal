@@ -5,6 +5,7 @@ from sqlalchemy.exc import OperationalError
 
 from models import Trade, db
 from trading import (
+    build_rr_summary,
     build_trade_analytics,
     classify_trading_session,
     format_trade_symbol,
@@ -14,6 +15,7 @@ from trading import (
 from ai_service import (
     AIConfigError,
     AIRequestError,
+    get_latest_weekly_dashboard_advice,
     get_latest_trade_week_period,
     get_weekly_dashboard_period,
     maybe_generate_weekly_dashboard_advice,
@@ -161,11 +163,18 @@ def home():
             trade_account_id=active_trade_account.id if active_trade_account else None,
             prompt_filename="dashboard_advice.txt",
         )
-        weekly_ai_review = weekly_ai_result.get("record")
         weekly_period = weekly_ai_result.get("period") or get_latest_trade_week_period(
             user_id=user_id,
             trade_account_id=active_trade_account.id if active_trade_account else None,
         )
+        if weekly_period:
+            weekly_ai_review = get_latest_weekly_dashboard_advice(
+                user_id=user_id,
+                trade_account_id=active_trade_account.id if active_trade_account else None,
+                period_start_utc=weekly_period["period_start_utc"],
+            )
+        else:
+            weekly_ai_review = weekly_ai_result.get("record")
     except (AIConfigError, AIRequestError, OSError, ValueError) as exc:
         db.session.rollback()
         current_app.logger.warning("Weekly AI review unavailable: %s", exc)
@@ -173,6 +182,11 @@ def home():
             user_id=user_id,
             trade_account_id=active_trade_account.id if active_trade_account else None,
         ) or get_weekly_dashboard_period()
+        weekly_ai_review = get_latest_weekly_dashboard_advice(
+            user_id=user_id,
+            trade_account_id=active_trade_account.id if active_trade_account else None,
+            period_start_utc=weekly_period.get("period_start_utc") if weekly_period else None,
+        )
         weekly_ai_empty_message = "Weekly AI review is temporarily unavailable. Please try again in a little while."
 
     if weekly_ai_review and weekly_ai_review.generated_at:
@@ -237,6 +251,7 @@ def analytics():
         display_timezone_name=timezone_name,
         account_size=active_trade_account.account_size if active_trade_account else None,
     )
+    rr_summary = build_rr_summary(user_trades)
 
     return render_template(
         "analytics.html",
@@ -245,4 +260,5 @@ def analytics():
         analytics=analytics_payload,
         analytics_timezone=timezone_name,
         active_trade_account=active_trade_account,
+        rr_summary=rr_summary,
     )

@@ -7,6 +7,8 @@
 {% set worst_trade = summary.worst_trade %}
 {% set top_pair = analytics.pair_stats[0] if analytics.pair_stats else none %}
 {% set top_session = analytics.session_stats[0] if analytics.session_stats else none %}
+{% set rr_ratio = rr_summary.rr_capture_ratio %}
+{% set rr_value_tone = 'good' if rr_ratio is not none and rr_ratio >= 0.85 else 'bad' if rr_ratio is not none else '' %}
 <section class="analytics-shell">
     <div class="analytics-content">
         <header class="analytics-hero panel">
@@ -247,6 +249,48 @@
                 <p class="context-note">Streaks are calculated from closed trades in chronological order.</p>
             </article>
 
+            <article class="panel rr-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Planned vs Real RR</h2>
+                        <p class="panel-copy">How much of your planned risk:reward you actually captured.</p>
+                    </div>
+                </div>
+
+                {% if rr_summary.trades_with_data >= 3 %}
+                <div class="rr-stat-grid">
+                    <article class="rr-stat-card rr-stat-card-planned">
+                        <p class="rr-stat-label">Avg Planned RR</p>
+                        <p class="rr-stat-value">{{ '%.2f'|format(rr_summary.avg_planned_rr) }}R</p>
+                    </article>
+                    <article class="rr-stat-card rr-stat-card-real">
+                        <p class="rr-stat-label">Avg Real RR</p>
+                        <p class="rr-stat-value {{ rr_value_tone }}">
+                            {{ '%.2f'|format(rr_summary.avg_actual_rr) }}R
+                        </p>
+                    </article>
+                    <article class="rr-stat-card rr-stat-card-capture">
+                        <p class="rr-stat-label">Capture Rate</p>
+                        <p class="rr-stat-value {{ rr_value_tone }}">
+                            {{ '%.0f'|format(rr_ratio * 100) }}%
+                        </p>
+                    </article>
+                </div>
+                <p class="rr-advice">{{ rr_summary.advice }}</p>
+                <p class="context-note">Based on {{ rr_summary.trades_with_data }} trades with SL &amp; TP set.</p>
+                {% else %}
+                <div class="rr-empty-card">
+                    <p class="rr-advice muted">
+                        {% if rr_summary.trades_with_data > 0 %}
+                        {{ rr_summary.advice }} ({{ rr_summary.trades_with_data }} trade{% if rr_summary.trades_with_data != 1 %}s{% endif %} so far - need 3 minimum.)
+                        {% else %}
+                        {{ rr_summary.advice }}
+                        {% endif %}
+                    </p>
+                </div>
+                {% endif %}
+            </article>
+
             <article class="panel chart-panel">
                 <div class="panel-head">
                     <div>
@@ -274,7 +318,7 @@
                 <p class="context-note">Daylight saving shifts are handled by the underlying IANA time zone rules for each session.</p>
             </article>
 
-            <article class="panel table-panel">
+            <article class="panel table-panel pair-panel">
                 <div class="panel-head">
                     <div>
                         <h2>Pair Breakdown</h2>
@@ -316,7 +360,7 @@
                 </div>
             </article>
 
-            <article class="panel table-panel">
+            <article class="panel table-panel weekday-panel">
                 <div class="panel-head">
                     <div>
                         <h2>Weekday Breakdown</h2>
@@ -355,7 +399,7 @@
                 </div>
             </article>
 
-            <article class="panel table-panel">
+            <article class="panel table-panel session-table-panel">
                 <div class="panel-head">
                     <div>
                         <h2>Session Breakdown</h2>
@@ -592,6 +636,7 @@
         grid-template-areas:
             "equity equity"
             "overview streak"
+            "overview rr"
             "chart session"
             "pair pair"
             "weekday sessiontable";
@@ -607,15 +652,21 @@
 
     .streak-panel { grid-area: streak; }
 
+    .rr-panel {
+        grid-area: rr;
+        min-height: 210px;
+        padding: 1.1rem 1.15rem 1rem;
+    }
+
     .chart-panel { grid-area: chart; }
 
     .session-panel { grid-area: session; }
 
-    .analytics-grid > .table-panel:nth-of-type(6) { grid-area: pair; }
+    .pair-panel { grid-area: pair; }
 
-    .analytics-grid > .table-panel:nth-of-type(7) { grid-area: weekday; }
+    .weekday-panel { grid-area: weekday; }
 
-    .analytics-grid > .table-panel:nth-of-type(8) { grid-area: sessiontable; }
+    .session-table-panel { grid-area: sessiontable; }
 
     .panel-head {
         display: flex;
@@ -879,6 +930,59 @@
         font-size: 0.82rem;
     }
 
+    .rr-stat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin: 0.75rem 0 0.7rem;
+    }
+
+    .rr-stat-card,
+    .rr-empty-card {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--surface) 74%, transparent);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    .rr-stat-card {
+        min-width: 0;
+        padding: 0.95rem 1rem 0.9rem;
+    }
+
+    .rr-empty-card {
+        padding: 0.95rem 1rem;
+        margin-top: 0.75rem;
+    }
+
+    .rr-stat-label {
+        margin: 0 0 0.2rem;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .rr-stat-value {
+        margin: 0;
+        font-size: clamp(1.4rem, 2vw, 1.72rem);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: var(--ink);
+    }
+
+    .rr-advice {
+        margin: 0.15rem 0 0;
+        font-size: 0.88rem;
+        line-height: 1.5;
+        color: var(--ink);
+    }
+
+    .rr-advice.muted {
+        color: var(--muted);
+    }
+
     .table-shell {
         overflow: auto;
         border-radius: 14px;
@@ -936,11 +1040,16 @@
                 "equity"
                 "overview"
                 "streak"
+                "rr"
                 "chart"
                 "session"
                 "pair"
                 "weekday"
                 "sessiontable";
+        }
+
+        .rr-stat-grid {
+            grid-template-columns: 1fr;
         }
     }
 

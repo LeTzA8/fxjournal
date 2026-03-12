@@ -75,7 +75,14 @@ def send_error_notification_email(error):
         f"Exception message: {sanitize_error_message(error)}\n"
     )
     try:
-        send_email_placeholder(error_to_email, subject, body)
+        email_result = send_email_placeholder(error_to_email, subject, body)
+        if not (email_result or {}).get("sent"):
+            app.logger.warning(
+                "Error notification email was not sent: to=%s subject=%s mode=%s",
+                error_to_email,
+                subject,
+                (email_result or {}).get("mode", "unknown"),
+            )
     except Exception as notify_exc:
         app.logger.warning("Error notification email failed: %s", notify_exc)
 

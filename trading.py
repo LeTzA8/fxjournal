@@ -1339,6 +1339,86 @@ def calculate_streaks(closed_records):
     }
 
 
+def _calculate_trade_risk_reward(target_price, entry_price, stop_loss):
+    if target_price is None or entry_price is None or stop_loss is None:
+        return None
+    risk_amount = abs(entry_price - stop_loss)
+    if risk_amount == 0:
+        return None
+    return abs(target_price - entry_price) / risk_amount
+
+
+def _get_rr_capture_advice(trades_with_data, rr_capture_ratio):
+    if trades_with_data < 3 or rr_capture_ratio is None:
+        return "Set stop loss and take profit on your trades to unlock RR analysis."
+    if rr_capture_ratio < 0.30:
+        return "You're closing well short of your planned target. Check if you're exiting on emotion before price reaches your level."
+    if rr_capture_ratio < 0.60:
+        return "You're capturing about half your planned RR. Consider holding to your original target or scaling out rather than closing early."
+    if rr_capture_ratio < 0.85:
+        return "You're close to your planned RR but leaving some on the table. Tighten your exit process - trust the levels you set pre-trade."
+    if rr_capture_ratio <= 1.15:
+        return "Strong exit discipline. You're executing close to your planned RR consistently."
+    if rr_capture_ratio <= 1.50:
+        return "You're exceeding your planned RR. Good instincts - but verify targets are set realistically, not conservatively."
+    return "RR is significantly above plan. Make sure stop losses and targets are being set before entry, not adjusted mid-trade."
+
+
+def build_rr_summary(trades):
+    eligible_trades = [
+        trade
+        for trade in trades
+        if trade.stop_loss is not None
+        and trade.take_profit is not None
+        and trade.entry_price is not None
+        and trade.exit_price is not None
+    ]
+
+    planned_rrs = []
+    actual_rrs = []
+    for trade in eligible_trades:
+        planned_rr = _calculate_trade_risk_reward(
+            trade.take_profit,
+            trade.entry_price,
+            trade.stop_loss,
+        )
+        actual_rr = _calculate_trade_risk_reward(
+            trade.exit_price,
+            trade.entry_price,
+            trade.stop_loss,
+        )
+        if planned_rr is None or actual_rr is None:
+            continue
+        planned_rrs.append(planned_rr)
+        actual_rrs.append(actual_rr)
+
+    trades_with_data = len(planned_rrs)
+    if not trades_with_data:
+        return {
+            "trades_with_data": 0,
+            "avg_planned_rr": None,
+            "avg_actual_rr": None,
+            "rr_capture_ratio": None,
+            "advice": _get_rr_capture_advice(0, None),
+        }
+
+    avg_planned_rr = sum(planned_rrs) / trades_with_data
+    avg_actual_rr = sum(actual_rrs) / trades_with_data
+    rr_capture_ratio = (
+        avg_actual_rr / avg_planned_rr
+        if avg_planned_rr > 0
+        else None
+    )
+
+    return {
+        "trades_with_data": trades_with_data,
+        "avg_planned_rr": round(avg_planned_rr, 2),
+        "avg_actual_rr": round(avg_actual_rr, 2),
+        "rr_capture_ratio": round(rr_capture_ratio, 2) if rr_capture_ratio is not None else None,
+        "advice": _get_rr_capture_advice(trades_with_data, rr_capture_ratio),
+    }
+
+
 def build_trade_analytics(
     trades,
     display_timezone_name="UTC",

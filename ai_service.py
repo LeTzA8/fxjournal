@@ -819,6 +819,7 @@ def maybe_generate_weekly_dashboard_advice(
     max_trades=None,
     now_utc=None,
     require_recent_login=False,
+    force_regenerate=False,
 ):
     period = get_latest_trade_week_period(
         user_id=user_id,
@@ -833,7 +834,7 @@ def maybe_generate_weekly_dashboard_advice(
             trade_account_id=trade_account_id,
             period_start_utc=period["period_start_utc"],
         )
-        if existing is not None:
+        if existing is not None and not force_regenerate:
             return {"record": existing, "generated": False, "period": period}
 
         if not should_generate_weekly_dashboard_advice(
@@ -857,7 +858,7 @@ def maybe_generate_weekly_dashboard_advice(
 
         payload_json = serialize_payload(payload)
         payload_hash = hash_text(payload_json)
-        if existing is not None and existing.payload_hash == payload_hash:
+        if existing is not None and not force_regenerate and existing.payload_hash == payload_hash:
             return {"record": existing, "generated": False, "period": period}
 
         prompt_history, messages, payload_json = build_dashboard_advice_messages(

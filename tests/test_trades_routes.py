@@ -76,3 +76,106 @@ def test_manual_trade_detail_shows_rr_and_split_fees(app_ctx, client):
     assert b'value="-0.80"' in detail_response.data
     assert b'<label for="net_pnl">Net PnL</label>' in detail_response.data
     assert b'value="135.70"' in detail_response.data
+
+
+def test_analytics_page_shows_planned_vs_real_rr_panel(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="analytics-rr-user",
+        email="analytics-rr@example.com",
+    )
+
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=100.0,
+            exit_price=112.0,
+            stop_loss=90.0,
+            take_profit=120.0,
+            lot_size=1.0,
+            pnl=120.0,
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=100.0,
+            exit_price=108.0,
+            stop_loss=90.0,
+            take_profit=115.0,
+            lot_size=1.0,
+            pnl=80.0,
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=100.0,
+            exit_price=109.0,
+            stop_loss=95.0,
+            take_profit=110.0,
+            lot_size=1.0,
+            pnl=90.0,
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    response = client.get("/dashboard/analytics")
+
+    assert response.status_code == 200
+    assert b"Planned vs Real RR" in response.data
+    assert b"Avg Planned RR" in response.data
+    assert b"1.83R" in response.data
+    assert b"1.27R" in response.data
+    assert b"69%" in response.data
+    assert b"Based on 3 trades with SL &amp; TP set." in response.data
+    assert b"close to your planned RR but leaving some on the table" in response.data
+
+
+def test_analytics_page_shows_rr_empty_state_below_three_trades(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="analytics-rr-empty-user",
+        email="analytics-rr-empty@example.com",
+    )
+
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=100.0,
+            exit_price=110.0,
+            stop_loss=95.0,
+            take_profit=115.0,
+            lot_size=1.0,
+            pnl=100.0,
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="GBPUSD",
+            side="SELL",
+            entry_price=100.0,
+            exit_price=96.0,
+            stop_loss=105.0,
+            take_profit=90.0,
+            lot_size=1.0,
+            pnl=80.0,
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    response = client.get("/dashboard/analytics")
+
+    assert response.status_code == 200
+    assert b"Set stop loss and take profit on your trades to unlock RR analysis." in response.data
+    assert b"2 trades so far - need 3 minimum." in response.data

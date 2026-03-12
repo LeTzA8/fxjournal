@@ -1,5 +1,6 @@
 import os
 import secrets
+from datetime import datetime, timezone
 
 from flask import abort, current_app, flash, redirect, render_template, request, session, url_for
 from sqlalchemy import or_
@@ -14,13 +15,13 @@ from ai_service import (
     maybe_generate_weekly_dashboard_advice,
 )
 from models import (
-    AIGeneratedResponse,
     AllowedSignupEmailDomain,
     SignupCode,
     TradeAccount,
     User,
     db,
 )
+from helpers import sanitize_error_message
 from utils import env_bool as _env_bool, env_int as _env_int, utcnow_naive
 
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
@@ -90,6 +91,23 @@ def normalize_signup_code(value):
 def generate_signup_code():
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     return "".join(secrets.choice(alphabet) for _ in range(8))
+
+
+def send_error_log_email(*, subject, body):
+    error_to_email = os.getenv("ERROR_LOG_TO_EMAIL", "").strip().lower()
+    if not error_to_email:
+        return
+    try:
+        email_result = send_email_placeholder(error_to_email, subject, body)
+        if not (email_result or {}).get("sent"):
+            current_app.logger.warning(
+                "Error notification email was not sent: to=%s subject=%s mode=%s",
+                error_to_email,
+                subject,
+                (email_result or {}).get("mode", "unknown"),
+            )
+    except Exception as notify_exc:
+        current_app.logger.warning("Error notification email failed: %s", notify_exc)
 
 
 def build_unique_signup_code():
@@ -1090,25 +1108,11 @@ def register_public_auth_routes(
             )
 
         try:
-            existing_rows = (
-                AIGeneratedResponse.query.filter_by(
-                    user_id=user_id,
-                    trade_account_id=account.id,
-                    kind=WEEKLY_DASHBOARD_KIND,
-                    period_start_utc=period["period_start_utc"],
-                )
-                .order_by(AIGeneratedResponse.id.asc())
-                .all()
-            )
-            for row in existing_rows:
-                db.session.delete(row)
-            if existing_rows:
-                db.session.flush()
-
             result = maybe_generate_weekly_dashboard_advice(
                 user_id=user_id,
                 trade_account_id=account.id,
                 prompt_filename="dashboard_advice.txt",
+                force_regenerate=True,
             )
         except (AIConfigError, AIRequestError, OSError, ValueError) as exc:
             db.session.rollback()
@@ -1118,6 +1122,25 @@ def register_public_auth_routes(
                 trade_account_id,
                 exc,
             )
+            occurred_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            app_env = os.getenv("APP_ENV", "").strip() or os.getenv("FLASK_ENV", "").strip() or "unknown"
+            subject = f"[FX Journal Error] {type(exc).__name__} on admin_regenerate_ai_advice"
+            body = (
+                "Handled admin AI regeneration failure\n\n"
+                f"Occurred at: {occurred_at}\n"
+                f"Environment: {app_env}\n"
+                f"Method: {request.method}\n"
+                f"Endpoint: {request.endpoint or '-'}\n"
+                f"Route pattern: {request.url_rule.rule if request.url_rule else '-'}\n"
+                f"Admin user ID: {getattr(admin_user, 'id', '-')}\n"
+                f"Target user ID: {user_id}\n"
+                f"Target user email: {target_user.email}\n"
+                f"Trade account ID: {account.id}\n"
+                f"Trade account name: {account.name}\n"
+                f"Exception type: {type(exc).__name__}\n"
+                f"Exception message: {sanitize_error_message(exc)}\n"
+            )
+            send_error_log_email(subject=subject, body=body)
             return build_admin_redirect(
                 "users",
                 "AI advice regeneration is temporarily unavailable. Please try again in a little while.",

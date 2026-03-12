@@ -133,7 +133,7 @@ def test_non_root_admin_users_page_hides_regen_ai(app_ctx, client, monkeypatch):
     assert b"Regen AI" not in response.data
 
 
-def test_admin_regenerate_ai_advice_success_replaces_existing_rows(app_ctx, client, monkeypatch):
+def test_admin_regenerate_ai_advice_success_appends_new_row_and_keeps_history(app_ctx, client, monkeypatch):
     suffix = _unique_suffix()
     root_email = f"root{suffix}@example.com"
     target_email = f"target{suffix}@example.com"
@@ -171,15 +171,7 @@ def test_admin_regenerate_ai_advice_success_replaces_existing_rows(app_ctx, clie
         assert kwargs["user_id"] == target_user.id
         assert kwargs["trade_account_id"] == account.id
         assert kwargs["prompt_filename"] == "dashboard_advice.txt"
-        assert (
-            AIGeneratedResponse.query.filter_by(
-                user_id=target_user.id,
-                trade_account_id=account.id,
-                kind=WEEKLY_DASHBOARD_KIND,
-                period_start_utc=period["period_start_utc"],
-            ).count()
-            == 0
-        )
+        assert kwargs["force_regenerate"] is True
         new_row = AIGeneratedResponse(
             user_id=target_user.id,
             trade_account_id=account.id,
@@ -214,9 +206,9 @@ def test_admin_regenerate_ai_advice_success_replaces_existing_rows(app_ctx, clie
         trade_account_id=account.id,
         kind=WEEKLY_DASHBOARD_KIND,
         period_start_utc=period["period_start_utc"],
-    ).all()
-    assert len(rows) == 1
-    assert rows[0].response_text == "Fresh advice"
+    ).order_by(AIGeneratedResponse.id.asc()).all()
+    assert len(rows) == 3
+    assert [row.response_text for row in rows] == ["Old advice 1", "Old advice 2", "Fresh advice"]
 
 
 def test_admin_regenerate_ai_advice_requires_account_selection(app_ctx, client, monkeypatch):
@@ -330,6 +322,22 @@ def test_admin_regenerate_ai_advice_rolls_back_and_preserves_existing_rows_on_fa
     db.session.commit()
 
     monkeypatch.setattr(auth_account, "get_latest_trade_week_period", lambda **kwargs: period)
+    monkeypatch.setenv("ERROR_LOG_TO_EMAIL", "alerts@example.com")
+
+    email_calls = []
+
+    def fake_send_email(to_email, subject, text_body, html_body=None):
+        email_calls.append(
+            {
+                "to_email": to_email,
+                "subject": subject,
+                "text_body": text_body,
+                "html_body": html_body,
+            }
+        )
+        return {"sent": True, "mode": "resend"}
+
+    monkeypatch.setattr(auth_account, "send_email_placeholder", fake_send_email)
 
     def fake_generate(**kwargs):
         raise AIRequestError("temporary failure")
@@ -352,12 +360,17 @@ def test_admin_regenerate_ai_advice_rolls_back_and_preserves_existing_rows_on_fa
             trade_account_id=account.id,
             kind=WEEKLY_DASHBOARD_KIND,
             period_start_utc=period["period_start_utc"],
-        )
+    )
         .order_by(AIGeneratedResponse.id.asc())
         .all()
     )
     assert len(rows) == 2
     assert [row.response_text for row in rows] == ["Old advice 1", "Old advice 2"]
+    assert len(email_calls) == 1
+    assert email_calls[0]["to_email"] == "alerts@example.com"
+    assert "AIRequestError" in email_calls[0]["subject"]
+    assert "Handled admin AI regeneration failure" in email_calls[0]["text_body"]
+    assert f"Trade account ID: {account.id}" in email_calls[0]["text_body"]
 
 
 def test_admin_regenerate_ai_advice_rolls_back_on_config_error(app_ctx, client, monkeypatch):
