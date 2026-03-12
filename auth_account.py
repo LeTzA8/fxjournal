@@ -6,7 +6,21 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
-from models import AllowedSignupEmailDomain, SignupCode, User, db
+from ai_service import (
+    AIConfigError,
+    AIRequestError,
+    WEEKLY_DASHBOARD_KIND,
+    get_latest_trade_week_period,
+    maybe_generate_weekly_dashboard_advice,
+)
+from models import (
+    AIGeneratedResponse,
+    AllowedSignupEmailDomain,
+    SignupCode,
+    TradeAccount,
+    User,
+    db,
+)
 from utils import env_bool as _env_bool, env_int as _env_int, utcnow_naive
 
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
@@ -1031,6 +1045,20 @@ def register_public_auth_routes(
             .limit(6)
             .all()
         )
+        user_ids = [user.id for user in users]
+        accounts_by_user = {user.id: [] for user in users}
+        if user_ids:
+            account_rows = (
+                TradeAccount.query.filter(TradeAccount.user_id.in_(user_ids))
+                .order_by(
+                    TradeAccount.user_id.asc(),
+                    TradeAccount.is_default.desc(),
+                    TradeAccount.id.asc(),
+                )
+                .all()
+            )
+            for account in account_rows:
+                accounts_by_user.setdefault(account.user_id, []).append(account)
 
         return render_admin_page(
             admin_user=admin_user,
@@ -1038,6 +1066,75 @@ def register_public_auth_routes(
             users=users,
             status_filter=status_filter,
             pending_users=pending_users,
+            accounts_by_user=accounts_by_user,
+        )
+
+    @app.route("/dashboard/admin/access/users/<int:user_id>/regenerate-ai-advice", methods=["POST"])
+    def admin_regenerate_ai_advice(user_id):
+        admin_user = require_root_admin_user()
+        if admin_user is None:
+            return redirect(url_for("login"))
+
+        target_user = User.query.filter_by(id=user_id).first_or_404()
+        trade_account_id = request.form.get("trade_account_id", type=int)
+        if not trade_account_id:
+            return build_admin_redirect("users", "No trade account selected.", "info")
+
+        account = TradeAccount.query.filter_by(id=trade_account_id, user_id=user_id).first_or_404()
+        period = get_latest_trade_week_period(user_id=user_id, trade_account_id=account.id)
+        if not period:
+            return build_admin_redirect(
+                "users",
+                f"No active trading period found for {target_user.email} / {account.name}.",
+                "info",
+            )
+
+        try:
+            existing_rows = (
+                AIGeneratedResponse.query.filter_by(
+                    user_id=user_id,
+                    trade_account_id=account.id,
+                    kind=WEEKLY_DASHBOARD_KIND,
+                    period_start_utc=period["period_start_utc"],
+                )
+                .order_by(AIGeneratedResponse.id.asc())
+                .all()
+            )
+            for row in existing_rows:
+                db.session.delete(row)
+            if existing_rows:
+                db.session.flush()
+
+            result = maybe_generate_weekly_dashboard_advice(
+                user_id=user_id,
+                trade_account_id=account.id,
+                prompt_filename="dashboard_advice.txt",
+            )
+        except (AIConfigError, AIRequestError, OSError, ValueError) as exc:
+            db.session.rollback()
+            current_app.logger.warning(
+                "Admin AI regeneration unavailable: user_id=%s trade_account_id=%s error=%s",
+                user_id,
+                trade_account_id,
+                exc,
+            )
+            return build_admin_redirect(
+                "users",
+                "AI advice regeneration is temporarily unavailable. Please try again in a little while.",
+                "error",
+            )
+
+        if result and result.get("generated") and result.get("record") is not None:
+            return build_admin_redirect(
+                "users",
+                f"AI advice regenerated for {target_user.email} / {account.name}.",
+                "success",
+            )
+
+        return build_admin_redirect(
+            "users",
+            f"No new advice generated. Check that {account.name} has trades in the latest eligible week.",
+            "info",
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/approve", methods=["POST"])

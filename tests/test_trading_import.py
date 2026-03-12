@@ -62,6 +62,54 @@ def test_parse_mt5_xlsx_single_trade():
     assert parsed[0]["exit_price"] == 1.105
 
 
+def test_parse_mt5_xlsx_separates_commission_and_swap():
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["Positions"])
+    sheet.append(
+        [
+            "Position",
+            "Symbol",
+            "Type",
+            "Volume",
+            "Open Price",
+            "Close Price",
+            "Profit",
+            "Commission",
+            "Swap",
+            "Time",
+            "Close Time",
+        ]
+    )
+    sheet.append(
+        [
+            987654,
+            "EURUSD",
+            "sell",
+            1.0,
+            1.10000,
+            1.09860,
+            140.0,
+            -3.5,
+            -0.8,
+            "2026-03-10 09:00:00",
+            "2026-03-10 10:24:00",
+        ]
+    )
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+
+    parsed, total, skipped = parse_mt5_xlsx_stream(buffer)
+
+    assert total == 1
+    assert skipped == 0
+    assert len(parsed) == 1
+    assert parsed[0]["commission"] == -3.5
+    assert parsed[0]["swap"] == -0.8
+
+
 def test_parse_tradovate_csv_single_trade():
     """
     Fixed CSV:

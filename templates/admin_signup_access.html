@@ -203,6 +203,12 @@
                                             <button type="submit" class="ghost-btn">{{ "Remove Admin" if user.is_admin else "Grant Admin" }}</button>
                                         </form>
                                         {% endif %}
+                                        {% set user_accounts = accounts_by_user.get(user.id, []) %}
+                                        {% if user_accounts %}
+                                        <button type="button" class="ghost-btn" onclick="openRegenAiDialog({{ user.id }})">Regen AI</button>
+                                        {% else %}
+                                        <button type="button" class="ghost-btn" disabled aria-disabled="true" title="No trade accounts available">No Accounts</button>
+                                        {% endif %}
                                     </div>
                                     {% else %}
                                     <span class="soft">Read-only</span>
@@ -284,6 +290,36 @@
         {% endif %}
     </div>
 </section>
+
+{% if section == "users" and is_root_admin and users %}
+    {% for user in users %}
+        {% set user_accounts = accounts_by_user.get(user.id, []) %}
+        {% if user_accounts %}
+        <dialog id="regenAiDialog{{ user.id }}" class="confirm-dialog" aria-labelledby="regenAiDialogTitle{{ user.id }}">
+            <div class="confirm-dialog-shell">
+                <div>
+                    <h2 id="regenAiDialogTitle{{ user.id }}">Regenerate Weekly AI Advice</h2>
+                    <p class="helper-note regen-ai-note">Choose one trade account for {{ user.email }}. Existing advice for the current eligible week is replaced only if regeneration succeeds.</p>
+                </div>
+                <form action="{{ url_for('admin_regenerate_ai_advice', user_id=user.id) }}" method="post" class="regen-ai-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label for="trade_account_id_{{ user.id }}">Trade Account</label>
+                    <select id="trade_account_id_{{ user.id }}" name="trade_account_id" required>
+                        <option value="" disabled selected>Select account...</option>
+                        {% for acct in user_accounts %}
+                        <option value="{{ acct.id }}">{{ acct.name }} ({{ "Futures" if acct.account_type == "FUTURES" else "CFD" }})</option>
+                        {% endfor %}
+                    </select>
+                    <div class="inline-actions dialog-actions">
+                        <button type="button" class="ghost-btn" onclick="this.closest('dialog').close()">Cancel</button>
+                        <button type="submit" class="submit-btn">Regenerate</button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
+        {% endif %}
+    {% endfor %}
+{% endif %}
 
 <style>
     .admin-access .dash-head,
@@ -416,6 +452,10 @@
         margin: 0;
     }
 
+    .dialog-actions {
+        justify-content: flex-end;
+    }
+
     .spotlight-panel,
     .users-panel,
     .create-code-panel,
@@ -472,6 +512,25 @@
         font: inherit;
         background: color-mix(in srgb, var(--surface) 96%, transparent);
         color: var(--ink);
+    }
+
+    .regen-ai-form {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .regen-ai-form select {
+        width: 100%;
+        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+        border-radius: 10px;
+        padding: 0.72rem 0.78rem;
+        font: inherit;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        color: var(--ink);
+    }
+
+    .regen-ai-note {
+        margin-top: 0.35rem;
     }
 
     .admin-table-shell {
@@ -576,4 +635,12 @@
         }
     }
 </style>
+<script>
+    function openRegenAiDialog(userId) {
+        const dialog = document.getElementById(`regenAiDialog${userId}`);
+        if (dialog && typeof dialog.showModal === "function") {
+            dialog.showModal();
+        }
+    }
+</script>
 {% endblock %}

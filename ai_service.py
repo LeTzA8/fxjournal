@@ -9,7 +9,13 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 from models import AIGeneratedResponse, AIPromptHistory, Trade, User, db
-from trading import build_trade_analytics, format_trade_symbol, resolve_pnl
+from trading import (
+    build_trade_analytics,
+    classify_trading_session,
+    ensure_utc_aware,
+    format_trade_symbol,
+    resolve_pnl,
+)
 from utils import utcnow_naive
 
 
@@ -315,6 +321,21 @@ def _build_historical_context(*, user_id, trade_account_id=None, period_end_utc=
     }
 
 
+def _get_trade_duration_minutes(trade):
+    if trade.opened_at is None or trade.closed_at is None:
+        return None
+    if trade.closed_at < trade.opened_at:
+        return None
+    return _round_metric((trade.closed_at - trade.opened_at).total_seconds() / 60.0)
+
+
+def _get_trade_session(trade):
+    opened_at_utc = ensure_utc_aware(trade.opened_at)
+    if opened_at_utc is None:
+        return None
+    return classify_trading_session(opened_at_utc)
+
+
 def build_trade_payload(
     *,
     user_id,
@@ -342,11 +363,16 @@ def build_trade_payload(
         serialized_trades.append(
             {
                 "symbol": format_trade_symbol(trade),
+                "contract_code": (trade.contract_code or "").strip() or None,
                 "side": trade.side,
                 "entry_price": trade.entry_price,
                 "exit_price": trade.exit_price,
+                "stop_loss": trade.stop_loss,
+                "take_profit": trade.take_profit,
                 "lot_size": trade.lot_size,
                 "pnl": resolve_pnl(trade),
+                "session": _get_trade_session(trade),
+                "duration_minutes": _get_trade_duration_minutes(trade),
                 "opened_at": format_utc_timestamp(trade.opened_at),
                 "closed_at": format_utc_timestamp(trade.closed_at),
                 "trade_note": (trade.trade_note or "").strip() or None,
@@ -470,7 +496,7 @@ def format_payload_for_prompt(payload):
         f"- monthly_pnl: {_format_signed_currency(summary.get('monthly_pnl'))}",
         f"- best_trade_pnl: {_format_signed_currency(summary.get('best_trade_pnl'))}",
         f"- worst_trade_pnl: {_format_signed_currency(summary.get('worst_trade_pnl'))}",
-        f"- max_drawdown: {_format_number(summary.get('max_drawdown'))}",
+        f"- max_drawdown: {_format_signed_currency(summary.get('max_drawdown'))}",
         "",
         "HISTORICAL_CONTEXT",
         f"- window_start_utc: {historical_context.get('window_start_utc') or '-'}",
@@ -480,7 +506,7 @@ def format_payload_for_prompt(payload):
         f"- historical_closed_trades: {(historical_context.get('summary') or {}).get('closed_trades', 0)}",
         f"- historical_win_rate: {_format_percent((historical_context.get('summary') or {}).get('win_rate'))}",
         f"- historical_net_pnl: {_format_signed_currency((historical_context.get('summary') or {}).get('net_pnl'))}",
-        f"- historical_max_drawdown: {_format_number((historical_context.get('summary') or {}).get('max_drawdown'))}",
+        f"- historical_max_drawdown: {_format_signed_currency((historical_context.get('summary') or {}).get('max_drawdown'))}",
         "",
         "HISTORICAL_TOP_PAIRS",
     ]
@@ -543,11 +569,16 @@ def format_payload_for_prompt(payload):
         lines.extend(
             [
                 f"{index}. symbol: {trade.get('symbol') or '-'}",
+                f"   contract_code: {trade.get('contract_code') or '-'}",
                 f"   side: {trade.get('side') or '-'}",
                 f"   entry_price: {_format_number(trade.get('entry_price'), digits=5)}",
                 f"   exit_price: {_format_number(trade.get('exit_price'), digits=5)}",
+                f"   stop_loss: {_format_number(trade.get('stop_loss'), digits=5)}",
+                f"   take_profit: {_format_number(trade.get('take_profit'), digits=5)}",
                 f"   lot_size: {_format_number(trade.get('lot_size'))}",
                 f"   pnl: {_format_signed_currency(trade.get('pnl'))}",
+                f"   session: {trade.get('session') or '-'}",
+                f"   duration_minutes: {_format_number(trade.get('duration_minutes'))}",
                 f"   opened_at: {trade.get('opened_at') or '-'}",
                 f"   closed_at: {trade.get('closed_at') or '-'}",
                 f"   trade_note: {note}",

@@ -48,6 +48,21 @@ from utils import login_required, utcnow_naive
 bp = Blueprint("trades", __name__)
 
 
+def _calculate_trade_risk_reward(target_price, entry_price, stop_loss):
+    if target_price is None or entry_price is None or stop_loss is None:
+        return None
+    risk_amount = abs(entry_price - stop_loss)
+    if risk_amount == 0:
+        return None
+    return abs(target_price - entry_price) / risk_amount
+
+
+def _calculate_trade_net_pnl(trade_pnl, commission=None, swap=None):
+    if trade_pnl is None:
+        return None
+    return float(trade_pnl) + float(commission or 0.0) + float(swap or 0.0)
+
+
 def render_trades_page(*, manage_mode=False):
     username = session.get("username", "User")
     user_id = session["user_id"]
@@ -318,6 +333,8 @@ def new_trade():
         take_profit = float(take_profit) if take_profit else None
         commission = request.form.get("commission", "").strip()
         commission = float(commission) if commission else None
+        swap = request.form.get("swap", "").strip()
+        swap = float(swap) if swap else None
         opened_at = parse_local_datetime_input(request.form.get("opened_at", "").strip())
         if opened_at is None:
             opened_at = parse_local_datetime_input(
@@ -366,6 +383,7 @@ def new_trade():
             stop_loss=stop_loss,
             take_profit=take_profit,
             commission=commission,
+            swap=swap,
             exit_price=exit_price,
             opened_at=opened_at,
             closed_at=closed_at,
@@ -667,6 +685,7 @@ def import_trade_file():
                     stop_loss=float(row.get("stop_loss")) if row.get("stop_loss") is not None else None,
                     take_profit=float(row.get("take_profit")) if row.get("take_profit") is not None else None,
                     commission=float(row.get("commission")) if row.get("commission") is not None else None,
+                    swap=float(row.get("swap")) if row.get("swap") is not None else None,
                     opened_at=opened_at,
                     closed_at=closed_at,
                     trade_note=(
@@ -808,6 +827,21 @@ def trade_detail(trade_pubkey):
     trade_pnl = resolve_pnl(trade)
     trade_pips = resolve_pips(trade)
     trade_ticks = resolve_ticks(trade)
+    planned_rr = _calculate_trade_risk_reward(
+        trade.take_profit,
+        trade.entry_price,
+        trade.stop_loss,
+    )
+    actual_rr = _calculate_trade_risk_reward(
+        trade.exit_price,
+        trade.entry_price,
+        trade.stop_loss,
+    )
+    trade_net_pnl = _calculate_trade_net_pnl(
+        trade_pnl,
+        trade.commission,
+        trade.swap,
+    )
     trade_account_type = get_trade_account_type(trade)
     timezone_name = get_display_timezone_name()
     opened_at_local = to_display_timezone(trade.opened_at, timezone_name)
@@ -822,8 +856,11 @@ def trade_detail(trade_pubkey):
         trade=trade,
         trade_display_symbol=format_trade_symbol(trade),
         trade_pnl=trade_pnl,
+        trade_net_pnl=trade_net_pnl,
         trade_pips=trade_pips,
         trade_ticks=trade_ticks,
+        planned_rr=planned_rr,
+        actual_rr=actual_rr,
         trade_account_type=trade_account_type,
         trade_size_label=get_trade_size_label(trade_account_type),
         trade_opened_at_label=opened_at_local.strftime("%d %b %Y %H:%M")
@@ -895,6 +932,8 @@ def edit_trade(trade_pubkey):
         take_profit = float(take_profit) if take_profit else None
         commission = request.form.get("commission", "").strip()
         commission = float(commission) if commission else None
+        swap = request.form.get("swap", "").strip()
+        swap = float(swap) if swap else None
         opened_at = parse_local_datetime_input(request.form.get("opened_at", "").strip())
         if opened_at is None:
             opened_at = parse_local_datetime_input(
@@ -942,6 +981,7 @@ def edit_trade(trade_pubkey):
         trade.stop_loss = stop_loss
         trade.take_profit = take_profit
         trade.commission = commission
+        trade.swap = swap
         trade.opened_at = opened_at
         trade.closed_at = closed_at
         trade.source_timezone = input_timezone_name

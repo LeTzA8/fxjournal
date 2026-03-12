@@ -1401,10 +1401,9 @@
         {% block content %}{% endblock %}
     </main>
 
-    {% if is_app_layout %}
     <footer class="site-footer">
         <div class="site-footer-inner">
-            <p class="site-footer-copy">FX Journal</p>
+            <p class="site-footer-copy">&copy; 2026 MyFXJournal. All rights reserved.</p>
             <nav class="site-footer-nav" aria-label="Footer">
                 <a href="{{ url_for('privacy_policy') }}">Privacy</a>
                 <a href="{{ url_for('terms_and_conditions') }}">Terms</a>
@@ -1412,7 +1411,6 @@
             </nav>
         </div>
     </footer>
-    {% endif %}
 
     <script src="{{ url_for('static', filename='js/app_theme.js') }}"></script>
     <script src="{{ url_for('static', filename='js/equity_curve_shared.js') }}"></script>

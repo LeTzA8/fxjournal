@@ -646,10 +646,8 @@ def parse_mt5_rows(rows):
         pnl = parse_float_value(col("pnl"))
         commission_raw = parse_float_value(col("commission"))
         swap_raw = parse_float_value(col("swap"))
-        # Combine commission + swap into a single total fees value.
-        commission = None
-        if commission_raw is not None or swap_raw is not None:
-            commission = (commission_raw or 0.0) + (swap_raw or 0.0)
+        commission = commission_raw
+        swap = swap_raw
         opened_at, opened_source_timezone = parse_source_datetime_value(
             col("opened_at"),
             MT5_DEFAULT_SOURCE_TIMEZONE,
@@ -683,6 +681,7 @@ def parse_mt5_rows(rows):
                 "take_profit": take_profit,
                 "pnl": pnl,
                 "commission": commission,
+                "swap": swap,
                 "opened_at": opened_at,
                 "closed_at": closed_at,
                 "source_timezone": source_timezone,

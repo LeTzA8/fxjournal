@@ -179,6 +179,7 @@ class Trade(db.Model):
     stop_loss = db.Column(db.Float, nullable=True)
     take_profit = db.Column(db.Float, nullable=True)
     commission = db.Column(db.Float, nullable=True)
+    swap = db.Column(db.Float, nullable=True)
     mt5_position = db.Column(db.String(64), nullable=True, index=True)
     import_signature = db.Column(db.String(80), nullable=True, index=True)
     import_dedupe_key = db.Column(db.String(64), nullable=True, index=True)

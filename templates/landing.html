@@ -1468,12 +1468,14 @@
 
         .feature-showcase-card {
             min-height: auto;
-            grid-template-rows: none;
+            grid-template-rows: auto auto;
         }
 
         .feature-shot,
         .feature-shot-placeholder {
-            min-height: 16rem;
+            aspect-ratio: unset;
+            height: 14rem;
+            min-height: 0;
         }
 
         .founder-grid {

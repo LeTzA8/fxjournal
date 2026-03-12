@@ -76,8 +76,11 @@
                     <label for="pnl">PnL</label>
                     <input id="pnl" name="pnl" type="number" step="0.01" placeholder="Optional manual value" value="{{ trade.pnl if trade and trade.pnl is not none else '' }}">
 
-                    <label for="commission">Commission / Fees</label>
+                    <label for="commission">Commission</label>
                     <input id="commission" name="commission" type="number" step="0.01" placeholder="Optional, e.g. -3.50" value="{{ trade.commission if trade and trade.commission is not none else '' }}">
+
+                    <label for="swap">Swap</label>
+                    <input id="swap" name="swap" type="number" step="0.01" placeholder="Optional, e.g. -0.80" value="{{ trade.swap if trade and trade.swap is not none else '' }}">
 
                     <label for="status">Status</label>
                     <select id="status" name="status" required>

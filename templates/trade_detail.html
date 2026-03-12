@@ -48,17 +48,30 @@
                     <label for="take_profit">Take Profit</label>
                     <input id="take_profit" type="text" value="{{ '%.5f'|format(trade.take_profit) if trade and trade.take_profit is not none else '-' }}" readonly>
 
+                    <label for="planned_rr">Planned RR</label>
+                    <input id="planned_rr" type="text" value="{% if planned_rr is not none %}{{ '%.1f'|format(planned_rr) }}R{% else %}-{% endif %}" readonly>
+
+                    <label for="actual_rr">Actual RR</label>
+                    <input id="actual_rr" type="text" value="{% if actual_rr is not none %}{{ '%.1f'|format(actual_rr) }}R{% else %}-{% endif %}" readonly>
+
                     <label for="lot_size">{{ trade_size_label }}</label>
                     <input id="lot_size" type="text" value="{{ '%.2f'|format(trade.lot_size) if trade and trade.lot_size is not none else '' }}" readonly>
 
                     <label for="pnl">PnL (Gross)</label>
                     <input id="pnl" type="text" value="{% if trade_pnl is not none %}{{ '%.2f'|format(trade_pnl) }}{% else %}-{% endif %}" readonly>
 
-                    <label for="commission">Commission / Fees</label>
-                    <input id="commission" type="text" value="{% if trade and trade.commission is not none %}{{ '%.2f'|format(trade.commission) }}{% else %}-{% endif %}" readonly>
+                    {% if trade and trade.commission is not none %}
+                    <label for="commission">Commission</label>
+                    <input id="commission" type="text" value="{{ '%.2f'|format(trade.commission) }}" readonly>
+                    {% endif %}
+
+                    {% if trade and trade.swap is not none %}
+                    <label for="swap">Swap</label>
+                    <input id="swap" type="text" value="{{ '%.2f'|format(trade.swap) }}" readonly>
+                    {% endif %}
 
                     <label for="net_pnl">Net PnL</label>
-                    <input id="net_pnl" type="text" value="{% if trade_pnl is not none %}{{ '%.2f'|format(trade_pnl + (trade.commission or 0)) }}{% else %}-{% endif %}" readonly>
+                    <input id="net_pnl" type="text" value="{% if trade_net_pnl is not none %}{{ '%.2f'|format(trade_net_pnl) }}{% else %}-{% endif %}" readonly>
 
                     <label for="pips">Pips (FX only)</label>
                     <input id="pips" type="text" value="{% if trade_pips is not none %}{{ '%+.1f'|format(trade_pips) }} pips{% else %}-{% endif %}" readonly>
@@ -199,7 +212,6 @@
 </style>
 
 {% endblock %}
-
 
 
 
