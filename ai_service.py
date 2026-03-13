@@ -2,11 +2,14 @@ import hashlib
 import json
 import logging
 import os
+import statistics
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
+
+from sqlalchemy import and_, func
 
 from models import AIGeneratedResponse, AIPromptHistory, Trade, User, db
 from trading import (
@@ -32,6 +35,7 @@ WEEKLY_CUTOFF_WEEKDAY = 4
 WEEKLY_CUTOFF_HOUR = 17
 WEEKLY_CUTOFF_MINUTE = 30
 WEEKLY_ACTIVITY_LOOKBACK_DAYS = 3
+MIN_CLOSED_TRADES_FOR_ADVICE = 3
 logger = logging.getLogger(__name__)
 
 
@@ -193,14 +197,15 @@ def get_latest_trade_week_period(*, user_id, trade_account_id=None, now_utc=None
         latest_trade_query = latest_trade_query.filter_by(trade_account_id=trade_account_id)
     latest_trade = (
         latest_trade_query
-        .filter(Trade.opened_at < current_period["period_end_utc"])
-        .order_by(Trade.opened_at.desc(), Trade.id.desc())
+        .filter(Trade.closed_at.isnot(None))
+        .filter(Trade.closed_at < current_period["period_end_utc"])
+        .order_by(Trade.closed_at.desc(), Trade.id.desc())
         .first()
     )
-    if latest_trade is None or latest_trade.opened_at is None:
+    if latest_trade is None or latest_trade.closed_at is None:
         return None
 
-    latest_trade_utc = latest_trade.opened_at
+    latest_trade_utc = latest_trade.closed_at
     if latest_trade_utc.tzinfo is None:
         latest_trade_utc = latest_trade_utc.replace(tzinfo=timezone.utc)
     else:
@@ -228,10 +233,28 @@ def get_latest_trade_week_period(*, user_id, trade_account_id=None, now_utc=None
     }
 
 
-def _query_trades_for_payload(*, user_id, trade_account_id=None, period_start_utc=None, period_end_utc=None):
+def _query_trades_for_payload(
+    *,
+    user_id,
+    trade_account_id=None,
+    period_start_utc=None,
+    period_end_utc=None,
+    closed_trades_only=False,
+):
     trade_query = Trade.query.filter_by(user_id=user_id)
     if trade_account_id is not None:
         trade_query = trade_query.filter_by(trade_account_id=trade_account_id)
+    if closed_trades_only:
+        trade_query = trade_query.filter(Trade.closed_at.isnot(None))
+        period_filters = []
+        if period_start_utc is not None:
+            period_filters.append(Trade.closed_at >= period_start_utc)
+        if period_end_utc is not None:
+            period_filters.append(Trade.closed_at < period_end_utc)
+        if period_filters:
+            trade_query = trade_query.filter(and_(*period_filters))
+        return trade_query.order_by(Trade.closed_at.desc(), Trade.id.desc()).all()
+
     if period_start_utc is not None:
         trade_query = trade_query.filter(Trade.opened_at >= period_start_utc)
     if period_end_utc is not None:
@@ -245,7 +268,14 @@ def _round_metric(value, digits=2):
     return round(float(value), digits)
 
 
-def _build_historical_context(*, user_id, trade_account_id=None, period_end_utc=None, lookback_days=DEFAULT_HISTORICAL_CONTEXT_DAYS):
+def _build_historical_context(
+    *,
+    user_id,
+    trade_account_id=None,
+    period_end_utc=None,
+    lookback_days=DEFAULT_HISTORICAL_CONTEXT_DAYS,
+    closed_trades_only=False,
+):
     if period_end_utc is None:
         return None
 
@@ -255,6 +285,7 @@ def _build_historical_context(*, user_id, trade_account_id=None, period_end_utc=
         trade_account_id=trade_account_id,
         period_start_utc=historical_start_utc,
         period_end_utc=period_end_utc,
+        closed_trades_only=closed_trades_only,
     )
     if not historical_trades:
         return None
@@ -336,6 +367,17 @@ def _get_trade_session(trade):
     return classify_trading_session(opened_at_utc)
 
 
+def _floor_timestamp_to_five_minutes(timestamp):
+    timestamp_utc = ensure_utc_aware(timestamp)
+    if timestamp_utc is None:
+        return None
+    return timestamp_utc.replace(minute=(timestamp_utc.minute // 5) * 5, second=0, microsecond=0)
+
+
+def _format_bool(value):
+    return "true" if bool(value) else "false"
+
+
 def build_trade_payload(
     *,
     user_id,
@@ -343,12 +385,14 @@ def build_trade_payload(
     max_trades=None,
     period_start_utc=None,
     period_end_utc=None,
+    closed_trades_only=False,
 ):
     trades = _query_trades_for_payload(
         user_id=user_id,
         trade_account_id=trade_account_id,
         period_start_utc=period_start_utc,
         period_end_utc=period_end_utc,
+        closed_trades_only=closed_trades_only,
     )
     if max_trades is not None and max_trades > 0:
         trades = trades[:max_trades]
@@ -358,8 +402,57 @@ def build_trade_payload(
         display_timezone_name=get_ai_timezone_name(),
     )
 
+    notes_with_content = 0
+    lot_sizes = []
+    split_order_groups = {}
+    durations = []
+    for trade in trades:
+        note = (trade.trade_note or "").strip()
+        if note:
+            notes_with_content += 1
+        if trade.lot_size not in {None, ""}:
+            try:
+                lot_sizes.append(float(trade.lot_size))
+            except (TypeError, ValueError):
+                pass
+        duration_minutes = _get_trade_duration_minutes(trade)
+        if duration_minutes is not None:
+            durations.append(duration_minutes)
+        split_bucket = _floor_timestamp_to_five_minutes(trade.opened_at)
+        if split_bucket is None:
+            continue
+        group_key = (
+            (format_trade_symbol(trade) or "").strip().upper(),
+            (trade.side or "").strip().upper(),
+            split_bucket,
+        )
+        split_order_groups[group_key] = split_order_groups.get(group_key, 0) + 1
+
+    median_lot_size = statistics.median(lot_sizes) if lot_sizes else None
+    median_duration_minutes = statistics.median(durations) if durations else None
+    first_trade_query = db.session.query(func.min(Trade.opened_at)).filter(Trade.user_id == user_id)
+    if trade_account_id is not None:
+        first_trade_query = first_trade_query.filter(Trade.trade_account_id == trade_account_id)
+    first_trade_opened_at = first_trade_query.scalar()
+    account_age_days = None
+    if first_trade_opened_at is not None:
+        account_age_days = max((utcnow_naive() - first_trade_opened_at).days, 0)
+
     serialized_trades = []
     for trade in trades:
+        duration_minutes = _get_trade_duration_minutes(trade)
+        split_bucket = _floor_timestamp_to_five_minutes(trade.opened_at)
+        group_key = (
+            (format_trade_symbol(trade) or "").strip().upper(),
+            (trade.side or "").strip().upper(),
+            split_bucket,
+        ) if split_bucket is not None else None
+        trade_lot_size = None
+        if trade.lot_size not in {None, ""}:
+            try:
+                trade_lot_size = float(trade.lot_size)
+            except (TypeError, ValueError):
+                trade_lot_size = None
         serialized_trades.append(
             {
                 "symbol": format_trade_symbol(trade),
@@ -372,10 +465,25 @@ def build_trade_payload(
                 "lot_size": trade.lot_size,
                 "pnl": resolve_pnl(trade),
                 "session": _get_trade_session(trade),
-                "duration_minutes": _get_trade_duration_minutes(trade),
+                "duration_minutes": duration_minutes,
                 "opened_at": format_utc_timestamp(trade.opened_at),
                 "closed_at": format_utc_timestamp(trade.closed_at),
                 "trade_note": (trade.trade_note or "").strip() or None,
+                "outlier_size": bool(
+                    median_lot_size
+                    and median_lot_size > 0
+                    and trade_lot_size is not None
+                    and trade_lot_size > median_lot_size * 3
+                ),
+                "possible_split_order": bool(
+                    group_key is not None and split_order_groups.get(group_key, 0) >= 2
+                ),
+                "is_likely_corrective": bool(
+                    median_duration_minutes
+                    and median_duration_minutes > 0
+                    and duration_minutes is not None
+                    and duration_minutes < median_duration_minutes * 0.2
+                ),
             }
         )
 
@@ -383,10 +491,13 @@ def build_trade_payload(
         "generated_at": format_utc_timestamp(utcnow_naive()),
         "period_start_utc": format_utc_timestamp(period_start_utc),
         "period_end_utc": format_utc_timestamp(period_end_utc),
+        "notes_coverage": round(notes_with_content / len(trades), 2) if trades else 0.0,
+        "account_age_days": account_age_days,
         "historical_context": _build_historical_context(
             user_id=user_id,
             trade_account_id=trade_account_id,
             period_end_utc=period_end_utc,
+            closed_trades_only=closed_trades_only,
         ),
         "summary": {
             "total_trades": analytics["summary"]["total_trades"],
@@ -417,10 +528,11 @@ def has_trade_data_for_period(*, user_id, trade_account_id=None, period_start_ut
     trade_query = db.session.query(Trade.id).filter_by(user_id=user_id)
     if trade_account_id is not None:
         trade_query = trade_query.filter_by(trade_account_id=trade_account_id)
+    trade_query = trade_query.filter(Trade.closed_at.isnot(None))
     if period_start_utc is not None:
-        trade_query = trade_query.filter(Trade.opened_at >= period_start_utc)
+        trade_query = trade_query.filter(Trade.closed_at >= period_start_utc)
     if period_end_utc is not None:
-        trade_query = trade_query.filter(Trade.opened_at < period_end_utc)
+        trade_query = trade_query.filter(Trade.closed_at < period_end_utc)
     return trade_query.first() is not None
 
 
@@ -444,12 +556,7 @@ def should_generate_weekly_dashboard_advice(
         )
         if user_last_login_at is None or user_last_login_at < active_cutoff:
             return False
-    return has_trade_data_for_period(
-        user_id=user_id,
-        trade_account_id=trade_account_id,
-        period_start_utc=period_start_utc,
-        period_end_utc=period_end_utc,
-    )
+    return True
 
 
 def serialize_payload(payload):
@@ -485,6 +592,8 @@ def format_payload_for_prompt(payload):
         f"- generated_at: {payload.get('generated_at') or '-'}",
         f"- period_start_utc: {payload.get('period_start_utc') or '-'}",
         f"- period_end_utc: {payload.get('period_end_utc') or '-'}",
+        f"- notes_coverage: {_format_number(payload.get('notes_coverage'))}",
+        f"- account_age_days: {payload.get('account_age_days') if payload.get('account_age_days') is not None else '-'}",
         "",
         "SUMMARY",
         f"- total_trades: {summary.get('total_trades', 0)}",
@@ -581,6 +690,9 @@ def format_payload_for_prompt(payload):
                 f"   duration_minutes: {_format_number(trade.get('duration_minutes'))}",
                 f"   opened_at: {trade.get('opened_at') or '-'}",
                 f"   closed_at: {trade.get('closed_at') or '-'}",
+                f"   outlier_size: {_format_bool(trade.get('outlier_size'))}",
+                f"   possible_split_order: {_format_bool(trade.get('possible_split_order'))}",
+                f"   is_likely_corrective: {_format_bool(trade.get('is_likely_corrective'))}",
                 f"   trade_note: {note}",
             ]
         )
@@ -827,7 +939,12 @@ def maybe_generate_weekly_dashboard_advice(
         now_utc=now_utc,
     )
     if period is None:
-        return {"record": None, "generated": False, "period": None}
+        return {
+            "record": None,
+            "generated": False,
+            "period": get_weekly_dashboard_period(now_utc=now_utc),
+            "skip_reason": "no_trades",
+        }
     try:
         existing = get_latest_weekly_dashboard_advice(
             user_id=user_id,
@@ -852,9 +969,12 @@ def maybe_generate_weekly_dashboard_advice(
             max_trades=max_trades,
             period_start_utc=period["period_start_utc"],
             period_end_utc=period["period_end_utc"],
+            closed_trades_only=True,
         )
         if not payload["trades"]:
-            return {"record": None, "generated": False, "period": period}
+            return {"record": None, "generated": False, "period": period, "skip_reason": "no_trades"}
+        if payload["summary"].get("closed_trades", 0) < MIN_CLOSED_TRADES_FOR_ADVICE:
+            return {"record": None, "generated": False, "period": period, "skip_reason": "too_few_trades"}
 
         payload_json = serialize_payload(payload)
         payload_hash = hash_text(payload_json)

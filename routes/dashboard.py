@@ -163,6 +163,7 @@ def home():
             trade_account_id=active_trade_account.id if active_trade_account else None,
             prompt_filename="dashboard_advice.txt",
         )
+        skip_reason = weekly_ai_result.get("skip_reason")
         weekly_period = weekly_ai_result.get("period") or get_latest_trade_week_period(
             user_id=user_id,
             trade_account_id=active_trade_account.id if active_trade_account else None,
@@ -175,6 +176,10 @@ def home():
             )
         else:
             weekly_ai_review = weekly_ai_result.get("record")
+        if weekly_ai_review is None and skip_reason == "no_trades":
+            weekly_ai_empty_message = "No trades this week. Add closed trades to generate your AI review."
+        elif weekly_ai_review is None and skip_reason == "too_few_trades":
+            weekly_ai_empty_message = "Not enough data for a meaningful review. Add at least 3 closed trades this week."
     except (AIConfigError, AIRequestError, OSError, ValueError) as exc:
         db.session.rollback()
         current_app.logger.warning("Weekly AI review unavailable: %s", exc)

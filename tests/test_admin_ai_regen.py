@@ -91,6 +91,26 @@ def _login_as(client, user):
         session_state["username"] = user.username
 
 
+def test_logged_out_admin_users_page_redirects_to_login(app_ctx, client):
+    response = client.get("/dashboard/admin/access/users", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/login")
+
+
+def test_logged_in_non_admin_users_page_returns_404(app_ctx, client, monkeypatch):
+    suffix = _unique_suffix()
+    monkeypatch.setenv("ADMIN_USER_EMAILS", f"root{suffix}@example.com")
+    user = _create_user(username=f"plainuser{suffix}", email=f"plain{suffix}@example.com")
+    db.session.commit()
+
+    _login_as(client, user)
+
+    response = client.get("/dashboard/admin/access/users", follow_redirects=False)
+
+    assert response.status_code == 404
+
+
 def test_root_admin_users_page_shows_regen_ai_with_account_options(app_ctx, client, monkeypatch):
     suffix = _unique_suffix()
     root_email = f"root{suffix}@example.com"
@@ -131,6 +151,29 @@ def test_non_root_admin_users_page_hides_regen_ai(app_ctx, client, monkeypatch):
 
     assert response.status_code == 200
     assert b"Regen AI" not in response.data
+
+
+def test_non_root_admin_regenerate_ai_route_returns_404(app_ctx, client, monkeypatch):
+    suffix = _unique_suffix()
+    monkeypatch.setenv("ADMIN_USER_EMAILS", f"root{suffix}@example.com")
+    admin_user = _create_user(
+        username=f"dbadmin{suffix}",
+        email=f"dbadmin{suffix}@example.com",
+        is_admin=True,
+    )
+    target_user = _create_user(username=f"targetuser{suffix}", email=f"target{suffix}@example.com")
+    account = _create_trade_account(user_id=target_user.id, name="Primary FX", account_type="CFD", is_default=True)
+    db.session.commit()
+
+    _login_as(client, admin_user)
+
+    response = client.post(
+        f"/dashboard/admin/access/users/{target_user.id}/regenerate-ai-advice",
+        data={"trade_account_id": str(account.id)},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404
 
 
 def test_admin_regenerate_ai_advice_success_appends_new_row_and_keeps_history(app_ctx, client, monkeypatch):

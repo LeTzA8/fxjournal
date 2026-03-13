@@ -1,6 +1,7 @@
 import os
 import secrets
 from datetime import datetime, timezone
+from functools import wraps
 
 from flask import abort, current_app, flash, redirect, render_template, request, session, url_for
 from sqlalchemy import or_
@@ -457,6 +458,30 @@ def register_public_auth_routes(
         if not user_has_root_admin_access(user):
             return None
         return user
+
+    def admin_required(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            admin_user = get_current_admin_user()
+            if admin_user is None:
+                if session.get("user_id"):
+                    abort(404)
+                return redirect(url_for("login"))
+            return f(*args, **kwargs)
+
+        return decorated
+
+    def root_admin_required(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            root_admin_user = get_current_root_admin_user()
+            if root_admin_user is None:
+                if session.get("user_id"):
+                    abort(404)
+                return redirect(url_for("login"))
+            return f(*args, **kwargs)
+
+        return decorated
 
     def require_admin_user():
         admin_user = get_current_admin_user()
@@ -1015,17 +1040,14 @@ def register_public_auth_routes(
         return redirect(url_for("login"))
 
     @app.route("/dashboard/admin/access")
+    @admin_required
     def admin_signup_access():
-        admin_user = require_admin_user()
-        if admin_user is None:
-            return redirect(url_for("login"))
         return redirect(url_for("admin_signup_users"))
 
     @app.route("/dashboard/admin/access/users")
+    @admin_required
     def admin_signup_users():
-        admin_user = require_admin_user()
-        if admin_user is None:
-            return redirect(url_for("login"))
+        admin_user = get_current_admin_user()
 
         status_filter = request.args.get("status", "pending").strip().lower()
         if status_filter not in {
@@ -1088,10 +1110,9 @@ def register_public_auth_routes(
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/regenerate-ai-advice", methods=["POST"])
+    @root_admin_required
     def admin_regenerate_ai_advice(user_id):
-        admin_user = require_root_admin_user()
-        if admin_user is None:
-            return redirect(url_for("login"))
+        admin_user = get_current_root_admin_user()
 
         target_user = User.query.filter_by(id=user_id).first_or_404()
         trade_account_id = request.form.get("trade_account_id", type=int)
@@ -1161,10 +1182,9 @@ def register_public_auth_routes(
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/approve", methods=["POST"])
+    @root_admin_required
     def admin_signup_approve_user(user_id):
-        admin_user = require_root_admin_user()
-        if admin_user is None:
-            return redirect(url_for("login"))
+        admin_user = get_current_root_admin_user()
 
         user = User.query.filter_by(id=user_id).first()
         if not user:
@@ -1185,10 +1205,9 @@ def register_public_auth_routes(
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/reject", methods=["POST"])
+    @root_admin_required
     def admin_signup_reject_user(user_id):
-        admin_user = require_root_admin_user()
-        if admin_user is None:
-            return redirect(url_for("login"))
+        admin_user = get_current_root_admin_user()
 
         user = User.query.filter_by(id=user_id).first()
         if not user:
@@ -1216,10 +1235,9 @@ def register_public_auth_routes(
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/suspend", methods=["POST"])
+    @root_admin_required
     def admin_signup_suspend_user(user_id):
-        admin_user = require_root_admin_user()
-        if admin_user is None:
-            return redirect(url_for("login"))
+        admin_user = get_current_root_admin_user()
 
         user = User.query.filter_by(id=user_id).first()
         if not user:
@@ -1247,10 +1265,9 @@ def register_public_auth_routes(
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/admin-toggle", methods=["POST"])
+    @root_admin_required
     def admin_signup_toggle_user_admin(user_id):
-        admin_user = require_root_admin_user()
-        if admin_user is None:
-            return redirect(url_for("login"))
+        admin_user = get_current_root_admin_user()
 
         user = User.query.filter_by(id=user_id).first()
         if not user:
@@ -1283,10 +1300,9 @@ def register_public_auth_routes(
         )
 
     @app.route("/dashboard/admin/access/codes")
+    @admin_required
     def admin_signup_codes():
-        admin_user = require_admin_user()
-        if admin_user is None:
-            return redirect(url_for("login"))
+        admin_user = get_current_admin_user()
 
         signup_codes = (
             SignupCode.query.order_by(SignupCode.created_at.desc(), SignupCode.id.desc()).all()
@@ -1298,10 +1314,9 @@ def register_public_auth_routes(
         )
 
     @app.route("/dashboard/admin/access/codes/create", methods=["POST"])
+    @root_admin_required
     def admin_signup_create_code():
-        admin_user = require_root_admin_user()
-        if admin_user is None:
-            return redirect(url_for("login"))
+        admin_user = get_current_root_admin_user()
 
         requested_code = normalize_signup_code(request.form.get("code"))
         notes = (request.form.get("notes") or "").strip() or None
@@ -1352,11 +1367,8 @@ def register_public_auth_routes(
         )
 
     @app.route("/dashboard/admin/access/codes/<int:code_id>/toggle", methods=["POST"])
+    @root_admin_required
     def admin_signup_toggle_code(code_id):
-        admin_user = require_root_admin_user()
-        if admin_user is None:
-            return redirect(url_for("login"))
-
         signup_code = SignupCode.query.filter_by(id=code_id).first()
         if not signup_code:
             return build_admin_redirect("codes", "Signup code not found.", "error")

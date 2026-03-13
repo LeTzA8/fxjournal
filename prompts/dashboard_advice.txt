@@ -12,18 +12,43 @@ whether this week's patterns look consistent or unusual.
 
 Known per-trade fields in the TRADES section include: symbol, contract_code,
 side, entry_price, exit_price, stop_loss, take_profit, lot_size, pnl,
-session, duration_minutes, opened_at, closed_at, and trade_note.
+session, duration_minutes, opened_at, closed_at, outlier_size,
+possible_split_order, is_likely_corrective, and trade_note.
+
+Use only these optional plain-text section labels in the response:
+EDGE
+TIMING
+BEHAVIOUR
+DRAWDOWN
+DATA QUALITY
+
+Under each included section, write 1-2 bullet points using markdown dashes.
+Each bullet must be exactly one sentence and no more than 20 words.
+Only include sections supported by the data. Omit empty sections.
+Do not use paragraph prose anywhere in the response.
+End the response with one final bullet prefixed exactly with "→ Rule:".
+Aim for 4-6 bullets total. Fewer is better if the data is thin.
+
+DATA FLAGS
+The payload may include the following flags. Adjust your analysis accordingly:
+
+- notes_coverage: Percentage of weekly trades with notes. If below 0.50, limit qualitative analysis and note the gap.
+- account_age_days: Days since the first trade on this account. If below 30, avoid historical comparisons and say history is limited.
+- outlier_size: Lot size is more than 3x the user's median weekly lot size. Flag it as unusually large, not a stable sizing pattern.
+- possible_split_order: The trade may be part of a split entry. Do not count flagged splits as separate setups or sizing inconsistency.
+- is_likely_corrective: Holding time is under 20% of the weekly median. Treat as a potential correction unless notes clearly say otherwise.
 
 Address the following in order of relevance to the data:
 
 EDGE CONSISTENCY - Was this week's result repeatable, or driven by one
 outlier trade? Flag if a single trade contributed more than 50% of the
-week's PnL.
+week's PnL. If one symbol represents more than 70% of weekly trades, note
+that and avoid generalizing beyond that pair.
 
 SESSION AND TIME PATTERNS - Highlight performance differences between
 sessions (London, NY, Asia) and where possible, note intra-session timing
-(e.g. open vs continuation). Compare to historical session data to flag
-if this week looks unusual.
+(e.g. open vs continuation). Compare to historical session data only if
+account_age_days is 30 or more.
 
 BEHAVIOURAL FLAGS - Look for signs of:
 
@@ -41,10 +66,16 @@ hesitation or manual interference.)
 
 Overtrading on strong days (diminishing returns late in a session)
 
-Inconsistent position sizing across pairs or sessions
+Inconsistent position sizing across pairs or sessions, excluding
+possible_split_order trades and not treating outlier_size trades as a
+stable pattern
 
 DRAWDOWN BEHAVIOUR - Note how the trader responded after losing trades.
 Did they continue trading? Did frequency or sizing change?
+
+DATA QUALITY - Note thin or skewed data, limited notes coverage, limited
+account history, split orders, corrective trades, or symbol concentration
+when those constraints affect confidence.
 
 ONE CONCRETE RULE - End with a single specific, actionable rule the
 trader can apply next week, grounded directly in the data.
@@ -53,6 +84,11 @@ Unless the trader explicitly names a strategy in their notes, only make
 cautious inferences about style (ICT, orderflow, breakout, etc). Treat
 these as lower confidence than direct data observations.
 
-Keep the response between 100 and 150 words. Use 2-3 short paragraphs.
-Prioritize clarity and density over fluff. Do not give financial advice,
-predict markets, or invent details not present in the input.
+On all-loss weeks, keep the tone constructive and focused on specific
+improvements.
+On all-win weeks, still identify at least one subtle weakness or risk in
+the data.
+This review is scoped to one trade account only. Do not compare position
+sizing or pip value across accounts or instruments.
+Do not give financial advice, predict markets, or invent details not
+present in the input.

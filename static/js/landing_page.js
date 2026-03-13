@@ -5,6 +5,13 @@
     }
 
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const AI_DEMO_TEXT = [
+        "- Edge is cleanest in London open - 4 of 5 winners came before 10:00 UTC.",
+        "- NY continuation trades showed consistent early exits, leaving ~1.2R across 3 trades.",
+        "- No revenge pattern detected; frequency and sizing held steady after losses.",
+        "- One trade (XAUUSD, Wednesday) was 3.8x your median lot - flag as outlier, not a pattern.",
+        "\u2192 Rule: During NY session, close only at TP or SL - no manual exits.",
+    ].join("\n");
     body.classList.add("js-landing-animate");
 
     const pauseConveyorIfNeeded = () => {
@@ -141,8 +148,70 @@
         chartRoot.appendChild(fragment);
     };
 
+    const initAiDemoTypewriter = () => {
+        const card = document.querySelector("[data-typewriter-target]");
+        const textEl = document.getElementById("ai-demo-text");
+        if (!card || !textEl) {
+            return;
+        }
+
+        const renderCompleteText = () => {
+            textEl.textContent = AI_DEMO_TEXT;
+            card.classList.add("typing-done");
+        };
+
+        if (prefersReducedMotion.matches) {
+            renderCompleteText();
+            return;
+        }
+
+        const CHAR_DELAY = 18;
+        let started = false;
+
+        const startTyping = () => {
+            if (started) {
+                return;
+            }
+            started = true;
+
+            let index = 0;
+            const typeNext = () => {
+                textEl.textContent = AI_DEMO_TEXT.slice(0, index);
+                if (index < AI_DEMO_TEXT.length) {
+                    index += 1;
+                    window.setTimeout(typeNext, CHAR_DELAY);
+                    return;
+                }
+                card.classList.add("typing-done");
+            };
+
+            typeNext();
+        };
+
+        if (typeof IntersectionObserver !== "function") {
+            startTyping();
+            return;
+        }
+
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    if (!entry.isIntersecting || started) {
+                        return;
+                    }
+                    observer.unobserve(card);
+                    startTyping();
+                });
+            },
+            { threshold: 0.4 }
+        );
+
+        observer.observe(card);
+    };
+
     splitHeroTitleWords();
     buildReplayChart();
+    initAiDemoTypewriter();
     pauseConveyorIfNeeded();
 
     const onMotionChange = () => {
