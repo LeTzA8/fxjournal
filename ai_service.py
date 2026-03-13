@@ -360,11 +360,15 @@ def _get_trade_duration_minutes(trade):
     return _round_metric((trade.closed_at - trade.opened_at).total_seconds() / 60.0)
 
 
-def _get_trade_session(trade):
-    opened_at_utc = ensure_utc_aware(trade.opened_at)
-    if opened_at_utc is None:
+def _classify_trade_session(timestamp):
+    timestamp_utc = ensure_utc_aware(timestamp)
+    if timestamp_utc is None:
         return None
-    return classify_trading_session(opened_at_utc)
+    return classify_trading_session(timestamp_utc)
+
+
+def _get_trade_session(trade):
+    return _classify_trade_session(trade.opened_at)
 
 
 def _floor_timestamp_to_five_minutes(timestamp):
@@ -464,6 +468,8 @@ def build_trade_payload(
                 "take_profit": trade.take_profit,
                 "lot_size": trade.lot_size,
                 "pnl": resolve_pnl(trade),
+                "entry_session": _classify_trade_session(trade.opened_at),
+                "exit_session": _classify_trade_session(trade.closed_at),
                 "session": _get_trade_session(trade),
                 "duration_minutes": duration_minutes,
                 "opened_at": format_utc_timestamp(trade.opened_at),
@@ -686,6 +692,8 @@ def format_payload_for_prompt(payload):
                 f"   take_profit: {_format_number(trade.get('take_profit'), digits=5)}",
                 f"   lot_size: {_format_number(trade.get('lot_size'))}",
                 f"   pnl: {_format_signed_currency(trade.get('pnl'))}",
+                f"   entry_session: {trade.get('entry_session') or '-'}",
+                f"   exit_session: {trade.get('exit_session') or '-'}",
                 f"   session: {trade.get('session') or '-'}",
                 f"   duration_minutes: {_format_number(trade.get('duration_minutes'))}",
                 f"   opened_at: {trade.get('opened_at') or '-'}",

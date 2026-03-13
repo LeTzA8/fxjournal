@@ -12,7 +12,7 @@ whether this week's patterns look consistent or unusual.
 
 Known per-trade fields in the TRADES section include: symbol, contract_code,
 side, entry_price, exit_price, stop_loss, take_profit, lot_size, pnl,
-session, duration_minutes, opened_at, closed_at, outlier_size,
+entry_session, exit_session, session, duration_minutes, opened_at, closed_at, outlier_size,
 possible_split_order, is_likely_corrective, and trade_note.
 
 Use only these optional plain-text section labels in the response:
@@ -46,9 +46,10 @@ week's PnL. If one symbol represents more than 70% of weekly trades, note
 that and avoid generalizing beyond that pair.
 
 SESSION AND TIME PATTERNS - Highlight performance differences between
-sessions (London, NY, Asia) and where possible, note intra-session timing
-(e.g. open vs continuation). Compare to historical session data only if
-account_age_days is 30 or more.
+entry sessions and, when relevant, exit sessions. Use entry_session for
+setup timing and exit_session for exit behaviour. Note when trades
+consistently close in a different session than they were opened. Compare
+to historical session data only if account_age_days is 30 or more.
 
 BEHAVIOURAL FLAGS - Look for signs of:
 

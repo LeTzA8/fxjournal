@@ -75,6 +75,8 @@ def test_format_payload_for_prompt_includes_trade_fields_and_signed_drawdown():
                 "take_profit": 5004.0,
                 "lot_size": 1.0,
                 "pnl": 140.0,
+                "entry_session": "New York",
+                "exit_session": "New York",
                 "session": "New York",
                 "duration_minutes": 84.0,
                 "opened_at": "2026-03-10 14:00:00 UTC",
@@ -96,6 +98,8 @@ def test_format_payload_for_prompt_includes_trade_fields_and_signed_drawdown():
     assert "contract_code: MESM26" in prompt_text
     assert "stop_loss: 4998.75000" in prompt_text
     assert "take_profit: 5004.00000" in prompt_text
+    assert "entry_session: New York" in prompt_text
+    assert "exit_session: New York" in prompt_text
     assert "session: New York" in prompt_text
     assert "duration_minutes: 84.00" in prompt_text
     assert "outlier_size: false" in prompt_text
@@ -141,6 +145,8 @@ def test_build_trade_payload_serializes_trade_risk_fields_and_session(app_ctx):
     assert payload["trades"][0]["contract_code"] == "MESM26"
     assert payload["trades"][0]["stop_loss"] == 4998.0
     assert payload["trades"][0]["take_profit"] == 5006.0
+    assert payload["trades"][0]["entry_session"] == "New York"
+    assert payload["trades"][0]["exit_session"] == "New York"
     assert payload["trades"][0]["session"] == "New York"
     assert payload["trades"][0]["duration_minutes"] == 45.0
 
@@ -166,6 +172,8 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
                     "take_profit": 1.08,
                     "lot_size": 0.5,
                     "pnl": 75.0,
+                    "entry_session": None,
+                    "exit_session": "London",
                     "session": None,
                     "duration_minutes": None,
                     "opened_at": None,
@@ -179,6 +187,8 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
         }
     )
 
+    assert "entry_session: -" in prompt_text
+    assert "exit_session: London" in prompt_text
     assert "session: -" in prompt_text
     assert "outlier_size: true" in prompt_text
     assert "is_likely_corrective: true" in prompt_text
@@ -191,6 +201,8 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert prompt_text.count("exit_price") >= 3
     assert "stop_loss" in prompt_text
     assert "take_profit" in prompt_text
+    assert "entry_session" in prompt_text
+    assert "exit_session" in prompt_text
     assert "session" in prompt_text
     assert 'End the response with one final bullet prefixed exactly with "→ Rule:"' in prompt_text
     assert "Do not use paragraph prose anywhere in the response." in prompt_text
