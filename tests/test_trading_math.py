@@ -73,6 +73,38 @@ def test_calc_pnl_xauusd_buy():
     assert result == 1000.0
 
 
+def test_calc_pnl_xagusd_buy_confirms_metal_support():
+    """
+    Fixed input:
+      Symbol: XAGUSD
+      Side: BUY
+      Entry: 25.0, Exit: 26.0
+      Lot size: 1.0
+
+    Expected result:
+      Silver contract size in this app is 5,000.
+      PnL = 1.0 * 5,000 = 5,000.0 USD
+    """
+    result = calc_pnl_values("XAGUSD", "BUY", 25.0, 26.0, 1.0)
+    assert result == 5000.0
+
+
+def test_calc_pnl_btcusd_buy():
+    """
+    Fixed input:
+      Symbol: BTCUSD
+      Side: BUY
+      Entry: 60000.0, Exit: 61000.0
+      Lot size: 1.0
+
+    Expected result:
+      Crypto CFD support uses a 1.0 contract size.
+      PnL = 1000.0 USD
+    """
+    result = calc_pnl_values("BTCUSD", "BUY", 60000.0, 61000.0, 1.0)
+    assert result == 1000.0
+
+
 def test_calc_pnl_mes_buy_requires_seeded_futures_symbol(monkeypatch):
     """
     Fixed input:
@@ -122,6 +154,11 @@ def test_derive_exit_price_eurusd_buy_from_pnl():
     assert result == 1.105
 
 
+def test_derive_exit_price_btcusd_buy_from_pnl():
+    result = derive_exit_price("BTCUSD", "BUY", 60000.0, 1.0, 1000.0)
+    assert result == 61000.0
+
+
 def test_derive_exit_price_mes_buy_from_pnl(monkeypatch):
     """
     Fixed input:
@@ -166,6 +203,20 @@ def test_resolve_pips_for_standard_and_jpy_pairs():
 
     assert resolve_pips(eurusd_trade) == pytest.approx(50.0)
     assert resolve_pips(usdjpy_trade) == pytest.approx(100.0)
+
+
+def test_crypto_and_metal_aliases_and_formatting():
+    assert trading.canonicalize_symbol("BTCUSDT") == "BTCUSD"
+    assert trading.format_trade_price(0.12345, "DOGEUSD") == "0.12345"
+    assert trading.format_trade_price(2500.125, "XAUUSD") == "2500.12"
+
+
+def test_get_symbol_options_include_common_crypto_symbols():
+    options = trading.get_symbol_options("CFD")
+
+    assert "BTCUSD" in options
+    assert "ETHUSD" in options
+    assert "DOGEUSD" in options
 
 
 def test_resolve_ticks_for_futures_trade(monkeypatch):

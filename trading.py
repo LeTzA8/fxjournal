@@ -59,6 +59,15 @@ DEFAULT_CFD_SYMBOL_SPECS = (
     {"symbol": "AUS200", "aliases": ("AU200", "ASX200"), "contract_size": 1.0, "pip_size": None, "sort_order": 410},
     {"symbol": "ESP35", "aliases": ("IBEX35", "ES35"), "contract_size": 1.0, "pip_size": None, "sort_order": 420},
     {"symbol": "IT40", "aliases": ("ITA40",), "contract_size": 1.0, "pip_size": None, "sort_order": 430},
+    {"symbol": "BTCUSD", "aliases": ("BTCUSDT", "XBTUSD", "XBTUSDT"), "contract_size": 1.0, "pip_size": None, "sort_order": 440},
+    {"symbol": "ETHUSD", "aliases": ("ETHUSDT",), "contract_size": 1.0, "pip_size": None, "sort_order": 450},
+    {"symbol": "SOLUSD", "aliases": ("SOLUSDT",), "contract_size": 1.0, "pip_size": None, "sort_order": 460},
+    {"symbol": "XRPUSD", "aliases": ("XRPUSDT",), "contract_size": 1.0, "pip_size": None, "sort_order": 470},
+    {"symbol": "ADAUSD", "aliases": ("ADAUSDT",), "contract_size": 1.0, "pip_size": None, "sort_order": 480},
+    {"symbol": "DOGEUSD", "aliases": ("DOGEUSDT",), "contract_size": 1.0, "pip_size": None, "sort_order": 490},
+    {"symbol": "LTCUSD", "aliases": ("LTCUSDT",), "contract_size": 1.0, "pip_size": None, "sort_order": 500},
+    {"symbol": "BCHUSD", "aliases": ("BCHUSDT",), "contract_size": 1.0, "pip_size": None, "sort_order": 510},
+    {"symbol": "BNBUSD", "aliases": ("BNBUSDT",), "contract_size": 1.0, "pip_size": None, "sort_order": 520},
 )
 
 MT5_COLUMN_ALIASES = {
@@ -116,6 +125,18 @@ WEEKDAY_NAMES = [
     "Sunday",
 ]
 MARKET_WEEKDAY_NAMES = WEEKDAY_NAMES[:5]
+FX_CURRENCY_CODES = frozenset({"USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF"})
+CRYPTO_CFD_PRICE_DECIMALS = {
+    "BTCUSD": 2,
+    "ETHUSD": 2,
+    "SOLUSD": 2,
+    "LTCUSD": 2,
+    "BCHUSD": 2,
+    "BNBUSD": 2,
+    "XRPUSD": 4,
+    "ADAUSD": 4,
+    "DOGEUSD": 5,
+}
 
 SESSION_DEFINITIONS = (
     {"name": "Sydney", "zone": "Australia/Sydney", "start_hour": 7, "end_hour": 16},
@@ -373,6 +394,15 @@ def format_trade_price(value, symbol, instrument_type="CFD", contract_code=None)
         return f"{numeric_value:.{decimals}f}"
 
     sym = canonicalize_symbol(symbol, "CFD")
+    spec = _load_cfd_symbol_map().get(sym)
+    if spec is not None and spec["pip_size"] is not None:
+        decimals = _decimal_places(spec["pip_size"])
+        return f"{numeric_value:.{decimals}f}"
+
+    crypto_decimals = CRYPTO_CFD_PRICE_DECIMALS.get(sym)
+    if crypto_decimals is not None:
+        return f"{numeric_value:.{crypto_decimals}f}"
+
     if is_fx_pair(sym):
         decimals = 3 if sym.endswith("JPY") else 5
         return f"{numeric_value:.{decimals}f}"
@@ -932,7 +962,11 @@ def parse_tradovate_csv_stream(file_stream):
 
 def is_fx_pair(symbol):
     sym = normalize_symbol(symbol)
-    return len(sym) == 6 and sym.isalpha()
+    if len(sym) != 6 or not sym.isalpha():
+        return False
+    base = sym[:3]
+    quote = sym[3:]
+    return base in FX_CURRENCY_CODES and quote in FX_CURRENCY_CODES and base != quote
 
 
 def get_contract_size(symbol):
