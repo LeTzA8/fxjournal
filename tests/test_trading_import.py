@@ -3,7 +3,7 @@ from io import BytesIO
 
 from openpyxl import Workbook
 
-from helpers import build_trade_import_dedupe_key
+from helpers.core import build_trade_import_dedupe_key
 from trading import parse_mt5_xlsx_stream, parse_tradovate_csv_stream
 
 

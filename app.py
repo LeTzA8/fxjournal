@@ -19,7 +19,7 @@ from models import (
     User,
     db,
 )
-from helpers import (
+from helpers.core import (
     get_app_timezone_name,
     get_display_timezone_name,
     is_local_dev_environment,
@@ -31,7 +31,7 @@ from helpers import (
 
 from extensions import limiter
 from routes import all_blueprints
-from utils import env_bool, env_int, utcnow_naive
+from helpers.utils import env_bool, env_int, utcnow_naive
 
 load_dotenv()
 
@@ -343,6 +343,9 @@ register_public_auth_routes(
 for blueprint in all_blueprints:
     app.register_blueprint(blueprint)
 
+from celery_app import init_celery
+
+init_celery(app)
 
 
 

@@ -4,7 +4,8 @@ from flask import Blueprint, current_app, flash, redirect, render_template, requ
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from extensions import limiter
-from helpers import (
+from celery_workers.cache import CacheUnavailableError, invalidate
+from helpers.core import (
     assign_trade_profile_to_trade,
     build_trade_duplicate_key,
     build_trade_import_dedupe_key,
@@ -43,7 +44,7 @@ from trading import (
     resolve_ticks,
     to_display_timezone,
 )
-from utils import login_required, utcnow_naive
+from helpers.utils import login_required, utcnow_naive
 
 bp = Blueprint("trades", __name__)
 
@@ -61,6 +62,13 @@ def _calculate_trade_net_pnl(trade_pnl, commission=None, swap=None):
     if trade_pnl is None:
         return None
     return float(trade_pnl) + float(commission or 0.0) + float(swap or 0.0)
+
+
+def _invalidate_trade_caches(user_id, trade_account_id):
+    try:
+        invalidate(user_id=user_id, trade_account_id=trade_account_id)
+    except CacheUnavailableError:
+        return
 
 
 def render_trades_page(*, manage_mode=False):
@@ -223,6 +231,7 @@ def bulk_delete_trades():
         for trade in trades_to_delete:
             db.session.delete(trade)
         db.session.commit()
+        _invalidate_trade_caches(user_id, active_trade_account.id)
     except (OperationalError, IntegrityError):
         db.session.rollback()
         flash("Could not delete the selected trades right now. Please try again.", "error")
@@ -398,6 +407,7 @@ def new_trade():
             return redirect(url_for("trades.new_trade"))
         db.session.add(trade)
         db.session.commit()
+        _invalidate_trade_caches(user_id, active_trade_account.id)
         return redirect(url_for("trades.trades"))
 
     profile_form_state = resolve_trade_profile_form_state(user_id)
@@ -716,6 +726,7 @@ def import_trade_file():
         import_stage = "commit_import"
         db.session.add_all(insert_batch)
         db.session.commit()
+        _invalidate_trade_caches(user_id, active_trade_account.id)
 
         status = "success"
         if failed_symbols:
@@ -995,6 +1006,7 @@ def edit_trade(trade_pubkey):
             return redirect(url_for("trades.edit_trade", trade_pubkey=trade.pubkey))
 
         db.session.commit()
+        _invalidate_trade_caches(user_id, trade_account.id)
         return redirect(url_for("trades.trades"))
 
     profile_form_state = resolve_trade_profile_form_state(user_id, trade=trade)
@@ -1026,8 +1038,10 @@ def delete_trade(trade_pubkey):
     user_id = session["user_id"]
 
     trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
+    trade_account_id = trade.trade_account_id
     db.session.delete(trade)
     db.session.commit()
+    _invalidate_trade_caches(user_id, trade_account_id)
     return redirect(url_for("trades.trades"))
 
 
@@ -1054,6 +1068,7 @@ def delete_import_batch():
         for trade in trades_to_delete:
             db.session.delete(trade)
         db.session.commit()
+        _invalidate_trade_caches(user_id, active_trade_account.id)
     except (OperationalError, IntegrityError):
         db.session.rollback()
         flash(

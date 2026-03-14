@@ -19,7 +19,7 @@ from trading import (
     format_trade_symbol,
     resolve_pnl,
 )
-from utils import utcnow_naive
+from helpers.utils import utcnow_naive
 
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"

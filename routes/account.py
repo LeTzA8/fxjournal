@@ -10,9 +10,9 @@ from auth_account import (
     verify_email_change_token,
 )
 from extensions import limiter
-from helpers import delete_users_with_related_data, is_local_dev_environment
+from helpers.core import delete_users_with_related_data, is_local_dev_environment
 from models import Trade, User, db
-from utils import env_int, login_required, utcnow_naive
+from helpers.utils import env_int, login_required, utcnow_naive
 
 TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"

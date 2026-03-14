@@ -68,6 +68,11 @@
     const smoothPath = (points) => chartShared.smoothPath(points, 0.22);
     const pointTone = (equity) => chartShared.pointTone(equity);
     const formatAxisPnl = (value) => chartShared.formatAxisPnl(value);
+    const downsamplePoints = (points, maxPoints) => chartShared.downsamplePoints(points, maxPoints, {
+        getX: (point) => point.date.getTime(),
+        getY: (point) => point.equity,
+    });
+    const MAX_RENDERED_POINTS = 48;
 
     const restartCurveAnimation = () => {
         chartShared.restartCurveAnimation({
@@ -228,6 +233,10 @@
 
     const pointsForRange = () => {
         const rangeValue = rangeSelect ? rangeSelect.value : "7";
+        if (rangeValue === "all") {
+            return downsamplePoints(normalizedPoints, MAX_RENDERED_POINTS);
+        }
+
         const latestDate = normalizedPoints[normalizedPoints.length - 1].date;
         const startDate = new Date(latestDate);
         if (rangeValue === "month") {
@@ -239,7 +248,8 @@
         }
 
         const filtered = normalizedPoints.filter((point) => point.date >= startDate);
-        return filtered.length ? filtered : normalizedPoints.slice(-Math.min(7, normalizedPoints.length));
+        const fallback = normalizedPoints.slice(-Math.min(7, normalizedPoints.length));
+        return downsamplePoints(filtered.length ? filtered : fallback, MAX_RENDERED_POINTS);
     };
 
     const renderChart = () => {

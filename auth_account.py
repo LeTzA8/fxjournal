@@ -22,8 +22,8 @@ from models import (
     User,
     db,
 )
-from helpers import sanitize_error_message
-from utils import env_bool as _env_bool, env_int as _env_int, utcnow_naive
+from helpers.core import sanitize_error_message
+from helpers.utils import env_bool as _env_bool, env_int as _env_int, utcnow_naive
 
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
 TOKEN_PURPOSE_EMAIL_CHANGE = "email_change"

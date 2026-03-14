@@ -64,7 +64,75 @@
         });
     };
 
+    const downsamplePoints = (points, maxPoints, options = {}) => {
+        if (!Array.isArray(points)) {
+            return [];
+        }
+
+        const threshold = Math.max(3, Number.parseInt(maxPoints, 10) || 0);
+        if (points.length <= threshold) {
+            return points.slice();
+        }
+
+        const getX = typeof options.getX === "function" ? options.getX : ((point, index) => index);
+        const getY = typeof options.getY === "function" ? options.getY : ((point) => Number(point && point.equity) || 0);
+        const sampled = [points[0]];
+        const every = (points.length - 2) / (threshold - 2);
+        let anchorIndex = 0;
+
+        for (let bucket = 0; bucket < threshold - 2; bucket += 1) {
+            const avgStart = Math.floor((bucket + 1) * every) + 1;
+            const avgEnd = Math.min(Math.floor((bucket + 2) * every) + 1, points.length);
+            let avgX = 0;
+            let avgY = 0;
+            let avgLength = 0;
+
+            for (let i = avgStart; i < avgEnd; i += 1) {
+                avgX += Number(getX(points[i], i));
+                avgY += Number(getY(points[i], i));
+                avgLength += 1;
+            }
+
+            if (!avgLength) {
+                const fallbackIndex = points.length - 1;
+                avgX = Number(getX(points[fallbackIndex], fallbackIndex));
+                avgY = Number(getY(points[fallbackIndex], fallbackIndex));
+                avgLength = 1;
+            }
+
+            avgX /= avgLength;
+            avgY /= avgLength;
+
+            const rangeStart = Math.floor(bucket * every) + 1;
+            const rangeEnd = Math.min(Math.floor((bucket + 1) * every) + 1, points.length - 1);
+            const anchorX = Number(getX(points[anchorIndex], anchorIndex));
+            const anchorY = Number(getY(points[anchorIndex], anchorIndex));
+            let maxArea = -1;
+            let nextIndex = rangeStart;
+
+            for (let i = rangeStart; i < rangeEnd; i += 1) {
+                const pointX = Number(getX(points[i], i));
+                const pointY = Number(getY(points[i], i));
+                const area = Math.abs(
+                    (anchorX - avgX) * (pointY - anchorY) -
+                    (anchorX - pointX) * (avgY - anchorY)
+                );
+                if (area > maxArea) {
+                    maxArea = area;
+                    nextIndex = i;
+                }
+            }
+
+            sampled.push(points[nextIndex]);
+            anchorIndex = nextIndex;
+        }
+
+        sampled.push(points[points.length - 1]);
+        return sampled;
+    };
+
     window.FXJEquityCurveShared = {
+        downsamplePoints,
         formatAxisPnl,
         pointTone,
         restartCurveAnimation,

@@ -3,7 +3,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from extensions import limiter
-from helpers import (
+from helpers.core import (
     build_unique_trade_account_pubkey,
     get_active_trade_account_for_user,
     get_safe_internal_next,
@@ -15,7 +15,7 @@ from helpers import (
 )
 from models import AIGeneratedResponse, Trade, TradeAccount, db
 from trading import get_account_type_choices, normalize_account_type
-from utils import TRUE_VALUES, login_required
+from helpers.utils import TRUE_VALUES, login_required
 
 bp = Blueprint("trade_accounts", __name__)
 

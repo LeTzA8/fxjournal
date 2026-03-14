@@ -25,12 +25,8 @@ from trading import (
     normalize_symbol,
     to_display_timezone,
 )
-from utils import env_bool, env_int, utcnow_naive
+from .utils import env_bool, env_int, utcnow_naive
 
-
-# ---------------------------------------------------------------------------
-# Timezone helpers
-# ---------------------------------------------------------------------------
 
 def get_app_timezone_name():
     return os.getenv("APP_TIMEZONE", "Asia/Singapore").strip() or "Asia/Singapore"
@@ -74,10 +70,6 @@ def format_local_datetime_input(value):
     return local_value.strftime("%Y-%m-%dT%H:%M")
 
 
-# ---------------------------------------------------------------------------
-# Environment helpers
-# ---------------------------------------------------------------------------
-
 def is_local_dev_environment():
     app_env = os.getenv("APP_ENV", "").strip().lower()
     flask_env = os.getenv("FLASK_ENV", "").strip().lower()
@@ -98,17 +90,9 @@ def sanitize_error_message(message):
     return text[:500]
 
 
-# ---------------------------------------------------------------------------
-# Trade size / display helpers
-# ---------------------------------------------------------------------------
-
 def get_trade_size_label(account_type):
     return "Contracts" if normalize_account_type(account_type) == "FUTURES" else "Lots"
 
-
-# ---------------------------------------------------------------------------
-# Trade deduplication
-# ---------------------------------------------------------------------------
 
 def build_trade_duplicate_key(
     *,
@@ -174,10 +158,6 @@ def build_trade_import_dedupe_key(
         payload = "futures:" + repr(duplicate_key)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
-
-# ---------------------------------------------------------------------------
-# Trade account queries
-# ---------------------------------------------------------------------------
 
 def get_user_trade_accounts(user_id):
     return (
@@ -254,10 +234,6 @@ def parse_trade_account_size(value):
     return account_size
 
 
-# ---------------------------------------------------------------------------
-# URL / redirect helpers
-# ---------------------------------------------------------------------------
-
 def append_query_params(path_or_url, **params):
     parsed = urlsplit(str(path_or_url or ""))
     query_items = dict(parse_qsl(parsed.query, keep_blank_values=True))
@@ -292,10 +268,6 @@ def get_safe_internal_next(default_endpoint):
         return next_value
     return url_for(default_endpoint)
 
-
-# ---------------------------------------------------------------------------
-# Active trade account resolution
-# ---------------------------------------------------------------------------
 
 def resolve_active_trade_account(user_id, requested_account_id=None, requested_account_pubkey=None):
     accounts, changed = ensure_trade_account_for_user(user_id)
@@ -353,10 +325,6 @@ def get_active_trade_account_for_user(user_id):
     return active_account
 
 
-# ---------------------------------------------------------------------------
-# Pubkey lookups
-# ---------------------------------------------------------------------------
-
 def get_user_trade_account_by_pubkey(user_id, trade_account_pubkey):
     return TradeAccount.query.filter_by(
         user_id=user_id,
@@ -377,10 +345,6 @@ def get_user_trade_by_pubkey_or_404(user_id, trade_pubkey):
         pubkey=str(trade_pubkey or "").strip(),
     ).first_or_404()
 
-
-# ---------------------------------------------------------------------------
-# Unique pubkey builders
-# ---------------------------------------------------------------------------
 
 def build_unique_trade_pubkey(reserved_pubkeys=None):
     reserved = reserved_pubkeys if reserved_pubkeys is not None else set()
@@ -420,10 +384,6 @@ def build_unique_trade_profile_pubkey(reserved_pubkeys=None):
         reserved.add(candidate)
         return candidate
 
-
-# ---------------------------------------------------------------------------
-# Trade profiles
-# ---------------------------------------------------------------------------
 
 def get_user_trade_profiles(user_id):
     try:
@@ -548,10 +508,6 @@ def update_trade_profile(profile, name, short_description=None):
     db.session.flush()
     return version
 
-
-# ---------------------------------------------------------------------------
-# User deletion / purge
-# ---------------------------------------------------------------------------
 
 def delete_users_with_related_data(user_ids):
     normalized_ids = sorted({int(uid) for uid in user_ids if uid is not None})

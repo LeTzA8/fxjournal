@@ -113,11 +113,21 @@
                         <p class="panel-copy">Cumulative realized PnL across closed trades.</p>
                     </div>
                     <div class="chart-controls">
-                        <label for="equityMode">View</label>
-                        <select id="equityMode" aria-label="Equity curve mode">
-                            <option value="trade" selected>Every Trade</option>
-                            <option value="day">Daily Close</option>
-                        </select>
+                        <div class="chart-control-group">
+                            <label for="equityMode">View</label>
+                            <select id="equityMode" aria-label="Equity curve mode">
+                                <option value="trade" selected>Every Trade</option>
+                                <option value="day">Daily Close</option>
+                            </select>
+                        </div>
+                        <div class="chart-control-group">
+                            <label for="analyticsEquityRange">Range</label>
+                            <select id="analyticsEquityRange" aria-label="Equity curve range">
+                                <option value="30">30D</option>
+                                <option value="90">90D</option>
+                                <option value="all" selected>All History</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
                 <div class="chart-shell" id="equityChartShell">
@@ -680,9 +690,17 @@
         display: inline-flex;
         align-items: center;
         gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
         color: var(--muted);
         font-size: 0.82rem;
         font-weight: 700;
+    }
+
+    .chart-control-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
     }
 
     .chart-controls select {

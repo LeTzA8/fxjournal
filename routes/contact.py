@@ -15,9 +15,9 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from auth_account import send_email_placeholder
 from extensions import limiter
-from helpers import is_local_dev_environment
+from helpers.core import is_local_dev_environment
 from models import ContactSubmission, User, db
-from utils import utcnow_naive
+from helpers.utils import utcnow_naive
 
 bp = Blueprint("contact", __name__)
 

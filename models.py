@@ -2,7 +2,7 @@ import secrets
 
 from flask_sqlalchemy import SQLAlchemy
 
-from utils import utcnow_naive  # noqa: F401 – re-exported for existing callers
+from helpers.utils import utcnow_naive  # noqa: F401 – re-exported for existing callers
 
 
 db = SQLAlchemy()

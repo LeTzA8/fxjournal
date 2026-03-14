@@ -1,7 +1,7 @@
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from sqlalchemy.exc import IntegrityError, OperationalError
 
-from helpers import (
+from helpers.core import (
     get_user_trade_profiles,
     get_user_trade_profile_by_pubkey,
     get_trade_profile_version_snapshot,
@@ -9,7 +9,7 @@ from helpers import (
     update_trade_profile,
 )
 from models import db
-from utils import login_required, utcnow_naive
+from helpers.utils import login_required, utcnow_naive
 
 bp = Blueprint("trade_profiles", __name__)
 

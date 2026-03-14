@@ -40,6 +40,7 @@
         const tooltip = document.getElementById("equityChartTooltip");
         const axis = document.getElementById("equityChartAxis");
         const modeSelect = document.getElementById("equityMode");
+        const rangeSelect = document.getElementById("analyticsEquityRange");
         if (
             !shell || !svg || !grid || !areaPositive || !areaNegative || !glowPositive || !glowNegative ||
             !pathPositive || !pathNegative || !positiveClipRect || !negativeClipRect || !yAxis || !zeroLine ||
@@ -53,19 +54,63 @@
         const pad = { t: 22, r: 64, b: 28, l: 26 };
         const plotW = width - pad.l - pad.r;
         const plotH = height - pad.t - pad.b;
+        const MAX_RENDERED_POINTS = 72;
 
-        const normalizePoint = (point, index) => {
+        const parsePointDate = (rawValue, index, fallbackLength) => {
+            if (typeof rawValue === "string" && rawValue.trim()) {
+                const trimmed = rawValue.trim();
+                const normalized = trimmed.includes("T")
+                    ? trimmed
+                    : trimmed.includes(" ")
+                    ? trimmed.replace(" ", "T")
+                    : `${trimmed}T00:00:00`;
+                const parsed = new Date(normalized);
+                if (Number.isFinite(parsed.getTime())) {
+                    return parsed;
+                }
+            }
+
+            const fallback = new Date();
+            fallback.setHours(0, 0, 0, 0);
+            fallback.setDate(fallback.getDate() - (fallbackLength - index - 1));
+            return fallback;
+        };
+
+        const normalizePoint = (point, index, source) => {
             const equity = Number(point && point.equity);
             if (!Number.isFinite(equity)) return null;
             const label = (point && point.label) ? String(point.label) : `${index + 1}`;
             const dateLabel = (point && point.date) ? String(point.date) : label;
-            return { label, dateLabel, equity };
+            const date = parsePointDate(point && point.date, index, source.length);
+            return { label, dateLabel, equity, date };
         };
 
         const getData = () => {
             const mode = modeSelect ? modeSelect.value : "trade";
             const source = mode === "day" ? equityDayData : equityTradeData;
-            return source.map(normalizePoint).filter(Boolean);
+            const rangeValue = rangeSelect ? rangeSelect.value : "all";
+            const normalized = source
+                .map((point, index) => normalizePoint(point, index, source))
+                .filter(Boolean)
+                .sort((a, b) => a.date - b.date);
+
+            const filtered = (() => {
+                if (rangeValue === "all" || !normalized.length) {
+                    return normalized;
+                }
+                const latestDate = normalized[normalized.length - 1].date;
+                const startDate = new Date(latestDate);
+                const days = Number.parseInt(rangeValue, 10);
+                const validDays = Number.isFinite(days) && days > 0 ? days : 30;
+                startDate.setDate(startDate.getDate() - validDays + 1);
+                const rangeMatches = normalized.filter((point) => point.date >= startDate);
+                return rangeMatches.length ? rangeMatches : normalized;
+            })();
+
+            return chartShared.downsamplePoints(filtered, MAX_RENDERED_POINTS, {
+                getX: (point) => point.date.getTime(),
+                getY: (point) => point.equity,
+            });
         };
 
         const pointTone = (equity) => chartShared.pointTone(equity);
@@ -229,6 +274,9 @@
         shell.addEventListener("mouseleave", hideTooltip);
         if (modeSelect) {
             modeSelect.addEventListener("change", render);
+        }
+        if (rangeSelect) {
+            rangeSelect.addEventListener("change", render);
         }
         window.addEventListener("resize", render, { passive: true });
         render();
