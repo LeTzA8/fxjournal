@@ -49,13 +49,26 @@ from helpers.utils import login_required, utcnow_naive
 bp = Blueprint("trades", __name__)
 
 
-def _calculate_trade_risk_reward(target_price, entry_price, stop_loss):
+def _calculate_trade_risk_reward(target_price, entry_price, stop_loss, side=None, *, signed=False):
     if target_price is None or entry_price is None or stop_loss is None:
         return None
+    normalized_side = str(side or "BUY").strip().upper()
+    if normalized_side == "SELL":
+        if stop_loss <= entry_price:
+            return None
+        move_amount = entry_price - target_price
+    else:
+        if stop_loss >= entry_price:
+            return None
+        move_amount = target_price - entry_price
     risk_amount = abs(entry_price - stop_loss)
     if risk_amount == 0:
         return None
-    return abs(target_price - entry_price) / risk_amount
+    if signed:
+        return move_amount / risk_amount
+    if move_amount <= 0:
+        return None
+    return move_amount / risk_amount
 
 
 def _calculate_trade_net_pnl(trade_pnl, commission=None, swap=None):
@@ -842,11 +855,14 @@ def trade_detail(trade_pubkey):
         trade.take_profit,
         trade.entry_price,
         trade.stop_loss,
+        trade.side,
     )
     actual_rr = _calculate_trade_risk_reward(
         trade.exit_price,
         trade.entry_price,
         trade.stop_loss,
+        trade.side,
+        signed=True,
     )
     trade_net_pnl = _calculate_trade_net_pnl(
         trade_pnl,

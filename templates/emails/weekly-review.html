@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your weekly trading review is ready</title>
+</head>
+<body style="margin:0;padding:0;background-color:#030507;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#030507;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
+          <tr>
+            <td style="padding-bottom:32px;" align="center">
+              <img src="{{ logo_url }}" alt="FX Journal" height="36" style="display:block;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="background-color:#0b1017;border-radius:16px;padding:40px 36px;border:1px solid #202a3a;">
+              <p style="margin:0 0 12px 0;font-size:12px;font-weight:700;color:#4562ff;letter-spacing:0.8px;text-transform:uppercase;">Week of {{ week_label }}</p>
+              <p style="margin:0 0 8px 0;font-size:24px;font-weight:700;color:#f8fafc;letter-spacing:-0.3px;">Hi {{ name }}, your review is ready.</p>
+              <p style="margin:0 0 28px 0;font-size:15px;color:#8f9bb0;line-height:1.7;">Your AI trading coach has finished analysing your week. Here is a quick preview before you open the full review.</p>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
+                <tr>
+                  <td style="background-color:#101722;border-radius:12px;padding:20px 24px;border:1px solid #202a3a;border-left:3px solid #4562ff;">
+                    <p style="margin:0;font-size:14px;color:#f8fafc;line-height:1.8;font-style:italic;">{{ ai_preview }}</p>
+                  </td>
+                </tr>
+              </table>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:32px;">
+                <tr>
+                  <td width="33%" style="background-color:#101722;border:1px solid #202a3a;border-radius:12px;padding:16px;text-align:center;">
+                    <p style="margin:0 0 4px 0;font-size:22px;font-weight:700;color:#f8fafc;">{{ total_trades }}</p>
+                    <p style="margin:0;font-size:12px;color:#8f9bb0;text-transform:uppercase;letter-spacing:0.5px;">Trades</p>
+                  </td>
+                  <td width="2%" style="padding:0 6px;"></td>
+                  <td width="33%" style="background-color:#101722;border:1px solid #202a3a;border-radius:12px;padding:16px;text-align:center;">
+                    <p style="margin:0 0 4px 0;font-size:22px;font-weight:700;color:#f8fafc;">{{ win_rate }}%</p>
+                    <p style="margin:0;font-size:12px;color:#8f9bb0;text-transform:uppercase;letter-spacing:0.5px;">Win Rate</p>
+                  </td>
+                  <td width="2%" style="padding:0 6px;"></td>
+                  <td width="33%" style="background-color:#101722;border:1px solid #202a3a;border-radius:12px;padding:16px;text-align:center;">
+                    <p style="margin:0 0 4px 0;font-size:22px;font-weight:700;color:{{ pnl_color }};">{{ net_pnl }}</p>
+                    <p style="margin:0;font-size:12px;color:#8f9bb0;text-transform:uppercase;letter-spacing:0.5px;">Net P&amp;L</p>
+                  </td>
+                </tr>
+              </table>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center">
+                    <a href="{{ dashboard_url }}" style="display:inline-block;background-color:#4562ff;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:10px;letter-spacing:0.2px;">View Full Review</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-top:28px;" align="center">
+              <p style="margin:0 0 8px 0;font-size:13px;color:#8f9bb0;">You are receiving this because you have an FX Journal account.</p>
+              <p style="margin:0;font-size:12px;color:#8f9bb0;">
+                <a href="https://myfxjournal.com" style="color:#4562ff;text-decoration:none;">myfxjournal.com</a>
+                {% if unsubscribe_url %}
+                &nbsp;&middot;&nbsp;
+                <a href="{{ unsubscribe_url }}" style="color:#8f9bb0;text-decoration:none;">Unsubscribe</a>
+                {% endif %}
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

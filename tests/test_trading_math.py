@@ -271,3 +271,48 @@ def test_build_rr_summary_returns_mid_tier_capture_advice():
     assert summary["avg_actual_rr"] == 1.27
     assert summary["rr_capture_ratio"] == 0.69
     assert summary["advice"] == "You're close to your planned RR but leaving some on the table. Tighten your exit process - trust the levels you set pre-trade."
+
+
+def test_build_rr_summary_counts_losing_buy_trades_as_negative_real_rr():
+    trades = [
+        make_trade(entry_price=100.0, exit_price=95.0, stop_loss=95.0, take_profit=110.0, side="BUY"),
+        make_trade(entry_price=100.0, exit_price=108.0, stop_loss=95.0, take_profit=110.0, side="BUY"),
+        make_trade(entry_price=100.0, exit_price=110.0, stop_loss=95.0, take_profit=110.0, side="BUY"),
+    ]
+
+    summary = build_rr_summary(trades)
+
+    assert summary["trades_with_data"] == 3
+    assert summary["avg_planned_rr"] == 2.0
+    assert summary["avg_actual_rr"] == 0.87
+    assert summary["rr_capture_ratio"] == 0.43
+
+
+def test_build_rr_summary_handles_sell_direction_correctly():
+    trades = [
+        make_trade(entry_price=100.0, exit_price=95.0, stop_loss=105.0, take_profit=90.0, side="SELL"),
+        make_trade(entry_price=100.0, exit_price=103.0, stop_loss=105.0, take_profit=90.0, side="SELL"),
+        make_trade(entry_price=100.0, exit_price=90.0, stop_loss=105.0, take_profit=90.0, side="SELL"),
+    ]
+
+    summary = build_rr_summary(trades)
+
+    assert summary["trades_with_data"] == 3
+    assert summary["avg_planned_rr"] == 2.0
+    assert summary["avg_actual_rr"] == 0.8
+    assert summary["rr_capture_ratio"] == 0.4
+
+
+def test_build_rr_summary_excludes_invalid_stop_geometry():
+    trades = [
+        make_trade(entry_price=100.0, exit_price=120.0, stop_loss=101.0, take_profit=120.0, side="BUY"),
+        make_trade(entry_price=100.0, exit_price=108.0, stop_loss=95.0, take_profit=110.0, side="BUY"),
+        make_trade(entry_price=100.0, exit_price=110.0, stop_loss=95.0, take_profit=110.0, side="BUY"),
+    ]
+
+    summary = build_rr_summary(trades)
+
+    assert summary["trades_with_data"] == 2
+    assert summary["avg_planned_rr"] == 2.0
+    assert summary["avg_actual_rr"] == 1.8
+    assert summary["rr_capture_ratio"] == 0.9

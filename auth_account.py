@@ -355,6 +355,12 @@ def _should_log_email_bodies():
     )
 
 
+def _log_email_payloads(text_body, html_body=None):
+    current_app.logger.info("Email body:\n%s", text_body)
+    if html_body:
+        current_app.logger.info("Email HTML body:\n%s", html_body)
+
+
 def send_email_placeholder(to_email, subject, text_body, html_body=None):
     provider = os.getenv("EMAIL_PROVIDER", "placeholder").strip().lower()
     sender = os.getenv("EMAIL_FROM", "noreply@example.com").strip()
@@ -370,7 +376,7 @@ def send_email_placeholder(to_email, subject, text_body, html_body=None):
             subject,
         )
         if log_email_bodies:
-            current_app.logger.info("Email body:\n%s", text_body)
+            _log_email_payloads(text_body, html_body)
         return {"sent": False, "mode": "placeholder"}
 
     if not api_key:
@@ -378,7 +384,7 @@ def send_email_placeholder(to_email, subject, text_body, html_body=None):
             "EMAIL_SEND_ENABLED is true but RESEND_API_KEY/EMAIL_API_KEY is missing. Using placeholder mode."
         )
         if log_email_bodies:
-            current_app.logger.info("Email body:\n%s", text_body)
+            _log_email_payloads(text_body, html_body)
         return {"sent": False, "mode": "missing_api_key"}
 
     if provider == "resend":
@@ -387,7 +393,7 @@ def send_email_placeholder(to_email, subject, text_body, html_body=None):
         except ImportError:
             current_app.logger.warning("Resend SDK is not installed. Falling back to placeholder logging.")
             if log_email_bodies:
-                current_app.logger.info("Email body:\n%s", text_body)
+                _log_email_payloads(text_body, html_body)
             return {"sent": False, "mode": "missing_resend_sdk"}
 
         html_payload = html_body
@@ -413,14 +419,14 @@ def send_email_placeholder(to_email, subject, text_body, html_body=None):
         except Exception as exc:
             current_app.logger.warning("Resend send failed: %s", exc)
             if log_email_bodies:
-                current_app.logger.info("Email body:\n%s", text_body)
+                _log_email_payloads(text_body, html_body)
             return {"sent": False, "mode": "resend_error"}
 
     current_app.logger.warning(
         "Email provider '%s' is configured but integration is not implemented.", provider
     )
     if log_email_bodies:
-        current_app.logger.info("Email body:\n%s", text_body)
+        _log_email_payloads(text_body, html_body)
     return {"sent": False, "mode": "not_implemented"}
 
 
@@ -452,6 +458,30 @@ def register_public_auth_routes(
         if not user_has_root_admin_access(user):
             return None
         return user
+
+    def _build_logo_url():
+        return build_external_url("/static/site-logo.png")
+
+    def _render_email_html(template_name, **context):
+        context.setdefault("logo_url", _build_logo_url())
+        return render_template(template_name, **context)
+
+    def _send_welcome_email(user):
+        welcome_html = _render_email_html(
+            "emails/welcome.html",
+            name=user.username,
+            dashboard_url=build_external_url(url_for("dashboard.home")),
+            unsubscribe_url="",
+        )
+        send_email_placeholder(
+            user.email,
+            "Welcome to FX Journal",
+            (
+                f"Hi {user.username}, your FX Journal account is ready. "
+                "Head to your dashboard to get started."
+            ),
+            html_body=welcome_html,
+        )
 
     def admin_required(f):
         @wraps(f)
@@ -757,10 +787,16 @@ def register_public_auth_routes(
                         f"{verify_link}\n\n"
                         "If you did not request this, you can ignore this email."
                     )
+                    html_body = _render_email_html(
+                        "emails/verify-email.html",
+                        name=existing_user.username,
+                        verify_url=verify_link,
+                    )
                     email_result = send_email_placeholder(
                         existing_user.email,
                         email_subject,
                         email_body,
+                        html_body=html_body,
                     )
                     flash("Verification email sent. Please check your inbox.", "success")
                     verify_kwargs = {}
@@ -815,7 +851,17 @@ def register_public_auth_routes(
                 f"{verify_link}\n\n"
                 "If you did not create this account, you can ignore this email."
             )
-            email_result = send_email_placeholder(user.email, email_subject, email_body)
+            html_body = _render_email_html(
+                "emails/verify-email.html",
+                name=user.username,
+                verify_url=verify_link,
+            )
+            email_result = send_email_placeholder(
+                user.email,
+                email_subject,
+                email_body,
+                html_body=html_body,
+            )
 
             flash("Verification email sent. Please check your inbox.", "success")
             verify_kwargs = {}
@@ -906,10 +952,16 @@ def register_public_auth_routes(
                 f"{verify_link}\n\n"
                 "If you did not request this, you can ignore this email."
             )
+            html_body = _render_email_html(
+                "emails/verify-email.html",
+                name=pending_username,
+                verify_url=verify_link,
+            )
             email_result = send_email_placeholder(
                 pending_email,
                 email_subject,
                 email_body,
+                html_body=html_body,
             )
             success = "Verification email sent. Please check your inbox."
             if is_local_dev_environment() and not email_result.get("sent"):
@@ -989,6 +1041,10 @@ def register_public_auth_routes(
                 session.pop("pending_registration_id", None)
 
             if normalize_signup_status(user.signup_status) == SIGNUP_STATUS_APPROVED:
+                try:
+                    _send_welcome_email(user)
+                except Exception as exc:
+                    current_app.logger.warning("Welcome email failed: %s", exc)
                 flash("Email verified. You can now log in.", "success")
                 return redirect(url_for("login"))
             flash("Email verified. You can now log in.", "success")
@@ -1012,8 +1068,10 @@ def register_public_auth_routes(
             flash("This verification link is invalid or has expired. Please register again.", "error")
             return redirect(url_for("register"))
 
+        just_verified = False
         if not user.email_verified:
             user.email_verified = True
+            just_verified = True
             if user.signup_code_used:
                 signup_code = find_signup_code(user.signup_code_used)
                 if is_signup_code_usable(signup_code):
@@ -1024,6 +1082,11 @@ def register_public_auth_routes(
             session.pop("pending_verify_email", None)
 
         if normalize_signup_status(user.signup_status) == SIGNUP_STATUS_APPROVED:
+            try:
+                if just_verified:
+                    _send_welcome_email(user)
+            except Exception as exc:
+                current_app.logger.warning("Welcome email failed: %s", exc)
             flash("Email verified. You can now log in.", "success")
             return redirect(url_for("login"))
         flash("Email verified. You can now log in.", "success")
@@ -1140,7 +1203,8 @@ def register_public_auth_routes(
                 account.id,
                 "dashboard_advice.txt",
                 period["period_start_utc"].isoformat(),
-                True,
+                force_regenerate=True,
+                send_weekly_email=False,
             )
         except Exception as exc:
             db.session.rollback()
@@ -1417,7 +1481,17 @@ def register_public_auth_routes(
                         f"{reset_link}\n\n"
                         "If you did not request this, you can ignore this email."
                     )
-                    email_result = send_email_placeholder(user.email, email_subject, email_body)
+                    html_body = _render_email_html(
+                        "emails/password-reset.html",
+                        name=user.username,
+                        reset_url=reset_link,
+                    )
+                    email_result = send_email_placeholder(
+                        user.email,
+                        email_subject,
+                        email_body,
+                        html_body=html_body,
+                    )
                     if is_local_dev_environment() and not email_result.get("sent"):
                         debug_reset_link = reset_link
                 success = generic_success

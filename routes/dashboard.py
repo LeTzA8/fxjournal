@@ -50,6 +50,7 @@ WEEKLY_AI_UNAVAILABLE_MESSAGE = (
     "Weekly AI review is temporarily unavailable. Please try again in a little while."
 )
 WEEKLY_AI_PROMPT_FILENAME = "dashboard_advice.txt"
+RR_SUMMARY_CACHE_PREFIX = "rr_summary_v3"
 
 
 def _serialize_datetime(value):
@@ -228,7 +229,12 @@ def _build_cached_analytics_payload(user_id, active_trade_account, user_trades, 
 
 def _build_cached_rr_summary(user_id, active_trade_account, user_trades):
     rr_summary = build_rr_summary(user_trades)
-    _set_cached_payload("rr_summary", user_id, getattr(active_trade_account, "id", None), rr_summary)
+    _set_cached_payload(
+        RR_SUMMARY_CACHE_PREFIX,
+        user_id,
+        getattr(active_trade_account, "id", None),
+        rr_summary,
+    )
     return rr_summary
 
 
@@ -361,6 +367,7 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
                                 account_id,
                                 WEEKLY_AI_PROMPT_FILENAME,
                                 _serialize_datetime(latest_trade_period["period_start_utc"]),
+                                send_weekly_email=True,
                             )
                         except Exception as exc:
                             try:
@@ -545,7 +552,7 @@ def analytics():
     timezone_name = get_display_timezone_name()
 
     analytics_payload = _get_cached_payload("analytics", user_id, account_id)
-    rr_summary = _get_cached_payload("rr_summary", user_id, account_id)
+    rr_summary = _get_cached_payload(RR_SUMMARY_CACHE_PREFIX, user_id, account_id)
 
     user_trades = None
     if analytics_payload is None or rr_summary is None:
