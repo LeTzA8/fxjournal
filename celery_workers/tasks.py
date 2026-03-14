@@ -1,3 +1,8 @@
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from ai_service import maybe_generate_weekly_dashboard_advice
 from celery_app import celery
 from celery_workers.cache import (
