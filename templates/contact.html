@@ -18,6 +18,7 @@
         <article class="contact-card{% if not account_user %} contact-card-public{% endif %}">
             <form action="{{ url_for('contact.contact') }}" method="post" class="contact-form" data-themed-validation>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="text" name="honeypot" style="display:none;" tabindex="-1" autocomplete="off">
                 {% if account_user %}
                 <input type="hidden" name="contact_user_id" value="{{ account_user.id }}">
                 <input type="hidden" name="contact_user_email" value="{{ account_user.email }}">

@@ -88,6 +88,9 @@ def contact():
         )
 
     if request.method == "POST":
+        if request.form.get("honeypot"):
+            return redirect(url_for("contact.contact"))
+
         contact_subject = request.form.get("subject", "").strip()
         contact_category = request.form.get("category", "").strip()
         contact_body = request.form.get("message", "").strip()
