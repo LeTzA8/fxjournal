@@ -8,13 +8,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
-from ai_service import (
-    AIConfigError,
-    AIRequestError,
-    WEEKLY_DASHBOARD_KIND,
-    get_latest_trade_week_period,
-    maybe_generate_weekly_dashboard_advice,
-)
+from ai_service import get_latest_trade_week_period
 from models import (
     AllowedSignupEmailDomain,
     SignupCode,
@@ -1129,13 +1123,25 @@ def register_public_auth_routes(
             )
 
         try:
-            result = maybe_generate_weekly_dashboard_advice(
-                user_id=user_id,
-                trade_account_id=account.id,
-                prompt_filename="dashboard_advice.txt",
-                force_regenerate=True,
+            from celery_workers.cache import CacheUnavailableError, clear_ai_status
+            from celery_workers.tasks import generate_weekly_ai_task
+
+            try:
+                clear_ai_status(
+                    user_id,
+                    trade_account_id=account.id,
+                    period_start_utc=period["period_start_utc"],
+                )
+            except CacheUnavailableError:
+                pass
+
+            generate_weekly_ai_task.delay(
+                user_id,
+                account.id,
+                "dashboard_advice.txt",
+                period["period_start_utc"].isoformat(),
             )
-        except (AIConfigError, AIRequestError, OSError, ValueError) as exc:
+        except Exception as exc:
             db.session.rollback()
             current_app.logger.warning(
                 "Admin AI regeneration unavailable: user_id=%s trade_account_id=%s error=%s",
@@ -1168,17 +1174,10 @@ def register_public_auth_routes(
                 "error",
             )
 
-        if result and result.get("generated") and result.get("record") is not None:
-            return build_admin_redirect(
-                "users",
-                f"AI advice regenerated for {target_user.email} / {account.name}.",
-                "success",
-            )
-
         return build_admin_redirect(
             "users",
-            f"No new advice generated. Check that {account.name} has trades in the latest eligible week.",
-            "info",
+            f"AI review generation queued for {target_user.email} / {account.name}.",
+            "success",
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/approve", methods=["POST"])
