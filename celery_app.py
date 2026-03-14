@@ -1,7 +1,10 @@
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import importlib
 import importlib.util
-import os
-import sys
 from pathlib import Path
 
 from celery import Celery

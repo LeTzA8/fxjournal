@@ -1140,6 +1140,7 @@ def register_public_auth_routes(
                 account.id,
                 "dashboard_advice.txt",
                 period["period_start_utc"].isoformat(),
+                True,
             )
         except Exception as exc:
             db.session.rollback()

@@ -1,5 +1,3 @@
-from celery.exceptions import MaxRetriesExceededError
-
 from ai_service import maybe_generate_weekly_dashboard_advice
 from celery_app import celery
 from celery_workers.cache import (
@@ -36,7 +34,14 @@ def _clear_task_status(user_id, trade_account_id, period_start_utc):
 
 
 @celery.task(bind=True, max_retries=2, default_retry_delay=30)
-def generate_weekly_ai_task(self, user_id, trade_account_id, prompt_filename=None, period_start_utc=None):
+def generate_weekly_ai_task(
+    self,
+    user_id,
+    trade_account_id,
+    prompt_filename=None,
+    period_start_utc=None,
+    force_regenerate=False,
+):
     _set_task_status(
         user_id,
         trade_account_id,
@@ -49,12 +54,12 @@ def generate_weekly_ai_task(self, user_id, trade_account_id, prompt_filename=Non
             user_id=user_id,
             trade_account_id=trade_account_id,
             prompt_filename=prompt_filename,
+            force_regenerate=force_regenerate,
         )
         _clear_task_status(user_id, trade_account_id, period_start_utc)
     except Exception as exc:
-        try:
-            raise self.retry(exc=exc)
-        except MaxRetriesExceededError:
+        max_retries = self.max_retries if self.max_retries is not None else 0
+        if self.request.retries >= max_retries:
             _set_task_status(
                 user_id,
                 trade_account_id,
@@ -63,3 +68,4 @@ def generate_weekly_ai_task(self, user_id, trade_account_id, prompt_filename=Non
                 AI_STATUS_FAILED_TTL,
             )
             raise
+        raise self.retry(exc=exc)
