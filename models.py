@@ -32,6 +32,7 @@ class User(db.Model):
     is_admin = db.Column(db.Boolean, nullable=False, default=False, index=True)
     signup_status = db.Column(db.String(16), nullable=False, default="approved", index=True)
     pending_email = db.Column(db.String(120), nullable=True, index=True)
+    password_reset_nonce = db.Column(db.String(64), nullable=True)
     pending_email_change_requested_at = db.Column(db.DateTime, nullable=True)
     pending_email_change_current_verified_at = db.Column(db.DateTime, nullable=True)
     pending_email_change_new_verified_at = db.Column(db.DateTime, nullable=True)

@@ -4,8 +4,9 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 
 from auth_account import (
     build_external_url,
-    generate_auth_token,
     generate_email_change_token,
+    generate_password_reset_token,
+    rotate_password_reset_nonce,
     send_email_placeholder,
     verify_email_change_token,
 )
@@ -311,9 +312,23 @@ def account_confirm_email_change(token):
 @login_required
 def account_password_reset_email():
     user = User.query.filter_by(id=session["user_id"]).first_or_404()
-    reset_token = generate_auth_token(
-        email=user.email,
-        purpose=TOKEN_PURPOSE_PASSWORD_RESET,
+    reset_nonce = rotate_password_reset_nonce(user)
+    try:
+        db.session.commit()
+    except OperationalError as exc:
+        db.session.rollback()
+        current_app.logger.warning(
+            "Account password reset nonce persistence failed for user_id=%s: %s",
+            user.id,
+            exc,
+        )
+        flash("Password reset is temporarily unavailable. Please try again shortly.", "error")
+        return redirect(url_for("account.account"))
+
+    reset_token = generate_password_reset_token(
+        user.email,
+        TOKEN_PURPOSE_PASSWORD_RESET,
+        reset_nonce,
     )
     reset_link = build_external_url(url_for("reset_password_token", token=reset_token))
     email_subject = "Reset your FX Journal password"

@@ -21,6 +21,7 @@ from helpers.utils import env_bool as _env_bool, env_int as _env_int, utcnow_nai
 
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
 TOKEN_PURPOSE_EMAIL_CHANGE = "email_change"
+TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
 PENDING_REGISTRATIONS = {}
 SIGNUP_STATUS_PENDING = "pending"
 SIGNUP_STATUS_APPROVED = "approved"
@@ -211,6 +212,23 @@ def generate_auth_token(email, purpose):
     return serializer.dumps({"email": (email or "").strip().lower(), "purpose": purpose})
 
 
+def rotate_password_reset_nonce(user):
+    reset_nonce = secrets.token_urlsafe(24)
+    user.password_reset_nonce = reset_nonce
+    return reset_nonce
+
+
+def generate_password_reset_token(email, purpose, reset_nonce):
+    serializer = get_token_serializer()
+    return serializer.dumps(
+        {
+            "email": (email or "").strip().lower(),
+            "purpose": purpose,
+            "reset_nonce": str(reset_nonce or "").strip(),
+        }
+    )
+
+
 def generate_email_change_token(*, user_id, current_email, new_email, channel):
     normalized_channel = str(channel or "").strip().lower()
     if normalized_channel not in {"current", "new"}:
@@ -252,6 +270,25 @@ def verify_auth_token(token, purpose, max_age_seconds):
 
     email = str(payload.get("email", "")).strip().lower()
     return email or None
+
+
+def verify_password_reset_token(token, purpose, max_age_seconds):
+    serializer = get_token_serializer()
+    try:
+        payload = serializer.loads(token, max_age=max_age_seconds)
+    except (SignatureExpired, BadSignature):
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("purpose") != purpose:
+        return None
+
+    email = str(payload.get("email", "")).strip().lower()
+    reset_nonce = str(payload.get("reset_nonce", "")).strip()
+    if not email or not reset_nonce:
+        return None
+    return {"email": email, "reset_nonce": reset_nonce}
 
 
 def verify_email_change_token(token, max_age_seconds):
@@ -1466,34 +1503,46 @@ def register_public_auth_routes(
             else:
                 user = User.query.filter_by(email=email).first()
                 if user:
-                    reset_token = generate_auth_token(
-                        email=user.email,
-                        purpose=token_purpose_password_reset,
-                    )
-                    reset_link = build_external_url(
-                        url_for("reset_password_token", token=reset_token)
-                    )
-                    email_subject = "Reset your FX Journal password"
-                    email_body = (
-                        f"Hi {user.username},\n\n"
-                        "You requested a password reset.\n"
-                        "Open this link to set a new password:\n"
-                        f"{reset_link}\n\n"
-                        "If you did not request this, you can ignore this email."
-                    )
-                    html_body = _render_email_html(
-                        "emails/password-reset.html",
-                        name=user.username,
-                        reset_url=reset_link,
-                    )
-                    email_result = send_email_placeholder(
-                        user.email,
-                        email_subject,
-                        email_body,
-                        html_body=html_body,
-                    )
-                    if is_local_dev_environment() and not email_result.get("sent"):
-                        debug_reset_link = reset_link
+                    reset_nonce = rotate_password_reset_nonce(user)
+                    try:
+                        db.session.commit()
+                    except OperationalError as exc:
+                        db.session.rollback()
+                        current_app.logger.warning(
+                            "Password reset nonce persistence failed for user_id=%s: %s",
+                            user.id,
+                            exc,
+                        )
+                    else:
+                        reset_token = generate_password_reset_token(
+                            user.email,
+                            token_purpose_password_reset,
+                            reset_nonce,
+                        )
+                        reset_link = build_external_url(
+                            url_for("reset_password_token", token=reset_token)
+                        )
+                        email_subject = "Reset your FX Journal password"
+                        email_body = (
+                            f"Hi {user.username},\n\n"
+                            "You requested a password reset.\n"
+                            "Open this link to set a new password:\n"
+                            f"{reset_link}\n\n"
+                            "If you did not request this, you can ignore this email."
+                        )
+                        html_body = _render_email_html(
+                            "emails/password-reset.html",
+                            name=user.username,
+                            reset_url=reset_link,
+                        )
+                        email_result = send_email_placeholder(
+                            user.email,
+                            email_subject,
+                            email_body,
+                            html_body=html_body,
+                        )
+                        if is_local_dev_environment() and not email_result.get("sent"):
+                            debug_reset_link = reset_link
                 success = generic_success
 
         return render_template(
@@ -1508,12 +1557,12 @@ def register_public_auth_routes(
     @app.route("/password/reset/<token>", methods=["GET", "POST"])
     def reset_password_token(token):
         max_age_seconds = env_int("PASSWORD_RESET_TOKEN_MAX_AGE_SECONDS", 3600)
-        email = verify_auth_token(
+        reset_claim = verify_password_reset_token(
             token=token,
             purpose=token_purpose_password_reset,
             max_age_seconds=max_age_seconds,
         )
-        if not email:
+        if not reset_claim:
             return render_template(
                 "reset_password.html",
                 title="Reset Password | FX Journal",
@@ -1522,8 +1571,8 @@ def register_public_auth_routes(
                 token_valid=False,
             )
 
-        user = User.query.filter_by(email=email).first()
-        if not user:
+        user = User.query.filter_by(email=reset_claim["email"]).first()
+        if not user or not user.password_reset_nonce or user.password_reset_nonce != reset_claim["reset_nonce"]:
             return render_template(
                 "reset_password.html",
                 title="Reset Password | FX Journal",
@@ -1562,6 +1611,7 @@ def register_public_auth_routes(
                 )
 
             user.password = generate_password_hash(new_password)
+            user.password_reset_nonce = None
             db.session.commit()
             flash("Password reset successful. Please log in.", "success")
             return redirect(url_for("login"))
