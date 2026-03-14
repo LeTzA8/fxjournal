@@ -107,6 +107,21 @@ def account():
                     "Your new email will not be applied until both addresses are verified.\n"
                     "If you did not request this, you can ignore this email."
                 ),
+                html_body=render_template(
+                    "emails/confirm-email-change.html",
+                    title="Confirm your current email",
+                    badge_label="Email change",
+                    heading="Confirm your current email",
+                    intro=(
+                        f"Hi {user.username}, confirm this request from your current "
+                        "email address before we can apply the new one."
+                    ),
+                    confirm_url=current_email_link,
+                    button_label="Confirm Current Email",
+                    detail="Your new email will not be applied until both addresses are verified.",
+                    footer_note="If you did not request this change, you can safely ignore this email.",
+                    logo_url=build_external_url("/static/site-logo.png"),
+                ),
             )
             new_email_result = send_email_placeholder(
                 email,
@@ -118,6 +133,21 @@ def account():
                     f"{new_email_link}\n\n"
                     "Your new email will not be applied until both addresses are verified.\n"
                     "If you did not request this, you can ignore this email."
+                ),
+                html_body=render_template(
+                    "emails/confirm-email-change.html",
+                    title="Confirm your new email",
+                    badge_label="Email change",
+                    heading="Confirm your new email",
+                    intro=(
+                        f"Hi {user.username}, confirm that you want to use this new "
+                        "email address for your FX Journal account."
+                    ),
+                    confirm_url=new_email_link,
+                    button_label="Confirm New Email",
+                    detail="Your new email will not be applied until both addresses are verified.",
+                    footer_note="If you did not request this change, you can safely ignore this email.",
+                    logo_url=build_external_url("/static/site-logo.png"),
                 ),
             )
 
@@ -294,7 +324,18 @@ def account_password_reset_email():
         f"{reset_link}\n\n"
         "If you did not request this, you can ignore this email."
     )
-    email_result = send_email_placeholder(user.email, email_subject, email_body)
+    html_body = render_template(
+        "emails/password-reset.html",
+        name=user.username,
+        reset_url=reset_link,
+        logo_url=build_external_url("/static/site-logo.png"),
+    )
+    email_result = send_email_placeholder(
+        user.email,
+        email_subject,
+        email_body,
+        html_body=html_body,
+    )
 
     if email_result.get("sent"):
         account_message = "Password reset email sent to your account email address."
