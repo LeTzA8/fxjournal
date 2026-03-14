@@ -6,10 +6,31 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ title or "FX Journal" }}</title>
+    <title>{{ title or "FX Journal - AI-Powered Forex Trading Journal" }}</title>
+    <meta name="description" content="{{ meta_description or 'Track, analyse and improve your forex trading with AI-powered weekly feedback. Free during open beta.' }}">
+    <meta property="og:title" content="{{ title or 'FX Journal - AI-Powered Forex Trading Journal' }}">
+    <meta property="og:description" content="{{ meta_description or 'Track, analyse and improve your forex trading with AI-powered weekly feedback. Free during open beta.' }}">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="FX Journal">
+    <meta property="og:url" content="{{ url_for('landing', _external=True) }}">
+    <meta property="og:image" content="{{ url_for('static', filename='site-logo.png', v='1', _external=True) }}">
+    <meta property="og:image:alt" content="FX Journal logo">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ title or 'FX Journal - AI-Powered Forex Trading Journal' }}">
+    <meta name="twitter:description" content="{{ meta_description or 'Track, analyse and improve your forex trading with AI-powered weekly feedback. Free during open beta.' }}">
+    <meta name="twitter:image" content="{{ url_for('static', filename='site-logo.png', v='1', _external=True) }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='tab-logo.png', v='1') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='tab-logo.png', v='1') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='tab-logo.png', v='1') }}">
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": "FX Journal",
+            "url": {{ url_for('landing', _external=True)|tojson }},
+            "logo": {{ url_for('static', filename='site-logo.png', v='1', _external=True)|tojson }}
+        }
+    </script>
     <script>
         (() => {
             document.documentElement.setAttribute("data-theme", "dark");
@@ -40,18 +61,18 @@
 
         :root[data-theme="dark"] {
             color-scheme: dark;
-            --bg: #0b0f14;
-            --bg-spot: #111827;
-            --card: #111827;
-            --surface: #0f1722;
-            --border: #1f2937;
+            --bg: #030507;
+            --bg-spot: #0a1018;
+            --card: #0b1017;
+            --surface: #101722;
+            --border: #202a3a;
             --ink: #f8fafc;
-            --accent: #4f46e5;
-            --accent-hover: #4338ca;
-            --muted: #94a3b8;
-            --good: #22c55e;
-            --bad: #ef4444;
-            --neon-ribbon-opacity: 0.99;
+            --accent: #4562ff;
+            --accent-hover: #354ff0;
+            --muted: #8f9bb0;
+            --good: #1fc66a;
+            --bad: #f15a60;
+            --neon-ribbon-opacity: 0.96;
             --curve-draw-ease: cubic-bezier(.22, .61, .36, 1);
         }
 
@@ -291,19 +312,19 @@
 
         .auth-topbar-link.ghost:hover {
             color: var(--accent);
-            border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
-            background: color-mix(in srgb, var(--accent) 20%, var(--surface));
-            box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+            border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+            background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 10%, transparent);
         }
 
         .auth-topbar-link.primary {
             color: var(--accent);
-            border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-            background: color-mix(in srgb, var(--accent) 12%, var(--card));
+            border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+            background: color-mix(in srgb, var(--accent) 9%, var(--card));
         }
 
         .auth-topbar-link.primary:hover {
-            background: color-mix(in srgb, var(--accent) 20%, var(--card));
+            background: color-mix(in srgb, var(--accent) 14%, var(--card));
         }
 
         @media (max-width: 620px) {
@@ -472,9 +493,9 @@
         .site-nav-link:hover,
         .site-nav-link.active {
             color: var(--accent);
-            border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
-            background: color-mix(in srgb, var(--accent) 20%, var(--surface));
-            box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+            border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+            background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 10%, transparent);
         }
 
         .site-header-actions {
@@ -512,8 +533,8 @@
             justify-content: center;
             min-height: 38px;
             border-radius: 999px;
-            border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
-            background: color-mix(in srgb, var(--accent) 12%, var(--card));
+            border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+            background: color-mix(in srgb, var(--accent) 9%, var(--card));
             color: var(--accent);
             padding: 0 0.9rem;
             font-size: 0.74rem;
@@ -525,7 +546,7 @@
         }
 
         .header-account-link:hover {
-            background: color-mix(in srgb, var(--accent) 20%, var(--card));
+            background: color-mix(in srgb, var(--accent) 14%, var(--card));
         }
 
         .site-footer {
@@ -873,7 +894,7 @@
         .login-form input:focus {
             outline: none;
             border-color: var(--accent);
-            box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+            box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
             transform: translateY(-1px);
         }
 
@@ -903,7 +924,7 @@
         }
 
         .login-form button:focus-visible {
-            outline: 3px solid #9ad4b1;
+            outline: 3px solid #55de95;
             outline-offset: 2px;
         }
 
@@ -1089,10 +1110,10 @@
         body.landing-layout .submit-btn,
         body.landing-layout .trades-btn,
         body.landing-layout .new-trade-btn {
-            background: color-mix(in srgb, var(--good) 16%, var(--card));
-            color: color-mix(in srgb, var(--good) 84%, white 16%);
-            border-color: color-mix(in srgb, var(--good) 62%, var(--border));
-            box-shadow: 0 10px 22px rgba(34, 197, 94, 0.14);
+            background: color-mix(in srgb, var(--good) 13%, var(--card));
+            color: color-mix(in srgb, var(--good) 88%, white 12%);
+            border-color: color-mix(in srgb, var(--good) 68%, var(--border));
+            box-shadow: 0 10px 22px rgba(31, 198, 106, 0.12);
         }
 
         body.app-layout .submit-btn:hover,
@@ -1102,7 +1123,7 @@
         body.landing-layout .submit-btn:hover,
         body.landing-layout .trades-btn:hover,
         body.landing-layout .new-trade-btn:hover {
-            background: color-mix(in srgb, var(--good) 22%, var(--card));
+            background: color-mix(in srgb, var(--good) 18%, var(--card));
         }
 
         body.app-layout .ghost-btn,
@@ -1113,10 +1134,10 @@
         body.landing-layout .ghost-btn,
         body.landing-layout .ghost-link,
         body.landing-layout .edit-btn {
-            background: color-mix(in srgb, var(--surface) 78%, transparent);
+            background: color-mix(in srgb, var(--surface) 84%, transparent);
             color: var(--ink);
             border-color: color-mix(in srgb, var(--border) 84%, transparent);
-            box-shadow: 0 6px 14px rgba(2, 6, 23, 0.08);
+            box-shadow: 0 8px 16px rgba(2, 6, 23, 0.14);
         }
 
         body.app-layout .ghost-btn:hover,
@@ -1127,8 +1148,8 @@
         body.landing-layout .ghost-btn:hover,
         body.landing-layout .ghost-link:hover,
         body.landing-layout .edit-btn:hover {
-            background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-            border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+            background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+            border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
             color: var(--accent);
         }
 
@@ -1137,10 +1158,10 @@
         body.auth-layout .account-btn,
         body.landing-layout .account-btn,
         body.landing-layout .view-btn {
-            background: color-mix(in srgb, var(--accent) 12%, var(--card));
+            background: color-mix(in srgb, var(--accent) 9%, var(--card));
             color: var(--accent);
-            border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
-            box-shadow: 0 8px 18px rgba(79, 70, 229, 0.12);
+            border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+            box-shadow: 0 10px 22px rgba(69, 98, 255, 0.12);
         }
 
         body.app-layout .account-btn:hover,
@@ -1148,7 +1169,7 @@
         body.auth-layout .account-btn:hover,
         body.landing-layout .account-btn:hover,
         body.landing-layout .view-btn:hover {
-            background: color-mix(in srgb, var(--accent) 18%, var(--card));
+            background: color-mix(in srgb, var(--accent) 13%, var(--card));
         }
 
         body.app-layout .logout-btn,

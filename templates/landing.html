@@ -359,14 +359,14 @@
         pointer-events: none;
         z-index: 0;
         background:
-            linear-gradient(170deg, rgba(2, 6, 23, 0.08), transparent 46%),
-            radial-gradient(circle at 14% 14%, rgba(59, 130, 246, 0.07), transparent 50%),
-            radial-gradient(circle at 88% 16%, rgba(79, 70, 229, 0.06), transparent 52%),
-            radial-gradient(circle at 52% 84%, rgba(30, 64, 175, 0.05), transparent 54%),
+            linear-gradient(170deg, rgba(0, 0, 0, 0.24), transparent 46%),
+            radial-gradient(circle at 14% 14%, rgba(69, 98, 255, 0.06), transparent 48%),
+            radial-gradient(circle at 88% 16%, rgba(72, 84, 214, 0.06), transparent 50%),
+            radial-gradient(circle at 52% 84%, rgba(39, 76, 184, 0.04), transparent 52%),
             linear-gradient(165deg, color-mix(in srgb, var(--card) 10%, transparent), transparent);
-        backdrop-filter: blur(12px) brightness(0.98);
-        -webkit-backdrop-filter: blur(12px) brightness(0.98);
-        filter: saturate(1.01);
+        backdrop-filter: blur(12px) brightness(0.94);
+        -webkit-backdrop-filter: blur(12px) brightness(0.94);
+        filter: saturate(0.98);
     }
 
     .landing-market-bg {
@@ -375,7 +375,7 @@
         pointer-events: none;
         z-index: 1;
         overflow: hidden;
-        opacity: 0.34;
+        opacity: 0.28;
     }
 
     .market-replay-shell {
@@ -643,12 +643,12 @@
         font-size: 0.82rem;
         font-weight: 800;
         letter-spacing: 0.06em;
-        box-shadow: 0 10px 24px rgba(79, 70, 229, 0.34);
+        box-shadow: 0 12px 24px rgba(69, 98, 255, 0.24);
     }
 
     .landing-actions .hero-cta:hover {
         transform: translateY(-2px) scale(1.02);
-        box-shadow: 0 14px 30px rgba(79, 70, 229, 0.42);
+        box-shadow: 0 16px 32px rgba(69, 98, 255, 0.3);
     }
 
     .landing-hero {
@@ -678,7 +678,7 @@
         left: 50%;
         top: 8%;
         transform: translateX(-50%);
-        background: radial-gradient(circle at 50% 48%, rgba(37, 99, 235, 0.35) 0%, rgba(37, 99, 235, 0) 72%);
+        background: radial-gradient(circle at 50% 48%, rgba(59, 98, 255, 0.24) 0%, rgba(59, 98, 255, 0) 72%);
         animation: hero-drift-main 12s ease-in-out infinite;
     }
 
@@ -687,7 +687,7 @@
         height: min(540px, 48vw);
         right: -8%;
         top: 34%;
-        background: radial-gradient(circle at 30% 30%, rgba(67, 56, 202, 0.28) 0%, rgba(67, 56, 202, 0) 72%);
+        background: radial-gradient(circle at 30% 30%, rgba(84, 76, 214, 0.2) 0%, rgba(84, 76, 214, 0) 72%);
         animation: hero-drift-side 15s ease-in-out infinite;
     }
 
@@ -719,8 +719,8 @@
         min-height: 34px;
         padding: 0 0.95rem;
         border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
-        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+        border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+        background: color-mix(in srgb, var(--accent) 10%, var(--surface));
         color: color-mix(in srgb, var(--ink) 90%, var(--accent));
         font-size: 0.72rem;
         font-weight: 700;
@@ -941,9 +941,9 @@
         border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
         border-radius: 24px;
         background:
-            linear-gradient(170deg, color-mix(in srgb, var(--card) 42%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)),
-            radial-gradient(circle at 20% 28%, rgba(59, 130, 246, 0.22), transparent 46%);
-        box-shadow: 0 22px 40px rgba(2, 6, 23, 0.22);
+            linear-gradient(170deg, color-mix(in srgb, var(--card) 54%, transparent), color-mix(in srgb, var(--surface) 78%, transparent)),
+            radial-gradient(circle at 20% 28%, rgba(69, 98, 255, 0.14), transparent 46%);
+        box-shadow: 0 22px 40px rgba(2, 6, 23, 0.3);
         overflow: hidden;
         position: relative;
         isolation: isolate;
@@ -953,8 +953,8 @@
         position: absolute;
         inset: 0;
         background:
-            radial-gradient(circle at 78% 18%, rgba(79, 70, 229, 0.22), transparent 40%),
-            radial-gradient(circle at 26% 74%, rgba(37, 99, 235, 0.24), transparent 44%);
+            radial-gradient(circle at 78% 18%, rgba(84, 76, 214, 0.16), transparent 38%),
+            radial-gradient(circle at 26% 74%, rgba(69, 98, 255, 0.16), transparent 42%);
         filter: blur(22px);
         animation: hook-glow-breathe 8.6s ease-in-out infinite;
     }

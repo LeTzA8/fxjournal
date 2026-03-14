@@ -85,9 +85,9 @@
 
     const drawDarkNeonRibbon = (time) => {
         const bg = ctx.createLinearGradient(0, 0, 0, height);
-        bg.addColorStop(0, "#050713");
-        bg.addColorStop(0.55, "#0A0C20");
-        bg.addColorStop(1, "#1B0630");
+        bg.addColorStop(0, "#020304");
+        bg.addColorStop(0.55, "#05070B");
+        bg.addColorStop(1, "#090D15");
         ctx.fillStyle = bg;
         ctx.fillRect(0, 0, width, height);
 
@@ -99,14 +99,14 @@
             height * 0.72,
             Math.max(width, height) * 0.78
         );
-        wash.addColorStop(0, "rgba(99, 55, 210, 0.32)");
-        wash.addColorStop(0.5, "rgba(47, 24, 116, 0.18)");
+        wash.addColorStop(0, "rgba(69, 98, 255, 0.22)");
+        wash.addColorStop(0.5, "rgba(41, 58, 140, 0.12)");
         wash.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = wash;
         ctx.fillRect(0, 0, width, height);
 
-        const primaryPalette = { a: [160, 140, 255], b: [90, 120, 255] };
-        const secondaryPalette = { a: [130, 92, 238], b: [106, 72, 210] };
+        const primaryPalette = { a: [110, 138, 255], b: [69, 98, 255] };
+        const secondaryPalette = { a: [98, 78, 226], b: [62, 84, 190] };
 
         strokeRibbonFamily(time, primaryPalette, {
             lanes: 5,
@@ -125,9 +125,9 @@
             curveBias: 0.0,
             glowBlur: 15,
             glowWidth: Math.max(28, width * 0.016),
-            glowAlpha: 0.2,
+            glowAlpha: 0.16,
             coreWidth: Math.max(2.2, width * 0.0018),
-            coreAlpha: 0.9,
+            coreAlpha: 0.84,
         });
 
         strokeRibbonFamily(time, secondaryPalette, {
@@ -147,9 +147,9 @@
             curveBias: 0.05,
             glowBlur: 18,
             glowWidth: Math.max(24, width * 0.014),
-            glowAlpha: 0.13,
+            glowAlpha: 0.1,
             coreWidth: Math.max(1.6, width * 0.0014),
-            coreAlpha: 0.55,
+            coreAlpha: 0.48,
         });
     };
 
