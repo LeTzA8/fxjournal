@@ -703,7 +703,6 @@ def format_payload_for_prompt(payload):
                 f"   pnl: {_format_signed_currency(trade.get('pnl'))}",
                 f"   entry_session: {trade.get('entry_session') or '-'}",
                 f"   exit_session: {trade.get('exit_session') or '-'}",
-                f"   session: {trade.get('session') or '-'}",
                 f"   duration_minutes: {_format_number(trade.get('duration_minutes'))}",
                 f"   opened_at: {trade.get('opened_at') or '-'}",
                 f"   closed_at: {trade.get('closed_at') or '-'}",
