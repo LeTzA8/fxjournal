@@ -50,10 +50,7 @@ def _send_weekly_review_email(user_id, result):
         else:
             pnl_color = "#8f9bb0"
 
-        ai_text = (getattr(record, "response_text", "") or "").strip()
-        if not ai_text:
-            ai_text = "Your weekly AI review is ready on your dashboard."
-        ai_preview = ai_text[:150] + ("..." if len(ai_text) > 150 else "")
+        ai_preview = "Open your dashboard to read the full weekly review."
         win_rate = summary.get("win_rate")
         base_url = get_public_base_url()
         logo_url = f"{base_url}/static/site-logo.png"

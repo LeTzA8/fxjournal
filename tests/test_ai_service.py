@@ -100,7 +100,6 @@ def test_format_payload_for_prompt_includes_trade_fields_and_signed_drawdown():
     assert "take_profit: 5004.00000" in prompt_text
     assert "entry_session: New York" in prompt_text
     assert "exit_session: New York" in prompt_text
-    assert "session: New York" in prompt_text
     assert "duration_minutes: 84.00" in prompt_text
     assert "outlier_size: false" in prompt_text
     assert "possible_split_order: false" in prompt_text
@@ -189,7 +188,6 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
 
     assert "entry_session: -" in prompt_text
     assert "exit_session: London" in prompt_text
-    assert "session: -" in prompt_text
     assert "outlier_size: true" in prompt_text
     assert "is_likely_corrective: true" in prompt_text
 
@@ -198,14 +196,15 @@ def test_dashboard_prompt_uses_exit_price_language():
     prompt_text = load_prompt_text("dashboard_advice.txt")["prompt_text"]
 
     assert "close_price" not in prompt_text
-    assert prompt_text.count("exit_price") >= 3
+    assert "entry_price, exit_price, stop_loss, take_profit" in prompt_text
     assert "stop_loss" in prompt_text
     assert "take_profit" in prompt_text
     assert "entry_session" in prompt_text
     assert "exit_session" in prompt_text
-    assert "session" in prompt_text
-    assert 'End the response with one final bullet prefixed exactly with "→ Rule:"' in prompt_text
+    assert "entry_session, exit_session, duration_minutes" in prompt_text
+    assert 'End with one final bullet prefixed exactly with "→ Rule:"' in prompt_text
     assert "Do not use paragraph prose anywhere in the response." in prompt_text
+    assert "Never reveal exact account metrics from the payload." in prompt_text
     assert "Keep the response between 100 and 150 words." not in prompt_text
     assert "notes_coverage" in prompt_text
     assert "possible_split_order" in prompt_text
