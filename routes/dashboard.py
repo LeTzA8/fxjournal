@@ -25,11 +25,12 @@ from helpers.core import get_active_trade_account_for_user, get_display_timezone
 from helpers.utils import login_required, utcnow_naive
 from models import Trade, db
 from trading import (
+    SMALL_SAMPLE_MIN_TRADES,
     build_rr_summary,
     build_trade_analytics,
     classify_trading_session,
     format_trade_symbol,
-    resolve_pnl,
+    resolve_net_pnl,
     to_display_timezone,
 )
 
@@ -50,7 +51,9 @@ WEEKLY_AI_UNAVAILABLE_MESSAGE = (
     "Weekly AI review is temporarily unavailable. Please try again in a little while."
 )
 WEEKLY_AI_PROMPT_FILENAME = "dashboard_advice.txt"
-RR_SUMMARY_CACHE_PREFIX = "rr_summary_v3"
+DASHBOARD_CACHE_PREFIX = "dashboard_v2"
+ANALYTICS_CACHE_PREFIX = "analytics_v2"
+RR_SUMMARY_CACHE_PREFIX = "rr_summary_v4"
 
 
 def _serialize_datetime(value):
@@ -162,8 +165,11 @@ def _serialize_analytics_payload(analytics):
         "equity_curve": analytics.get("equity_curve") or [],
         "daily_equity_curve": analytics.get("daily_equity_curve") or [],
         "weekday_stats": analytics.get("weekday_stats") or [],
+        "weekday_has_reliable_pattern": analytics.get("weekday_has_reliable_pattern", False),
         "pair_stats": analytics.get("pair_stats") or [],
+        "pair_has_reliable_pattern": analytics.get("pair_has_reliable_pattern", False),
         "session_stats": analytics.get("session_stats") or [],
+        "session_has_reliable_pattern": analytics.get("session_has_reliable_pattern", False),
         "week_label": analytics.get("week_label") or "",
     }
 
@@ -191,7 +197,7 @@ def _set_cached_payload(prefix, user_id, trade_account_id, payload):
 
 def _load_dashboard_analytics(user_id, active_trade_account, user_trades, timezone_name):
     account_id = getattr(active_trade_account, "id", None)
-    cached_payload = _get_cached_payload("dashboard", user_id, account_id)
+    cached_payload = _get_cached_payload(DASHBOARD_CACHE_PREFIX, user_id, account_id)
     if cached_payload is not None:
         return _deserialize_dashboard_cache_payload(cached_payload)
 
@@ -201,7 +207,7 @@ def _load_dashboard_analytics(user_id, active_trade_account, user_trades, timezo
         account_size=active_trade_account.account_size if active_trade_account else None,
     )
     payload = _serialize_dashboard_cache_payload(analytics)
-    _set_cached_payload("dashboard", user_id, account_id, payload)
+    _set_cached_payload(DASHBOARD_CACHE_PREFIX, user_id, account_id, payload)
     return {
         "summary": payload["summary"],
         "session_stats": payload["session_stats"],
@@ -223,7 +229,7 @@ def _build_cached_analytics_payload(user_id, active_trade_account, user_trades, 
         account_size=active_trade_account.account_size if active_trade_account else None,
     )
     payload = _serialize_analytics_payload(analytics)
-    _set_cached_payload("analytics", user_id, getattr(active_trade_account, "id", None), payload)
+    _set_cached_payload(ANALYTICS_CACHE_PREFIX, user_id, getattr(active_trade_account, "id", None), payload)
     return payload
 
 
@@ -256,11 +262,17 @@ def _summarize_week(records, start_local, end_local=None):
         "wins": wins,
         "win_rate": (wins / trade_count * 100.0) if trade_count else None,
         "net_pnl": net_pnl,
+        "week_sample_is_reliable": trade_count >= SMALL_SAMPLE_MIN_TRADES,
     }
 
 
 def _build_week_on_week_insight(current_week_stats, previous_week_stats):
-    if current_week_stats["trade_count"] and previous_week_stats["trade_count"]:
+    if (
+        current_week_stats["trade_count"]
+        and previous_week_stats["trade_count"]
+        and current_week_stats["week_sample_is_reliable"]
+        and previous_week_stats["week_sample_is_reliable"]
+    ):
         pnl_delta = current_week_stats["net_pnl"] - previous_week_stats["net_pnl"]
         win_rate_delta = (
             current_week_stats["win_rate"] - previous_week_stats["win_rate"]
@@ -283,7 +295,17 @@ def _build_week_on_week_insight(current_week_stats, previous_week_stats):
             f"Net PnL is {pnl_direction} by ${abs(pnl_delta):.2f} versus last week."
             f"{win_rate_text}{volume_text}"
         )
+    if current_week_stats["trade_count"] and previous_week_stats["trade_count"]:
+        return (
+            f"One or both weeks have fewer than {SMALL_SAMPLE_MIN_TRADES} trades, "
+            "so treat this comparison as early context rather than a reliable pattern."
+        )
     if current_week_stats["trade_count"]:
+        if not current_week_stats["week_sample_is_reliable"]:
+            return (
+                f"This week has fewer than {SMALL_SAMPLE_MIN_TRADES} trades, "
+                "so use it as early context rather than a firm pattern."
+            )
         return "This is your first completed trade week with comparable dashboard data."
     return "No prior completed trade week to compare yet."
 
@@ -440,6 +462,7 @@ def home():
     )
     summary = dashboard_analytics["summary"]
     closed_records = dashboard_analytics["closed_records"]
+    closed_trade_count = len(closed_records)
     session_stats = dashboard_analytics["session_stats"]
     chart_points = dashboard_analytics["chart_points"]
 
@@ -454,7 +477,7 @@ def home():
 
     recent_trades = []
     for trade in user_trades:
-        pnl_value = resolve_pnl(trade)
+        pnl_value = resolve_net_pnl(trade)
         opened_local = to_display_timezone(trade.opened_at, timezone_name)
         trade_date = opened_local.strftime("%d %b %Y") if opened_local else "-"
         trade_date_value = opened_local.strftime("%Y-%m-%d") if opened_local else ""
@@ -502,6 +525,7 @@ def home():
         title="FX Journal",
         username=username,
         win_rate=summary.get("win_rate"),
+        closed_trade_count=closed_trade_count,
         net_pnl_week=summary.get("weekly_pnl"),
         account_pnl_total=summary.get("net_pnl"),
         trades_this_month=trades_this_month,
@@ -551,7 +575,7 @@ def analytics():
     account_id = getattr(active_trade_account, "id", None)
     timezone_name = get_display_timezone_name()
 
-    analytics_payload = _get_cached_payload("analytics", user_id, account_id)
+    analytics_payload = _get_cached_payload(ANALYTICS_CACHE_PREFIX, user_id, account_id)
     rr_summary = _get_cached_payload(RR_SUMMARY_CACHE_PREFIX, user_id, account_id)
 
     user_trades = None
@@ -564,6 +588,39 @@ def analytics():
             active_trade_account,
             user_trades,
             timezone_name,
+        )
+    else:
+        analytics_payload.setdefault(
+            "weekday_has_reliable_pattern",
+            any((item.get("count") or 0) >= 5 for item in (analytics_payload.get("weekday_stats") or [])),
+        )
+        analytics_payload.setdefault(
+            "pair_has_reliable_pattern",
+            any((item.get("count") or 0) >= 5 for item in (analytics_payload.get("pair_stats") or [])),
+        )
+        analytics_payload.setdefault(
+            "session_has_reliable_pattern",
+            any((item.get("count") or 0) >= 5 for item in (analytics_payload.get("session_stats") or [])),
+        )
+        analytics_payload.setdefault(
+            "summary",
+            {},
+        )
+        analytics_payload["summary"].setdefault(
+            "pair_sample_is_diverse",
+            len(analytics_payload.get("pair_stats") or []) >= 2,
+        )
+        analytics_payload["summary"].setdefault(
+            "equity_has_outlier_dominance",
+            False,
+        )
+        analytics_payload["summary"].setdefault(
+            "closed_before_tp_count",
+            0,
+        )
+        analytics_payload["summary"].setdefault(
+            "closed_before_sl_count",
+            0,
         )
 
     if rr_summary is None:

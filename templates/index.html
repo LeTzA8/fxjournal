@@ -10,7 +10,7 @@
                 <div>
                     <h1>Trading Performance Dashboard</h1>
                     <p class="welcome">Welcome, {{ username }}.</p>
-                    <p class="subtitle">Track consistency, review execution, and spot edge drift early.</p>
+                    <p class="subtitle">Track consistency, review execution, and spot consistency over time early.</p>
                 </div>
                 <div class="head-actions">
                     <a href="{{ url_for('dashboard.analytics') }}" class="trades-btn">Analytics</a>
@@ -32,7 +32,7 @@
                     </div>
                     <p class="ai-hero-kicker">Execution feedback built from your actual trade history</p>
                     <h2 class="ai-hero-title">Weekly AI Review</h2>
-                    <p class="ai-hero-copy">Surface edge drift, behavior patterns, and the one review you should read before the next trading week starts.</p>
+                    <p class="ai-hero-copy">Surface consistency over time, behavior patterns, and the one review you should read before the next trading week starts.</p>
                 </div>
                 <div class="insight-content session-ai-card ai-hero-card">
                     <p class="insight-title">
@@ -195,26 +195,30 @@
                     </div>
                     <div class="week-compare-grid">
                         <article class="week-card">
-                            <p class="week-card-label">This Week</p>
+                            <p class="week-card-label">Opened This Week</p>
                             <p class="week-card-value {% if current_week_stats.net_pnl > 0 %}good{% elif current_week_stats.net_pnl < 0 %}bad{% endif %}">
                                 {% if current_week_stats.net_pnl > 0 %}+{% endif %}${{ '%.2f'|format(current_week_stats.net_pnl) }}
                             </p>
                             <p class="week-card-meta">
                                 {{ current_week_stats.trade_count }} trades
-                                {% if current_week_stats.win_rate is not none %}
+                                {% if current_week_stats.win_rate is not none and current_week_stats.week_sample_is_reliable %}
                                 • {{ '%.1f'|format(current_week_stats.win_rate) }}% win
+                                {% elif current_week_stats.trade_count %}
+                                • limited sample
                                 {% endif %}
                             </p>
                         </article>
                         <article class="week-card">
-                            <p class="week-card-label">Previous Week</p>
+                            <p class="week-card-label">Opened Previous Week</p>
                             <p class="week-card-value {% if previous_week_stats.net_pnl > 0 %}good{% elif previous_week_stats.net_pnl < 0 %}bad{% endif %}">
                                 {% if previous_week_stats.net_pnl > 0 %}+{% endif %}${{ '%.2f'|format(previous_week_stats.net_pnl) }}
                             </p>
                             <p class="week-card-meta">
                                 {{ previous_week_stats.trade_count }} trades
-                                {% if previous_week_stats.win_rate is not none %}
+                                {% if previous_week_stats.win_rate is not none and previous_week_stats.week_sample_is_reliable %}
                                 • {{ '%.1f'|format(previous_week_stats.win_rate) }}% win
+                                {% elif previous_week_stats.trade_count %}
+                                • limited sample
                                 {% endif %}
                             </p>
                         </article>
@@ -225,7 +229,7 @@
                     </div>
                 </article>
 
-                <article class="panel sim-panel">
+                {# <article class="panel sim-panel">
                     <div class="panel-head">
                         <h2>Simulated Trade Chart</h2>
                         <span class="soon">Coming Soon</span>
@@ -237,17 +241,17 @@
                         </svg>
                     </div>
                     <p class="soft">Planned: per-trade replay with entry, SL, TP, and execution notes overlay.</p>
-                </article>
+                </article> #}
             </div>
             <div class="panel-column panel-column-side">
                 <section class="metric-grid metric-grid-side">
                     <article class="metric">
                         <p class="metric-label">Win Rate</p>
                         <p class="metric-value">{{ '%.1f'|format(win_rate) }}%</p>
-                        <p class="metric-note">{{ recent_trades|length }} trades shown</p>
+                        <p class="metric-note">Based on {{ closed_trade_count }} closed trades</p>
                     </article>
                     <article class="metric">
-                        <p class="metric-label">Net PnL (Week)</p>
+                        <p class="metric-label">Opened This Week</p>
                         <p class="metric-value">
                             {% if net_pnl_week > 0 %}+{% endif %}${{ '%.2f'|format(net_pnl_week) }}
                         </p>
@@ -261,7 +265,20 @@
                         <p class="metric-note">Based on opened date</p>
                     </article>
                     <article class="metric">
-                        <p class="metric-label">Average Winner vs Loser</p>
+                        <p class="metric-label">
+                            <span class="help-label">
+                                <span class="help-label-text">Average Winner vs Loser</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Average Winner vs Loser"
+                                        aria-describedby="dashboard-avg-winner-loser-tooltip"
+                                    >?</button>
+                                    <span id="dashboard-avg-winner-loser-tooltip" class="help-tooltip-bubble" role="tooltip">Compares the average PnL of your winning trades against your losing trades.</span>
+                                </span>
+                            </span>
+                        </p>
                         <div class="metric-split">
                             <div class="metric-chip good">
                                 <span class="metric-chip-label">Winner</span>
@@ -288,7 +305,20 @@
 
                 <article class="panel pnl-panel">
                     <div class="panel-head">
-                        <h2>Equity Curve</h2>
+                        <h2>
+                            <span class="help-label">
+                                <span class="help-label-text">Equity Curve</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Equity Curve"
+                                        aria-describedby="dashboard-equity-curve-tooltip"
+                                    >?</button>
+                                    <span id="dashboard-equity-curve-tooltip" class="help-tooltip-bubble" role="tooltip">Your running PnL added up trade by trade in chronological order.</span>
+                                </span>
+                            </span>
+                        </h2>
                         <div class="chart-range">
                             <label for="equityRange">Range</label>
                             <select id="equityRange" aria-label="Equity chart range">

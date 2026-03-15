@@ -22,6 +22,7 @@ from helpers.core import (
 )
 from models import Trade, db
 from trading import (
+    calculate_trade_net_pnl,
     build_import_signature,
     calc_pnl_values,
     canonicalize_symbol,
@@ -32,6 +33,7 @@ from trading import (
     format_trade_price,
     format_trade_size,
     format_trade_symbol,
+    get_trade_level_validation_issues,
     get_symbol_options,
     get_trade_account_type,
     normalize_account_type,
@@ -72,9 +74,98 @@ def _calculate_trade_risk_reward(target_price, entry_price, stop_loss, side=None
 
 
 def _calculate_trade_net_pnl(trade_pnl, commission=None, swap=None):
-    if trade_pnl is None:
-        return None
-    return float(trade_pnl) + float(commission or 0.0) + float(swap or 0.0)
+    return calculate_trade_net_pnl(trade_pnl, commission, swap)
+
+
+def _validate_trade_submission(
+    *,
+    symbol,
+    contract_code,
+    account_type,
+    side,
+    entry_price,
+    exit_price,
+    lot_size,
+    stop_loss,
+    take_profit,
+    opened_at,
+    closed_at,
+):
+    if lot_size is None or lot_size <= 0:
+        return "Lot size must be greater than zero."
+    if exit_price is not None and exit_price <= 0:
+        return "Exit price must be greater than zero."
+    if closed_at is not None and opened_at is not None and closed_at < opened_at:
+        return "Close time cannot be earlier than open time."
+
+    validation_issues = get_trade_level_validation_issues(
+        entry_price,
+        stop_loss,
+        take_profit,
+        side,
+        symbol,
+        instrument_type=account_type,
+        contract_code=contract_code,
+    )
+    if validation_issues["stop_loss_too_close"]:
+        return "Stop loss cannot be at or effectively equal to entry."
+    if validation_issues["take_profit_too_close"]:
+        return "Take profit cannot be at or effectively equal to entry."
+    if validation_issues["invalid_stop_loss_side"]:
+        return "Stop loss must be below entry for buys and above entry for sells."
+    if validation_issues["invalid_take_profit_side"]:
+        return "Take profit must be above entry for buys and below entry for sells."
+
+    return None
+
+
+def _find_duplicate_trade(
+    *,
+    user_id,
+    trade_account_id,
+    symbol,
+    contract_code,
+    side,
+    entry_price,
+    exit_price,
+    lot_size,
+    opened_at,
+    closed_at,
+    pnl,
+    exclude_trade_id=None,
+):
+    candidate_key = build_trade_duplicate_key(
+        symbol=symbol,
+        contract_code=contract_code,
+        side=side,
+        entry_price=entry_price,
+        exit_price=exit_price,
+        lot_size=lot_size,
+        opened_at=opened_at,
+        closed_at=closed_at,
+        pnl=pnl,
+    )
+    existing_trades = Trade.query.filter_by(
+        user_id=user_id,
+        trade_account_id=trade_account_id,
+    ).all()
+    for existing_trade in existing_trades:
+        if exclude_trade_id is not None and existing_trade.id == exclude_trade_id:
+            continue
+        existing_key = build_trade_duplicate_key(
+            symbol=existing_trade.symbol,
+            contract_code=existing_trade.contract_code,
+            side=existing_trade.side,
+            entry_price=existing_trade.entry_price,
+            exit_price=existing_trade.exit_price,
+            lot_size=existing_trade.lot_size,
+            opened_at=existing_trade.opened_at,
+            closed_at=existing_trade.closed_at,
+            pnl=resolve_pnl(existing_trade),
+        )
+        if existing_key == candidate_key:
+            return existing_trade
+    return None
 
 
 def _invalidate_trade_caches(user_id, trade_account_id):
@@ -368,7 +459,8 @@ def new_trade():
         if status != "closed":
             closed_at = None
         if closed_at is not None and closed_at < opened_at:
-            closed_at = None
+            flash("Close time cannot be earlier than open time.", "error")
+            return redirect(url_for("trades.new_trade"))
 
         if pnl is not None and exit_price is None:
             exit_price = derive_exit_price(
@@ -390,6 +482,38 @@ def new_trade():
                 instrument_type=account_type,
                 contract_code=contract_code,
             )
+        validation_message = _validate_trade_submission(
+            symbol=symbol,
+            contract_code=contract_code,
+            account_type=account_type,
+            side=side,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            lot_size=lot_size,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            opened_at=opened_at,
+            closed_at=closed_at,
+        )
+        if validation_message:
+            flash(validation_message, "error")
+            return redirect(url_for("trades.new_trade"))
+        duplicate_trade = _find_duplicate_trade(
+            user_id=user_id,
+            trade_account_id=active_trade_account.id,
+            symbol=symbol,
+            contract_code=contract_code,
+            side=side,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            lot_size=lot_size,
+            opened_at=opened_at,
+            closed_at=closed_at,
+            pnl=pnl,
+        )
+        if duplicate_trade is not None:
+            flash("A matching trade already exists on this account.", "error")
+            return redirect(url_for("trades.new_trade"))
         trade = Trade(
             pubkey=build_unique_trade_pubkey(),
             user_id=user_id,
@@ -526,6 +650,10 @@ def import_trade_file():
             "invalid_entry_or_lot": 0,
             "invalid_exit_price": 0,
             "missing_open_time": 0,
+            "negative_holding_time": 0,
+            "invalid_stop_distance": 0,
+            "invalid_stop_loss": 0,
+            "invalid_take_profit": 0,
         }
 
         existing_positions = set()
@@ -642,6 +770,53 @@ def import_trade_file():
             if opened_at is None:
                 validation_skipped += 1
                 validation_reasons["missing_open_time"] += 1
+                continue
+
+            if closed_at is not None and closed_at < opened_at:
+                validation_skipped += 1
+                validation_reasons["negative_holding_time"] += 1
+                current_app.logger.warning(
+                    "Skipping imported trade row %s due to negative holding time. context=%r",
+                    current_row_index,
+                    current_row_context,
+                )
+                continue
+
+            validation_issues = get_trade_level_validation_issues(
+                entry_price,
+                row.get("stop_loss"),
+                row.get("take_profit"),
+                side,
+                symbol,
+                instrument_type=active_trade_account.account_type,
+                contract_code=contract_code,
+            )
+            if validation_issues["stop_loss_too_close"]:
+                validation_skipped += 1
+                validation_reasons["invalid_stop_distance"] += 1
+                current_app.logger.warning(
+                    "Skipping imported trade row %s because stop loss is too close to entry. context=%r",
+                    current_row_index,
+                    current_row_context,
+                )
+                continue
+            if validation_issues["invalid_stop_loss_side"]:
+                validation_skipped += 1
+                validation_reasons["invalid_stop_loss"] += 1
+                current_app.logger.warning(
+                    "Skipping imported trade row %s because stop loss is on the wrong side of entry. context=%r",
+                    current_row_index,
+                    current_row_context,
+                )
+                continue
+            if validation_issues["take_profit_too_close"] or validation_issues["invalid_take_profit_side"]:
+                validation_skipped += 1
+                validation_reasons["invalid_take_profit"] += 1
+                current_app.logger.warning(
+                    "Skipping imported trade row %s because take profit is invalid relative to entry. context=%r",
+                    current_row_index,
+                    current_row_context,
+                )
                 continue
 
             if pnl is None and exit_price is not None:
@@ -778,6 +953,22 @@ def import_trade_file():
         if validation_reasons["missing_open_time"]:
             uncertain_bits.append(
                 f"missing open time {validation_reasons['missing_open_time']}"
+            )
+        if validation_reasons["negative_holding_time"]:
+            uncertain_bits.append(
+                f"negative holding time {validation_reasons['negative_holding_time']}"
+            )
+        if validation_reasons["invalid_stop_distance"]:
+            uncertain_bits.append(
+                f"stop loss too close {validation_reasons['invalid_stop_distance']}"
+            )
+        if validation_reasons["invalid_stop_loss"]:
+            uncertain_bits.append(
+                f"stop loss wrong side {validation_reasons['invalid_stop_loss']}"
+            )
+        if validation_reasons["invalid_take_profit"]:
+            uncertain_bits.append(
+                f"take profit invalid {validation_reasons['invalid_take_profit']}"
             )
         uncertain_msg = ""
         if uncertain_bits:
@@ -974,7 +1165,8 @@ def edit_trade(trade_pubkey):
         elif closed_at is None:
             closed_at = trade.closed_at
         if closed_at is not None and opened_at is not None and closed_at < opened_at:
-            closed_at = None
+            flash("Close time cannot be earlier than open time.", "error")
+            return redirect(url_for("trades.edit_trade", trade_pubkey=trade.pubkey))
 
         if pnl is not None and exit_price is None:
             exit_price = derive_exit_price(
@@ -996,6 +1188,39 @@ def edit_trade(trade_pubkey):
                 instrument_type=account_type,
                 contract_code=contract_code,
             )
+        validation_message = _validate_trade_submission(
+            symbol=symbol,
+            contract_code=contract_code,
+            account_type=account_type,
+            side=side,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            lot_size=lot_size,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            opened_at=opened_at,
+            closed_at=closed_at,
+        )
+        if validation_message:
+            flash(validation_message, "error")
+            return redirect(url_for("trades.edit_trade", trade_pubkey=trade.pubkey))
+        duplicate_trade = _find_duplicate_trade(
+            user_id=user_id,
+            trade_account_id=trade_account.id,
+            symbol=symbol,
+            contract_code=contract_code,
+            side=side,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            lot_size=lot_size,
+            opened_at=opened_at,
+            closed_at=closed_at,
+            pnl=pnl,
+            exclude_trade_id=trade.id,
+        )
+        if duplicate_trade is not None:
+            flash("A matching trade already exists on this account.", "error")
+            return redirect(url_for("trades.edit_trade", trade_pubkey=trade.pubkey))
 
         trade.symbol = symbol
         trade.contract_code = contract_code

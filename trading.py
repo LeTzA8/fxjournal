@@ -3,6 +3,7 @@ import random
 import re
 import csv
 import io
+import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
@@ -137,6 +138,11 @@ CRYPTO_CFD_PRICE_DECIMALS = {
     "ADAUSD": 4,
     "DOGEUSD": 5,
 }
+SMALL_SAMPLE_MIN_TRADES = 5
+EXTREMELY_LONG_HOLD_MINUTES = 30 * 24 * 60
+PAIR_CONCENTRATION_THRESHOLD = 0.8
+EQUITY_OUTLIER_DOMINANCE_THRESHOLD = 0.5
+logger = logging.getLogger(__name__)
 
 SESSION_DEFINITIONS = (
     {"name": "Sydney", "zone": "Australia/Sydney", "start_hour": 7, "end_hour": 16},
@@ -417,6 +423,135 @@ def format_trade_size(value, account_type):
     normalized_type = normalize_account_type(account_type)
     decimals = 2 if normalized_type == "FUTURES" else 2
     return _trim_decimal_text(f"{float(value):.{decimals}f}")
+
+
+def get_trade_price_tolerance(symbol, instrument_type="CFD", contract_code=None):
+    account_type = normalize_account_type(instrument_type)
+    if account_type == "FUTURES":
+        spec = get_futures_symbol_spec(symbol=symbol, contract_code=contract_code)
+        if spec is not None and spec["tick_size"] > 0:
+            return float(spec["tick_size"])
+        return 0.01
+
+    sym = canonicalize_symbol(symbol, "CFD")
+    pip_size = get_pip_size(sym)
+    if pip_size is not None and pip_size > 0:
+        return float(pip_size)
+
+    crypto_decimals = CRYPTO_CFD_PRICE_DECIMALS.get(sym)
+    if crypto_decimals is not None:
+        return float(10 ** (-crypto_decimals))
+
+    spec = _load_cfd_symbol_map().get(sym)
+    if spec is not None and float(spec["contract_size"]) == 1.0:
+        return 1.0
+
+    return 0.01
+
+
+def get_trade_level_validation_issues(
+    entry_price,
+    stop_loss,
+    take_profit,
+    side,
+    symbol,
+    instrument_type="CFD",
+    contract_code=None,
+):
+    issues = {
+        "stop_loss_too_close": False,
+        "take_profit_too_close": False,
+        "invalid_stop_loss_side": False,
+        "invalid_take_profit_side": False,
+    }
+    if entry_price is None:
+        return issues
+
+    tolerance = get_trade_price_tolerance(
+        symbol,
+        instrument_type=instrument_type,
+        contract_code=contract_code,
+    )
+    normalized_side = str(side or "BUY").strip().upper()
+
+    if stop_loss is not None:
+        if abs(float(stop_loss) - float(entry_price)) <= tolerance:
+            issues["stop_loss_too_close"] = True
+        elif normalized_side == "SELL":
+            if float(stop_loss) < float(entry_price) - tolerance:
+                issues["invalid_stop_loss_side"] = True
+        elif float(stop_loss) > float(entry_price) + tolerance:
+            issues["invalid_stop_loss_side"] = True
+
+    if take_profit is not None:
+        if abs(float(take_profit) - float(entry_price)) <= tolerance:
+            issues["take_profit_too_close"] = True
+        elif normalized_side == "SELL":
+            if float(take_profit) > float(entry_price) + tolerance:
+                issues["invalid_take_profit_side"] = True
+        elif float(take_profit) < float(entry_price) - tolerance:
+            issues["invalid_take_profit_side"] = True
+
+    return issues
+
+
+def did_trade_reach_level(
+    observed_price,
+    level_price,
+    side,
+    level_kind,
+    symbol,
+    instrument_type="CFD",
+    contract_code=None,
+):
+    if observed_price is None or level_price is None:
+        return False
+
+    tolerance = get_trade_price_tolerance(
+        symbol,
+        instrument_type=instrument_type,
+        contract_code=contract_code,
+    )
+    normalized_side = str(side or "BUY").strip().upper()
+    normalized_kind = str(level_kind or "").strip().lower()
+    observed_value = float(observed_price)
+    level_value = float(level_price)
+
+    if normalized_kind == "tp":
+        if normalized_side == "SELL":
+            return observed_value <= level_value + tolerance
+        return observed_value >= level_value - tolerance
+
+    if normalized_kind == "sl":
+        if normalized_side == "SELL":
+            return observed_value >= level_value - tolerance
+        return observed_value <= level_value + tolerance
+
+    return False
+
+
+def calculate_trade_net_pnl(trade_pnl, commission=None, swap=None):
+    if trade_pnl is None:
+        return None
+
+    net_value = float(trade_pnl)
+    if commission not in {None, ""}:
+        net_value -= abs(float(commission))
+    if swap not in {None, ""}:
+        net_value += float(swap)
+    return net_value
+
+
+def resolve_net_pnl(trade):
+    return calculate_trade_net_pnl(
+        resolve_pnl(trade),
+        getattr(trade, "commission", None),
+        getattr(trade, "swap", None),
+    )
+
+
+def is_extremely_long_duration_minutes(duration_minutes):
+    return duration_minutes is not None and duration_minutes > EXTREMELY_LONG_HOLD_MINUTES
 
 
 def normalize_header_name(value):
@@ -1412,18 +1547,46 @@ def _get_rr_capture_advice(trades_with_data, rr_capture_ratio):
 
 
 def build_rr_summary(trades):
-    eligible_trades = [
-        trade
-        for trade in trades
-        if trade.stop_loss is not None
-        and trade.take_profit is not None
-        and trade.entry_price is not None
-        and trade.exit_price is not None
-    ]
-
     planned_rrs = []
     actual_rrs = []
-    for trade in eligible_trades:
+    for trade in trades:
+        if (
+            trade.stop_loss is None
+            or trade.take_profit is None
+            or trade.entry_price is None
+            or trade.exit_price is None
+        ):
+            continue
+
+        instrument_type = get_trade_account_type(trade)
+        validation_issues = get_trade_level_validation_issues(
+            trade.entry_price,
+            trade.stop_loss,
+            trade.take_profit,
+            getattr(trade, "side", None),
+            getattr(trade, "symbol", None),
+            instrument_type=instrument_type,
+            contract_code=getattr(trade, "contract_code", None),
+        )
+        if any(validation_issues.values()):
+            logger.warning(
+                "Skipping RR calculation for trade %s because TP/SL geometry is invalid.",
+                getattr(trade, "id", "unknown"),
+            )
+            continue
+
+        tolerance = get_trade_price_tolerance(
+            getattr(trade, "symbol", None),
+            instrument_type=instrument_type,
+            contract_code=getattr(trade, "contract_code", None),
+        )
+        if abs(float(trade.exit_price) - float(trade.entry_price)) <= tolerance:
+            logger.warning(
+                "Skipping RR calculation for trade %s because price movement is effectively zero.",
+                getattr(trade, "id", "unknown"),
+            )
+            continue
+
         planned_rr = _calculate_trade_risk_reward(
             trade.take_profit,
             trade.entry_price,
@@ -1437,7 +1600,7 @@ def build_rr_summary(trades):
             getattr(trade, "side", None),
             signed=True,
         )
-        if planned_rr is None or actual_rr is None:
+        if planned_rr is None or actual_rr is None or actual_rr <= 0:
             continue
         planned_rrs.append(planned_rr)
         actual_rrs.append(actual_rr)
@@ -1491,12 +1654,35 @@ def build_trade_analytics(
     open_trades = 0
 
     for trade in sorted(trades, key=lambda item: ((item.opened_at or datetime.min), item.id or 0)):
-        pnl_value = resolve_pnl(trade)
+        raw_pnl_value = resolve_pnl(trade)
+        pnl_value = calculate_trade_net_pnl(
+            raw_pnl_value,
+            getattr(trade, "commission", None),
+            getattr(trade, "swap", None),
+        )
         opened_at_utc = ensure_utc_aware(trade.opened_at)
         closed_at_utc = ensure_utc_aware(getattr(trade, "closed_at", None))
         duration_minutes = None
-        if opened_at_utc and closed_at_utc and closed_at_utc >= opened_at_utc:
-            duration_minutes = (closed_at_utc - opened_at_utc).total_seconds() / 60.0
+        duration_is_extreme = False
+        if opened_at_utc and closed_at_utc:
+            if closed_at_utc < opened_at_utc:
+                logger.warning(
+                    "Trade %s has a negative holding time and will be excluded from duration stats.",
+                    getattr(trade, "id", "unknown"),
+                )
+            else:
+                duration_minutes = (closed_at_utc - opened_at_utc).total_seconds() / 60.0
+                if duration_minutes == 0:
+                    logger.warning(
+                        "Trade %s has identical open and close times.",
+                        getattr(trade, "id", "unknown"),
+                    )
+                if is_extremely_long_duration_minutes(duration_minutes):
+                    duration_is_extreme = True
+                    logger.warning(
+                        "Trade %s exceeds the long-hold threshold and will be excluded from duration averages.",
+                        getattr(trade, "id", "unknown"),
+                    )
 
         if pnl_value is None:
             open_trades += 1
@@ -1507,6 +1693,7 @@ def build_trade_analytics(
         record = {
             "trade": trade,
             "pnl": float(pnl_value),
+            "raw_pnl": float(raw_pnl_value),
             "pips": resolve_pips(trade),
             "symbol": (trade.symbol or "").strip().upper(),
             "side": (trade.side or "").strip().upper(),
@@ -1519,6 +1706,7 @@ def build_trade_analytics(
             "weekday": WEEKDAY_NAMES[opened_local.weekday()] if opened_local else "Unknown",
             "session": classify_trading_session(opened_at_utc),
             "duration_minutes": duration_minutes,
+            "duration_is_extreme": duration_is_extreme,
             "duration_label": format_duration_minutes(duration_minutes),
             "status": "Closed" if trade.exit_price is not None else "Running",
         }
@@ -1528,11 +1716,13 @@ def build_trade_analytics(
     wins = sum(1 for record in closed_records if record["pnl"] > 0)
     losses = sum(1 for record in closed_records if record["pnl"] < 0)
     breakeven = total_closed - wins - losses
-    gross_profit = sum(record["pnl"] for record in closed_records if record["pnl"] > 0)
-    gross_loss = sum(record["pnl"] for record in closed_records if record["pnl"] < 0)
+    gross_profit = sum(record["raw_pnl"] for record in closed_records if record["raw_pnl"] > 0)
+    gross_loss = sum(record["raw_pnl"] for record in closed_records if record["raw_pnl"] < 0)
+    positive_net_total = sum(record["pnl"] for record in closed_records if record["pnl"] > 0)
+    negative_net_total = sum(record["pnl"] for record in closed_records if record["pnl"] < 0)
     net_pnl = sum(record["pnl"] for record in closed_records)
-    avg_win = (gross_profit / wins) if wins else None
-    avg_loss_abs = (abs(gross_loss) / losses) if losses else None
+    avg_win = (positive_net_total / wins) if wins else None
+    avg_loss_abs = (abs(negative_net_total) / losses) if losses else None
     win_rate = (wins / total_closed * 100.0) if total_closed else 0.0
     expectancy = (net_pnl / total_closed) if total_closed else None
     payoff_ratio = (avg_win / avg_loss_abs) if avg_win is not None and avg_loss_abs else None
@@ -1579,6 +1769,7 @@ def build_trade_analytics(
         record["duration_minutes"]
         for record in closed_records
         if record["duration_minutes"] is not None
+        and not record["duration_is_extreme"]
     ]
     average_duration_minutes = (
         sum(duration_values) / len(duration_values) if duration_values else None
@@ -1656,9 +1847,10 @@ def build_trade_analytics(
         pair_bucket["pnl"] += record["pnl"]
         if record["pnl"] > 0:
             pair_bucket["wins"] += 1
-            pair_bucket["gross_profit"] += record["pnl"]
-        elif record["pnl"] < 0:
-            pair_bucket["gross_loss"] += record["pnl"]
+        if record["raw_pnl"] > 0:
+            pair_bucket["gross_profit"] += record["raw_pnl"]
+        elif record["raw_pnl"] < 0:
+            pair_bucket["gross_loss"] += record["raw_pnl"]
 
         session_bucket = session_buckets[record["session"]]
         session_bucket["count"] += 1
@@ -1683,6 +1875,7 @@ def build_trade_analytics(
                 "net_pnl": bucket["pnl"],
             }
         )
+    weekday_has_reliable_pattern = any(item["count"] >= 5 for item in weekday_stats)
 
     pair_stats = []
     for symbol, bucket in pair_buckets.items():
@@ -1702,6 +1895,9 @@ def build_trade_analytics(
             }
         )
     pair_stats.sort(key=lambda item: (-item["count"], -item["net_pnl"], item["symbol"]))
+    pair_has_reliable_pattern = any(item["count"] >= 5 for item in pair_stats)
+    top_pair_share = ((pair_stats[0]["count"] / total_closed) if pair_stats and total_closed else 1.0)
+    pair_sample_is_diverse = len(pair_stats) >= 2 and top_pair_share < PAIR_CONCENTRATION_THRESHOLD
 
     session_stats = []
     for session_name, bucket in session_buckets.items():
@@ -1716,6 +1912,57 @@ def build_trade_analytics(
             }
         )
     session_stats.sort(key=lambda item: (-item["count"], item["name"]))
+    session_has_reliable_pattern = any(item["count"] >= 5 for item in session_stats)
+
+    closed_before_tp_count = 0
+    closed_before_sl_count = 0
+    for record in closed_records:
+        trade = record["trade"]
+        instrument_type = get_trade_account_type(trade)
+        validation_issues = get_trade_level_validation_issues(
+            trade.entry_price,
+            trade.stop_loss,
+            trade.take_profit,
+            trade.side,
+            trade.symbol,
+            instrument_type=instrument_type,
+            contract_code=getattr(trade, "contract_code", None),
+        )
+        if record["pnl"] > 0 and trade.take_profit is not None:
+            if validation_issues["take_profit_too_close"] or validation_issues["invalid_take_profit_side"]:
+                continue
+            if not did_trade_reach_level(
+                trade.exit_price,
+                trade.take_profit,
+                trade.side,
+                "tp",
+                trade.symbol,
+                instrument_type=instrument_type,
+                contract_code=getattr(trade, "contract_code", None),
+            ):
+                closed_before_tp_count += 1
+        elif record["pnl"] < 0 and trade.stop_loss is not None:
+            if validation_issues["stop_loss_too_close"] or validation_issues["invalid_stop_loss_side"]:
+                continue
+            if not did_trade_reach_level(
+                trade.exit_price,
+                trade.stop_loss,
+                trade.side,
+                "sl",
+                trade.symbol,
+                instrument_type=instrument_type,
+                contract_code=getattr(trade, "contract_code", None),
+            ):
+                closed_before_sl_count += 1
+
+    absolute_pnl_values = [abs(record["pnl"]) for record in closed_records if record["pnl"] is not None]
+    total_absolute_pnl = sum(absolute_pnl_values)
+    largest_absolute_trade = max(absolute_pnl_values, default=0.0)
+    equity_has_outlier_dominance = (
+        total_closed >= 3
+        and total_absolute_pnl > 0
+        and (largest_absolute_trade / total_absolute_pnl) >= EQUITY_OUTLIER_DOMINANCE_THRESHOLD
+    )
 
     best_trade = max(closed_records, key=lambda record: record["pnl"], default=None)
     worst_trade = min(closed_records, key=lambda record: record["pnl"], default=None)
@@ -1752,6 +1999,10 @@ def build_trade_analytics(
             "duration_coverage": duration_coverage,
             "trading_days": len(trading_days),
             "max_drawdown": abs(max_drawdown),
+            "closed_before_tp_count": closed_before_tp_count,
+            "closed_before_sl_count": closed_before_sl_count,
+            "pair_sample_is_diverse": pair_sample_is_diverse,
+            "equity_has_outlier_dominance": equity_has_outlier_dominance,
             "best_trade": best_trade,
             "worst_trade": worst_trade,
         },
@@ -1759,8 +2010,11 @@ def build_trade_analytics(
         "equity_curve": equity_curve,
         "daily_equity_curve": list(daily_equity.values()),
         "weekday_stats": weekday_stats,
+        "weekday_has_reliable_pattern": weekday_has_reliable_pattern,
         "pair_stats": pair_stats,
+        "pair_has_reliable_pattern": pair_has_reliable_pattern,
         "session_stats": session_stats,
+        "session_has_reliable_pattern": session_has_reliable_pattern,
         "closed_records": closed_records,
         "week_label": week_start_local.strftime("%d %b %Y"),
     }

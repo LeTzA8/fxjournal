@@ -15,7 +15,7 @@
             <div>
                 <p class="eyebrow">Analytics</p>
                 <h1>Performance Analytics</h1>
-                <p class="hero-copy">Review edge quality, session timing, and consistency drift from the same data already feeding your dashboard.</p>
+                <p class="hero-copy">Review edge quality, session timing, and how consistent you've been from the same data already feeding your dashboard.</p>
             </div>
             <div class="hero-meta">
                 {% if active_trade_account %}
@@ -53,32 +53,34 @@
                 <p class="kpi-note">{{ summary.wins }}W / {{ summary.losses }}L / {{ summary.breakeven }}BE</p>
             </article>
             <article class="kpi-card panel">
-                <p class="kpi-label">Weekly PnL</p>
+                <p class="kpi-label">Opened This Week</p>
                 <p class="kpi-value {% if summary.weekly_pnl > 0 %}good{% elif summary.weekly_pnl < 0 %}bad{% endif %}">
                     {% if summary.weekly_pnl > 0 %}+{% endif %}${{ '%.2f'|format(summary.weekly_pnl) }}
                 </p>
                 <p class="kpi-note">Since {{ analytics.week_label }}</p>
             </article>
             <article class="kpi-card panel">
-                <p class="kpi-label">Monthly PnL</p>
+                <p class="kpi-label">Opened This Month</p>
                 <p class="kpi-value {% if summary.monthly_pnl > 0 %}good{% elif summary.monthly_pnl < 0 %}bad{% endif %}">
                     {% if summary.monthly_pnl > 0 %}+{% endif %}${{ '%.2f'|format(summary.monthly_pnl) }}
                 </p>
                 <p class="kpi-note">{{ summary.trading_days }} trading day{% if summary.trading_days != 1 %}s{% endif %}</p>
             </article>
             <article class="kpi-card panel">
-                <p class="kpi-label">Expectancy</p>
-                <p class="kpi-value {% if summary.expectancy and summary.expectancy > 0 %}good{% elif summary.expectancy and summary.expectancy < 0 %}bad{% endif %}">
-                    {% if summary.expectancy is not none %}
-                    ${{ '%+.2f'|format(summary.expectancy) }}
-                    {% else %}
-                    -
-                    {% endif %}
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Profit Factor</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Profit Factor"
+                                aria-describedby="analytics-profit-factor-tooltip"
+                            >?</button>
+                            <span id="analytics-profit-factor-tooltip" class="help-tooltip-bubble" role="tooltip">Total profits from winners divided by total losses from losers. A score of 1.5 means for every $1 lost, you made $1.50 back.</span>
+                        </span>
+                    </span>
                 </p>
-                <p class="kpi-note">Average result per closed trade</p>
-            </article>
-            <article class="kpi-card panel">
-                <p class="kpi-label">Profit Factor</p>
                 <p class="kpi-value">
                     {% if summary.profit_factor is not none %}
                     {{ '%.2f'|format(summary.profit_factor) }}
@@ -89,12 +91,44 @@
                 <p class="kpi-note">Gross profit / gross loss</p>
             </article>
             <article class="kpi-card panel">
-                <p class="kpi-label">Avg Duration</p>
-                <p class="kpi-value">{{ summary.average_duration_label }}</p>
-                <p class="kpi-note">{{ '%.0f'|format(summary.duration_coverage) }}% coverage from trades with open and close timestamps</p>
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Expectancy</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Expectancy"
+                                aria-describedby="analytics-expectancy-tooltip"
+                            >?</button>
+                            <span id="analytics-expectancy-tooltip" class="help-tooltip-bubble" role="tooltip">Calculated as (win rate &times; avg win) &minus; (loss rate &times; avg loss). A positive number means your strategy makes money on average per trade over a large sample.</span>
+                        </span>
+                    </span>
+                </p>
+                <p class="kpi-value {% if summary.expectancy and summary.expectancy > 0 %}good{% elif summary.expectancy and summary.expectancy < 0 %}bad{% endif %}">
+                    {% if summary.expectancy is not none %}
+                    ${{ '%+.2f'|format(summary.expectancy) }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </p>
+                <p class="kpi-note">Average result per closed trade</p>
             </article>
             <article class="kpi-card panel">
-                <p class="kpi-label">Max Drawdown</p>
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Max Drawdown</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Max Drawdown"
+                                aria-describedby="analytics-max-drawdown-tooltip"
+                            >?</button>
+                            <span id="analytics-max-drawdown-tooltip" class="help-tooltip-bubble" role="tooltip">The largest peak-to-trough drop in your equity curve.</span>
+                        </span>
+                    </span>
+                </p>
                 <p class="kpi-value bad">${{ '%.2f'|format(summary.max_drawdown) }}</p>
                 <p class="kpi-note">Measured from cumulative closed-trade equity</p>
             </article>
@@ -103,13 +137,230 @@
                 <p class="kpi-value">{{ summary.closed_trades }}</p>
                 <p class="kpi-note">{{ summary.open_trades }} open / {{ summary.total_trades }} total</p>
             </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">Closed Before TP</p>
+                <p class="kpi-value">{{ summary.closed_before_tp_count }}</p>
+                <p class="kpi-note">Profitable trades that closed before the take-profit level.</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">Closed Before SL</p>
+                <p class="kpi-value">{{ summary.closed_before_sl_count }}</p>
+                <p class="kpi-note">Losing trades that closed before the stop-loss level.</p>
+            </article>
+            <article class="kpi-card panel">
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Avg Duration</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Average Duration"
+                                aria-describedby="analytics-avg-duration-tooltip"
+                            >?</button>
+                            <span id="analytics-avg-duration-tooltip" class="help-tooltip-bubble" role="tooltip">The average time between open and close across your trades.</span>
+                        </span>
+                    </span>
+                </p>
+                <p class="kpi-value">{{ summary.average_duration_label }}</p>
+                <p class="kpi-note">{{ '%.0f'|format(summary.duration_coverage) }}% coverage from trades with valid open and close timestamps</p>
+            </article>
         </section>
 
         <section class="analytics-grid">
+            <article class="panel session-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Session Performance</h2>
+                        <p class="panel-copy">
+                            {% if analytics.session_has_reliable_pattern %}
+                            Sessions are classified from UTC trade-open timestamps against Sydney, Tokyo, London, and New York market hours.
+                            {% else %}
+                            Not enough trades yet for a reliable pattern.
+                            {% endif %}
+                        </p>
+                    </div>
+                    {% if top_session %}
+                    <span class="soft-badge">Most active: {{ top_session.name }}</span>
+                    {% endif %}
+                </div>
+                <div class="mini-chart-shell">
+                    <svg id="sessionChart" viewBox="0 0 560 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Session net PnL chart"></svg>
+                </div>
+                <script id="analyticsSessionData" type="application/json">{{ analytics.session_stats|tojson }}</script>
+                <p class="context-note">Daylight saving shifts are handled by the underlying IANA time zone rules for each session.</p>
+            </article>
+
+            <article class="panel table-panel session-table-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Session Breakdown</h2>
+                        <p class="panel-copy">Overlap periods will appear as combined session names.</p>
+                    </div>
+                </div>
+                <div class="table-shell analytics-table-shell">
+                    <table class="analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Session</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>Expectancy</th>
+                                <th>Net PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for session_stat in analytics.session_stats %}
+                            <tr>
+                                <td>{{ session_stat.name }}</td>
+                                <td>{{ session_stat.count }}</td>
+                                <td>{% if session_stat.win_rate is not none %}{{ '%.1f'|format(session_stat.win_rate) }}%{% else %}-{% endif %}</td>
+                                <td class="{% if session_stat.expectancy and session_stat.expectancy > 0 %}good{% elif session_stat.expectancy and session_stat.expectancy < 0 %}bad{% endif %}">
+                                    {% if session_stat.expectancy is not none %}${{ '%+.2f'|format(session_stat.expectancy) }}{% else %}-{% endif %}
+                                </td>
+                                <td class="{% if session_stat.net_pnl > 0 %}good{% elif session_stat.net_pnl < 0 %}bad{% endif %}">
+                                    ${{ '%+.2f'|format(session_stat.net_pnl) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel table-panel pair-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Pair Breakdown</h2>
+                        <p class="panel-copy">
+                            {% if analytics.pair_has_reliable_pattern %}
+                                {% if summary.pair_sample_is_diverse %}
+                            Where your edge is concentrated right now.
+                                {% else %}
+                            Most of your trades are concentrated in one pair, so use this as concentration context rather than a broad pattern.
+                                {% endif %}
+                            {% else %}
+                            Not enough trades yet for a reliable pattern.
+                            {% endif %}
+                        </p>
+                    </div>
+                    {% if top_pair %}
+                    <span class="soft-badge">Most traded: {{ top_pair.symbol }}</span>
+                    {% endif %}
+                </div>
+                <div class="table-shell analytics-table-shell">
+                    <table class="analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Pair</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>Expectancy</th>
+                                <th>Net PnL</th>
+                                <th>PF</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pair in analytics.pair_stats %}
+                            <tr>
+                                <td>{{ pair.symbol }}</td>
+                                <td>{{ pair.count }}</td>
+                                <td>{% if pair.win_rate is not none %}{{ '%.1f'|format(pair.win_rate) }}%{% else %}-{% endif %}</td>
+                                <td class="{% if pair.expectancy and pair.expectancy > 0 %}good{% elif pair.expectancy and pair.expectancy < 0 %}bad{% endif %}">
+                                    {% if pair.expectancy is not none %}${{ '%+.2f'|format(pair.expectancy) }}{% else %}-{% endif %}
+                                </td>
+                                <td class="{% if pair.net_pnl > 0 %}good{% elif pair.net_pnl < 0 %}bad{% endif %}">
+                                    {{ '%+.2f'|format(pair.net_pnl) }}
+                                </td>
+                                <td>{% if pair.profit_factor is not none %}{{ '%.2f'|format(pair.profit_factor) }}{% else %}-{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel chart-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Win Rate By Day</h2>
+                        <p class="panel-copy">
+                            {% if analytics.weekday_has_reliable_pattern %}
+                            The center line is 50%. Days above 50% are favorable; days below 50% skew loss-heavy.
+                            {% else %}
+                            Not enough trades yet for a reliable pattern.
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                <div class="mini-chart-shell">
+                    <svg id="weekdayChart" viewBox="0 0 560 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Weekday win rate chart"></svg>
+                </div>
+                <script id="analyticsWeekdayData" type="application/json">{{ analytics.weekday_stats|tojson }}</script>
+            </article>
+
+            <article class="panel table-panel weekday-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Weekday Breakdown</h2>
+                        <p class="panel-copy">
+                            {% if analytics.weekday_has_reliable_pattern %}
+                            Use this to spot timing drift across the week.
+                            {% else %}
+                            Not enough trades yet for a reliable pattern.
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                <div class="table-shell analytics-table-shell">
+                    <table class="analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Day</th>
+                                <th>Trades</th>
+                                <th>Win Rate</th>
+                                <th>Avg PnL</th>
+                                <th>Net PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for weekday in analytics.weekday_stats %}
+                            <tr>
+                                <td>{{ weekday.name }}</td>
+                                <td>{{ weekday.count }}</td>
+                                <td class="{% if weekday.win_rate and weekday.win_rate > 50 %}good{% elif weekday.win_rate is not none and weekday.win_rate < 50 %}bad{% endif %}">
+                                    {% if weekday.win_rate is not none %}{{ '%.1f'|format(weekday.win_rate) }}%{% else %}-{% endif %}
+                                </td>
+                                <td class="{% if weekday.avg_pnl and weekday.avg_pnl > 0 %}good{% elif weekday.avg_pnl and weekday.avg_pnl < 0 %}bad{% endif %}">
+                                    {% if weekday.avg_pnl is not none %}{{ '%+.2f'|format(weekday.avg_pnl) }}{% else %}-{% endif %}
+                                </td>
+                                <td class="{% if weekday.net_pnl > 0 %}good{% elif weekday.net_pnl < 0 %}bad{% endif %}">
+                                    {{ '%+.2f'|format(weekday.net_pnl) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
             <article class="panel equity-panel">
                 <div class="panel-head">
                     <div>
-                        <h2>Equity Curve</h2>
+                        <h2>
+                            <span class="help-label">
+                                <span class="help-label-text">Equity Curve</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Equity Curve"
+                                        aria-describedby="analytics-equity-curve-tooltip"
+                                    >?</button>
+                                    <span id="analytics-equity-curve-tooltip" class="help-tooltip-bubble" role="tooltip">Your running PnL added up trade by trade in chronological order.</span>
+                                </span>
+                            </span>
+                        </h2>
                         <p class="panel-copy">Cumulative realized PnL across closed trades.</p>
                     </div>
                     <div class="chart-controls">
@@ -162,7 +413,7 @@
                 <div class="panel-head">
                     <div>
                         <h2>Performance Summary</h2>
-                        <p class="panel-copy">High-signal stats for edge quality and downside control.</p>
+                        <p class="panel-copy">Your most reliable stats for edge quality and downside control.</p>
                     </div>
                 </div>
                 <dl class="detail-list">
@@ -189,7 +440,20 @@
                         <dd>{% if summary.avg_loss_abs is not none %}-${{ '%.2f'|format(summary.avg_loss_abs) }}{% else %}-{% endif %}</dd>
                     </div>
                     <div>
-                        <dt>Risk:Reward</dt>
+                        <dt>
+                            <span class="help-label">
+                                <span class="help-label-text">Risk:Reward</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Risk Reward"
+                                        aria-describedby="analytics-risk-reward-tooltip"
+                                    >?</button>
+                                    <span id="analytics-risk-reward-tooltip" class="help-tooltip-bubble" role="tooltip">Your average winning trade divided by your average losing trade, based on actual exits &mdash; not what you planned.</span>
+                                </span>
+                            </span>
+                        </dt>
                         <dd>{% if summary.risk_reward_display %}{{ summary.risk_reward_display }}{% else %}-{% endif %}</dd>
                     </div>
                 </dl>
@@ -229,6 +493,87 @@
                 </div>
             </article>
 
+            <article class="panel rr-panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Planned vs Real RR</h2>
+                        <p class="panel-copy">How much of your planned risk:reward you actually captured.</p>
+                    </div>
+                </div>
+
+                {% if rr_summary.trades_with_data >= 3 %}
+                <div class="rr-stat-grid">
+                    <article class="rr-stat-card rr-stat-card-planned">
+                        <p class="rr-stat-label">
+                            <span class="help-label">
+                                <span class="help-label-text">Avg Planned RR</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Average Planned RR"
+                                        aria-describedby="analytics-avg-planned-rr-tooltip"
+                                    >?</button>
+                                    <span id="analytics-avg-planned-rr-tooltip" class="help-tooltip-bubble" role="tooltip">The reward-to-risk you targeted before entry, calculated from your stop loss and take profit levels.</span>
+                                </span>
+                            </span>
+                        </p>
+                        <p class="rr-stat-value">{{ '%.2f'|format(rr_summary.avg_planned_rr) }}R</p>
+                    </article>
+                    <article class="rr-stat-card rr-stat-card-real">
+                        <p class="rr-stat-label">
+                            <span class="help-label">
+                                <span class="help-label-text">Avg Real RR</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Average Real RR"
+                                        aria-describedby="analytics-avg-real-rr-tooltip"
+                                    >?</button>
+                                    <span id="analytics-avg-real-rr-tooltip" class="help-tooltip-bubble" role="tooltip">The reward-to-risk you actually closed with, based on real entry and exit prices.</span>
+                                </span>
+                            </span>
+                        </p>
+                        <p class="rr-stat-value {{ rr_value_tone }}">
+                            {{ '%.2f'|format(rr_summary.avg_actual_rr) }}R
+                        </p>
+                    </article>
+                    <article class="rr-stat-card rr-stat-card-capture">
+                        <p class="rr-stat-label">
+                            <span class="help-label">
+                                <span class="help-label-text">Capture Rate</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Capture Rate"
+                                        aria-describedby="analytics-capture-rate-tooltip"
+                                    >?</button>
+                                    <span id="analytics-capture-rate-tooltip" class="help-tooltip-bubble" role="tooltip">Your real RR divided by your planned RR. 80% means you captured 80% of your intended setup.</span>
+                                </span>
+                            </span>
+                        </p>
+                        <p class="rr-stat-value {{ rr_value_tone }}">
+                            {{ '%.0f'|format(rr_ratio * 100) }}%
+                        </p>
+                    </article>
+                </div>
+                <p class="rr-advice">{{ rr_summary.advice }}</p>
+                <p class="context-note">Based on {{ rr_summary.trades_with_data }} profitable trades with SL &amp; TP set.</p>
+                {% else %}
+                <div class="rr-empty-card">
+                    <p class="rr-advice muted">
+                        {% if rr_summary.trades_with_data > 0 %}
+                        {{ rr_summary.advice }} ({{ rr_summary.trades_with_data }} trade{% if rr_summary.trades_with_data != 1 %}s{% endif %} so far - need 3 minimum.)
+                        {% else %}
+                        {{ rr_summary.advice }}
+                        {% endif %}
+                    </p>
+                </div>
+                {% endif %}
+            </article>
+
             <article class="panel streak-panel">
                 <div class="panel-head">
                     <div>
@@ -257,196 +602,6 @@
                     </article>
                 </div>
                 <p class="context-note">Streaks are calculated from closed trades in chronological order.</p>
-            </article>
-
-            <article class="panel rr-panel">
-                <div class="panel-head">
-                    <div>
-                        <h2>Planned vs Real RR</h2>
-                        <p class="panel-copy">How much of your planned risk:reward you actually captured.</p>
-                    </div>
-                </div>
-
-                {% if rr_summary.trades_with_data >= 3 %}
-                <div class="rr-stat-grid">
-                    <article class="rr-stat-card rr-stat-card-planned">
-                        <p class="rr-stat-label">Avg Planned RR</p>
-                        <p class="rr-stat-value">{{ '%.2f'|format(rr_summary.avg_planned_rr) }}R</p>
-                    </article>
-                    <article class="rr-stat-card rr-stat-card-real">
-                        <p class="rr-stat-label">Avg Real RR</p>
-                        <p class="rr-stat-value {{ rr_value_tone }}">
-                            {{ '%.2f'|format(rr_summary.avg_actual_rr) }}R
-                        </p>
-                    </article>
-                    <article class="rr-stat-card rr-stat-card-capture">
-                        <p class="rr-stat-label">Capture Rate</p>
-                        <p class="rr-stat-value {{ rr_value_tone }}">
-                            {{ '%.0f'|format(rr_ratio * 100) }}%
-                        </p>
-                    </article>
-                </div>
-                <p class="rr-advice">{{ rr_summary.advice }}</p>
-                <p class="context-note">Based on {{ rr_summary.trades_with_data }} trades with SL &amp; TP set.</p>
-                {% else %}
-                <div class="rr-empty-card">
-                    <p class="rr-advice muted">
-                        {% if rr_summary.trades_with_data > 0 %}
-                        {{ rr_summary.advice }} ({{ rr_summary.trades_with_data }} trade{% if rr_summary.trades_with_data != 1 %}s{% endif %} so far - need 3 minimum.)
-                        {% else %}
-                        {{ rr_summary.advice }}
-                        {% endif %}
-                    </p>
-                </div>
-                {% endif %}
-            </article>
-
-            <article class="panel chart-panel">
-                <div class="panel-head">
-                    <div>
-                        <h2>Win Rate By Day</h2>
-                        <p class="panel-copy">The center line is 50%. Days above 50% are favorable; days below 50% skew loss-heavy.</p>
-                    </div>
-                </div>
-                <div class="mini-chart-shell">
-                    <svg id="weekdayChart" viewBox="0 0 560 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Weekday win rate chart"></svg>
-                </div>
-                <script id="analyticsWeekdayData" type="application/json">{{ analytics.weekday_stats|tojson }}</script>
-            </article>
-
-            <article class="panel session-panel">
-                <div class="panel-head">
-                    <div>
-                        <h2>Session Performance</h2>
-                        <p class="panel-copy">Sessions are classified from UTC trade-open timestamps against Sydney, Tokyo, London, and New York market hours.</p>
-                    </div>
-                </div>
-                <div class="mini-chart-shell">
-                    <svg id="sessionChart" viewBox="0 0 560 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Session net PnL chart"></svg>
-                </div>
-                <script id="analyticsSessionData" type="application/json">{{ analytics.session_stats|tojson }}</script>
-                <p class="context-note">Daylight saving shifts are handled by the underlying IANA time zone rules for each session.</p>
-            </article>
-
-            <article class="panel table-panel pair-panel">
-                <div class="panel-head">
-                    <div>
-                        <h2>Pair Breakdown</h2>
-                        <p class="panel-copy">Where your edge is concentrated right now.</p>
-                    </div>
-                    {% if top_pair %}
-                    <span class="soft-badge">Most traded: {{ top_pair.symbol }}</span>
-                    {% endif %}
-                </div>
-                <div class="table-shell analytics-table-shell">
-                    <table class="analytics-table">
-                        <thead>
-                            <tr>
-                                <th>Pair</th>
-                                <th>Trades</th>
-                                <th>Win Rate</th>
-                                <th>Expectancy</th>
-                                <th>Net PnL</th>
-                                <th>PF</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for pair in analytics.pair_stats %}
-                            <tr>
-                                <td>{{ pair.symbol }}</td>
-                                <td>{{ pair.count }}</td>
-                                <td>{% if pair.win_rate is not none %}{{ '%.1f'|format(pair.win_rate) }}%{% else %}-{% endif %}</td>
-                                <td class="{% if pair.expectancy and pair.expectancy > 0 %}good{% elif pair.expectancy and pair.expectancy < 0 %}bad{% endif %}">
-                                    {% if pair.expectancy is not none %}${{ '%+.2f'|format(pair.expectancy) }}{% else %}-{% endif %}
-                                </td>
-                                <td class="{% if pair.net_pnl > 0 %}good{% elif pair.net_pnl < 0 %}bad{% endif %}">
-                                    {{ '%+.2f'|format(pair.net_pnl) }}
-                                </td>
-                                <td>{% if pair.profit_factor is not none %}{{ '%.2f'|format(pair.profit_factor) }}{% else %}-{% endif %}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </article>
-
-            <article class="panel table-panel weekday-panel">
-                <div class="panel-head">
-                    <div>
-                        <h2>Weekday Breakdown</h2>
-                        <p class="panel-copy">Use this to spot timing drift across the week.</p>
-                    </div>
-                </div>
-                <div class="table-shell analytics-table-shell">
-                    <table class="analytics-table">
-                        <thead>
-                            <tr>
-                                <th>Day</th>
-                                <th>Trades</th>
-                                <th>Win Rate</th>
-                                <th>Avg PnL</th>
-                                <th>Net PnL</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for weekday in analytics.weekday_stats %}
-                            <tr>
-                                <td>{{ weekday.name }}</td>
-                                <td>{{ weekday.count }}</td>
-                                <td class="{% if weekday.win_rate and weekday.win_rate > 50 %}good{% elif weekday.win_rate is not none and weekday.win_rate < 50 %}bad{% endif %}">
-                                    {% if weekday.win_rate is not none %}{{ '%.1f'|format(weekday.win_rate) }}%{% else %}-{% endif %}
-                                </td>
-                                <td class="{% if weekday.avg_pnl and weekday.avg_pnl > 0 %}good{% elif weekday.avg_pnl and weekday.avg_pnl < 0 %}bad{% endif %}">
-                                    {% if weekday.avg_pnl is not none %}{{ '%+.2f'|format(weekday.avg_pnl) }}{% else %}-{% endif %}
-                                </td>
-                                <td class="{% if weekday.net_pnl > 0 %}good{% elif weekday.net_pnl < 0 %}bad{% endif %}">
-                                    {{ '%+.2f'|format(weekday.net_pnl) }}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </article>
-
-            <article class="panel table-panel session-table-panel">
-                <div class="panel-head">
-                    <div>
-                        <h2>Session Breakdown</h2>
-                        <p class="panel-copy">Overlap periods will appear as combined session names.</p>
-                    </div>
-                    {% if top_session %}
-                    <span class="soft-badge">Most active: {{ top_session.name }}</span>
-                    {% endif %}
-                </div>
-                <div class="table-shell analytics-table-shell">
-                    <table class="analytics-table">
-                        <thead>
-                            <tr>
-                                <th>Session</th>
-                                <th>Trades</th>
-                                <th>Win Rate</th>
-                                <th>Expectancy</th>
-                                <th>Net PnL</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for session_stat in analytics.session_stats %}
-                            <tr>
-                                <td>{{ session_stat.name }}</td>
-                                <td>{{ session_stat.count }}</td>
-                                <td>{% if session_stat.win_rate is not none %}{{ '%.1f'|format(session_stat.win_rate) }}%{% else %}-{% endif %}</td>
-                                <td class="{% if session_stat.expectancy and session_stat.expectancy > 0 %}good{% elif session_stat.expectancy and session_stat.expectancy < 0 %}bad{% endif %}">
-                                    {% if session_stat.expectancy is not none %}${{ '%+.2f'|format(session_stat.expectancy) }}{% else %}-{% endif %}
-                                </td>
-                                <td class="{% if session_stat.net_pnl > 0 %}good{% elif session_stat.net_pnl < 0 %}bad{% endif %}">
-                                    ${{ '%+.2f'|format(session_stat.net_pnl) }}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
             </article>
 
         </section>
@@ -614,8 +769,17 @@
         gap: 0.9rem;
     }
 
+    .kpi-grid > :nth-last-child(2):nth-child(4n + 1) {
+        grid-column: 2;
+    }
+
+    .kpi-grid > :last-child:nth-child(4n + 2) {
+        grid-column: 3;
+    }
+
     .kpi-card {
         padding: 0.95rem 1rem;
+        text-align: center;
     }
 
     .kpi-label {
@@ -644,14 +808,13 @@
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         grid-template-areas:
+            "session sessiontable"
+            "overview pair"
+            "chart weekday"
             "equity equity"
-            "overview streak"
-            "overview rr"
-            "chart session"
-            "pair pair"
-            "weekday sessiontable";
+            "streak rr";
         gap: 0.9rem;
-        align-items: start;
+        align-items: stretch;
     }
 
     .equity-panel {
@@ -677,6 +840,11 @@
     .weekday-panel { grid-area: weekday; }
 
     .session-table-panel { grid-area: sessiontable; }
+
+    .table-panel {
+        display: flex;
+        flex-direction: column;
+    }
 
     .panel-head {
         display: flex;
@@ -1008,10 +1176,20 @@
         background: color-mix(in srgb, var(--surface) 72%, transparent);
     }
 
+    .table-panel .analytics-table-shell {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+    }
+
     .analytics-table {
         width: 100%;
         border-collapse: collapse;
         min-width: 640px;
+    }
+
+    .table-panel .analytics-table {
+        height: 100%;
     }
 
     .analytics-table th,
@@ -1021,6 +1199,12 @@
         border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
         font-size: 0.86rem;
         white-space: nowrap;
+    }
+
+    .table-panel .analytics-table th,
+    .table-panel .analytics-table td {
+        padding-top: 0.95rem;
+        padding-bottom: 0.95rem;
     }
 
     .analytics-table th {
@@ -1052,18 +1236,23 @@
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
+        .kpi-grid > :nth-last-child(2):nth-child(4n + 1),
+        .kpi-grid > :last-child:nth-child(4n + 2) {
+            grid-column: auto;
+        }
+
         .analytics-grid {
             grid-template-columns: 1fr;
             grid-template-areas:
+                "session"
+                "sessiontable"
+                "pair"
+                "chart"
+                "weekday"
                 "equity"
                 "overview"
-                "streak"
                 "rr"
-                "chart"
-                "session"
-                "pair"
-                "weekday"
-                "sessiontable";
+                "streak";
         }
 
         .rr-stat-grid {

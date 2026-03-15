@@ -17,7 +17,8 @@ from trading import (
     classify_trading_session,
     ensure_utc_aware,
     format_trade_symbol,
-    resolve_pnl,
+    is_extremely_long_duration_minutes,
+    resolve_net_pnl,
 )
 from helpers.utils import utcnow_naive
 
@@ -420,7 +421,7 @@ def build_trade_payload(
             except (TypeError, ValueError):
                 pass
         duration_minutes = _get_trade_duration_minutes(trade)
-        if duration_minutes is not None:
+        if duration_minutes is not None and not is_extremely_long_duration_minutes(duration_minutes):
             durations.append(duration_minutes)
         split_bucket = _floor_timestamp_to_five_minutes(trade.opened_at)
         if split_bucket is None:
@@ -467,7 +468,7 @@ def build_trade_payload(
                 "stop_loss": trade.stop_loss,
                 "take_profit": trade.take_profit,
                 "lot_size": trade.lot_size,
-                "pnl": resolve_pnl(trade),
+                "pnl": resolve_net_pnl(trade),
                 "entry_session": _classify_trade_session(trade.opened_at),
                 "exit_session": _classify_trade_session(trade.closed_at),
                 "session": _get_trade_session(trade),
@@ -513,6 +514,10 @@ def build_trade_payload(
             "net_pnl": analytics["summary"]["net_pnl"],
             "weekly_pnl": analytics["summary"]["weekly_pnl"],
             "monthly_pnl": analytics["summary"]["monthly_pnl"],
+            "closed_before_tp_count": analytics["summary"].get("closed_before_tp_count", 0),
+            "closed_before_sl_count": analytics["summary"].get("closed_before_sl_count", 0),
+            "pair_sample_is_diverse": analytics["summary"].get("pair_sample_is_diverse", False),
+            "equity_has_outlier_dominance": analytics["summary"].get("equity_has_outlier_dominance", False),
             "best_trade_pnl": (
                 analytics["summary"]["best_trade"]["pnl"]
                 if analytics["summary"]["best_trade"]
@@ -609,6 +614,10 @@ def format_payload_for_prompt(payload):
         f"- net_pnl: {_format_signed_currency(summary.get('net_pnl'))}",
         f"- weekly_pnl: {_format_signed_currency(summary.get('weekly_pnl'))}",
         f"- monthly_pnl: {_format_signed_currency(summary.get('monthly_pnl'))}",
+        f"- closed_before_tp_count: {summary.get('closed_before_tp_count', 0)}",
+        f"- closed_before_sl_count: {summary.get('closed_before_sl_count', 0)}",
+        f"- pair_sample_is_diverse: {_format_bool(summary.get('pair_sample_is_diverse'))}",
+        f"- equity_has_outlier_dominance: {_format_bool(summary.get('equity_has_outlier_dominance'))}",
         f"- best_trade_pnl: {_format_signed_currency(summary.get('best_trade_pnl'))}",
         f"- worst_trade_pnl: {_format_signed_currency(summary.get('worst_trade_pnl'))}",
         f"- max_drawdown: {_format_signed_currency(summary.get('max_drawdown'))}",
