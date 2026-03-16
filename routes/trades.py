@@ -548,6 +548,7 @@ def new_trade():
         return redirect(url_for("trades.trades"))
 
     profile_form_state = resolve_trade_profile_form_state(user_id)
+    first_import_nudge = session.pop("first_import_nudge", None)
 
     return render_template(
         "trade_entry.html",
@@ -567,6 +568,7 @@ def new_trade():
         selected_trade_profile_pubkey=profile_form_state[
             "selected_trade_profile_pubkey"
         ],
+        first_import_nudge=first_import_nudge,
     )
 
 
@@ -576,6 +578,11 @@ def import_trade_file():
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_type = normalize_account_type(active_trade_account.account_type)
+    existing_import_count = (
+        Trade.query.filter_by(user_id=user_id)
+        .filter(Trade.import_signature.isnot(None))
+        .count()
+    )
     import_stage = "request_validation"
     detected_profile = None
     parser_name = None
@@ -915,6 +922,11 @@ def import_trade_file():
         db.session.add_all(insert_batch)
         db.session.commit()
         _invalidate_trade_caches(user_id, active_trade_account.id)
+        if existing_import_count == 0:
+            session["first_import_nudge"] = {
+                "imported_count": len(insert_batch),
+                "has_closed_trades": any(trade.closed_at is not None for trade in insert_batch),
+            }
 
         status = "success"
         if failed_symbols:

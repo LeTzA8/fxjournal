@@ -1,6 +1,7 @@
 import os
 import re
 import sqlite3
+from datetime import timedelta
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 from flask import Flask, flash, g, redirect, render_template, request, session, url_for
@@ -106,6 +107,7 @@ if session_cookie_secure_override is None:
 else:
     session_cookie_secure = env_bool("SESSION_COOKIE_SECURE", False)
 app.config["SESSION_COOKIE_SECURE"] = session_cookie_secure
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 max_upload_mb = int(os.getenv("MAX_UPLOAD_MB", "4"))
 app.config["MAX_CONTENT_LENGTH"] = max_upload_mb * 1024 * 1024
 

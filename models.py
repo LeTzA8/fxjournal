@@ -61,6 +61,18 @@ class User(db.Model):
     )
 
 
+class UserProfile(db.Model):
+    __tablename__ = "user_profile"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, unique=True)
+    trading_style = db.Column(db.String(50), nullable=True)
+    instruments = db.Column(db.String(200), nullable=True)
+    experience_level = db.Column(db.String(50), nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    skipped = db.Column(db.Boolean, default=False, nullable=False)
+
+
 class ContactSubmission(db.Model):
     __tablename__ = "contact_submissions"
     __table_args__ = (

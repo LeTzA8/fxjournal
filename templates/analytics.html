@@ -16,6 +16,7 @@
                 <p class="eyebrow">Analytics</p>
                 <h1>Performance Analytics</h1>
                 <p class="hero-copy">Review edge quality, session timing, and how consistent you've been from the same data already feeding your dashboard.</p>
+                <p class="hero-help">New to journal metrics? Use the <strong>?</strong> icons on key cards for quick explanations of win rate, profit factor, expectancy, drawdown, and risk:reward.</p>
             </div>
             <div class="hero-meta">
                 {% if active_trade_account %}
@@ -37,18 +38,53 @@
 
         {% if summary.closed_trades == 0 %}
         <section class="panel empty-state">
-            <h2>No closed trades yet</h2>
-            <p>Analytics become available after you log at least one closed trade with realized PnL. Open trades are still tracked in the journal, but closed trades are what power the breakdowns here.</p>
-            <p>Start by adding a completed trade or importing account history, then come back here to review win rate, session behavior, symbols, and drawdown context.</p>
+            <h2>{% if has_any_trades %}Analytics unlock after your first closed trade{% else %}Analytics will fill in once you add trade history{% endif %}</h2>
+            <p>
+                {% if has_any_trades %}
+                You already have trades in the journal, but this page analyzes realized outcomes. Closed trades are what power win rate, expectancy, drawdown, session performance, and symbol breakdowns.
+                {% else %}
+                This page becomes useful once you import account history or add completed trades manually. It needs real trade outcomes before it can show patterns that are worth trusting.
+                {% endif %}
+            </p>
+            <div class="empty-step-grid">
+                <article class="empty-step-card">
+                    <p class="empty-step-label">Step 1</p>
+                    <p class="empty-step-title">Add or import trades</p>
+                    <p class="empty-step-copy">Use the import page for MT5 or Tradovate history, or enter a trade manually if you are starting fresh.</p>
+                </article>
+                <article class="empty-step-card">
+                    <p class="empty-step-label">Step 2</p>
+                    <p class="empty-step-title">Make sure some trades are closed</p>
+                    <p class="empty-step-copy">Closed trades with realized PnL are what turn this page from empty space into actual analytics.</p>
+                </article>
+                <article class="empty-step-card">
+                    <p class="empty-step-label">Step 3</p>
+                    <p class="empty-step-title">Come back for the breakdowns</p>
+                    <p class="empty-step-copy">You will see win rate, expectancy, session timing, pair behavior, equity, and drawdown context here.</p>
+                </article>
+            </div>
             <div class="empty-actions">
-                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Add Trade</a>
+                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Import or Add Trades</a>
                 <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
             </div>
         </section>
         {% else %}
         <section class="kpi-grid">
             <article class="kpi-card panel">
-                <p class="kpi-label">Win Rate</p>
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Win Rate</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Win Rate"
+                                aria-describedby="analytics-win-rate-tooltip"
+                            >?</button>
+                            <span id="analytics-win-rate-tooltip" class="help-tooltip-bubble" role="tooltip">The percentage of your closed trades that finished profitable.</span>
+                        </span>
+                    </span>
+                </p>
                 <p class="kpi-value">{{ '%.1f'|format(summary.win_rate) }}%</p>
                 <p class="kpi-note">{{ summary.wins }}W / {{ summary.losses }}L / {{ summary.breakeven }}BE</p>
             </article>
@@ -138,12 +174,38 @@
                 <p class="kpi-note">{{ summary.open_trades }} open / {{ summary.total_trades }} total</p>
             </article>
             <article class="kpi-card panel">
-                <p class="kpi-label">Closed Before TP</p>
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Closed Before TP</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Closed Before Take Profit"
+                                aria-describedby="analytics-closed-before-tp-tooltip"
+                            >?</button>
+                            <span id="analytics-closed-before-tp-tooltip" class="help-tooltip-bubble" role="tooltip">Winning trades that were exited before price reached the original take-profit level.</span>
+                        </span>
+                    </span>
+                </p>
                 <p class="kpi-value">{{ summary.closed_before_tp_count }}</p>
                 <p class="kpi-note">Profitable trades that closed before the take-profit level.</p>
             </article>
             <article class="kpi-card panel">
-                <p class="kpi-label">Closed Before SL</p>
+                <p class="kpi-label">
+                    <span class="help-label">
+                        <span class="help-label-text">Closed Before SL</span>
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="Explain Closed Before Stop Loss"
+                                aria-describedby="analytics-closed-before-sl-tooltip"
+                            >?</button>
+                            <span id="analytics-closed-before-sl-tooltip" class="help-tooltip-bubble" role="tooltip">Losing trades that were exited before price reached the original stop-loss level.</span>
+                        </span>
+                    </span>
+                </p>
                 <p class="kpi-value">{{ summary.closed_before_sl_count }}</p>
                 <p class="kpi-note">Losing trades that closed before the stop-loss level.</p>
             </article>
@@ -664,6 +726,7 @@
     }
 
     .hero-copy,
+    .hero-help,
     .panel-copy,
     .context-note {
         margin: 0.4rem 0 0;
@@ -733,6 +796,48 @@
         gap: 0.65rem;
         justify-content: center;
         flex-wrap: wrap;
+    }
+
+    .empty-step-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin-top: 1rem;
+    }
+
+    .empty-step-card {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 14px;
+        padding: 0.95rem 0.9rem;
+        background: color-mix(in srgb, var(--surface) 76%, transparent);
+        text-align: left;
+    }
+
+    .empty-step-label,
+    .empty-step-title,
+    .empty-step-copy {
+        margin: 0;
+    }
+
+    .empty-step-label {
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .empty-step-title {
+        margin-top: 0.32rem;
+        font-size: 0.96rem;
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .empty-step-copy {
+        margin-top: 0.28rem;
+        color: var(--muted);
+        line-height: 1.5;
     }
 
     .ghost-btn,
@@ -1275,6 +1380,7 @@
         }
 
         .kpi-grid,
+        .empty-step-grid,
         .detail-list,
         .callout-grid,
         .streak-grid {

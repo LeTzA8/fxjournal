@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+<style>
+    .onboarding-card {
+        width: min(100%, 720px);
+    }
+
+    .onboarding-form {
+        margin-top: 1.35rem;
+        display: grid;
+        gap: 1.35rem;
+    }
+
+    .onboarding-fieldset {
+        margin: 0;
+        padding: 0;
+        border: none;
+        display: grid;
+        gap: 0.85rem;
+    }
+
+    .onboarding-legend {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--ink);
+    }
+
+    .onboarding-options {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .onboarding-option {
+        display: block;
+        position: relative;
+    }
+
+    .onboarding-option input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .onboarding-option-content {
+        display: grid;
+        gap: 0.18rem;
+        padding: 0.95rem 1rem;
+        border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 82%, var(--card));
+        transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+    }
+
+    .onboarding-option:hover .onboarding-option-content {
+        border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+        transform: translateY(-1px);
+    }
+
+    .onboarding-option input:checked + .onboarding-option-content {
+        border-color: color-mix(in srgb, var(--accent) 80%, var(--border));
+        background: color-mix(in srgb, var(--accent) 10%, var(--card));
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+
+    .onboarding-option input:focus-visible + .onboarding-option-content {
+        outline: 3px solid color-mix(in srgb, var(--accent) 30%, white 70%);
+        outline-offset: 2px;
+    }
+
+    .onboarding-option-title {
+        font-weight: 700;
+        color: var(--ink);
+    }
+
+    .onboarding-option-hint {
+        color: var(--muted);
+        font-size: 0.92rem;
+    }
+
+    .onboarding-actions {
+        margin-top: 0.25rem;
+    }
+
+    .onboarding-actions button {
+        width: 100%;
+    }
+
+    .onboarding-skip-form {
+        margin-top: 1rem;
+        display: flex;
+        justify-content: center;
+    }
+
+    .onboarding-skip-button {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.92rem;
+        cursor: pointer;
+        padding: 0;
+    }
+
+    .onboarding-skip-button:hover {
+        color: var(--ink);
+        text-decoration: underline;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="auth-shell">
+    <div class="auth-topbar">
+        <a href="{{ url_for('landing') }}" class="auth-topbar-brand" aria-label="Go to landing page">
+            <img
+                src="{{ url_for('static', filename='site-logo.png') }}"
+                alt="FX Journal Logo"
+                class="auth-topbar-logo"
+            >
+            <span>FX Journal</span>
+        </a>
+        <div class="auth-topbar-links"></div>
+    </div>
+    <div class="login-card onboarding-card">
+        <p class="eyebrow">Personalize your workspace</p>
+        <h1>A few quick questions</h1>
+        <p class="subtext">These answers help tailor your AI review and dashboard experience. You can skip for now if you prefer.</p>
+        {% if error %}
+        <p class="notice error">{{ error }}</p>
+        {% endif %}
+
+        <form action="{{ url_for('onboarding') }}" method="post" class="login-form onboarding-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <fieldset class="onboarding-fieldset">
+                <legend class="onboarding-legend">Question 1 - Trading style</legend>
+                <div class="onboarding-options">
+                    {% for option in trading_style_options %}
+                    <label class="onboarding-option">
+                        <input type="radio" name="trading_style" value="{{ option.value }}" {% if trading_style_value == option.value %}checked{% endif %}>
+                        <span class="onboarding-option-content">
+                            <span class="onboarding-option-title">{{ option.label }}</span>
+                            <span class="onboarding-option-hint">{{ option.hint }}</span>
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <fieldset class="onboarding-fieldset">
+                <legend class="onboarding-legend">Question 2 - Main instruments</legend>
+                <div class="onboarding-options">
+                    {% for option in instrument_options %}
+                    <label class="onboarding-option">
+                        <input type="radio" name="instruments" value="{{ option.value }}" {% if instruments_value == option.value %}checked{% endif %}>
+                        <span class="onboarding-option-content">
+                            <span class="onboarding-option-title">{{ option.label }}</span>
+                            {% if option.hint %}
+                            <span class="onboarding-option-hint">{{ option.hint }}</span>
+                            {% endif %}
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <fieldset class="onboarding-fieldset">
+                <legend class="onboarding-legend">Question 3 - Experience level</legend>
+                <div class="onboarding-options">
+                    {% for option in experience_level_options %}
+                    <label class="onboarding-option">
+                        <input type="radio" name="experience_level" value="{{ option.value }}" {% if experience_level_value == option.value %}checked{% endif %}>
+                        <span class="onboarding-option-content">
+                            <span class="onboarding-option-title">{{ option.label }}</span>
+                            {% if option.hint %}
+                            <span class="onboarding-option-hint">{{ option.hint }}</span>
+                            {% endif %}
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <div class="onboarding-actions">
+                <button type="submit">Save and continue</button>
+            </div>
+        </form>
+
+        <form action="{{ url_for('onboarding_skip') }}" method="post" class="onboarding-skip-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="onboarding-skip-button">Skip for now</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

@@ -14,10 +14,11 @@ from models import (
     SignupCode,
     TradeAccount,
     User,
+    UserProfile,
     db,
 )
 from helpers.core import sanitize_error_message
-from helpers.utils import env_bool as _env_bool, env_int as _env_int, utcnow_naive
+from helpers.utils import env_bool as _env_bool, env_int as _env_int, login_required, utcnow_naive
 
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
 TOKEN_PURPOSE_EMAIL_CHANGE = "email_change"
@@ -40,6 +41,28 @@ VALID_SIGNUP_CODE_MODES = {
     SIGNUP_CODE_MODE_OFF,
     SIGNUP_CODE_MODE_OPTIONAL,
     SIGNUP_CODE_MODE_REQUIRED,
+}
+ONBOARDING_TRADING_STYLE_OPTIONS = (
+    {"value": "scalper", "label": "Scalper", "hint": "Minutes"},
+    {"value": "intraday", "label": "Intraday", "hint": "Hours"},
+    {"value": "swing", "label": "Swing", "hint": "Days"},
+    {"value": "position", "label": "Position", "hint": "Weeks"},
+)
+ONBOARDING_INSTRUMENT_OPTIONS = (
+    {"value": "forex", "label": "Forex only", "hint": ""},
+    {"value": "indices", "label": "Indices only", "hint": ""},
+    {"value": "gold", "label": "Gold / Commodities", "hint": ""},
+    {"value": "mixed", "label": "Mixed", "hint": "Multiple markets"},
+)
+ONBOARDING_EXPERIENCE_LEVEL_OPTIONS = (
+    {"value": "beginner", "label": "Just starting out", "hint": ""},
+    {"value": "intermediate", "label": "Some experience", "hint": "1-2 years"},
+    {"value": "experienced", "label": "Experienced", "hint": "3+ years"},
+)
+VALID_ONBOARDING_TRADING_STYLES = {option["value"] for option in ONBOARDING_TRADING_STYLE_OPTIONS}
+VALID_ONBOARDING_INSTRUMENTS = {option["value"] for option in ONBOARDING_INSTRUMENT_OPTIONS}
+VALID_ONBOARDING_EXPERIENCE_LEVELS = {
+    option["value"] for option in ONBOARDING_EXPERIENCE_LEVEL_OPTIONS
 }
 
 
@@ -599,6 +622,44 @@ def register_public_auth_routes(
             registrations_paused=get_registration_paused(),
         )
 
+    def get_user_profile(user_id):
+        if not user_id:
+            return None
+        return UserProfile.query.filter_by(user_id=user_id).first()
+
+    def user_profile_is_done(profile):
+        return profile is not None and (
+            getattr(profile, "completed_at", None) is not None
+            or bool(getattr(profile, "skipped", False))
+        )
+
+    def render_onboarding_page(*, error=None, profile=None, form_data=None):
+        form_data = form_data or {}
+        return render_template(
+            "onboarding.html",
+            title="Onboarding | FX Journal",
+            body_class="auth-layout",
+            error=error,
+            trading_style_options=ONBOARDING_TRADING_STYLE_OPTIONS,
+            instrument_options=ONBOARDING_INSTRUMENT_OPTIONS,
+            experience_level_options=ONBOARDING_EXPERIENCE_LEVEL_OPTIONS,
+            trading_style_value=(
+                form_data.get("trading_style")
+                or getattr(profile, "trading_style", "")
+                or ""
+            ),
+            instruments_value=(
+                form_data.get("instruments")
+                or getattr(profile, "instruments", "")
+                or ""
+            ),
+            experience_level_value=(
+                form_data.get("experience_level")
+                or getattr(profile, "experience_level", "")
+                or ""
+            ),
+        )
+
     def build_admin_redirect(section="users", message="", status="info"):
         endpoint = "admin_signup_codes" if section == "codes" else "admin_signup_users"
         if message:
@@ -700,10 +761,14 @@ def register_public_auth_routes(
                     )
                 user.last_login_at = utcnow_naive()
                 session["user_id"] = user.id
+                session.permanent = True
                 session["username"] = user.username
                 active_account, _accounts = resolve_active_trade_account(user.id)
                 session["active_trade_account_id"] = active_account.id
                 db.session.commit()
+                profile = get_user_profile(user.id)
+                if not user_profile_is_done(profile):
+                    return redirect(url_for("onboarding"))
                 return redirect(url_for("dashboard.home"))
 
             return render_login_page(
@@ -711,6 +776,63 @@ def register_public_auth_routes(
                 email=email,
             )
         return render_login_page()
+
+    @app.route("/onboarding", methods=["GET", "POST"])
+    @login_required
+    def onboarding():
+        user_id = session["user_id"]
+        profile = get_user_profile(user_id)
+        if user_profile_is_done(profile):
+            return redirect(url_for("dashboard.home"))
+
+        if request.method == "POST":
+            trading_style = request.form.get("trading_style", "").strip().lower()
+            instruments = request.form.get("instruments", "").strip().lower()
+            experience_level = request.form.get("experience_level", "").strip().lower()
+            form_data = {
+                "trading_style": trading_style,
+                "instruments": instruments,
+                "experience_level": experience_level,
+            }
+            if (
+                trading_style not in VALID_ONBOARDING_TRADING_STYLES
+                or instruments not in VALID_ONBOARDING_INSTRUMENTS
+                or experience_level not in VALID_ONBOARDING_EXPERIENCE_LEVELS
+            ):
+                return render_onboarding_page(
+                    error="Please answer all three questions or skip for now.",
+                    profile=profile,
+                    form_data=form_data,
+                )
+
+            if profile is None:
+                profile = UserProfile(user_id=user_id)
+                db.session.add(profile)
+            profile.trading_style = trading_style
+            profile.instruments = instruments
+            profile.experience_level = experience_level
+            profile.completed_at = utcnow_naive()
+            profile.skipped = False
+            db.session.commit()
+            return redirect(url_for("dashboard.home"))
+
+        return render_onboarding_page(profile=profile)
+
+    @app.route("/onboarding/skip", methods=["POST"])
+    @login_required
+    def onboarding_skip():
+        user_id = session["user_id"]
+        profile = get_user_profile(user_id)
+        if user_profile_is_done(profile):
+            return redirect(url_for("dashboard.home"))
+
+        if profile is None:
+            profile = UserProfile(user_id=user_id)
+            db.session.add(profile)
+        profile.skipped = True
+        profile.completed_at = None
+        db.session.commit()
+        return redirect(url_for("dashboard.home"))
 
     @app.route("/register", methods=["GET", "POST"])
     def register():

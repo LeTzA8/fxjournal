@@ -519,11 +519,16 @@ def home():
         previous_week_stats,
     )
     weekly_ai_state = _get_weekly_ai_state(user_id, active_trade_account, timezone_name)
+    has_any_trades = bool(user_trades)
+    has_closed_trades = closed_trade_count > 0
+    has_ai_review = weekly_ai_state["weekly_ai_review"] is not None
+    show_whats_next_banner = not (has_any_trades and has_ai_review)
 
     return render_template(
         "index.html",
         title="FX Journal",
         username=username,
+        active_trade_account=active_trade_account,
         win_rate=summary.get("win_rate"),
         closed_trade_count=closed_trade_count,
         net_pnl_week=summary.get("weekly_pnl"),
@@ -542,6 +547,11 @@ def home():
         weekly_ai_period_label=weekly_ai_state["weekly_ai_period_label"],
         weekly_ai_empty_message=weekly_ai_state["weekly_ai_empty_message"],
         weekly_ai_is_generating=weekly_ai_state["weekly_ai_is_generating"],
+        has_any_trades=has_any_trades,
+        has_closed_trades=has_closed_trades,
+        has_ai_review=has_ai_review,
+        show_whats_next_banner=show_whats_next_banner,
+        weekly_ai_min_closed_trades=MIN_CLOSED_TRADES_FOR_ADVICE,
     )
 
 
@@ -638,4 +648,5 @@ def analytics():
         analytics_timezone=timezone_name,
         active_trade_account=active_trade_account,
         rr_summary=rr_summary,
+        has_any_trades=bool((analytics_payload.get("summary") or {}).get("total_trades")),
     )

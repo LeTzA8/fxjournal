@@ -26,6 +26,31 @@
             </div>
         </header>
 
+        {% if first_import_nudge %}
+        <section class="panel import-success-banner">
+            <div class="import-success-copy">
+                <p class="import-success-kicker">Import complete</p>
+                <h2 class="import-success-title">
+                    {{ first_import_nudge.imported_count }} trade{% if first_import_nudge.imported_count != 1 %}s were{% else %} was{% endif %} added to your journal.
+                </h2>
+                <p class="import-success-text">
+                    {% if first_import_nudge.has_closed_trades %}
+                    Your first import is in. Next, open the dashboard to review the early stats, then head to analytics once you want a deeper breakdown.
+                    {% else %}
+                    Your first import is in. Review the imported rows in the journal, then add or import closed trades to unlock analytics and equity insights.
+                    {% endif %}
+                </p>
+            </div>
+            <div class="import-success-actions">
+                <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>
+                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Review Trades</a>
+                {% if first_import_nudge.has_closed_trades %}
+                <a href="{{ url_for('dashboard.analytics') }}" class="ghost-btn">View Analytics</a>
+                {% endif %}
+            </div>
+        </section>
+        {% endif %}
+
         <section class="panel-grid {% if form_mode == 'new' %}with-import{% endif %}">
             <article class="panel entry-panel">
                 <div class="panel-head">
@@ -156,6 +181,20 @@
                     MT5 timestamps default to <strong>GMT+2</strong> unless the file provides explicit timezone data.
                     {% endif %}
                 </p>
+                <div class="import-guide">
+                    <p class="import-guide-kicker">Quick export path</p>
+                    <ol class="import-guide-list">
+                        {% if account_type == "FUTURES" %}
+                        <li>Open <strong>Performance</strong> in Tradovate and choose the account and date range.</li>
+                        <li>Use the export action for the performance table.</li>
+                        <li>Save the file as <strong>.csv</strong> and upload it here.</li>
+                        {% else %}
+                        <li>Open <strong>Toolbox</strong> in MT5 with <strong>Ctrl+T</strong>, then go to <strong>History</strong>.</li>
+                        <li>Right-click inside the history table and choose <strong>Report</strong>.</li>
+                        <li>Select <strong>Open XML (MS Office Excel 2007)</strong>, save it, then upload the <strong>.xlsx</strong> here.</li>
+                        {% endif %}
+                    </ol>
+                </div>
 
                 <form action="{{ url_for('trades.import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook" }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -237,6 +276,53 @@
         min-width: 0;
         width: 100%; }
 
+    .import-success-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 0.9rem;
+        border: 1px solid color-mix(in srgb, var(--good) 36%, var(--border));
+        background:
+            radial-gradient(circle at top left, color-mix(in srgb, var(--good) 12%, transparent), transparent 32%),
+            color-mix(in srgb, var(--card) 96%, transparent);
+    }
+
+    .import-success-copy {
+        display: grid;
+        gap: 0.28rem;
+    }
+
+    .import-success-kicker,
+    .import-guide-kicker {
+        margin: 0;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--good) 72%, var(--ink));
+    }
+
+    .import-success-title {
+        margin: 0;
+        font-size: clamp(1.02rem, 1.9vw, 1.28rem);
+    }
+
+    .import-success-text {
+        margin: 0;
+        max-width: 64ch;
+        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
+        line-height: 1.5;
+    }
+
+    .import-success-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        align-items: center;
+        justify-content: flex-end;
+    }
+
     .entry-panel { width: 100%;
         margin: 0;
         min-width: 0;
@@ -274,6 +360,23 @@
     .field-help { margin: -0.2rem 0 0.1rem;
         font-size: 0.8rem;
         color: #6b7280; }
+
+    .import-guide {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 12px;
+        padding: 0.8rem 0.85rem;
+        background: color-mix(in srgb, var(--surface) 80%, transparent);
+    }
+
+    .import-guide-list {
+        margin: 0.45rem 0 0;
+        padding-left: 1.05rem;
+        display: grid;
+        gap: 0.38rem;
+        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
+        font-size: 0.82rem;
+        line-height: 1.5;
+    }
 
     .import-form label { font-size: 0.84rem;
         font-weight: 700; text-transform: uppercase;
@@ -433,11 +536,15 @@
         margin-top: 0.3rem; }
 
     .submit-btn { border: 1px solid #2d7f51;  border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         padding: 0.55rem 0.9rem;
         font-weight: 700;
         font-size: 0.8rem;
         letter-spacing: 0.03em;
         text-transform: uppercase;
+        text-decoration: none;
         cursor: pointer;
         box-shadow: 0 5px 14px rgba(34, 107, 69, 0.22); }
 
@@ -445,11 +552,15 @@
         transform: translateY(-1px); }
 
     .ghost-btn { border: 1px solid #c6d4ca;  border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         padding: 0.55rem 0.9rem;
         font-weight: 700;
         font-size: 0.8rem;
         letter-spacing: 0.03em;
         text-transform: uppercase;
+        text-decoration: none;
         cursor: pointer; }
 @media (max-width: 980px) { .panel-grid.with-import { grid-template-columns: 1fr; } }
 
@@ -457,6 +568,16 @@
 
         .head-row { flex-direction: column;
             align-items: flex-start; }
+
+        .import-success-banner {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .import-success-actions {
+            width: 100%;
+            justify-content: flex-start;
+        }
 
         .panel { max-width: none; }
 

@@ -23,6 +23,83 @@
             </div>
         </header>
 
+        {% if show_whats_next_banner %}
+        <section class="panel journey-banner">
+            <div class="journey-banner-copy">
+                <p class="journey-banner-kicker">What's next</p>
+                <h2 class="journey-banner-title">
+                    {% if not has_any_trades %}
+                    Start your journal with real trade history
+                    {% elif not has_closed_trades %}
+                    You have trade history. Now build your first closed-trade sample.
+                    {% elif weekly_ai_is_generating %}
+                    Your first AI review is on the way
+                    {% else %}
+                    You are one step away from the full dashboard loop
+                    {% endif %}
+                </h2>
+                <p class="journey-banner-text">
+                    {% if not has_any_trades %}
+                    Import your MT5 or Tradovate history, or add a manual trade, to start filling the journal. Once you have closed trades in an eligible completed week, FX Journal will generate your first weekly AI review.
+                    {% elif not has_closed_trades %}
+                    Your journal has trades, but the dashboard learns most from closed trades with realized PnL. Close a few positions or import more account history to unlock win rate, equity, and session insights.
+                    {% elif weekly_ai_is_generating %}
+                    Your trades are in and the system is preparing your first weekly AI review. While that runs, you can spot-check imports in the journal and review the early dashboard stats.
+                    {% else %}
+                    You already have trade data in place. Keep journaling until you have an eligible completed trade week and at least {{ weekly_ai_min_closed_trades }} closed trades for the first full weekly AI review.
+                    {% endif %}
+                </p>
+                <p class="journey-banner-note">New to journal metrics? Use the <strong>?</strong> icons on dashboard and analytics cards for quick explanations.</p>
+            </div>
+            <div class="journey-steps" aria-label="Getting started progress">
+                <article class="journey-step {% if has_any_trades %}is-complete{% else %}is-current{% endif %}">
+                    <p class="journey-step-label">Step 1</p>
+                    <p class="journey-step-title">Add or import trades</p>
+                    <p class="journey-step-copy">
+                        {% if has_any_trades %}
+                        Complete
+                        {% else %}
+                        Start with MT5 history or a manual trade entry.
+                        {% endif %}
+                    </p>
+                </article>
+                <article class="journey-step {% if has_closed_trades %}is-complete{% elif has_any_trades %}is-current{% endif %}">
+                    <p class="journey-step-label">Step 2</p>
+                    <p class="journey-step-title">Build closed-trade context</p>
+                    <p class="journey-step-copy">
+                        {% if has_closed_trades %}
+                        Complete
+                        {% elif has_any_trades %}
+                        Close or import completed trades to unlock analytics.
+                        {% else %}
+                        Closed trades power win rate, expectancy, and equity.
+                        {% endif %}
+                    </p>
+                </article>
+                <article class="journey-step {% if has_ai_review %}is-complete{% elif weekly_ai_is_generating %}is-current{% endif %}">
+                    <p class="journey-step-label">Step 3</p>
+                    <p class="journey-step-title">Receive your first AI review</p>
+                    <p class="journey-step-copy">
+                        {% if has_ai_review %}
+                        Complete
+                        {% elif weekly_ai_is_generating %}
+                        Generating now.
+                        {% else %}
+                        Your first weekly review appears after enough eligible closed trades.
+                        {% endif %}
+                    </p>
+                </article>
+            </div>
+            <div class="journey-actions">
+                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Import or Add Trades</a>
+                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
+                {% if has_closed_trades %}
+                <a href="{{ url_for('dashboard.analytics') }}" class="ghost-btn">View Analytics</a>
+                {% endif %}
+            </div>
+        </section>
+        {% endif %}
+
         <section class="ai-hero-grid" data-reveal-row-step="120" data-reveal-col-step="70">
             <article class="panel notes-panel notes-panel-hero">
                 <div class="ai-hero-head">
@@ -81,6 +158,7 @@
                         </div>
                         <a href="{{ url_for('trades.trades') }}" class="trades-btn">Open Trades</a>
                     </div>
+                    {% if recent_trades %}
                     <div class="table-controls">
                         <div id="tradeFilters" class="filter-row">
                             <select id="filterField" aria-label="Filter by">
@@ -186,6 +264,17 @@
                             </tbody>
                         </table>
                     </div>
+                    {% else %}
+                    <div class="panel-empty-state panel-empty-state-large">
+                        <p class="panel-empty-kicker">Get started</p>
+                        <h3 class="panel-empty-title">Import your trade history or add your first trade.</h3>
+                        <p class="panel-empty-copy">This table becomes your journal once trades are in. You will use it to review executions, attach strategies, clean up imports, and revisit specific days.</p>
+                        <div class="panel-empty-actions">
+                            <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Open Import & Entry</a>
+                            <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Trade Accounts</a>
+                        </div>
+                    </div>
+                    {% endif %}
                 </article>
 
                 <article class="panel week-panel">
@@ -193,6 +282,7 @@
                         <h2>Week on Week</h2>
                         <span class="soft">Current vs Previous</span>
                     </div>
+                    {% if has_closed_trades %}
                     <div class="week-compare-grid">
                         <article class="week-card">
                             <p class="week-card-label">Opened This Week</p>
@@ -227,6 +317,13 @@
                         <p class="insight-title">Comparison Insight</p>
                         <p class="insight-body">{{ week_on_week_insight }}</p>
                     </div>
+                    {% else %}
+                    <div class="panel-empty-state">
+                        <p class="panel-empty-kicker">Week on week</p>
+                        <h3 class="panel-empty-title">Closed trades unlock weekly comparisons.</h3>
+                        <p class="panel-empty-copy">Once you have completed trades, this panel will compare your current week against the previous one so you can spot early consistency changes instead of guessing from memory.</p>
+                    </div>
+                    {% endif %}
                 </article>
 
                 {# <article class="panel sim-panel">
@@ -246,23 +343,64 @@
             <div class="panel-column panel-column-side">
                 <section class="metric-grid metric-grid-side">
                     <article class="metric">
-                        <p class="metric-label">Win Rate</p>
-                        <p class="metric-value">{{ '%.1f'|format(win_rate) }}%</p>
-                        <p class="metric-note">Based on {{ closed_trade_count }} closed trades</p>
+                        <p class="metric-label">
+                            <span class="help-label">
+                                <span class="help-label-text">Win Rate</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Explain Win Rate"
+                                        aria-describedby="dashboard-win-rate-tooltip"
+                                    >?</button>
+                                    <span id="dashboard-win-rate-tooltip" class="help-tooltip-bubble" role="tooltip">The percentage of your closed trades that finished with a positive result.</span>
+                                </span>
+                            </span>
+                        </p>
+                        <p class="metric-value{% if not has_closed_trades %} muted-value{% endif %}">
+                            {% if has_closed_trades %}{{ '%.1f'|format(win_rate) }}%{% else %}-{% endif %}
+                        </p>
+                        <p class="metric-note">
+                            {% if has_closed_trades %}
+                            Based on {{ closed_trade_count }} closed trades
+                            {% elif has_any_trades %}
+                            Unlocks after your first closed trade with realized PnL.
+                            {% else %}
+                            Add or import trades to start tracking hit rate.
+                            {% endif %}
+                        </p>
                     </article>
                     <article class="metric">
                         <p class="metric-label">Opened This Week</p>
-                        <p class="metric-value">
-                            {% if net_pnl_week > 0 %}+{% endif %}${{ '%.2f'|format(net_pnl_week) }}
+                        <p class="metric-value{% if not has_closed_trades %} muted-value{% endif %}">
+                            {% if has_closed_trades %}
+                                {% if net_pnl_week > 0 %}+{% endif %}${{ '%.2f'|format(net_pnl_week) }}
+                            {% else %}
+                            -
+                            {% endif %}
                         </p>
-                        <p class="metric-note {% if net_pnl_week > 0 %}good{% elif net_pnl_week < 0 %}bad{% endif %}">
-                            {% if net_pnl_week > 0 %}Profitable week{% elif net_pnl_week < 0 %}Negative week{% else %}Flat week{% endif %}
+                        <p class="metric-note {% if has_closed_trades and net_pnl_week > 0 %}good{% elif has_closed_trades and net_pnl_week < 0 %}bad{% endif %}">
+                            {% if has_closed_trades %}
+                                {% if net_pnl_week > 0 %}Profitable week{% elif net_pnl_week < 0 %}Negative week{% else %}Flat week{% endif %}
+                            {% elif has_any_trades %}
+                            Weekly realized PnL appears after closed trades come in.
+                            {% else %}
+                            Weekly PnL appears once trades start flowing into the journal.
+                            {% endif %}
                         </p>
                     </article>
                     <article class="metric">
                         <p class="metric-label">Trades This Month</p>
-                        <p class="metric-value">{{ trades_this_month }}</p>
-                        <p class="metric-note">Based on opened date</p>
+                        <p class="metric-value{% if not has_any_trades %} muted-value{% endif %}">
+                            {% if has_any_trades %}{{ trades_this_month }}{% else %}-{% endif %}
+                        </p>
+                        <p class="metric-note">
+                            {% if has_any_trades %}
+                            Based on opened date
+                            {% else %}
+                            Activity volume starts tracking after your first import or manual trade.
+                            {% endif %}
+                        </p>
                     </article>
                     <article class="metric">
                         <p class="metric-label">
@@ -283,21 +421,23 @@
                             <div class="metric-chip good">
                                 <span class="metric-chip-label">Winner</span>
                                 <span class="metric-chip-value">
-                                    {% if avg_win is not none %}+${{ '%.2f'|format(avg_win) }}{% else %}-{% endif %}
+                                    {% if has_closed_trades and avg_win is not none %}+${{ '%.2f'|format(avg_win) }}{% else %}-{% endif %}
                                 </span>
                             </div>
                             <div class="metric-chip bad">
                                 <span class="metric-chip-label">Loser</span>
                                 <span class="metric-chip-value">
-                                    {% if avg_loss_abs is not none %}-${{ '%.2f'|format(avg_loss_abs) }}{% else %}-{% endif %}
+                                    {% if has_closed_trades and avg_loss_abs is not none %}-${{ '%.2f'|format(avg_loss_abs) }}{% else %}-{% endif %}
                                 </span>
                             </div>
                         </div>
                         <p class="metric-note">
-                            {% if avg_win is not none and avg_loss_abs is not none %}
+                            {% if has_closed_trades and avg_win is not none and avg_loss_abs is not none %}
                             Average realized winner and loser across closed trades.
+                            {% elif has_any_trades %}
+                            Needs at least one closed winner and one closed loser to become useful.
                             {% else %}
-                            Closed win/loss averages will appear after you log completed winners and losers.
+                            Closed win/loss averages appear after you log completed winners and losers.
                             {% endif %}
                         </p>
                     </article>
@@ -319,6 +459,7 @@
                                 </span>
                             </span>
                         </h2>
+                        {% if has_closed_trades and chart_points %}
                         <div class="chart-range">
                             <label for="equityRange">Range</label>
                             <select id="equityRange" aria-label="Equity chart range">
@@ -329,7 +470,9 @@
                                 <option value="all">All History</option>
                             </select>
                         </div>
+                        {% endif %}
                     </div>
+                    {% if has_closed_trades and chart_points %}
                     <div class="line-chart-shell" id="pnlChartShell">
                         <svg id="pnlLineChart" viewBox="0 0 600 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Account equity curve chart">
                             <defs>
@@ -361,6 +504,19 @@
                             {% if account_pnl_total > 0 %}+{% endif %}${{ '%.2f'|format(account_pnl_total) }}
                         </strong>
                     </p>
+                    {% else %}
+                    <div class="panel-empty-state panel-empty-state-chart">
+                        <p class="panel-empty-kicker">Equity curve</p>
+                        <h3 class="panel-empty-title">
+                            {% if has_any_trades %}
+                            Close a trade to start plotting your equity curve.
+                            {% else %}
+                            Your equity curve will appear here once you add trade history.
+                            {% endif %}
+                        </h3>
+                        <p class="panel-empty-copy">This chart visualizes your running realized PnL over time. It becomes one of the fastest ways to spot drawdowns, recovery phases, and whether your edge is actually compounding.</p>
+                    </div>
+                    {% endif %}
                 </article>
 
                 <article class="panel sessions-panel">
@@ -510,6 +666,107 @@
         margin-bottom: 0.9rem;
         min-width: 0; }
 
+    .journey-banner {
+        display: grid;
+        gap: 1rem;
+        margin-bottom: 0.9rem;
+        padding: 1.05rem 1.1rem;
+        border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+        background:
+            radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 32%),
+            linear-gradient(145deg, color-mix(in srgb, var(--card) 97%, transparent), color-mix(in srgb, var(--surface) 92%, transparent));
+    }
+
+    .journey-banner-copy {
+        display: grid;
+        gap: 0.28rem;
+    }
+
+    .journey-banner-kicker,
+    .panel-empty-kicker {
+        margin: 0;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--accent) 62%, var(--ink));
+    }
+
+    .journey-banner-title,
+    .panel-empty-title {
+        margin: 0;
+        font-size: clamp(1.05rem, 1.8vw, 1.34rem);
+        color: var(--ink);
+    }
+
+    .journey-banner-text,
+    .journey-banner-note,
+    .panel-empty-copy {
+        margin: 0;
+        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
+        line-height: 1.55;
+    }
+
+    .journey-banner-note {
+        font-size: 0.84rem;
+    }
+
+    .journey-steps {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+    }
+
+    .journey-step {
+        display: grid;
+        gap: 0.22rem;
+        padding: 0.85rem 0.9rem;
+        border-radius: 14px;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        background: color-mix(in srgb, var(--surface) 88%, transparent);
+    }
+
+    .journey-step.is-complete {
+        border-color: color-mix(in srgb, var(--good) 42%, var(--border));
+        background: color-mix(in srgb, var(--good) 10%, var(--card));
+    }
+
+    .journey-step.is-current {
+        border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+        background: color-mix(in srgb, var(--accent) 10%, var(--card));
+    }
+
+    .journey-step-label {
+        margin: 0;
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--muted) 88%, var(--ink));
+    }
+
+    .journey-step-title {
+        margin: 0;
+        font-size: 0.94rem;
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .journey-step-copy {
+        margin: 0;
+        font-size: 0.82rem;
+        line-height: 1.45;
+        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
+    }
+
+    .journey-actions,
+    .panel-empty-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        align-items: center;
+    }
+
     .metric-grid { display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 0.8rem;
@@ -544,6 +801,10 @@
 
     .metric-value { margin: 0.35rem 0 0;
         font-size: clamp(1.28rem, 2.1vw, 1.7rem); font-weight: 800; }
+
+    .muted-value {
+        color: color-mix(in srgb, var(--muted) 86%, var(--ink));
+    }
 
     .metric-note { margin: 0.35rem 0 0; font-size: 0.82rem;
         color: color-mix(in srgb, var(--muted) 90%, var(--ink));
@@ -1050,6 +1311,25 @@
     font-size: 0.88rem;
     line-height: 1.45; }
 
+    .panel-empty-state {
+        display: grid;
+        gap: 0.4rem;
+        align-content: center;
+        justify-items: start;
+        min-height: 220px;
+        padding: 0.2rem 0.1rem;
+    }
+
+    .panel-empty-state-large {
+        min-height: 280px;
+    }
+
+    .panel-empty-state-chart {
+        min-height: 260px;
+        justify-items: center;
+        text-align: center;
+    }
+
     .week-compare-grid { display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.6rem;
@@ -1145,6 +1425,10 @@
 
         .panel-head { flex-wrap: wrap;
             align-items: flex-start; }
+
+        .journey-steps {
+            grid-template-columns: 1fr;
+        }
 
         .metric-split,
         .week-compare-grid { grid-template-columns: 1fr; }
