@@ -3,52 +3,237 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
+  <meta name="x-apple-disable-message-reformatting" />
   <title>Your weekly trading review is ready</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      supported-color-schemes: dark;
+    }
+
+    body,
+    .email-bg,
+    .email-shell {
+      background-color: #030507 !important;
+      color: #f8fafc !important;
+    }
+
+    .email-card {
+      background-color: #0b1017 !important;
+      border: 1px solid #202a3a !important;
+      border-radius: 16px !important;
+    }
+
+    .email-surface {
+      background-color: #101722 !important;
+      border: 1px solid #202a3a !important;
+    }
+
+    .email-preview-card {
+      background-color: #101722 !important;
+      border: 1px solid #202a3a !important;
+      border-left: 3px solid #4562ff !important;
+      border-radius: 12px !important;
+    }
+
+    .email-stat-card {
+      background-color: #101722 !important;
+      border: 1px solid #202a3a !important;
+      border-radius: 12px !important;
+    }
+
+    .email-text {
+      color: #f8fafc !important;
+    }
+
+    .email-muted {
+      color: #8f9bb0 !important;
+    }
+
+    .email-accent {
+      color: #4562ff !important;
+    }
+
+    .email-button-cell {
+      background-color: #4562ff !important;
+      border-radius: 10px !important;
+    }
+
+    .email-button-link {
+      display: block !important;
+      padding: 14px 36px !important;
+      border: 1px solid #4562ff !important;
+      border-radius: 10px !important;
+      color: #ffffff !important;
+      font-size: 15px !important;
+      font-weight: 700 !important;
+      letter-spacing: 0.2px !important;
+      text-decoration: none !important;
+    }
+
+    .email-logo-wrap {
+      display: inline-block;
+      padding: 10px 18px;
+      border: 1px solid #202a3a;
+      border-radius: 999px;
+      background-color: #0b1017;
+    }
+
+    a[x-apple-data-detectors],
+    #MessageViewBody a,
+    u + .body a {
+      color: inherit !important;
+      text-decoration: none !important;
+      font: inherit !important;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body,
+      .email-bg,
+      .email-shell {
+        background-color: #030507 !important;
+        color: #f8fafc !important;
+      }
+
+      .email-card {
+        background-color: #0b1017 !important;
+        border-color: #202a3a !important;
+      }
+
+      .email-surface,
+      .email-preview-card,
+      .email-stat-card {
+        background-color: #101722 !important;
+        border-color: #202a3a !important;
+      }
+
+      .email-text {
+        color: #f8fafc !important;
+      }
+
+      .email-muted {
+        color: #8f9bb0 !important;
+      }
+
+      .email-accent {
+        color: #6f84ff !important;
+      }
+
+      .email-button-cell {
+        background-color: #4562ff !important;
+      }
+
+      .email-button-link {
+        border-color: #4562ff !important;
+        color: #ffffff !important;
+      }
+    }
+
+    [data-ogsc] .email-bg,
+    [data-ogsb] .email-bg,
+    [data-ogsc] .email-shell,
+    [data-ogsb] .email-shell {
+      background-color: #030507 !important;
+      color: #f8fafc !important;
+    }
+
+    [data-ogsc] .email-card,
+    [data-ogsb] .email-card {
+      background-color: #0b1017 !important;
+      border-color: #202a3a !important;
+    }
+
+    [data-ogsc] .email-surface,
+    [data-ogsb] .email-surface,
+    [data-ogsc] .email-preview-card,
+    [data-ogsb] .email-preview-card,
+    [data-ogsc] .email-stat-card,
+    [data-ogsb] .email-stat-card {
+      background-color: #101722 !important;
+      border-color: #202a3a !important;
+    }
+
+    [data-ogsc] .email-text,
+    [data-ogsb] .email-text {
+      color: #f8fafc !important;
+    }
+
+    [data-ogsc] .email-muted,
+    [data-ogsb] .email-muted {
+      color: #8f9bb0 !important;
+    }
+
+    [data-ogsc] .email-accent,
+    [data-ogsb] .email-accent {
+      color: #6f84ff !important;
+    }
+
+    [data-ogsc] .email-button-cell,
+    [data-ogsb] .email-button-cell {
+      background-color: #4562ff !important;
+    }
+
+    [data-ogsc] .email-button-link,
+    [data-ogsb] .email-button-link {
+      border-color: #4562ff !important;
+      color: #ffffff !important;
+    }
+  </style>
 </head>
-<body style="margin:0;padding:0;background-color:#030507;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#030507;padding:40px 16px;">
+<body class="body email-bg" style="margin:0;padding:0;background-color:#030507;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-bg email-shell" bgcolor="#030507" style="background-color:#030507;padding:40px 16px;">
     <tr>
       <td align="center">
-        <table width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
           <tr>
             <td style="padding-bottom:32px;" align="center">
-              <img src="{{ logo_url }}" alt="FX Journal" height="36" style="display:block;" />
+              <div class="email-logo-wrap" style="display:inline-block;padding:10px 18px;border:1px solid #202a3a;border-radius:999px;background-color:#0b1017;">
+                <img src="{{ logo_url }}" alt="FX Journal" height="36" style="display:block;" />
+              </div>
             </td>
           </tr>
           <tr>
-            <td style="background-color:#0b1017;border-radius:16px;padding:40px 36px;border:1px solid #202a3a;">
-              <p style="margin:0 0 12px 0;font-size:12px;font-weight:700;color:#4562ff;letter-spacing:0.8px;text-transform:uppercase;">Week of {{ week_label }}</p>
-              <p style="margin:0 0 8px 0;font-size:24px;font-weight:700;color:#f8fafc;letter-spacing:-0.3px;">Hi {{ name }}, your review is ready.</p>
-              <p style="margin:0 0 28px 0;font-size:15px;color:#8f9bb0;line-height:1.7;">Your AI trading coach has finished analysing your week. Here is a quick preview before you open the full review.</p>
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
+            <td class="email-card" bgcolor="#0b1017" style="background-color:#0b1017;border-radius:16px;padding:40px 36px;border:1px solid #202a3a;">
+              <p class="email-accent" style="margin:0 0 12px 0;font-size:12px;font-weight:700;color:#4562ff;letter-spacing:0.8px;text-transform:uppercase;">Week of {{ week_label }}</p>
+              <p class="email-text" style="margin:0 0 8px 0;font-size:24px;font-weight:700;color:#f8fafc;letter-spacing:-0.3px;">Hi {{ name }}, your review is ready.</p>
+              <p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#8f9bb0;line-height:1.7;">Your AI trading coach has finished analysing your week. Here is a quick preview before you open the full review.</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
                 <tr>
-                  <td style="background-color:#101722;border-radius:12px;padding:20px 24px;border:1px solid #202a3a;border-left:3px solid #4562ff;">
-                    <p style="margin:0;font-size:14px;color:#f8fafc;line-height:1.8;font-style:italic;">{{ ai_preview }}</p>
+                  <td class="email-preview-card" bgcolor="#101722" style="background-color:#101722;border-radius:12px;padding:20px 24px;border:1px solid #202a3a;border-left:3px solid #4562ff;">
+                    <p class="email-text" style="margin:0;font-size:14px;color:#f8fafc;line-height:1.8;font-style:italic;">{{ ai_preview }}</p>
                   </td>
                 </tr>
               </table>
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:32px;">
                 <tr>
-                  <td width="33%" style="background-color:#101722;border:1px solid #202a3a;border-radius:12px;padding:16px;text-align:center;">
-                    <p style="margin:0 0 4px 0;font-size:22px;font-weight:700;color:#f8fafc;">{{ total_trades }}</p>
-                    <p style="margin:0;font-size:12px;color:#8f9bb0;text-transform:uppercase;letter-spacing:0.5px;">Trades</p>
+                  <td width="33%" class="email-stat-card" bgcolor="#101722" style="background-color:#101722;border:1px solid #202a3a;border-radius:12px;padding:16px;text-align:center;">
+                    <p class="email-text" style="margin:0 0 4px 0;font-size:22px;font-weight:700;color:#f8fafc;">{{ total_trades }}</p>
+                    <p class="email-muted" style="margin:0;font-size:12px;color:#8f9bb0;text-transform:uppercase;letter-spacing:0.5px;">Trades</p>
                   </td>
                   <td width="2%" style="padding:0 6px;"></td>
-                  <td width="33%" style="background-color:#101722;border:1px solid #202a3a;border-radius:12px;padding:16px;text-align:center;">
-                    <p style="margin:0 0 4px 0;font-size:22px;font-weight:700;color:#f8fafc;">{{ win_rate }}%</p>
-                    <p style="margin:0;font-size:12px;color:#8f9bb0;text-transform:uppercase;letter-spacing:0.5px;">Win Rate</p>
+                  <td width="33%" class="email-stat-card" bgcolor="#101722" style="background-color:#101722;border:1px solid #202a3a;border-radius:12px;padding:16px;text-align:center;">
+                    <p class="email-text" style="margin:0 0 4px 0;font-size:22px;font-weight:700;color:#f8fafc;">{{ win_rate }}%</p>
+                    <p class="email-muted" style="margin:0;font-size:12px;color:#8f9bb0;text-transform:uppercase;letter-spacing:0.5px;">Win Rate</p>
                   </td>
                   <td width="2%" style="padding:0 6px;"></td>
-                  <td width="33%" style="background-color:#101722;border:1px solid #202a3a;border-radius:12px;padding:16px;text-align:center;">
-                    <p style="margin:0 0 4px 0;font-size:22px;font-weight:700;color:{{ pnl_color }};">{{ net_pnl }}</p>
-                    <p style="margin:0;font-size:12px;color:#8f9bb0;text-transform:uppercase;letter-spacing:0.5px;">Net P&amp;L</p>
+                  <td width="33%" class="email-stat-card" bgcolor="#101722" style="background-color:#101722;border:1px solid #202a3a;border-radius:12px;padding:16px;text-align:center;">
+                    <p style="margin:0 0 4px 0;font-size:22px;font-weight:700;color:{{ pnl_color }} !important;">{{ net_pnl }}</p>
+                    <p class="email-muted" style="margin:0;font-size:12px;color:#8f9bb0;text-transform:uppercase;letter-spacing:0.5px;">Net P&amp;L</p>
                   </td>
                 </tr>
               </table>
-              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td align="center">
-                    <a href="{{ dashboard_url }}" style="display:inline-block;background-color:#4562ff;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:10px;letter-spacing:0.2px;">View Full Review</a>
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td class="email-button-cell" bgcolor="#4562ff" align="center" style="background-color:#4562ff;border-radius:10px;">
+                          <a href="{{ dashboard_url }}" class="email-button-link" style="display:block;padding:14px 36px;border:1px solid #4562ff;border-radius:10px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">View Full Review</a>
+                        </td>
+                      </tr>
+                    </table>
                   </td>
                 </tr>
               </table>
@@ -56,12 +241,12 @@
           </tr>
           <tr>
             <td style="padding-top:28px;" align="center">
-              <p style="margin:0 0 8px 0;font-size:13px;color:#8f9bb0;">You are receiving this because you have an FX Journal account.</p>
-              <p style="margin:0;font-size:12px;color:#8f9bb0;">
-                <a href="https://myfxjournal.com" style="color:#4562ff;text-decoration:none;">myfxjournal.com</a>
+              <p class="email-muted" style="margin:0 0 8px 0;font-size:13px;color:#8f9bb0;">You are receiving this because you have an FX Journal account.</p>
+              <p class="email-muted" style="margin:0;font-size:12px;color:#8f9bb0;">
+                <a href="https://myfxjournal.com" class="email-accent" style="color:#4562ff;text-decoration:none;">myfxjournal.com</a>
                 {% if unsubscribe_url %}
                 &nbsp;&middot;&nbsp;
-                <a href="{{ unsubscribe_url }}" style="color:#8f9bb0;text-decoration:none;">Unsubscribe</a>
+                <a href="{{ unsubscribe_url }}" class="email-muted" style="color:#8f9bb0;text-decoration:none;">Unsubscribe</a>
                 {% endif %}
               </p>
             </td>

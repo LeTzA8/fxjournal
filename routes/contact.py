@@ -137,8 +137,6 @@ def contact():
             or request.remote_addr
             or "-"
         )
-        submitted_user_id = request.form.get("contact_user_id", "").strip()
-        submitted_user_email = request.form.get("contact_user_email", "").strip().lower()
         if user:
             actor_name = user.username
             actor_user_id = user.id
@@ -148,7 +146,7 @@ def contact():
         else:
             actor_name = "Guest"
             actor_user_id = None
-            actor_user_id_display = submitted_user_id or "-"
+            actor_user_id_display = "-"
             actor_email = contact_email
             actor_kind = "guest"
         email_subject = f"[FX Journal Contact] [{contact_category}] {contact_subject}"
@@ -159,7 +157,6 @@ def contact():
             f"Name: {actor_name}\n"
             f"User ID: {actor_user_id_display}\n"
             f"Contact email: {actor_email}\n"
-            f"Submitted hidden user email: {submitted_user_email or '-'}\n"
             f"Client IP: {requester_ip}\n"
             f"Category: {contact_category}\n"
             f"Subject: {contact_subject}\n\n"
@@ -198,14 +195,4 @@ def contact():
         flash("Your message was received, but email delivery is currently unavailable.", "info")
         return redirect(url_for("contact.contact"))
 
-    return render_template(
-        "contact.html",
-        title="Contact | FX Journal",
-        username=session.get("username", "User"),
-        contact_subject=contact_subject,
-        contact_category=contact_category,
-        contact_body=contact_body,
-        contact_email=contact_email,
-        contact_category_choices=CONTACT_CATEGORY_CHOICES,
-        account_user=user,
-    )
+    return render_contact()
