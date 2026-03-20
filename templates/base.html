@@ -57,6 +57,9 @@
             --font-ui: "Manrope", "Segoe UI", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
             --font-display: "Sora", "Manrope", "Segoe UI", sans-serif;
             --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+            --app-header-offset: 0.45rem;
+            --app-header-content-gap: 0.55rem;
+            --auth-topbar-clearance: clamp(5.75rem, 11vw, 6.75rem);
         }
 
         :root[data-theme="dark"] {
@@ -453,7 +456,7 @@
 
         .site-header {
             position: sticky;
-            top: 0.45rem;
+            top: var(--app-header-offset);
             z-index: 1200;
             border: none;
             background: transparent;
@@ -718,7 +721,15 @@
         body.app-layout main {
             max-width: none;
             margin: 0;
-            padding: 0;
+            padding: calc(var(--app-header-offset) + var(--app-header-content-gap)) 0 0;
+        }
+
+        .flash-messages {
+            width: min(900px, 100%);
+            margin: 0 auto;
+            padding: 0 1rem;
+            position: relative;
+            z-index: 1;
         }
 
         body.app-layout .dash-wrap {
@@ -913,6 +924,7 @@
             overflow: hidden;
             isolation: isolate;
             padding: clamp(1rem, 3vw, 2rem);
+            padding-top: var(--auth-topbar-clearance);
             perspective: 1100px;
         }
 
@@ -1525,7 +1537,7 @@
     <main>
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-        <div class="flash-messages" style="padding:0 1rem;max-width:900px;margin:0 auto;">
+        <div class="flash-messages">
             {% for category, message in messages %}
             <p class="flash-alert {{ category }}" role="status" aria-live="polite">{{ message }}</p>
             {% endfor %}

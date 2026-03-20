@@ -12,7 +12,7 @@
         </div>
     </div>
 
-    <header class="landing-header">
+    <header class="landing-header{% if user_logged_in %} is-user-logged-in{% endif %}">
         <a href="{{ url_for('landing') }}" class="landing-brand" aria-label="FX Journal Home">
             <img
                 src="{{ url_for('static', filename='site-logo.png') }}"
@@ -27,7 +27,7 @@
             <a href="#founder">About the creator</a>
             <a href="{{ url_for('contact.contact') }}">Contact</a>
         </nav>
-        <div class="landing-auth-links">
+        <div class="landing-auth-links{% if user_logged_in %} is-user-logged-in{% endif %}">
             {% if user_logged_in %}
             <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Dashboard</a>
             <a href="{{ url_for('account.account') }}" class="submit-btn">Account</a>
@@ -617,6 +617,7 @@
 
     .landing-auth-links form {
         margin: 0;
+        display: flex;
     }
 
     .landing-auth-links .submit-btn,
@@ -1570,6 +1571,20 @@
 
         .landing-brand { grid-area: brand; }
         .landing-auth-links { grid-area: actions; }
+        .landing-header.is-user-logged-in {
+            grid-template-columns: minmax(0, 1fr);
+            grid-template-areas:
+                "brand"
+                "actions"
+                "nav";
+        }
+
+        .landing-header.is-user-logged-in .landing-auth-links {
+            justify-self: start;
+            width: 100%;
+            justify-content: flex-start;
+        }
+
         .landing-nav {
             grid-area: nav;
             justify-content: flex-start;
@@ -1621,6 +1636,19 @@
             justify-content: flex-end;
         }
 
+        .landing-auth-links.is-user-logged-in {
+            justify-content: flex-start;
+            gap: 0.4rem;
+        }
+
+        .landing-auth-links.is-user-logged-in .submit-btn,
+        .landing-auth-links.is-user-logged-in .ghost-btn {
+            min-height: 36px;
+            padding: 0 0.78rem;
+            font-size: 0.68rem;
+            letter-spacing: 0.03em;
+        }
+
         .landing-wrap {
             padding-inline: 0.6rem;
         }
@@ -1658,6 +1686,23 @@
 
         .feature-showcase-grid {
             grid-template-columns: 1fr;
+            width: 100%;
+        }
+    }
+
+    @media (max-width: 460px) {
+        .landing-header.is-user-logged-in .landing-auth-links {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items: start;
+        }
+
+        .landing-header.is-user-logged-in .landing-auth-links form {
+            grid-column: 1 / -1;
+        }
+
+        .landing-header.is-user-logged-in .landing-auth-links .submit-btn,
+        .landing-header.is-user-logged-in .landing-auth-links .ghost-btn {
             width: 100%;
         }
     }

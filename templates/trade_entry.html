@@ -181,21 +181,6 @@
                     MT5 timestamps default to <strong>GMT+2</strong> unless the file provides explicit timezone data.
                     {% endif %}
                 </p>
-                <div class="import-guide">
-                    <p class="import-guide-kicker">Quick export path</p>
-                    <ol class="import-guide-list">
-                        {% if account_type == "FUTURES" %}
-                        <li>Open <strong>Performance</strong> in Tradovate and choose the account and date range.</li>
-                        <li>Use the export action for the performance table.</li>
-                        <li>Save the file as <strong>.csv</strong> and upload it here.</li>
-                        {% else %}
-                        <li>Open <strong>Toolbox</strong> in MT5 with <strong>Ctrl+T</strong>, then go to <strong>History</strong>.</li>
-                        <li>Right-click inside the history table and choose <strong>Report</strong>.</li>
-                        <li>Select <strong>Open XML (MS Office Excel 2007)</strong>, save it, then upload the <strong>.xlsx</strong> here.</li>
-                        {% endif %}
-                    </ol>
-                </div>
-
                 <form action="{{ url_for('trades.import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook" }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label for="mt5_file">{% if account_type == "FUTURES" %}Tradovate Performance File{% else %}MT5 Report File{% endif %}</label>
@@ -293,8 +278,7 @@
         gap: 0.28rem;
     }
 
-    .import-success-kicker,
-    .import-guide-kicker {
+    .import-success-kicker {
         margin: 0;
         font-size: 0.74rem;
         font-weight: 800;
@@ -360,23 +344,6 @@
     .field-help { margin: -0.2rem 0 0.1rem;
         font-size: 0.8rem;
         color: #6b7280; }
-
-    .import-guide {
-        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
-        border-radius: 12px;
-        padding: 0.8rem 0.85rem;
-        background: color-mix(in srgb, var(--surface) 80%, transparent);
-    }
-
-    .import-guide-list {
-        margin: 0.45rem 0 0;
-        padding-left: 1.05rem;
-        display: grid;
-        gap: 0.38rem;
-        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
-        font-size: 0.82rem;
-        line-height: 1.5;
-    }
 
     .import-form label { font-size: 0.84rem;
         font-weight: 700; text-transform: uppercase;
