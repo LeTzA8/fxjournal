@@ -8,6 +8,7 @@ import importlib.util
 from pathlib import Path
 
 from celery import Celery
+from celery.schedules import crontab
 
 _flask_app = None
 
@@ -70,6 +71,12 @@ def _create_celery():
         result_serializer="json",
         accept_content=["json"],
         broker_connection_retry_on_startup=True,
+        beat_schedule={
+            "cleanup-weekly-checkins": {
+                "task": "celery_workers.tasks.cleanup_weekly_checkins_task",
+                "schedule": crontab(hour=3, minute=0, day_of_week=1),
+            },
+        },
     )
 
     class FlaskTask(celery_app.Task):

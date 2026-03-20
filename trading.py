@@ -1600,7 +1600,7 @@ def build_rr_summary(trades):
             getattr(trade, "side", None),
             signed=True,
         )
-        if planned_rr is None or actual_rr is None or actual_rr <= 0:
+        if planned_rr is None or actual_rr is None:
             continue
         planned_rrs.append(planned_rr)
         actual_rrs.append(actual_rr)

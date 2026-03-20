@@ -11,7 +11,15 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, func
 
-from models import AIGeneratedResponse, AIPromptHistory, Trade, User, db
+from models import (
+    AIGeneratedResponse,
+    AIPromptHistory,
+    Trade,
+    User,
+    UserProfile,
+    WeeklyCheckin,
+    db,
+)
 from trading import (
     build_trade_analytics,
     classify_trading_session,
@@ -148,6 +156,21 @@ def _to_utc_naive(value):
     return value.replace(tzinfo=timezone.utc)
 
 
+def _normalize_optional_text(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _get_record_value(record, field_name):
+    if record is None:
+        return None
+    if isinstance(record, dict):
+        return record.get(field_name)
+    return getattr(record, field_name, None)
+
+
 def get_weekly_dashboard_period(now_utc=None):
     current_utc = now_utc or datetime.now(timezone.utc)
     if current_utc.tzinfo is None:
@@ -188,6 +211,28 @@ def get_weekly_dashboard_period(now_utc=None):
         "eligible_at_utc": _to_utc_naive(eligible_at_market.astimezone(timezone.utc)),
         "next_eligible_at_utc": _to_utc_naive(next_eligible_at_market.astimezone(timezone.utc)),
         "market_cutoff_label": "Friday 5:30 PM New York time",
+    }
+
+
+def get_current_market_week_period(now_utc=None):
+    current_utc = now_utc or datetime.now(timezone.utc)
+    if current_utc.tzinfo is None:
+        current_utc = current_utc.replace(tzinfo=timezone.utc)
+    else:
+        current_utc = current_utc.astimezone(timezone.utc)
+
+    market_now = current_utc.astimezone(WEEKLY_MARKET_TIMEZONE)
+    period_start_market = (market_now - timedelta(days=market_now.weekday())).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    period_end_market = period_start_market + timedelta(days=7)
+    return {
+        "period_start_utc": _to_utc_naive(period_start_market.astimezone(timezone.utc)),
+        "period_end_utc": _to_utc_naive(period_end_market.astimezone(timezone.utc)),
+        "market_cutoff_label": "Current market week",
     }
 
 
@@ -261,6 +306,124 @@ def _query_trades_for_payload(
     if period_end_utc is not None:
         trade_query = trade_query.filter(Trade.opened_at < period_end_utc)
     return trade_query.order_by(Trade.opened_at.desc(), Trade.id.desc()).all()
+
+
+def _serialize_user_profile(user_profile):
+    return {
+        "trading_style": _normalize_optional_text(_get_record_value(user_profile, "trading_style")),
+        "instruments": _normalize_optional_text(_get_record_value(user_profile, "instruments")),
+        "experience_level": _normalize_optional_text(_get_record_value(user_profile, "experience_level")),
+    }
+
+
+def _serialize_weekly_checkin(weekly_checkin):
+    return {
+        "emotional_state": _normalize_optional_text(_get_record_value(weekly_checkin, "emotional_state")),
+        "plan_adherence": _normalize_optional_text(_get_record_value(weekly_checkin, "plan_adherence")),
+        "execution_quality": _normalize_optional_text(_get_record_value(weekly_checkin, "execution_quality")),
+        "additional_context": _normalize_optional_text(_get_record_value(weekly_checkin, "additional_context")),
+    }
+
+
+def _get_user_profile_for_prompt(user_id):
+    if not user_id:
+        return None
+    return UserProfile.query.filter_by(user_id=user_id).first()
+
+
+def _get_weekly_checkin_for_prompt(*, user_id, trade_account_id=None, period_start_utc=None):
+    if not user_id:
+        return None
+    checkin_query = WeeklyCheckin.query.filter_by(user_id=user_id)
+    if trade_account_id is not None:
+        checkin_query = checkin_query.filter_by(trade_account_id=trade_account_id)
+    if period_start_utc is not None:
+        checkin_query = checkin_query.filter_by(week_start_utc=period_start_utc)
+    return checkin_query.order_by(WeeklyCheckin.week_start_utc.desc(), WeeklyCheckin.id.desc()).first()
+
+
+def build_profile_instructions(
+    trading_style,
+    experience_level,
+    instruments,
+    emotional_state,
+    plan_adherence,
+    execution_quality,
+):
+    trading_style = _normalize_optional_text(trading_style)
+    experience_level = _normalize_optional_text(experience_level)
+    instruments = _normalize_optional_text(instruments)
+    emotional_state = _normalize_optional_text(emotional_state)
+    plan_adherence = _normalize_optional_text(plan_adherence)
+    execution_quality = _normalize_optional_text(execution_quality)
+    instructions = []
+
+    if experience_level == "beginner":
+        instructions.append("Use plain language. Explain any jargon.")
+        instructions.append("Focus on maximum 2-3 observations only.")
+        instructions.append("Rule must be simple and immediately actionable.")
+        instructions.append("Never reference ICT, SMC, or orderflow terms.")
+        instructions.append("Encouraging tone always, even on bad weeks.")
+    elif experience_level == "intermediate":
+        instructions.append("Assume basic trading knowledge, minimal explanations.")
+        instructions.append("Balance foundational feedback with advanced patterns.")
+        instructions.append("Reference RR and session patterns without over-explaining.")
+    elif experience_level == "experienced":
+        instructions.append("Assume full trading knowledge, no explanations needed.")
+        instructions.append("Focus on subtle patterns, not obvious mistakes.")
+        instructions.append("Reference expectancy and RR trends where relevant.")
+
+    if trading_style == "scalper":
+        instructions.append("Duration analysis in minutes not hours.")
+        instructions.append("Flag any trade held over 30 mins as outside style.")
+        instructions.append("Overtrading threshold is 5 or more trades per session.")
+        instructions.append("Session timing is critical - flag off-session entries.")
+    elif trading_style in ("swing", "position"):
+        instructions.append("Cross-week trades are expected, never flag as unusual.")
+        instructions.append("Holding time vs planned duration is primary focus.")
+        instructions.append("Weekly PnL less relevant than per-trade RR.")
+        instructions.append("Premature exit analysis weighted more heavily.")
+        instructions.append("Acknowledge single week is thin sample for swing traders.")
+    elif trading_style == "intraday":
+        instructions.append("Same-session open and close is expected.")
+        instructions.append("Flag trades held overnight as outside style.")
+
+    if instruments == "indices":
+        instructions.append("US market hours dominate - flag trades outside 13:30-20:00 UTC.")
+        instructions.append("Session analysis scoped to US session primarily.")
+    elif instruments == "forex":
+        instructions.append("London/NY overlap is prime session - weight it accordingly.")
+    elif instruments == "gold":
+        instructions.append("Gold trades across all sessions - session analysis less critical.")
+    elif instruments == "mixed":
+        instructions.append("Scope session relevance per instrument, not globally.")
+
+    if emotional_state == "stressed":
+        instructions.append("Emotional week detected - prioritise BEHAVIOUR section.")
+        instructions.append("Acknowledge emotional context in tone, not explicitly.")
+    if plan_adherence == "impulsive":
+        instructions.append("Flag impulsive trading in BEHAVIOUR section.")
+        instructions.append("Reference plan adherence directly in the Rule.")
+    if execution_quality == "poor":
+        instructions.append("Cross-reference poor execution with actual trade data.")
+        instructions.append("Find specific examples of poor execution in the trades.")
+
+    if not instructions:
+        return ""
+
+    lines = "\n".join(f"- {instruction}" for instruction in instructions)
+    return f"\nTRADER PROFILE ADJUSTMENTS\nApply all of the following:\n{lines}"
+
+
+def _build_profile_adjustments_for_prompt(user_profile, weekly_checkin):
+    return build_profile_instructions(
+        _get_record_value(user_profile, "trading_style"),
+        _get_record_value(user_profile, "experience_level"),
+        _get_record_value(user_profile, "instruments"),
+        _get_record_value(weekly_checkin, "emotional_state"),
+        _get_record_value(weekly_checkin, "plan_adherence"),
+        _get_record_value(weekly_checkin, "execution_quality"),
+    )
 
 
 def _round_metric(value, digits=2):
@@ -391,6 +554,8 @@ def build_trade_payload(
     period_start_utc=None,
     period_end_utc=None,
     closed_trades_only=False,
+    user_profile=None,
+    weekly_checkin=None,
 ):
     trades = _query_trades_for_payload(
         user_id=user_id,
@@ -500,6 +665,8 @@ def build_trade_payload(
         "period_end_utc": format_utc_timestamp(period_end_utc),
         "notes_coverage": round(notes_with_content / len(trades), 2) if trades else 0.0,
         "account_age_days": account_age_days,
+        "user_profile": _serialize_user_profile(user_profile),
+        "weekly_checkin": _serialize_weekly_checkin(weekly_checkin),
         "historical_context": _build_historical_context(
             user_id=user_id,
             trade_account_id=trade_account_id,
@@ -593,8 +760,14 @@ def _format_percent(value):
     return f"{float(value):.2f}%"
 
 
+def _payload_section_has_values(section):
+    return any(value is not None for value in (section or {}).values())
+
+
 def format_payload_for_prompt(payload):
     summary = payload.get("summary", {})
+    user_profile = payload.get("user_profile") or {}
+    weekly_checkin = payload.get("weekly_checkin") or {}
     historical_context = payload.get("historical_context") or {}
     trades = payload.get("trades", [])
 
@@ -605,35 +778,63 @@ def format_payload_for_prompt(payload):
         f"- period_end_utc: {payload.get('period_end_utc') or '-'}",
         f"- notes_coverage: {_format_number(payload.get('notes_coverage'))}",
         f"- account_age_days: {payload.get('account_age_days') if payload.get('account_age_days') is not None else '-'}",
-        "",
-        "SUMMARY",
-        f"- total_trades: {summary.get('total_trades', 0)}",
-        f"- closed_trades: {summary.get('closed_trades', 0)}",
-        f"- open_trades: {summary.get('open_trades', 0)}",
-        f"- win_rate: {_format_percent(summary.get('win_rate'))}",
-        f"- net_pnl: {_format_signed_currency(summary.get('net_pnl'))}",
-        f"- weekly_pnl: {_format_signed_currency(summary.get('weekly_pnl'))}",
-        f"- monthly_pnl: {_format_signed_currency(summary.get('monthly_pnl'))}",
-        f"- closed_before_tp_count: {summary.get('closed_before_tp_count', 0)}",
-        f"- closed_before_sl_count: {summary.get('closed_before_sl_count', 0)}",
-        f"- pair_sample_is_diverse: {_format_bool(summary.get('pair_sample_is_diverse'))}",
-        f"- equity_has_outlier_dominance: {_format_bool(summary.get('equity_has_outlier_dominance'))}",
-        f"- best_trade_pnl: {_format_signed_currency(summary.get('best_trade_pnl'))}",
-        f"- worst_trade_pnl: {_format_signed_currency(summary.get('worst_trade_pnl'))}",
-        f"- max_drawdown: {_format_signed_currency(summary.get('max_drawdown'))}",
-        "",
-        "HISTORICAL_CONTEXT",
-        f"- window_start_utc: {historical_context.get('window_start_utc') or '-'}",
-        f"- window_end_utc: {historical_context.get('window_end_utc') or '-'}",
-        f"- window_days: {historical_context.get('window_days') or '-'}",
-        f"- historical_total_trades: {(historical_context.get('summary') or {}).get('total_trades', 0)}",
-        f"- historical_closed_trades: {(historical_context.get('summary') or {}).get('closed_trades', 0)}",
-        f"- historical_win_rate: {_format_percent((historical_context.get('summary') or {}).get('win_rate'))}",
-        f"- historical_net_pnl: {_format_signed_currency((historical_context.get('summary') or {}).get('net_pnl'))}",
-        f"- historical_max_drawdown: {_format_signed_currency((historical_context.get('summary') or {}).get('max_drawdown'))}",
-        "",
-        "HISTORICAL_TOP_PAIRS",
     ]
+
+    if _payload_section_has_values(user_profile):
+        lines.extend(
+            [
+                "",
+                "USER PROFILE",
+                f"- trading_style: {user_profile.get('trading_style') or '-'}",
+                f"- instruments: {user_profile.get('instruments') or '-'}",
+                f"- experience_level: {user_profile.get('experience_level') or '-'}",
+            ]
+        )
+
+    if _payload_section_has_values(weekly_checkin):
+        lines.extend(
+            [
+                "",
+                "WEEKLY CHECKIN",
+                f"- emotional_state: {weekly_checkin.get('emotional_state') or '-'}",
+                f"- plan_adherence: {weekly_checkin.get('plan_adherence') or '-'}",
+                f"- execution_quality: {weekly_checkin.get('execution_quality') or '-'}",
+                f"- additional_context: {weekly_checkin.get('additional_context') or '-'}",
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "SUMMARY",
+            f"- total_trades: {summary.get('total_trades', 0)}",
+            f"- closed_trades: {summary.get('closed_trades', 0)}",
+            f"- open_trades: {summary.get('open_trades', 0)}",
+            f"- win_rate: {_format_percent(summary.get('win_rate'))}",
+            f"- net_pnl: {_format_signed_currency(summary.get('net_pnl'))}",
+            f"- weekly_pnl: {_format_signed_currency(summary.get('weekly_pnl'))}",
+            f"- monthly_pnl: {_format_signed_currency(summary.get('monthly_pnl'))}",
+            f"- closed_before_tp_count: {summary.get('closed_before_tp_count', 0)}",
+            f"- closed_before_sl_count: {summary.get('closed_before_sl_count', 0)}",
+            f"- pair_sample_is_diverse: {_format_bool(summary.get('pair_sample_is_diverse'))}",
+            f"- equity_has_outlier_dominance: {_format_bool(summary.get('equity_has_outlier_dominance'))}",
+            f"- best_trade_pnl: {_format_signed_currency(summary.get('best_trade_pnl'))}",
+            f"- worst_trade_pnl: {_format_signed_currency(summary.get('worst_trade_pnl'))}",
+            f"- max_drawdown: {_format_signed_currency(summary.get('max_drawdown'))}",
+            "",
+            "HISTORICAL_CONTEXT",
+            f"- window_start_utc: {historical_context.get('window_start_utc') or '-'}",
+            f"- window_end_utc: {historical_context.get('window_end_utc') or '-'}",
+            f"- window_days: {historical_context.get('window_days') or '-'}",
+            f"- historical_total_trades: {(historical_context.get('summary') or {}).get('total_trades', 0)}",
+            f"- historical_closed_trades: {(historical_context.get('summary') or {}).get('closed_trades', 0)}",
+            f"- historical_win_rate: {_format_percent((historical_context.get('summary') or {}).get('win_rate'))}",
+            f"- historical_net_pnl: {_format_signed_currency((historical_context.get('summary') or {}).get('net_pnl'))}",
+            f"- historical_max_drawdown: {_format_signed_currency((historical_context.get('summary') or {}).get('max_drawdown'))}",
+            "",
+            "HISTORICAL_TOP_PAIRS",
+        ]
+    )
 
     historical_pairs = historical_context.get("top_pairs") or []
     if historical_pairs:
@@ -715,10 +916,12 @@ def format_payload_for_prompt(payload):
     return "\n".join(lines)
 
 
-def build_dashboard_advice_messages(payload, prompt_filename=None):
+def build_dashboard_advice_messages(payload, prompt_filename=None, profile_adjustments=""):
     prompt_history = get_or_create_prompt_history(prompt_filename)
     payload_json = serialize_payload(payload)
     prompt_input = format_payload_for_prompt(payload)
+    if profile_adjustments:
+        prompt_input = f"{prompt_input}{profile_adjustments}"
     return prompt_history, [
         {
             "role": "system",
@@ -867,14 +1070,23 @@ def save_ai_response(
 
 def generate_dashboard_advice(*, user_id, trade_account_id=None, prompt_filename=None, max_trades=None):
     try:
+        user_profile = _get_user_profile_for_prompt(user_id)
+        weekly_checkin = _get_weekly_checkin_for_prompt(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+        )
         payload = build_trade_payload(
             user_id=user_id,
             trade_account_id=trade_account_id,
             max_trades=max_trades,
+            user_profile=user_profile,
+            weekly_checkin=weekly_checkin,
         )
+        profile_adjustments = _build_profile_adjustments_for_prompt(user_profile, weekly_checkin)
         prompt_history, messages, payload_json = build_dashboard_advice_messages(
             payload,
             prompt_filename=prompt_filename,
+            profile_adjustments=profile_adjustments,
         )
         response_payload = request_openai_response(messages, model=get_ai_model())
         response_text = extract_response_text(response_payload)
@@ -979,6 +1191,12 @@ def maybe_generate_weekly_dashboard_advice(
         ):
             return {"record": None, "generated": False, "period": period}
 
+        user_profile = _get_user_profile_for_prompt(user_id)
+        weekly_checkin = _get_weekly_checkin_for_prompt(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            period_start_utc=period["period_start_utc"],
+        )
         payload = build_trade_payload(
             user_id=user_id,
             trade_account_id=trade_account_id,
@@ -986,6 +1204,8 @@ def maybe_generate_weekly_dashboard_advice(
             period_start_utc=period["period_start_utc"],
             period_end_utc=period["period_end_utc"],
             closed_trades_only=True,
+            user_profile=user_profile,
+            weekly_checkin=weekly_checkin,
         )
         if not payload["trades"]:
             return {"record": None, "generated": False, "period": period, "skip_reason": "no_trades"}
@@ -997,9 +1217,11 @@ def maybe_generate_weekly_dashboard_advice(
         if existing is not None and not force_regenerate and existing.payload_hash == payload_hash:
             return {"record": existing, "generated": False, "period": period}
 
+        profile_adjustments = _build_profile_adjustments_for_prompt(user_profile, weekly_checkin)
         prompt_history, messages, payload_json = build_dashboard_advice_messages(
             payload,
             prompt_filename=prompt_filename,
+            profile_adjustments=profile_adjustments,
         )
         response_payload = request_openai_response(messages, model=get_ai_model())
         response_text = extract_response_text(response_payload)

@@ -5,6 +5,7 @@ from sqlalchemy.exc import OperationalError
 
 from ai_service import (
     MIN_CLOSED_TRADES_FOR_ADVICE,
+    get_current_market_week_period,
     get_latest_trade_week_period,
     get_latest_weekly_dashboard_advice,
     get_weekly_dashboard_period,
@@ -23,7 +24,7 @@ from celery_workers.cache import (
 )
 from helpers.core import get_active_trade_account_for_user, get_display_timezone_name
 from helpers.utils import login_required, utcnow_naive
-from models import Trade, db
+from models import Trade, WeeklyCheckin, db
 from trading import (
     SMALL_SAMPLE_MIN_TRADES,
     build_rr_summary,
@@ -105,6 +106,39 @@ def _count_closed_trades_for_period(user_id, trade_account_id, period):
     except OperationalError:
         db.session.rollback()
         return 0
+
+
+def _get_weekly_checkin_banner_state(user_id, active_trade_account):
+    account_id = getattr(active_trade_account, "id", None)
+    if account_id is None:
+        return {
+            "show_weekly_checkin_banner": False,
+            "weekly_checkin_closed_trade_count": 0,
+        }
+
+    period = get_current_market_week_period(now_utc=utcnow_naive())
+    closed_trade_count = _count_closed_trades_for_period(user_id, account_id, period)
+    if closed_trade_count <= 0:
+        return {
+            "show_weekly_checkin_banner": False,
+            "weekly_checkin_closed_trade_count": 0,
+        }
+
+    try:
+        existing_checkin = WeeklyCheckin.query.filter_by(
+            user_id=user_id,
+            trade_account_id=account_id,
+            week_start_utc=period["period_start_utc"],
+        ).first()
+    except OperationalError:
+        db.session.rollback()
+        existing_checkin = None
+        closed_trade_count = 0
+
+    return {
+        "show_weekly_checkin_banner": existing_checkin is None and closed_trade_count > 0,
+        "weekly_checkin_closed_trade_count": closed_trade_count,
+    }
 
 
 def _serialize_dashboard_cache_payload(analytics):
@@ -519,6 +553,7 @@ def home():
         previous_week_stats,
     )
     weekly_ai_state = _get_weekly_ai_state(user_id, active_trade_account, timezone_name)
+    weekly_checkin_banner_state = _get_weekly_checkin_banner_state(user_id, active_trade_account)
     has_any_trades = bool(user_trades)
     has_closed_trades = closed_trade_count > 0
     has_ai_review = weekly_ai_state["weekly_ai_review"] is not None
@@ -547,6 +582,8 @@ def home():
         weekly_ai_period_label=weekly_ai_state["weekly_ai_period_label"],
         weekly_ai_empty_message=weekly_ai_state["weekly_ai_empty_message"],
         weekly_ai_is_generating=weekly_ai_state["weekly_ai_is_generating"],
+        show_weekly_checkin_banner=weekly_checkin_banner_state["show_weekly_checkin_banner"],
+        weekly_checkin_closed_trade_count=weekly_checkin_banner_state["weekly_checkin_closed_trade_count"],
         has_any_trades=has_any_trades,
         has_closed_trades=has_closed_trades,
         has_ai_review=has_ai_review,

@@ -1,5 +1,83 @@
 ﻿{% extends "base.html" %}
 
+{% block head_extra %}
+<style>
+    .checkin-banner {
+        margin-bottom: 1.25rem;
+        padding: 1rem 1.1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        border: 1px solid color-mix(in srgb, var(--border) 78%, var(--accent) 22%);
+        background:
+            linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, var(--card)) 0%, color-mix(in srgb, var(--surface) 88%, var(--card)) 100%);
+    }
+
+    .checkin-banner-copy {
+        display: grid;
+        gap: 0.22rem;
+    }
+
+    .checkin-banner-kicker {
+        margin: 0;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .checkin-banner-title {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--ink);
+    }
+
+    .checkin-banner-note {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+    }
+
+    .checkin-banner-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .checkin-banner-skip {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.88rem;
+        padding: 0;
+        cursor: pointer;
+    }
+
+    .checkin-banner-skip:hover {
+        color: var(--ink);
+        text-decoration: underline;
+    }
+
+    @media (max-width: 760px) {
+        .checkin-banner {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .checkin-banner-actions {
+            width: 100%;
+            justify-content: flex-start;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <section class="dash-wrap">
 
@@ -96,6 +174,25 @@
                 {% if has_closed_trades %}
                 <a href="{{ url_for('dashboard.analytics') }}" class="ghost-btn">View Analytics</a>
                 {% endif %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if show_weekly_checkin_banner %}
+        <section class="panel checkin-banner">
+            <div class="checkin-banner-copy">
+                <p class="checkin-banner-kicker">Weekly Check-In</p>
+                <p class="checkin-banner-title">Add a quick trader context check before this week fades.</p>
+                <p class="checkin-banner-note">
+                    {{ weekly_checkin_closed_trade_count }} closed trade{% if weekly_checkin_closed_trade_count != 1 %}s{% endif %} landed on your active account this week. A short check-in helps the AI weight behaviour and execution more accurately.
+                </p>
+            </div>
+            <div class="checkin-banner-actions">
+                <a href="{{ url_for('checkin.checkin') }}" class="trades-btn">Open Check-In</a>
+                <form action="{{ url_for('checkin.skip_checkin') }}" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="checkin-banner-skip">Skip this week</button>
+                </form>
             </div>
         </section>
         {% endif %}

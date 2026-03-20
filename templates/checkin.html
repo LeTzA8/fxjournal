@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+<style>
+    .checkin-card {
+        width: min(100%, 760px);
+        border-color: color-mix(in srgb, var(--border) 72%, var(--accent) 28%);
+        background:
+            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 38%),
+            linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, transparent) 0%, color-mix(in srgb, var(--surface) 94%, var(--card)) 100%);
+    }
+
+    .checkin-meta {
+        margin-top: 0.9rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+    }
+
+    .checkin-chip {
+        padding: 0.48rem 0.72rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface) 84%, var(--card));
+        color: var(--muted);
+        font-size: 0.88rem;
+    }
+
+    .checkin-form {
+        margin-top: 1.4rem;
+        display: grid;
+        gap: 1.35rem;
+    }
+
+    .checkin-fieldset {
+        margin: 0;
+        padding: 0;
+        border: none;
+        display: grid;
+        gap: 0.8rem;
+    }
+
+    .checkin-legend {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--ink);
+    }
+
+    .checkin-options {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .checkin-option {
+        display: block;
+        position: relative;
+    }
+
+    .checkin-option input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .checkin-option-content {
+        display: grid;
+        gap: 0.2rem;
+        padding: 0.95rem 1rem;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--surface) 82%, var(--card));
+        transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+    }
+
+    .checkin-option:hover .checkin-option-content {
+        border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+        transform: translateY(-1px);
+    }
+
+    .checkin-option input:checked + .checkin-option-content {
+        border-color: color-mix(in srgb, var(--accent) 82%, var(--border));
+        background: color-mix(in srgb, var(--accent) 10%, var(--card));
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+
+    .checkin-option input:focus-visible + .checkin-option-content,
+    .checkin-context:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--accent) 34%, white 66%);
+        outline-offset: 2px;
+    }
+
+    .checkin-option-title {
+        font-weight: 700;
+        color: var(--ink);
+    }
+
+    .checkin-context-wrap {
+        display: grid;
+        gap: 0.55rem;
+    }
+
+    .checkin-context {
+        min-height: 120px;
+        width: 100%;
+        padding: 0.9rem 1rem;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--surface) 88%, var(--card));
+        color: var(--ink);
+        font: inherit;
+        resize: vertical;
+    }
+
+    .checkin-context::placeholder {
+        color: color-mix(in srgb, var(--muted) 92%, transparent);
+    }
+
+    .checkin-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+    }
+
+    .checkin-actions button {
+        min-width: 180px;
+    }
+
+    .checkin-skip-form {
+        margin-top: 0.35rem;
+        display: flex;
+        justify-content: center;
+    }
+
+    .checkin-skip-button {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.92rem;
+        cursor: pointer;
+        padding: 0;
+    }
+
+    .checkin-skip-button:hover {
+        color: var(--ink);
+        text-decoration: underline;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="auth-shell">
+    <div class="auth-topbar">
+        <a href="{{ url_for('dashboard.home') }}" class="auth-topbar-brand" aria-label="Go to dashboard">
+            <img
+                src="{{ url_for('static', filename='site-logo.png') }}"
+                alt="FX Journal Logo"
+                class="auth-topbar-logo"
+            >
+            <span>FX Journal</span>
+        </a>
+        <div class="auth-topbar-links">
+            <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Dashboard</a>
+        </div>
+    </div>
+    <div class="login-card checkin-card">
+        <p class="eyebrow">Weekly Check-In</p>
+        <h1>Give the AI a little context</h1>
+        <p class="subtext">This only takes a moment and helps the weekly review weigh behaviour, execution, and tone against what actually happened in your trades.</p>
+
+        <div class="checkin-meta">
+            {% if active_trade_account %}
+            <span class="checkin-chip">Account: {{ active_trade_account.name }}</span>
+            {% endif %}
+            {% if week_label %}
+            <span class="checkin-chip">Week: {{ week_label }}</span>
+            {% endif %}
+        </div>
+
+        {% if error %}
+        <p class="notice error">{{ error }}</p>
+        {% endif %}
+
+        <form action="{{ url_for('checkin.checkin') }}" method="post" class="checkin-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <fieldset class="checkin-fieldset">
+                <legend class="checkin-legend">Q1. How was your emotional state this week?</legend>
+                <div class="checkin-options">
+                    {% for option in emotional_state_options %}
+                    <label class="checkin-option">
+                        <input type="radio" name="emotional_state" value="{{ option.value }}" {% if emotional_state_value == option.value %}checked{% endif %}>
+                        <span class="checkin-option-content">
+                            <span class="checkin-option-title">{{ option.label }}</span>
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <fieldset class="checkin-fieldset">
+                <legend class="checkin-legend">Q2. How well did you follow your trading plan?</legend>
+                <div class="checkin-options">
+                    {% for option in plan_adherence_options %}
+                    <label class="checkin-option">
+                        <input type="radio" name="plan_adherence" value="{{ option.value }}" {% if plan_adherence_value == option.value %}checked{% endif %}>
+                        <span class="checkin-option-content">
+                            <span class="checkin-option-title">{{ option.label }}</span>
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <fieldset class="checkin-fieldset">
+                <legend class="checkin-legend">Q3. How was your overall execution quality?</legend>
+                <div class="checkin-options">
+                    {% for option in execution_quality_options %}
+                    <label class="checkin-option">
+                        <input type="radio" name="execution_quality" value="{{ option.value }}" {% if execution_quality_value == option.value %}checked{% endif %}>
+                        <span class="checkin-option-content">
+                            <span class="checkin-option-title">{{ option.label }}</span>
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            <div class="checkin-context-wrap">
+                <label for="additional_context" class="checkin-legend">Q4. Anything the AI should know? <span class="muted">(optional)</span></label>
+                <textarea
+                    id="additional_context"
+                    name="additional_context"
+                    class="checkin-context"
+                    placeholder="Examples: I broke routine after two losses, I traded around major news, or I was sizing up more than usual."
+                >{{ additional_context_value }}</textarea>
+            </div>
+
+            <div class="checkin-actions">
+                <button type="submit" class="submit-btn">Save Check-In</button>
+                <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Back to Dashboard</a>
+            </div>
+        </form>
+
+        <form action="{{ url_for('checkin.skip_checkin') }}" method="post" class="checkin-skip-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="checkin-skip-button">Skip this week</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

@@ -59,6 +59,9 @@ class User(db.Model):
     ai_generated_responses = db.relationship(
         "AIGeneratedResponse", backref="user", lazy=True, cascade="all, delete-orphan"
     )
+    weekly_checkins = db.relationship(
+        "WeeklyCheckin", backref="user", lazy=True, cascade="all, delete-orphan"
+    )
 
 
 class UserProfile(db.Model):
@@ -71,6 +74,36 @@ class UserProfile(db.Model):
     experience_level = db.Column(db.String(50), nullable=True)
     completed_at = db.Column(db.DateTime, nullable=True)
     skipped = db.Column(db.Boolean, default=False, nullable=False)
+
+
+class WeeklyCheckin(db.Model):
+    __tablename__ = "weekly_checkin"
+    __table_args__ = (
+        db.Index(
+            "uq_weekly_checkin_user_account_week_start",
+            "user_id",
+            "trade_account_id",
+            "week_start_utc",
+            unique=True,
+        ),
+        db.Index("ix_weekly_checkin_week_start_utc", "week_start_utc"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    trade_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trade_accounts.id"),
+        nullable=False,
+        index=True,
+    )
+    week_start_utc = db.Column(db.DateTime, nullable=False)
+    week_end_utc = db.Column(db.DateTime, nullable=False)
+    emotional_state = db.Column(db.String(32), nullable=True)
+    plan_adherence = db.Column(db.String(32), nullable=True)
+    execution_quality = db.Column(db.String(32), nullable=True)
+    additional_context = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, index=True)
 
 
 class ContactSubmission(db.Model):
@@ -132,6 +165,12 @@ class TradeAccount(db.Model):
     )
     ai_generated_responses = db.relationship(
         "AIGeneratedResponse",
+        backref="trade_account",
+        lazy=True,
+        cascade="all, delete-orphan",
+    )
+    weekly_checkins = db.relationship(
+        "WeeklyCheckin",
         backref="trade_account",
         lazy=True,
         cascade="all, delete-orphan",

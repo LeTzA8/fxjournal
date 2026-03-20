@@ -1,6 +1,6 @@
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -13,6 +13,8 @@ from celery_workers.cache import (
     clear_ai_status,
     set_ai_status,
 )
+from helpers.utils import utcnow_naive
+from models import WeeklyCheckin, db
 
 
 def _send_weekly_review_email(user_id, result):
@@ -146,3 +148,19 @@ def generate_weekly_ai_task(
             )
             raise
         raise self.retry(exc=exc)
+
+
+@celery.task
+def cleanup_weekly_checkins_task():
+    cutoff = utcnow_naive() - timedelta(weeks=12)
+    try:
+        deleted_count = (
+            WeeklyCheckin.query
+            .filter(WeeklyCheckin.week_end_utc < cutoff)
+            .delete(synchronize_session=False)
+        )
+        db.session.commit()
+        return deleted_count
+    except Exception:
+        db.session.rollback()
+        raise

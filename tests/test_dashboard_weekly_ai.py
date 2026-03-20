@@ -37,17 +37,17 @@ def test_dashboard_home_shows_no_trades_weekly_ai_message(app_ctx, client, monke
         username="dashboard-ai-no-trades-user",
         email="dashboard-ai-no-trades@example.com",
     )
-    period = {
-        "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
-        "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
-    }
-
     monkeypatch.setattr(
         dashboard_routes,
-        "maybe_generate_weekly_dashboard_advice",
-        lambda **kwargs: {"record": None, "generated": False, "period": period, "skip_reason": "no_trades"},
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
     )
-    monkeypatch.setattr(dashboard_routes, "get_latest_weekly_dashboard_advice", lambda **kwargs: None)
 
     response = client.get("/dashboard")
 
@@ -61,17 +61,17 @@ def test_dashboard_home_shows_too_few_trades_weekly_ai_message(app_ctx, client, 
         username="dashboard-ai-thin-user",
         email="dashboard-ai-thin@example.com",
     )
-    period = {
-        "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
-        "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
-    }
-
     monkeypatch.setattr(
         dashboard_routes,
-        "maybe_generate_weekly_dashboard_advice",
-        lambda **kwargs: {"record": None, "generated": False, "period": period, "skip_reason": "too_few_trades"},
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "Not enough data for a meaningful review. Add at least 3 closed trades this week.",
+            "weekly_ai_is_generating": False,
+        },
     )
-    monkeypatch.setattr(dashboard_routes, "get_latest_weekly_dashboard_advice", lambda **kwargs: None)
 
     response = client.get("/dashboard")
 

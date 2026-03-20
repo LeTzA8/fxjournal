@@ -2,12 +2,22 @@ from datetime import datetime
 
 import ai_service
 from ai_service import (
+    build_dashboard_advice_messages,
+    build_profile_instructions,
     build_trade_payload,
     format_payload_for_prompt,
     load_prompt_text,
     maybe_generate_weekly_dashboard_advice,
 )
-from models import AIGeneratedResponse, AIPromptHistory, Trade, TradeAccount, User, db
+from models import (
+    AIGeneratedResponse,
+    AIPromptHistory,
+    Trade,
+    TradeAccount,
+    User,
+    WeeklyCheckin,
+    db,
+)
 
 
 def _create_user_and_account(*, username, email, account_name="Primary Account", account_type="CFD"):
@@ -190,6 +200,138 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
     assert "exit_session: London" in prompt_text
     assert "outlier_size: true" in prompt_text
     assert "is_likely_corrective: true" in prompt_text
+
+
+def test_format_payload_for_prompt_includes_profile_and_checkin_sections_when_populated():
+    prompt_text = format_payload_for_prompt(
+        {
+            "generated_at": "2026-03-12 10:00:00 UTC",
+            "period_start_utc": "2026-03-03 00:00:00 UTC",
+            "period_end_utc": "2026-03-10 00:00:00 UTC",
+            "notes_coverage": 0.0,
+            "account_age_days": None,
+            "user_profile": {
+                "trading_style": "scalper",
+                "instruments": "forex",
+                "experience_level": "beginner",
+            },
+            "weekly_checkin": {
+                "emotional_state": "stressed",
+                "plan_adherence": "impulsive",
+                "execution_quality": "poor",
+                "additional_context": "Had a rough start after two early losses.",
+            },
+            "summary": {},
+            "historical_context": {},
+            "trades": [],
+        }
+    )
+
+    assert "USER PROFILE" in prompt_text
+    assert "- trading_style: scalper" in prompt_text
+    assert "WEEKLY CHECKIN" in prompt_text
+    assert "- emotional_state: stressed" in prompt_text
+    assert "- additional_context: Had a rough start after two early losses." in prompt_text
+
+
+def test_format_payload_for_prompt_omits_empty_profile_and_checkin_sections():
+    prompt_text = format_payload_for_prompt(
+        {
+            "generated_at": "2026-03-12 10:00:00 UTC",
+            "period_start_utc": "2026-03-03 00:00:00 UTC",
+            "period_end_utc": "2026-03-10 00:00:00 UTC",
+            "notes_coverage": 0.0,
+            "account_age_days": None,
+            "user_profile": {
+                "trading_style": None,
+                "instruments": None,
+                "experience_level": None,
+            },
+            "weekly_checkin": {
+                "emotional_state": None,
+                "plan_adherence": None,
+                "execution_quality": None,
+                "additional_context": None,
+            },
+            "summary": {},
+            "historical_context": {},
+            "trades": [],
+        }
+    )
+
+    assert "USER PROFILE" not in prompt_text
+    assert "WEEKLY CHECKIN" not in prompt_text
+
+
+def test_build_profile_instructions_returns_expected_adjustments():
+    instructions = build_profile_instructions(
+        "scalper",
+        "beginner",
+        "forex",
+        "stressed",
+        "impulsive",
+        "poor",
+    )
+
+    assert instructions.startswith("\nTRADER PROFILE ADJUSTMENTS")
+    assert "Use plain language. Explain any jargon." in instructions
+    assert "Duration analysis in minutes not hours." in instructions
+    assert "London/NY overlap is prime session - weight it accordingly." in instructions
+    assert "Emotional week detected - prioritise BEHAVIOUR section." in instructions
+    assert "Reference plan adherence directly in the Rule." in instructions
+    assert "Find specific examples of poor execution in the trades." in instructions
+
+
+def test_build_trade_payload_serializes_user_profile_and_weekly_checkin(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-context-user",
+        email="ai-context@example.com",
+    )
+
+    payload = build_trade_payload(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        user_profile={
+            "trading_style": "intraday",
+            "instruments": "indices",
+            "experience_level": "experienced",
+        },
+        weekly_checkin={
+            "emotional_state": "calm",
+            "plan_adherence": "consistent",
+            "execution_quality": "sharp",
+            "additional_context": "Clean week overall.",
+        },
+    )
+
+    assert payload["user_profile"]["trading_style"] == "intraday"
+    assert payload["user_profile"]["instruments"] == "indices"
+    assert payload["weekly_checkin"]["emotional_state"] == "calm"
+    assert payload["weekly_checkin"]["additional_context"] == "Clean week overall."
+
+
+def test_build_dashboard_advice_messages_appends_profile_adjustments(app_ctx):
+    payload = {
+        "generated_at": "2026-03-12T12:00:00Z",
+        "period_start_utc": "2026-03-07T21:30:00Z",
+        "period_end_utc": "2026-03-14T21:30:00Z",
+        "notes_coverage": 0.0,
+        "account_age_days": None,
+        "user_profile": {},
+        "weekly_checkin": {},
+        "historical_context": {},
+        "summary": {"closed_trades": 0},
+        "trades": [],
+    }
+
+    prompt_history, messages, _payload_json = build_dashboard_advice_messages(
+        payload,
+        prompt_filename="dashboard_advice.txt",
+        profile_adjustments="\nTRADER PROFILE ADJUSTMENTS\nApply all of the following:\n- Use plain language.",
+    )
+
+    assert prompt_history.prompt_id == "dashboard_advice"
+    assert messages[1]["content"][0]["text"].endswith("- Use plain language.")
 
 
 def test_dashboard_prompt_uses_exit_price_language():
@@ -566,7 +708,11 @@ def test_force_weekly_generation_appends_new_response_for_same_period(app_ctx, m
     monkeypatch.setattr(
         ai_service,
         "build_dashboard_advice_messages",
-        lambda payload, prompt_filename=None: (prompt_history, [{"role": "user", "content": []}], '{"payload":"new"}'),
+        lambda payload, prompt_filename=None, profile_adjustments="": (
+            prompt_history,
+            [{"role": "user", "content": []}],
+            '{"payload":"new"}',
+        ),
     )
     monkeypatch.setattr(
         ai_service,

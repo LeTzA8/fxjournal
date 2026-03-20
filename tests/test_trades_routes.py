@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from models import Trade, TradeAccount, User, db
 
 
@@ -97,6 +99,7 @@ def test_analytics_page_shows_planned_vs_real_rr_panel(app_ctx, client):
             take_profit=120.0,
             lot_size=1.0,
             pnl=120.0,
+            closed_at=datetime(2026, 3, 10, 10, 0, 0),
         ),
         Trade(
             user_id=user.id,
@@ -109,6 +112,7 @@ def test_analytics_page_shows_planned_vs_real_rr_panel(app_ctx, client):
             take_profit=115.0,
             lot_size=1.0,
             pnl=80.0,
+            closed_at=datetime(2026, 3, 11, 10, 0, 0),
         ),
         Trade(
             user_id=user.id,
@@ -121,6 +125,7 @@ def test_analytics_page_shows_planned_vs_real_rr_panel(app_ctx, client):
             take_profit=110.0,
             lot_size=1.0,
             pnl=90.0,
+            closed_at=datetime(2026, 3, 12, 10, 0, 0),
         ),
     ]
     db.session.add_all(trades)
