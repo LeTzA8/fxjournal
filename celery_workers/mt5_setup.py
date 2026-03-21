@@ -4,8 +4,6 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import shutil
-import subprocess
-import time
 
 from celery_app import celery
 
@@ -69,40 +67,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
 
         import MetaTrader5 as mt5
 
-        # Pre-launch the terminal so it can auto-update and resolve the broker
-        # server before we attempt to authenticate. Without this, initialize()
-        # can fail on a fresh copy because the server list is empty and the
-        # terminal hasn't had a chance to fetch it from MetaQuotes.
-        proc = subprocess.Popen(
-            [
-                terminal_exe,
-                f"/login:{login}",
-                f"/password:{investor_password}",
-                f"/server:{server}",
-            ],
-            cwd=terminal_dir,
-        )
-
         try:
-            # Poll until the terminal is accepting connections (up to 2 min).
-            deadline = time.time() + 120
-            ready = False
-            last_init_error = None
-            while time.time() < deadline:
-                if mt5.initialize(terminal_exe, timeout=15000):
-                    mt5.shutdown()
-                    ready = True
-                    break
-                last_init_error = mt5.last_error()
-                mt5.shutdown()
-                time.sleep(5)
-
-            if not ready:
-                raise RuntimeError(
-                    f"MT5 terminal did not become ready within 120s: {last_init_error}"
-                )
-
-            # Terminal is up — now authenticate.
             result = mt5.initialize(
                 terminal_exe,
                 login=login,
@@ -126,10 +91,6 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                 )
         finally:
             mt5.shutdown()
-            try:
-                proc.terminate()
-            except Exception:
-                pass
 
         account.terminal_path = terminal_exe
         account.is_active = True
