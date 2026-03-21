@@ -265,9 +265,6 @@
                     <label for="server">Server</label>
                     <input id="server" name="server" type="text" maxlength="100" required>
 
-                    <label for="terminal_path">Terminal Path (optional)</label>
-                    <input id="terminal_path" name="terminal_path" type="text" maxlength="500" placeholder="C:\Program Files\MetaTrader 5\terminal64.exe">
-
                     <button type="submit" class="submit-btn">Add MT5 Account</button>
                 </form>
             </article>
@@ -311,7 +308,8 @@
                                     <div class="user-cell">
                                         <strong>{{ account.account_number }}</strong>
                                         <span>{{ account.server }}</span>
-                                        <span>{{ account.terminal_path or "Default terminal path" }}</span>
+                                        <span>{{ account.terminal_path or "Terminal not set up yet" }}</span>
+                                        <span>{{ account.appdata_hash or "AppData hash pending" }}</span>
                                     </div>
                                 </td>
                                 <td>
@@ -322,6 +320,10 @@
                                 <td>{{ account.last_synced_at.strftime("%Y-%m-%d %H:%M UTC") if account.last_synced_at else "Never" }}</td>
                                 <td>
                                     <div class="inline-actions">
+                                        <form action="{{ url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="submit-btn">Setup Terminal</button>
+                                        </form>
                                         <form action="{{ url_for('admin_mt5_trigger_sync', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="submit-btn" {% if not account.is_active %}disabled aria-disabled="true"{% endif %}>Trigger Sync</button>

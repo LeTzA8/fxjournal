@@ -530,6 +530,7 @@ def home():
                 "side": trade.side,
                 "pnl": pnl_value,
                 "session_label": classify_trading_session(trade.opened_at) if trade.opened_at else "-",
+                "is_running": trade.exit_price is None,
             }
         )
 

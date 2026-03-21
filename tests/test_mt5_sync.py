@@ -1,5 +1,7 @@
 import os
 
+import os
+
 import pytest
 from cryptography.fernet import Fernet
 
@@ -31,10 +33,10 @@ def _create_user_with_account(*, username, email, account_name="Main Account"):
     return user, trade_account
 
 
-def _log_in_root_admin(client, *, email="root-admin@example.com"):
+def _log_in_root_admin(client, *, email="root-admin@example.com", username="root-admin"):
     os.environ["ADMIN_USER_EMAILS"] = email
     user, trade_account = _create_user_with_account(
-        username="root-admin",
+        username=username,
         email=email,
     )
     user.is_admin = True
@@ -276,10 +278,20 @@ def test_internal_mt5_sync_updates_existing_open_trade_when_close_arrives(app_ct
     assert trade.closed_at is not None
 
 
-def test_admin_mt5_create_list_and_trigger_sync(app_ctx, client, monkeypatch):
+def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
     root_user, trade_account = _log_in_root_admin(client)
+
+    create_captured = {}
+
+    def _fake_create_apply_async(*, args, queue):
+        create_captured["args"] = args
+        create_captured["queue"] = queue
+
+    import celery_workers.mt5_setup as mt5_setup_module
+
+    monkeypatch.setattr(mt5_setup_module.setup_mt5_terminal, "apply_async", _fake_create_apply_async)
 
     create_response = client.post(
         "/dashboard/admin/access/mt5/create",
@@ -289,7 +301,6 @@ def test_admin_mt5_create_list_and_trigger_sync(app_ctx, client, monkeypatch):
             "account_number": "33333333",
             "investor_password": "investor-pass",
             "server": "Broker-Server",
-            "terminal_path": r"C:\MT5\terminal64.exe",
         },
         follow_redirects=False,
     )
@@ -297,15 +308,28 @@ def test_admin_mt5_create_list_and_trigger_sync(app_ctx, client, monkeypatch):
     mt5_account = MT5Account.query.filter_by(account_number="33333333").one()
     list_response = client.get("/dashboard/admin/access/mt5")
 
-    captured = {}
+    setup_captured = {}
 
-    def _fake_apply_async(*, args, queue):
-        captured["args"] = args
-        captured["queue"] = queue
+    def _fake_setup_apply_async(*, args, queue):
+        setup_captured["args"] = args
+        setup_captured["queue"] = queue
+
+    monkeypatch.setattr(mt5_setup_module.setup_mt5_terminal, "apply_async", _fake_setup_apply_async)
+
+    setup_response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/setup",
+        data={},
+        follow_redirects=False,
+    )
+
+    sync_captured = {}
+
+    def _fake_sync_apply_async(*, args, queue):
+        sync_captured["args"] = args
+        sync_captured["queue"] = queue
 
     import celery_workers.mt5_sync as mt5_sync_module
-
-    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_sync_apply_async)
 
     trigger_response = client.post(
         f"/dashboard/admin/access/mt5/{mt5_account.id}/sync",
@@ -313,14 +337,63 @@ def test_admin_mt5_create_list_and_trigger_sync(app_ctx, client, monkeypatch):
         follow_redirects=False,
     )
 
+    mt5_account = db.session.get(MT5Account, mt5_account.id)
+
     assert create_response.status_code == 302
     assert mt5_account.investor_password_encrypted != "investor-pass"
     assert decrypt_password(mt5_account.investor_password_encrypted) == "investor-pass"
+    assert mt5_account.is_active is False
+    assert mt5_account.terminal_path is None
+    assert mt5_account.appdata_hash is None
+    assert create_captured["queue"] == "mt5_sync"
+    assert create_captured["args"] == [mt5_account.id]
     assert list_response.status_code == 200
     assert b"33333333" in list_response.data
+    assert b"Setup Terminal" in list_response.data
+    assert b"Terminal not set up yet" in list_response.data
+    assert b"AppData hash pending" in list_response.data
+    assert setup_response.status_code == 302
+    assert setup_captured["queue"] == "mt5_sync"
+    assert setup_captured["args"] == [mt5_account.id]
     assert trigger_response.status_code == 302
-    assert captured["queue"] == "mt5_sync"
-    assert captured["args"] == [mt5_account.id]
+    assert sync_captured == {}
+
+
+def test_admin_mt5_create_persists_inactive_account_when_setup_queue_fails(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    root_user, trade_account = _log_in_root_admin(
+        client,
+        email="root-admin-queue-fail@example.com",
+        username="root-admin-queue-fail",
+    )
+
+    import celery_workers.mt5_setup as mt5_setup_module
+
+    def _failing_apply_async(*, args, queue):
+        raise RuntimeError("queue unavailable")
+
+    monkeypatch.setattr(mt5_setup_module.setup_mt5_terminal, "apply_async", _failing_apply_async)
+
+    response = client.post(
+        "/dashboard/admin/access/mt5/create",
+        data={
+            "user_id": str(root_user.id),
+            "trade_account_id": str(trade_account.id),
+            "account_number": "66666666",
+            "investor_password": "investor-pass",
+            "server": "Broker-Server",
+        },
+        follow_redirects=True,
+    )
+
+    mt5_account = MT5Account.query.filter_by(account_number="66666666").one()
+
+    assert response.status_code == 200
+    assert b"Account created but setup could not be queued. Click Setup Terminal to retry." in response.data
+    assert mt5_account.is_active is False
+    assert mt5_account.terminal_path is None
+    assert mt5_account.appdata_hash is None
 
 
 def test_mt5_account_is_deleted_with_trade_account(app_ctx, monkeypatch):
@@ -368,6 +441,7 @@ def test_mt5_account_is_deleted_with_user(app_ctx, monkeypatch):
     assert db.session.get(MT5Account, mt5_account_id) is None
 
 
-def test_celery_includes_mt5_sync_module():
+def test_celery_includes_mt5_modules():
     includes = set(celery.conf.include or [])
     assert "celery_workers.mt5_sync" in includes
+    assert "celery_workers.mt5_setup" in includes

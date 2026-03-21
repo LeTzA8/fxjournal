@@ -1600,7 +1600,6 @@ def register_public_auth_routes(
         account_number = (request.form.get("account_number") or "").strip()
         investor_password = request.form.get("investor_password") or ""
         server = (request.form.get("server") or "").strip()
-        terminal_path = (request.form.get("terminal_path") or "").strip() or None
 
         if not user_id or not trade_account_id or not account_number or not investor_password or not server:
             return build_admin_redirect("mt5", "All required MT5 account fields must be provided.", "error")
@@ -1626,8 +1625,9 @@ def register_public_auth_routes(
                 account_number=account_number,
                 investor_password_encrypted=encrypt_password(investor_password),
                 server=server,
-                terminal_path=terminal_path,
-                is_active=True,
+                terminal_path=None,
+                appdata_hash=None,
+                is_active=False,
             )
             db.session.add(mt5_account)
             db.session.commit()
@@ -1642,9 +1642,59 @@ def register_public_auth_routes(
                 "error",
             )
 
+        try:
+            from celery_workers.mt5_setup import setup_mt5_terminal
+
+            setup_mt5_terminal.apply_async(
+                args=[mt5_account.id],
+                queue="mt5_sync",
+            )
+        except Exception as exc:
+            current_app.logger.warning(
+                "MT5 setup queue failed for mt5_account_id=%s: %s",
+                mt5_account.id,
+                sanitize_error_message(exc),
+            )
+            return build_admin_redirect(
+                "mt5",
+                "Account created but setup could not be queued. Click Setup Terminal to retry.",
+                "error",
+            )
+
         return build_admin_redirect(
             "mt5",
-            f"Added MT5 account {account_number} for {user.email}.",
+            f"Added MT5 account {account_number} for {user.email}. Terminal setup queued.",
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/mt5/<int:mt5_account_id>/setup", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_setup_terminal(mt5_account_id):
+        account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+
+        try:
+            from celery_workers.mt5_setup import setup_mt5_terminal
+
+            setup_mt5_terminal.apply_async(
+                args=[mt5_account_id],
+                queue="mt5_sync",
+            )
+        except Exception as exc:
+            db.session.rollback()
+            current_app.logger.warning(
+                "MT5 setup queue failed for mt5_account_id=%s: %s",
+                mt5_account_id,
+                sanitize_error_message(exc),
+            )
+            return build_admin_redirect(
+                "mt5",
+                "MT5 terminal setup could not be queued right now. Click Setup Terminal to retry.",
+                "error",
+            )
+
+        return build_admin_redirect(
+            "mt5",
+            f"MT5 terminal setup queued for account {account.account_number}.",
             "success",
         )
 

@@ -360,6 +360,7 @@ class MT5Account(db.Model):
     investor_password_encrypted = db.Column(db.Text, nullable=False)
     server = db.Column(db.String(100), nullable=False)
     terminal_path = db.Column(db.String(500), nullable=True)
+    appdata_hash = db.Column(db.String(100), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
     last_synced_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)

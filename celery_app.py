@@ -77,7 +77,11 @@ def _create_celery():
         "fxjournal",
         broker=broker_url,
         backend=backend_url,
-        include=["celery_workers.tasks", "celery_workers.mt5_sync"],
+        include=[
+            "celery_workers.tasks",
+            "celery_workers.mt5_sync",
+            "celery_workers.mt5_setup",
+        ],
         task_cls=FlaskTask,
     )
     celery_config = {
