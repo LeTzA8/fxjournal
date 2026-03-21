@@ -19,7 +19,7 @@ MT5_TERMINALS_ROOT = (
     or r"C:\MT5Terminals"
 )
 APPDATA_TERMINAL_PATH = os.path.join(
-    os.environ.get("APPDATA", ""),
+    os.environ.get("APPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Roaming"),
     "MetaQuotes",
     "Terminal",
 )
@@ -44,7 +44,7 @@ def _find_base_appdata(base_path: str):
             continue
         origin = os.path.join(entry.path, "origin.txt")
         try:
-            content = open(origin, encoding="utf-8", errors="ignore").read().strip()
+            content = open(origin, encoding="utf-8", errors="ignore").read().strip().rstrip("\\")
             if os.path.normcase(content) == target:
                 return entry.path
         except OSError:
@@ -129,9 +129,18 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                     "MT5 AppData folder not created after launch — check MT5 installation"
                 )
 
+            # Verify the new folder's origin.txt matches the new terminal path
+            new_appdata = os.path.join(APPDATA_TERMINAL_PATH, new_hash)
+            new_origin = os.path.join(new_appdata, "origin.txt")
+            if os.path.exists(new_origin):
+                origin_content = open(new_origin, encoding="utf-8", errors="ignore").read().strip().rstrip("\\")
+                if os.path.normcase(origin_content) != os.path.normcase(os.path.abspath(terminal_dir)):
+                    raise PermanentSetupError(
+                        f"New AppData origin.txt mismatch: expected {terminal_dir}, got {origin_content}"
+                    )
+
             # Copy servers.dat from base AppData so the new terminal knows
             # how to resolve the broker server address
-            new_appdata = os.path.join(APPDATA_TERMINAL_PATH, new_hash)
             src_servers = os.path.join(base_appdata, "config", "servers.dat")
             dst_config = os.path.join(new_appdata, "config")
             os.makedirs(dst_config, exist_ok=True)
