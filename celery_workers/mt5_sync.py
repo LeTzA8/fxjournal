@@ -97,9 +97,9 @@ def sync_mt5_account(self, mt5_account_id):
         raise RuntimeError("MetaTrader5 not installed on this worker.") from exc
 
     from helpers.utils import decrypt_password
-    from models import MT5Account
+    from models import MT5Account, db
 
-    account = MT5Account.query.get(mt5_account_id)
+    account = db.session.get(MT5Account, mt5_account_id)
     if account is None or not account.is_active:
         return {"error": "MT5Account not found or inactive"}
 

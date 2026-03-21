@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from functools import wraps
 
 from flask import abort, current_app, flash, redirect, render_template, request, session, url_for
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -13,6 +13,7 @@ from models import (
     AllowedSignupEmailDomain,
     MT5Account,
     SignupCode,
+    Trade,
     TradeAccount,
     User,
     UserProfile,
@@ -1555,6 +1556,29 @@ def register_public_auth_routes(
         mt5_accounts = (
             MT5Account.query.order_by(MT5Account.created_at.desc(), MT5Account.id.desc()).all()
         )
+        mt5_trade_counts_by_account = {}
+        trade_account_ids = sorted(
+            {
+                account.trade_account_id
+                for account in mt5_accounts
+                if account.trade_account_id is not None
+            }
+        )
+        if trade_account_ids:
+            trade_count_rows = (
+                db.session.query(Trade.trade_account_id, func.count(Trade.id))
+                .filter(Trade.trade_account_id.in_(trade_account_ids))
+                .group_by(Trade.trade_account_id)
+                .all()
+            )
+            trade_counts_by_trade_account = {
+                trade_account_id: trade_count
+                for trade_account_id, trade_count in trade_count_rows
+            }
+            mt5_trade_counts_by_account = {
+                account.id: trade_counts_by_trade_account.get(account.trade_account_id, 0)
+                for account in mt5_accounts
+            }
         mt5_form_users = (
             User.query.join(TradeAccount, TradeAccount.user_id == User.id)
             .filter(TradeAccount.account_type == "CFD")
@@ -1588,6 +1612,7 @@ def register_public_auth_routes(
             admin_user=admin_user,
             section="mt5",
             mt5_accounts=mt5_accounts,
+            mt5_trade_counts_by_account=mt5_trade_counts_by_account,
             mt5_form_users=mt5_form_users,
             mt5_trade_accounts_by_user=mt5_trade_accounts_by_user,
         )
@@ -1728,6 +1753,54 @@ def register_public_auth_routes(
         return build_admin_redirect(
             "mt5",
             f"MT5 sync queued for account {account.account_number}.",
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/mt5/<int:mt5_account_id>/delete", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_delete_account(mt5_account_id):
+        account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        trade_count = Trade.query.filter_by(trade_account_id=account.trade_account_id).count()
+        if account.is_active and trade_count > 0:
+            return build_admin_redirect(
+                "mt5",
+                "Active MT5 accounts with imported trades cannot be deleted from here.",
+                "error",
+            )
+
+        cleanup_warning = ""
+        if account.terminal_path and account.appdata_hash:
+            try:
+                from celery_workers.mt5_setup import cleanup_mt5_terminal
+
+                cleanup_mt5_terminal.apply_async(
+                    args=[account.terminal_path, account.appdata_hash],
+                    queue="mt5_sync",
+                )
+            except Exception as exc:
+                current_app.logger.warning(
+                    "MT5 cleanup queue failed for mt5_account_id=%s: %s",
+                    mt5_account_id,
+                    sanitize_error_message(exc),
+                )
+                cleanup_warning = " Cleanup could not be queued; terminal files may need manual removal."
+
+        account_number = account.account_number
+
+        try:
+            db.session.delete(account)
+            db.session.commit()
+        except (OperationalError, IntegrityError):
+            db.session.rollback()
+            return build_admin_redirect(
+                "mt5",
+                "Could not delete that MT5 account right now. Please try again.",
+                "error",
+            )
+
+        return build_admin_redirect(
+            "mt5",
+            f"Deleted MT5 account {account_number}.{cleanup_warning}",
             "success",
         )
 

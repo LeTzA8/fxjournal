@@ -289,6 +289,8 @@
                         </thead>
                         <tbody>
                             {% for account in mt5_accounts %}
+                            {% set trade_count = mt5_trade_counts_by_account.get(account.id, 0) %}
+                            {% set delete_disabled = account.is_active and trade_count > 0 %}
                             <tr>
                                 <td>
                                     <div class="user-cell">
@@ -302,6 +304,7 @@
                                         <strong>{{ account.trade_account.name if account.trade_account else "Unknown Account" }}</strong>
                                         <span>ID: {{ account.trade_account_id }}</span>
                                         <span>{{ account.trade_account.account_type if account.trade_account else "-" }}</span>
+                                        <span>Trades: {{ trade_count }}</span>
                                     </div>
                                 </td>
                                 <td>
@@ -327,6 +330,16 @@
                                         <form action="{{ url_for('admin_mt5_trigger_sync', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="submit-btn" {% if not account.is_active %}disabled aria-disabled="true"{% endif %}>Trigger Sync</button>
+                                        </form>
+                                        <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button
+                                                type="submit"
+                                                class="ghost-btn danger-btn"
+                                                {% if delete_disabled %}disabled aria-disabled="true" title="Deactivate the MT5 account or clear its imported trades before deleting it."{% endif %}
+                                            >
+                                                Delete
+                                            </button>
                                         </form>
                                     </div>
                                 </td>
