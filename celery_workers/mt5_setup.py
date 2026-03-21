@@ -4,6 +4,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import shutil
+import subprocess
+import time
 
 from celery_app import celery
 
@@ -16,6 +18,38 @@ MT5_TERMINALS_ROOT = (
     os.environ.get("MT5_TERMINALS_DIR", r"C:\MT5Terminals").strip()
     or r"C:\MT5Terminals"
 )
+APPDATA_TERMINAL_PATH = os.path.join(
+    os.environ.get("APPDATA", ""),
+    "MetaQuotes",
+    "Terminal",
+)
+IGNORED_APPDATA_FOLDERS = {"Common", "Community"}
+
+
+def _get_appdata_folders() -> set:
+    if not os.path.isdir(APPDATA_TERMINAL_PATH):
+        return set()
+    return {
+        e.name for e in os.scandir(APPDATA_TERMINAL_PATH)
+        if e.is_dir() and e.name not in IGNORED_APPDATA_FOLDERS
+    }
+
+
+def _find_base_appdata(base_path: str):
+    target = os.path.normcase(os.path.abspath(base_path))
+    if not os.path.isdir(APPDATA_TERMINAL_PATH):
+        return None
+    for entry in os.scandir(APPDATA_TERMINAL_PATH):
+        if not entry.is_dir() or entry.name in IGNORED_APPDATA_FOLDERS:
+            continue
+        origin = os.path.join(entry.path, "origin.txt")
+        try:
+            content = open(origin, encoding="utf-8", errors="ignore").read().strip()
+            if os.path.normcase(content) == target:
+                return entry.path
+        except OSError:
+            pass
+    return None
 
 
 class PermanentSetupError(RuntimeError):
@@ -65,6 +99,51 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                 f"terminal64.exe not found after copy: {terminal_exe}"
             )
 
+        # Find base terminal AppData which contains the populated servers.dat
+        base_appdata = _find_base_appdata(MT5_BASE_PATH)
+        if base_appdata is None:
+            raise PermanentSetupError(
+                "Could not find base MT5 AppData via origin.txt — "
+                "ensure the base terminal has been run at least once"
+            )
+
+        # Snapshot existing AppData folders so we can detect the new one
+        folders_before = _get_appdata_folders()
+
+        # Launch the terminal briefly — this causes MT5 to create its AppData folder
+        proc = subprocess.Popen([terminal_exe], cwd=terminal_dir)
+
+        try:
+            # Wait up to 30s for the new AppData folder to appear
+            new_hash = None
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                new_folders = _get_appdata_folders() - folders_before
+                if new_folders:
+                    new_hash = new_folders.pop()
+                    break
+                time.sleep(2)
+
+            if new_hash is None:
+                raise PermanentSetupError(
+                    "MT5 AppData folder not created after launch — check MT5 installation"
+                )
+
+            # Copy servers.dat from base AppData so the new terminal knows
+            # how to resolve the broker server address
+            new_appdata = os.path.join(APPDATA_TERMINAL_PATH, new_hash)
+            src_servers = os.path.join(base_appdata, "config", "servers.dat")
+            dst_config = os.path.join(new_appdata, "config")
+            os.makedirs(dst_config, exist_ok=True)
+            dst_servers = os.path.join(dst_config, "servers.dat")
+            if os.path.exists(src_servers):
+                shutil.copy2(src_servers, dst_servers)
+
+            account.appdata_hash = new_hash
+        finally:
+            proc.terminate()
+            proc.wait(timeout=10)
+
         import MetaTrader5 as mt5
 
         try:
@@ -73,7 +152,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                 login=login,
                 password=investor_password,
                 server=server,
-                timeout=120000,
+                timeout=60000,
             )
 
             if not result:
