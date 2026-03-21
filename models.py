@@ -50,6 +50,9 @@ class User(db.Model):
     trade_accounts = db.relationship(
         "TradeAccount", backref="user", lazy=True, cascade="all, delete-orphan"
     )
+    mt5_accounts = db.relationship(
+        "MT5Account", backref="user", lazy=True, cascade="all, delete-orphan"
+    )
     trade_profiles = db.relationship(
         "TradeProfile", backref="user", lazy=True, cascade="all, delete-orphan"
     )
@@ -163,6 +166,9 @@ class TradeAccount(db.Model):
     trades = db.relationship(
         "Trade", backref="trade_account", lazy=True, cascade="all, delete-orphan"
     )
+    mt5_accounts = db.relationship(
+        "MT5Account", backref="trade_account", lazy=True, cascade="all, delete-orphan"
+    )
     ai_generated_responses = db.relationship(
         "AIGeneratedResponse",
         backref="trade_account",
@@ -262,6 +268,26 @@ class Trade(db.Model):
         foreign_keys=[trade_profile_version_id],
         backref=db.backref("attached_trades", lazy=True),
     )
+
+
+class MT5Account(db.Model):
+    __tablename__ = "mt5_account"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    trade_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trade_accounts.id"),
+        nullable=False,
+        index=True,
+    )
+    account_number = db.Column(db.String(50), nullable=False)
+    investor_password_encrypted = db.Column(db.Text, nullable=False)
+    server = db.Column(db.String(100), nullable=False)
+    terminal_path = db.Column(db.String(500), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    last_synced_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
 
 
 class TradeProfile(db.Model):

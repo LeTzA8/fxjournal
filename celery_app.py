@@ -9,6 +9,9 @@ from pathlib import Path
 
 from celery import Celery
 from celery.schedules import crontab
+from dotenv import load_dotenv
+
+load_dotenv()
 
 _flask_app = None
 
@@ -64,7 +67,7 @@ def _create_celery():
         "fxjournal",
         broker=broker_url,
         backend=backend_url,
-        include=["celery_workers.tasks"],
+        include=["celery_workers.tasks", "celery_workers.mt5_sync"],
     )
     celery_app.conf.update(
         task_serializer="json",
@@ -75,6 +78,10 @@ def _create_celery():
             "cleanup-weekly-checkins": {
                 "task": "celery_workers.tasks.cleanup_weekly_checkins_task",
                 "schedule": crontab(hour=3, minute=0, day_of_week=1),
+            },
+            "sync-all-mt5-accounts": {
+                "task": "celery_workers.mt5_sync.sync_all_active_mt5_accounts",
+                "schedule": 300,
             },
         },
     )

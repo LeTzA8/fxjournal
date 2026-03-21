@@ -31,7 +31,7 @@ from helpers.core import (
 )
 
 from extensions import limiter
-from routes import all_blueprints
+from routes import all_blueprints, mt5_internal_bp
 from helpers.utils import env_bool, env_int, utcnow_naive
 
 load_dotenv()
@@ -125,6 +125,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db.init_app(app)
 migrate = Migrate(app, db, directory="migrations", compare_type=True)
 csrf = CSRFProtect(app)
+csrf.exempt(mt5_internal_bp)
 # For production, set RATELIMIT_STORAGE_URI to Redis for shared counters.
 app.config.setdefault("RATELIMIT_STORAGE_URI", os.getenv("RATELIMIT_STORAGE_URI", "memory://"))
 limiter.init_app(app)

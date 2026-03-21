@@ -154,6 +154,9 @@ The app reads from `.env`. Important variables include:
 - `SECRET_KEY`
 - `TOKEN_SALT`
 - `DATABASE_URL`
+- `ENCRYPTION_KEY`
+- `MT5_SYNC_SECRET`
+- `FLASK_API_URL`
 - `RATELIMIT_STORAGE_URI`
 - `MAX_UPLOAD_MB`
 - `APP_ENV`

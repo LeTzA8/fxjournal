@@ -8,7 +8,7 @@ from celery_workers.cache import CacheUnavailableError, invalidate
 from helpers.core import (
     assign_trade_profile_to_trade,
     build_trade_duplicate_key,
-    build_trade_import_dedupe_key,
+    build_normalized_trade_insert_batch,
     build_unique_trade_pubkey,
     format_local_datetime_input,
     get_active_trade_account_for_user,
@@ -648,258 +648,28 @@ def import_trade_file():
             )
             return redirect(url_for("trades.new_trade"))
 
-        allowed_symbols = set(get_symbol_options(active_trade_account.account_type))
-        failed_symbols = set()
-        validation_reasons = {
-            "missing_mt5_position": 0,
-            "invalid_mt5_position": 0,
-            "invalid_side": 0,
-            "invalid_entry_or_lot": 0,
-            "invalid_exit_price": 0,
-            "missing_open_time": 0,
-            "negative_holding_time": 0,
-            "invalid_stop_distance": 0,
-            "invalid_stop_loss": 0,
-            "invalid_take_profit": 0,
-        }
-
-        existing_positions = set()
-        import_positions = set()
-        existing_trade_keys = set()
-        import_trade_keys = set()
-        if account_type == "FUTURES":
-            existing_trades = (
-                Trade.query.filter_by(
-                    user_id=user_id,
-                    trade_account_id=active_trade_account.id,
-                )
-                .all()
-            )
-            existing_trade_keys = {
-                build_trade_duplicate_key(
-                    symbol=trade.symbol,
-                    contract_code=trade.contract_code,
-                    side=trade.side,
-                    entry_price=trade.entry_price,
-                    exit_price=trade.exit_price,
-                    lot_size=trade.lot_size,
-                    opened_at=trade.opened_at,
-                    closed_at=trade.closed_at,
-                    pnl=resolve_pnl(trade),
-                )
-                for trade in existing_trades
-            }
-        else:
-            existing_positions = {
-                pos
-                for (pos,) in db.session.query(Trade.mt5_position)
-                .filter_by(
-                    user_id=user_id,
-                    trade_account_id=active_trade_account.id,
-                )
-                .filter(Trade.mt5_position.isnot(None))
-                .all()
-                if pos
-            }
-
         import_stage = "build_insert_batch"
         import_signature = build_import_signature(
             "tradovate" if account_type == "FUTURES" else "mt5"
         )
-        insert_batch = []
-        reserved_pubkeys = set()
-
-        for current_row_index, row in enumerate(parsed_rows, start=1):
-            symbol = canonicalize_symbol(
-                row.get("symbol"), active_trade_account.account_type
-            )
-            side = (row.get("side") or "").upper()
-            lot_size = row.get("lot_size")
-            entry_price = row.get("entry_price")
-            exit_price = row.get("exit_price")
-            pnl = row.get("pnl")
-            opened_at = row.get("opened_at")
-            closed_at = row.get("closed_at")
-            contract_code = row.get("contract_code")
-            mt5_position = row.get("mt5_position")
-            mt5_position_raw = row.get("mt5_position_raw")
-            current_row_context = {
-                "symbol": symbol,
-                "side": side,
-                "lot_size": lot_size,
-                "entry_price": entry_price,
-                "exit_price": exit_price,
-                "pnl": pnl,
-                "opened_at": opened_at.isoformat() if opened_at else None,
-                "closed_at": closed_at.isoformat() if closed_at else None,
-                "contract_code": contract_code,
-                "mt5_position": mt5_position,
-                "mt5_position_raw": str(mt5_position_raw or "").strip()[:64] or None,
-                "source_timezone": row.get("source_timezone"),
-            }
-
-            if symbol not in allowed_symbols:
-                if symbol:
-                    failed_symbols.add(symbol)
-                validation_skipped += 1
-                continue
-
-            if account_type == "CFD":
-                if mt5_position is None:
-                    validation_skipped += 1
-                    raw_text = str(mt5_position_raw or "").strip()
-                    if raw_text:
-                        validation_reasons["invalid_mt5_position"] += 1
-                    else:
-                        validation_reasons["missing_mt5_position"] += 1
-                    continue
-
-            if side not in {"BUY", "SELL"}:
-                validation_skipped += 1
-                validation_reasons["invalid_side"] += 1
-                continue
-
-            if (
-                lot_size is None
-                or lot_size <= 0
-                or entry_price is None
-                or entry_price <= 0
-            ):
-                validation_skipped += 1
-                validation_reasons["invalid_entry_or_lot"] += 1
-                continue
-
-            if exit_price is not None and exit_price <= 0:
-                validation_skipped += 1
-                validation_reasons["invalid_exit_price"] += 1
-                continue
-
-            if opened_at is None:
-                validation_skipped += 1
-                validation_reasons["missing_open_time"] += 1
-                continue
-
-            if closed_at is not None and closed_at < opened_at:
-                validation_skipped += 1
-                validation_reasons["negative_holding_time"] += 1
-                current_app.logger.warning(
-                    "Skipping imported trade row %s due to negative holding time. context=%r",
-                    current_row_index,
-                    current_row_context,
-                )
-                continue
-
-            validation_issues = get_trade_level_validation_issues(
-                entry_price,
-                row.get("stop_loss"),
-                row.get("take_profit"),
-                side,
-                symbol,
-                instrument_type=active_trade_account.account_type,
-                contract_code=contract_code,
-            )
-            if validation_issues["stop_loss_too_close"]:
-                validation_skipped += 1
-                validation_reasons["invalid_stop_distance"] += 1
-                current_app.logger.warning(
-                    "Skipping imported trade row %s because stop loss is too close to entry. context=%r",
-                    current_row_index,
-                    current_row_context,
-                )
-                continue
-            if validation_issues["invalid_stop_loss_side"]:
-                validation_skipped += 1
-                validation_reasons["invalid_stop_loss"] += 1
-                current_app.logger.warning(
-                    "Skipping imported trade row %s because stop loss is on the wrong side of entry. context=%r",
-                    current_row_index,
-                    current_row_context,
-                )
-                continue
-            if validation_issues["take_profit_too_close"] or validation_issues["invalid_take_profit_side"]:
-                validation_skipped += 1
-                validation_reasons["invalid_take_profit"] += 1
-                current_app.logger.warning(
-                    "Skipping imported trade row %s because take profit is invalid relative to entry. context=%r",
-                    current_row_index,
-                    current_row_context,
-                )
-                continue
-
-            if pnl is None and exit_price is not None:
-                pnl = calc_pnl_values(
-                    symbol,
-                    side,
-                    entry_price,
-                    exit_price,
-                    lot_size,
-                    instrument_type=active_trade_account.account_type,
-                    contract_code=contract_code,
-                )
-
-            if account_type == "FUTURES":
-                trade_key = build_trade_duplicate_key(
-                    symbol=symbol,
-                    contract_code=contract_code,
-                    side=side,
-                    entry_price=entry_price,
-                    exit_price=exit_price,
-                    lot_size=lot_size,
-                    opened_at=opened_at,
-                    closed_at=closed_at,
-                    pnl=pnl,
-                )
-                if trade_key in existing_trade_keys or trade_key in import_trade_keys:
-                    duplicate_count += 1
-                    continue
-                import_trade_keys.add(trade_key)
-            else:
-                if mt5_position in existing_positions or mt5_position in import_positions:
-                    duplicate_count += 1
-                    continue
-                import_positions.add(mt5_position)
-
-            insert_batch.append(
-                Trade(
-                    pubkey=build_unique_trade_pubkey(reserved_pubkeys),
-                    user_id=user_id,
-                    trade_account_id=active_trade_account.id,
-                    source_timezone=(row.get("source_timezone") or None),
-                    symbol=symbol,
-                    mt5_position=mt5_position,
-                    import_signature=import_signature,
-                    import_dedupe_key=build_trade_import_dedupe_key(
-                        account_type=account_type,
-                        symbol=symbol,
-                        contract_code=contract_code,
-                        side=side,
-                        entry_price=entry_price,
-                        exit_price=exit_price,
-                        lot_size=lot_size,
-                        opened_at=opened_at,
-                        closed_at=closed_at,
-                        pnl=pnl,
-                        mt5_position=mt5_position,
-                    ),
-                    contract_code=contract_code,
-                    side=side,
-                    entry_price=float(entry_price),
-                    exit_price=float(exit_price) if exit_price is not None else None,
-                    lot_size=float(lot_size),
-                    pnl=float(pnl) if pnl is not None else None,
-                    stop_loss=float(row.get("stop_loss")) if row.get("stop_loss") is not None else None,
-                    take_profit=float(row.get("take_profit")) if row.get("take_profit") is not None else None,
-                    commission=float(row.get("commission")) if row.get("commission") is not None else None,
-                    swap=float(row.get("swap")) if row.get("swap") is not None else None,
-                    opened_at=opened_at,
-                    closed_at=closed_at,
-                    trade_note=(
-                        "Imported from Tradovate Performance CSV"
-                        if account_type == "FUTURES"
-                        else "Imported from MT5 Positions"
-                    ),
-                )
-            )
+        batch_result = build_normalized_trade_insert_batch(
+            user_id=user_id,
+            trade_account=active_trade_account,
+            rows=parsed_rows,
+            import_signature=import_signature,
+            use_import_dedupe_key=True,
+            dedupe_by_mt5_position_only=False,
+            default_trade_note=(
+                "Imported from Tradovate Performance CSV"
+                if account_type == "FUTURES"
+                else "Imported from MT5 Positions"
+            ),
+        )
+        insert_batch = batch_result["insert_batch"]
+        validation_skipped = batch_result["validation_skipped"]
+        duplicate_count = batch_result["duplicate_count"]
+        failed_symbols = batch_result["failed_symbols"]
+        validation_reasons = batch_result["validation_reasons"]
 
         if not insert_batch:
             symbol_msg = ""

@@ -11,6 +11,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from ai_service import get_latest_trade_week_period
 from models import (
     AllowedSignupEmailDomain,
+    MT5Account,
     SignupCode,
     TradeAccount,
     User,
@@ -18,7 +19,13 @@ from models import (
     db,
 )
 from helpers.core import sanitize_error_message
-from helpers.utils import env_bool as _env_bool, env_int as _env_int, login_required, utcnow_naive
+from helpers.utils import (
+    encrypt_password,
+    env_bool as _env_bool,
+    env_int as _env_int,
+    login_required,
+    utcnow_naive,
+)
 
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
 TOKEN_PURPOSE_EMAIL_CHANGE = "email_change"
@@ -661,7 +668,11 @@ def register_public_auth_routes(
         )
 
     def build_admin_redirect(section="users", message="", status="info"):
-        endpoint = "admin_signup_codes" if section == "codes" else "admin_signup_users"
+        endpoint_map = {
+            "codes": "admin_signup_codes",
+            "mt5": "admin_mt5_accounts",
+        }
+        endpoint = endpoint_map.get(section, "admin_signup_users")
         if message:
             flash(message, status)
         return redirect(url_for(endpoint))
@@ -675,6 +686,7 @@ def register_public_auth_routes(
             "suspended_users": User.query.filter_by(signup_status=SIGNUP_STATUS_SUSPENDED).count(),
             "admin_users": User.query.filter_by(is_admin=True).count(),
             "signup_codes": SignupCode.query.count(),
+            "mt5_accounts": MT5Account.query.count(),
         }
 
     def render_admin_page(*, admin_user, section, **extra_context):
@@ -1534,6 +1546,108 @@ def register_public_auth_routes(
             admin_user=admin_user,
             section="codes",
             signup_codes=signup_codes,
+        )
+
+    @app.route("/dashboard/admin/access/mt5")
+    @root_admin_required
+    def admin_mt5_accounts():
+        admin_user = get_current_root_admin_user()
+        mt5_accounts = (
+            MT5Account.query.order_by(MT5Account.created_at.desc(), MT5Account.id.desc()).all()
+        )
+        return render_admin_page(
+            admin_user=admin_user,
+            section="mt5",
+            mt5_accounts=mt5_accounts,
+        )
+
+    @app.route("/dashboard/admin/access/mt5/create", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_create_account():
+        user_id = request.form.get("user_id", type=int)
+        trade_account_id = request.form.get("trade_account_id", type=int)
+        account_number = (request.form.get("account_number") or "").strip()
+        investor_password = request.form.get("investor_password") or ""
+        server = (request.form.get("server") or "").strip()
+        terminal_path = (request.form.get("terminal_path") or "").strip() or None
+
+        if not user_id or not trade_account_id or not account_number or not investor_password or not server:
+            return build_admin_redirect("mt5", "All required MT5 account fields must be provided.", "error")
+
+        user = User.query.filter_by(id=user_id).first()
+        if user is None:
+            return build_admin_redirect("mt5", "User not found.", "error")
+
+        trade_account = TradeAccount.query.filter_by(id=trade_account_id, user_id=user_id).first()
+        if trade_account is None:
+            return build_admin_redirect(
+                "mt5",
+                "Trade account not found for that user.",
+                "error",
+            )
+        if str(trade_account.account_type or "").strip().upper() != "CFD":
+            return build_admin_redirect("mt5", "MT5 sync currently supports CFD trade accounts only.", "error")
+
+        try:
+            mt5_account = MT5Account(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                account_number=account_number,
+                investor_password_encrypted=encrypt_password(investor_password),
+                server=server,
+                terminal_path=terminal_path,
+                is_active=True,
+            )
+            db.session.add(mt5_account)
+            db.session.commit()
+        except (RuntimeError, ValueError) as exc:
+            db.session.rollback()
+            return build_admin_redirect("mt5", str(exc), "error")
+        except (IntegrityError, OperationalError):
+            db.session.rollback()
+            return build_admin_redirect(
+                "mt5",
+                "Could not save that MT5 account right now. Please try again.",
+                "error",
+            )
+
+        return build_admin_redirect(
+            "mt5",
+            f"Added MT5 account {account_number} for {user.email}.",
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/mt5/<int:mt5_account_id>/sync", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_trigger_sync(mt5_account_id):
+        account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        if not account.is_active:
+            return build_admin_redirect("mt5", "That MT5 account is inactive.", "error")
+
+        try:
+            from celery_workers.mt5_sync import sync_mt5_account
+
+            sync_mt5_account.apply_async(
+                args=[mt5_account_id],
+                queue="mt5_sync",
+            )
+        except Exception as exc:
+            db.session.rollback()
+            current_app.logger.warning(
+                "MT5 sync queue failed for mt5_account_id=%s: %s",
+                mt5_account_id,
+                sanitize_error_message(exc),
+            )
+            return build_admin_redirect(
+                "mt5",
+                "MT5 sync could not be queued right now. Please try again shortly.",
+                "error",
+            )
+
+        return build_admin_redirect(
+            "mt5",
+            f"MT5 sync queued for account {account.account_number}.",
+            "success",
         )
 
     @app.route("/dashboard/admin/access/codes/create", methods=["POST"])

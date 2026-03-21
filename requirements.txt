@@ -6,10 +6,12 @@ Flask-Migrate==4.1.0
 Flask-SQLAlchemy==3.1.1
 Flask-WTF==1.2.2
 celery==5.4.0
+cryptography==45.0.7
 openpyxl==3.1.5
 psycopg[binary]==3.2.13
 python-dotenv==1.0.1
 redis==5.2.1
+requests==2.32.5
 resend==2.21.0
 
 # Deployment/runtime support

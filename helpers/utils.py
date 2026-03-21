@@ -2,6 +2,7 @@ import os
 from datetime import datetime, timezone
 from functools import wraps
 
+from cryptography.fernet import Fernet
 from flask import jsonify, redirect, request, session, url_for
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -26,6 +27,21 @@ def env_int(name, default):
         return int(value.strip())
     except (TypeError, ValueError):
         return default
+
+
+def _get_encryption_fernet():
+    key = os.environ.get("ENCRYPTION_KEY", "").strip()
+    if not key:
+        raise RuntimeError("ENCRYPTION_KEY is required for MT5 password encryption.")
+    return Fernet(key.encode("utf-8"))
+
+
+def encrypt_password(password: str) -> str:
+    return _get_encryption_fernet().encrypt(password.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_password(encrypted: str) -> str:
+    return _get_encryption_fernet().decrypt(encrypted.encode("utf-8")).decode("utf-8")
 
 
 def login_required(f):

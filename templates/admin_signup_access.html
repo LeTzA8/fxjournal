@@ -41,6 +41,11 @@
                 <p class="summary-value">{{ overview.signup_codes }}</p>
                 <p class="summary-note">Referral and invite links</p>
             </article>
+            <article class="panel summary-card">
+                <p class="summary-label">MT5 Accounts</p>
+                <p class="summary-value">{{ overview.mt5_accounts }}</p>
+                <p class="summary-note">Root-admin sync targets</p>
+            </article>
         </section>
 
         <section class="panel control-panel">
@@ -71,6 +76,9 @@
         <nav class="admin-tabs" aria-label="Admin Sections">
             <a href="{{ url_for('admin_signup_users') }}" class="admin-tab{% if section == 'users' %} is-active{% endif %}">Users</a>
             <a href="{{ url_for('admin_signup_codes') }}" class="admin-tab{% if section == 'codes' %} is-active{% endif %}">Codes</a>
+            {% if is_root_admin %}
+            <a href="{{ url_for('admin_mt5_accounts') }}" class="admin-tab{% if section == 'mt5' %} is-active{% endif %}">MT5</a>
+            {% endif %}
         </nav>
 
         {% if section == "users" %}
@@ -221,6 +229,104 @@
                 </div>
                 {% else %}
                 <p class="helper-note">No users match the current filter. Try switching status tabs or clearing the current filter.</p>
+                {% endif %}
+            </article>
+        </section>
+        {% elif section == "mt5" %}
+        <section class="panel-grid admin-main-grid">
+            <article class="panel create-code-panel">
+                <div class="panel-head">
+                    <h2>Add MT5 Account</h2>
+                    <span class="soft">Root Admin Only</span>
+                </div>
+                <form action="{{ url_for('admin_mt5_create_account') }}" method="post" class="code-form" data-themed-validation>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <label for="user_id">User ID</label>
+                    <input id="user_id" name="user_id" type="number" min="1" step="1" required>
+
+                    <label for="trade_account_id">Trade Account ID</label>
+                    <input id="trade_account_id" name="trade_account_id" type="number" min="1" step="1" required>
+
+                    <label for="account_number">MT5 Account Number</label>
+                    <input id="account_number" name="account_number" type="text" maxlength="50" required>
+
+                    <label for="investor_password">Investor Password</label>
+                    <input id="investor_password" name="investor_password" type="password" required>
+
+                    <label for="server">Server</label>
+                    <input id="server" name="server" type="text" maxlength="100" required>
+
+                    <label for="terminal_path">Terminal Path (optional)</label>
+                    <input id="terminal_path" name="terminal_path" type="text" maxlength="500" placeholder="C:\Program Files\MetaTrader 5\terminal64.exe">
+
+                    <button type="submit" class="submit-btn">Add MT5 Account</button>
+                </form>
+            </article>
+
+            <article class="panel codes-panel">
+                <div class="panel-head">
+                    <h2>MT5 Accounts</h2>
+                    <span class="soft">{{ mt5_accounts|length }} total</span>
+                </div>
+                {% if mt5_accounts %}
+                <div class="table-shell admin-table-shell">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Trade Account</th>
+                                <th>MT5</th>
+                                <th>Status</th>
+                                <th>Last Synced</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for account in mt5_accounts %}
+                            <tr>
+                                <td>
+                                    <div class="user-cell">
+                                        <strong>{{ account.user.username if account.user else "Unknown User" }}</strong>
+                                        <span>{{ account.user.email if account.user else "No email" }}</span>
+                                        <span>ID: {{ account.user_id }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="user-cell">
+                                        <strong>{{ account.trade_account.name if account.trade_account else "Unknown Account" }}</strong>
+                                        <span>ID: {{ account.trade_account_id }}</span>
+                                        <span>{{ account.trade_account.account_type if account.trade_account else "-" }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="user-cell">
+                                        <strong>{{ account.account_number }}</strong>
+                                        <span>{{ account.server }}</span>
+                                        <span>{{ account.terminal_path or "Default terminal path" }}</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="chip {{ 'success-chip' if account.is_active else 'danger-chip' }}">
+                                        {{ "Active" if account.is_active else "Inactive" }}
+                                    </span>
+                                </td>
+                                <td>{{ account.last_synced_at.strftime("%Y-%m-%d %H:%M UTC") if account.last_synced_at else "Never" }}</td>
+                                <td>
+                                    <div class="inline-actions">
+                                        <form action="{{ url_for('admin_mt5_trigger_sync', mt5_account_id=account.id) }}" method="post">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="submit-btn" {% if not account.is_active %}disabled aria-disabled="true"{% endif %}>Trigger Sync</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="helper-note">No MT5 accounts have been configured yet.</p>
                 {% endif %}
             </article>
         </section>
