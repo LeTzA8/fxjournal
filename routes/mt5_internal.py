@@ -5,7 +5,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from helpers.core import build_normalized_trade_insert_batch
 from helpers.utils import utcnow_naive
-from models import MT5Account, db
+from models import MT5Account, Trade, db
 from trading import parse_float_value, parse_mt5_position_value, parse_source_datetime_value
 
 bp = Blueprint("mt5_internal", __name__)
@@ -31,6 +31,10 @@ def _normalize_sync_trade_rows(raw_rows):
             timezone.utc,
             source_timezone_name,
         )
+        raw_is_open = row.get("is_open")
+        is_open = bool(raw_is_open) if raw_is_open is not None else closed_at is None
+        if closed_at is not None:
+            is_open = False
         normalized_rows.append(
             {
                 "symbol": row.get("symbol"),
@@ -53,6 +57,7 @@ def _normalize_sync_trade_rows(raw_rows):
                     or closed_source_timezone
                     or source_timezone_name
                 ),
+                "is_open": is_open,
             }
         )
 
@@ -87,10 +92,71 @@ def sync_mt5_trades():
     normalized_rows, invalid_rows = _normalize_sync_trade_rows(raw_rows)
 
     try:
+        incoming_positions = {
+            str(row.get("mt5_position")).strip()
+            for row in normalized_rows
+            if row.get("mt5_position") is not None
+        }
+        existing_trades = {}
+        if incoming_positions:
+            existing_trades = {
+                trade.mt5_position: trade
+                for trade in Trade.query.filter_by(
+                    user_id=account.user_id,
+                    trade_account_id=account.trade_account_id,
+                )
+                .filter(Trade.mt5_position.in_(incoming_positions))
+                .all()
+            }
+
+        rows_to_insert = []
+        updated_count = 0
+        skipped_count = 0
+        error_count = invalid_rows
+
+        for row in normalized_rows:
+            mt5_position = row.get("mt5_position")
+            existing_trade = existing_trades.get(mt5_position) if mt5_position is not None else None
+            if existing_trade is None:
+                rows_to_insert.append(row)
+                continue
+
+            if existing_trade.closed_at is None and row.get("closed_at") is not None:
+                closed_at = row.get("closed_at")
+                exit_price = row.get("exit_price")
+                if (
+                    exit_price is None
+                    or exit_price <= 0
+                    or (
+                        existing_trade.opened_at is not None
+                        and closed_at < existing_trade.opened_at
+                    )
+                ):
+                    error_count += 1
+                    continue
+
+                existing_trade.exit_price = float(exit_price)
+                existing_trade.pnl = float(row.get("pnl")) if row.get("pnl") is not None else None
+                existing_trade.closed_at = closed_at
+                existing_trade.commission = (
+                    float(row.get("commission"))
+                    if row.get("commission") is not None
+                    else None
+                )
+                existing_trade.swap = (
+                    float(row.get("swap"))
+                    if row.get("swap") is not None
+                    else None
+                )
+                updated_count += 1
+                continue
+
+            skipped_count += 1
+
         batch_result = build_normalized_trade_insert_batch(
             user_id=account.user_id,
             trade_account=account.trade_account,
-            rows=normalized_rows,
+            rows=rows_to_insert,
             import_signature=None,
             use_import_dedupe_key=False,
             dedupe_by_mt5_position_only=True,
@@ -99,8 +165,8 @@ def sync_mt5_trades():
         )
         insert_batch = batch_result["insert_batch"]
         saved_count = len(insert_batch)
-        skipped_count = batch_result["duplicate_count"]
-        error_count = invalid_rows + batch_result["validation_skipped"]
+        skipped_count += batch_result["duplicate_count"]
+        error_count += batch_result["validation_skipped"]
 
         if insert_batch:
             db.session.add_all(insert_batch)
@@ -109,6 +175,7 @@ def sync_mt5_trades():
         return jsonify(
             {
                 "saved": saved_count,
+                "updated": updated_count,
                 "skipped": skipped_count,
                 "errors": error_count,
             }
@@ -120,4 +187,4 @@ def sync_mt5_trades():
             mt5_account_id,
             exc_info=exc,
         )
-        return jsonify({"saved": 0, "skipped": 0, "errors": len(raw_rows) + invalid_rows}), 500
+        return jsonify({"saved": 0, "updated": 0, "skipped": 0, "errors": len(raw_rows) + invalid_rows}), 500

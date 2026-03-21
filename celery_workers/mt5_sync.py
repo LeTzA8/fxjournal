@@ -30,35 +30,61 @@ def aggregate_deals_to_trades(deals, *, entry_in=0, entry_out=1, deal_type_buy=0
     for position_id, position_deals in positions.items():
         entry_deals = [deal for deal in position_deals if getattr(deal, "entry", None) == entry_in]
         exit_deals = [deal for deal in position_deals if getattr(deal, "entry", None) == entry_out]
-        if len(entry_deals) != 1 or len(exit_deals) != 1:
+        if len(entry_deals) > 1 or len(exit_deals) > 1:
             continue
 
-        entry_deal = entry_deals[0]
-        exit_deal = exit_deals[0]
+        entry_deal = entry_deals[0] if entry_deals else None
+        exit_deal = exit_deals[0] if exit_deals else None
+        if entry_deal is None:
+            continue
+
         side = "BUY" if getattr(entry_deal, "type", None) == deal_type_buy else "SELL"
         total_commission = sum(float(getattr(deal, "commission", 0.0) or 0.0) for deal in position_deals)
         total_swap = sum(float(getattr(deal, "swap", 0.0) or 0.0) for deal in position_deals)
         total_profit = sum(float(getattr(deal, "profit", 0.0) or 0.0) for deal in position_deals)
 
-        trades.append(
-            {
-                "symbol": getattr(exit_deal, "symbol", None) or getattr(entry_deal, "symbol", None),
-                "side": side,
-                "entry_price": float(getattr(entry_deal, "price", 0.0) or 0.0),
-                "exit_price": float(getattr(exit_deal, "price", 0.0) or 0.0),
-                "lot_size": float(getattr(entry_deal, "volume", 0.0) or 0.0),
-                "pnl": total_profit,
-                "commission": total_commission,
-                "swap": total_swap,
-                "stop_loss": None,
-                "take_profit": None,
-                "opened_at": _to_utc_iso(getattr(entry_deal, "time", None)),
-                "closed_at": _to_utc_iso(getattr(exit_deal, "time", None)),
-                "mt5_position": str(position_id),
-                "trade_note": str(getattr(exit_deal, "comment", "") or "").strip() or None,
-                "source_timezone": "UTC",
-            }
-        )
+        if exit_deal is not None:
+            trades.append(
+                {
+                    "symbol": getattr(exit_deal, "symbol", None) or getattr(entry_deal, "symbol", None),
+                    "side": side,
+                    "entry_price": float(getattr(entry_deal, "price", 0.0) or 0.0),
+                    "exit_price": float(getattr(exit_deal, "price", 0.0) or 0.0),
+                    "lot_size": float(getattr(entry_deal, "volume", 0.0) or 0.0),
+                    "pnl": total_profit,
+                    "commission": total_commission,
+                    "swap": total_swap,
+                    "stop_loss": None,
+                    "take_profit": None,
+                    "opened_at": _to_utc_iso(getattr(entry_deal, "time", None)),
+                    "closed_at": _to_utc_iso(getattr(exit_deal, "time", None)),
+                    "mt5_position": str(position_id),
+                    "trade_note": str(getattr(exit_deal, "comment", "") or "").strip() or None,
+                    "source_timezone": "UTC",
+                    "is_open": False,
+                }
+            )
+        else:
+            trades.append(
+                {
+                    "symbol": getattr(entry_deal, "symbol", None),
+                    "side": side,
+                    "entry_price": float(getattr(entry_deal, "price", 0.0) or 0.0),
+                    "exit_price": None,
+                    "lot_size": float(getattr(entry_deal, "volume", 0.0) or 0.0),
+                    "pnl": None,
+                    "commission": float(getattr(entry_deal, "commission", 0.0) or 0.0),
+                    "swap": 0.0,
+                    "stop_loss": None,
+                    "take_profit": None,
+                    "opened_at": _to_utc_iso(getattr(entry_deal, "time", None)),
+                    "closed_at": None,
+                    "mt5_position": str(position_id),
+                    "trade_note": str(getattr(entry_deal, "comment", "") or "").strip() or None,
+                    "source_timezone": "UTC",
+                    "is_open": True,
+                }
+            )
 
     return trades
 

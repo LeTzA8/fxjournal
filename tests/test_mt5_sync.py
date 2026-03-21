@@ -4,6 +4,7 @@ import pytest
 from cryptography.fernet import Fernet
 
 from celery_app import celery
+from helpers.core import delete_users_with_related_data
 from helpers.utils import decrypt_password, encrypt_password
 from models import MT5Account, Trade, TradeAccount, User, db
 
@@ -168,11 +169,11 @@ def test_internal_mt5_sync_saves_and_skips_duplicates(app_ctx, client, monkeypat
     )
 
     assert first_response.status_code == 200
-    assert first_response.get_json() == {"saved": 1, "skipped": 0, "errors": 0}
+    assert first_response.get_json() == {"saved": 1, "updated": 0, "skipped": 0, "errors": 0}
     assert duplicate_response.status_code == 200
-    assert duplicate_response.get_json() == {"saved": 0, "skipped": 1, "errors": 0}
+    assert duplicate_response.get_json() == {"saved": 0, "updated": 0, "skipped": 1, "errors": 0}
     assert second_account_response.status_code == 200
-    assert second_account_response.get_json() == {"saved": 1, "skipped": 0, "errors": 0}
+    assert second_account_response.get_json() == {"saved": 1, "updated": 0, "skipped": 0, "errors": 0}
 
     first_trade = Trade.query.filter_by(trade_account_id=trade_account.id, mt5_position="12345678").one()
     second_trade = Trade.query.filter_by(trade_account_id=second_account.id, mt5_position="12345678").one()
@@ -186,6 +187,93 @@ def test_internal_mt5_sync_saves_and_skips_duplicates(app_ctx, client, monkeypat
     assert second_trade.import_dedupe_key is None
     assert first_mt5_account.last_synced_at is not None
     assert second_mt5_account.last_synced_at is not None
+
+
+def test_internal_mt5_sync_updates_existing_open_trade_when_close_arrives(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-open-close-user",
+        email="mt5-open-close@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="12121212",
+    )
+
+    open_payload = {
+        "mt5_account_id": mt5_account.id,
+        "trades": [
+            {
+                "symbol": "EURUSD",
+                "side": "buy",
+                "entry_price": 1.085,
+                "exit_price": None,
+                "lot_size": 0.01,
+                "pnl": None,
+                "commission": -0.25,
+                "swap": 0.0,
+                "stop_loss": None,
+                "take_profit": None,
+                "opened_at": "2026-03-21T08:00:00+00:00",
+                "closed_at": None,
+                "mt5_position": 99999999,
+                "trade_note": "open",
+                "is_open": True,
+            }
+        ],
+    }
+    closed_payload = {
+        "mt5_account_id": mt5_account.id,
+        "trades": [
+            {
+                "symbol": "EURUSD",
+                "side": "buy",
+                "entry_price": 1.085,
+                "exit_price": 1.09,
+                "lot_size": 0.01,
+                "pnl": 48.5,
+                "commission": -0.5,
+                "swap": -0.1,
+                "stop_loss": None,
+                "take_profit": None,
+                "opened_at": "2026-03-21T08:00:00+00:00",
+                "closed_at": "2026-03-21T10:00:00+00:00",
+                "mt5_position": 99999999,
+                "trade_note": "closed",
+                "is_open": False,
+            }
+        ],
+    }
+
+    open_response = client.post(
+        "/api/internal/mt5/sync",
+        json=open_payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+    close_response = client.post(
+        "/api/internal/mt5/sync",
+        json=closed_payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    trade = Trade.query.filter_by(
+        trade_account_id=trade_account.id,
+        mt5_position="99999999",
+    ).one()
+
+    assert open_response.status_code == 200
+    assert open_response.get_json() == {"saved": 1, "updated": 0, "skipped": 0, "errors": 0}
+    assert close_response.status_code == 200
+    assert close_response.get_json() == {"saved": 0, "updated": 1, "skipped": 0, "errors": 0}
+    assert trade.exit_price == pytest.approx(1.09)
+    assert trade.pnl == pytest.approx(48.5)
+    assert trade.commission == pytest.approx(-0.5)
+    assert trade.swap == pytest.approx(-0.1)
+    assert trade.closed_at is not None
 
 
 def test_admin_mt5_create_list_and_trigger_sync(app_ctx, client, monkeypatch):
@@ -233,6 +321,51 @@ def test_admin_mt5_create_list_and_trigger_sync(app_ctx, client, monkeypatch):
     assert trigger_response.status_code == 302
     assert captured["queue"] == "mt5_sync"
     assert captured["args"] == [mt5_account.id]
+
+
+def test_mt5_account_is_deleted_with_trade_account(app_ctx, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-owner",
+        email="mt5-owner@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="44444444",
+    )
+    mt5_account_id = mt5_account.id
+
+    db.session.delete(trade_account)
+    db.session.commit()
+
+    assert db.session.get(MT5Account, mt5_account_id) is None
+    assert db.session.get(User, user.id) is not None
+
+
+def test_mt5_account_is_deleted_with_user(app_ctx, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-user-delete",
+        email="mt5-user-delete@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="55555555",
+    )
+    mt5_account_id = mt5_account.id
+
+    deleted_count = delete_users_with_related_data([user.id])
+    db.session.commit()
+
+    assert deleted_count == 1
+    assert db.session.get(User, user.id) is None
+    assert db.session.get(MT5Account, mt5_account_id) is None
 
 
 def test_celery_includes_mt5_sync_module():

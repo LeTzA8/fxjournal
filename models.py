@@ -48,22 +48,53 @@ class User(db.Model):
     verification_sent_at = db.Column(db.DateTime, nullable=True)
     last_login_at = db.Column(db.DateTime, nullable=True)
     trade_accounts = db.relationship(
-        "TradeAccount", backref="user", lazy=True, cascade="all, delete-orphan"
+        "TradeAccount",
+        backref="user",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     mt5_accounts = db.relationship(
-        "MT5Account", backref="user", lazy=True, cascade="all, delete-orphan"
+        "MT5Account",
+        backref="user",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    user_profile = db.relationship(
+        "UserProfile",
+        backref="user",
+        lazy=True,
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     trade_profiles = db.relationship(
-        "TradeProfile", backref="user", lazy=True, cascade="all, delete-orphan"
+        "TradeProfile",
+        backref="user",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     trades = db.relationship(
-        "Trade", backref="user", lazy=True, cascade="all, delete-orphan"
+        "Trade",
+        backref="user",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     ai_generated_responses = db.relationship(
-        "AIGeneratedResponse", backref="user", lazy=True, cascade="all, delete-orphan"
+        "AIGeneratedResponse",
+        backref="user",
+        lazy=True,
+        passive_deletes=True,
     )
     weekly_checkins = db.relationship(
-        "WeeklyCheckin", backref="user", lazy=True, cascade="all, delete-orphan"
+        "WeeklyCheckin",
+        backref="user",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -71,7 +102,12 @@ class UserProfile(db.Model):
     __tablename__ = "user_profile"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, unique=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
     trading_style = db.Column(db.String(50), nullable=True)
     instruments = db.Column(db.String(200), nullable=True)
     experience_level = db.Column(db.String(50), nullable=True)
@@ -93,10 +129,15 @@ class WeeklyCheckin(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     trade_account_id = db.Column(
         db.Integer,
-        db.ForeignKey("trade_accounts.id"),
+        db.ForeignKey("trade_accounts.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -157,29 +198,43 @@ class TradeAccount(db.Model):
         index=True,
         default=generate_trade_account_pubkey,
     )
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     name = db.Column(db.String(80), nullable=False, default="Main Account")
     external_account_id = db.Column(db.String(80), nullable=True)
     account_size = db.Column(db.Float, nullable=True)
     account_type = db.Column(db.String(16), nullable=False, default="CFD")
     is_default = db.Column(db.Boolean, nullable=False, default=False)
     trades = db.relationship(
-        "Trade", backref="trade_account", lazy=True, cascade="all, delete-orphan"
+        "Trade",
+        backref="trade_account",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     mt5_accounts = db.relationship(
-        "MT5Account", backref="trade_account", lazy=True, cascade="all, delete-orphan"
+        "MT5Account",
+        backref="trade_account",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     ai_generated_responses = db.relationship(
         "AIGeneratedResponse",
         backref="trade_account",
         lazy=True,
-        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     weekly_checkins = db.relationship(
         "WeeklyCheckin",
         backref="trade_account",
         lazy=True,
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -221,10 +276,15 @@ class Trade(db.Model):
         index=True,
         default=generate_trade_pubkey,
     )
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     trade_account_id = db.Column(
         db.Integer,
-        db.ForeignKey("trade_accounts.id"),
+        db.ForeignKey("trade_accounts.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -246,13 +306,13 @@ class Trade(db.Model):
     trade_note = db.Column(db.Text, nullable=True)
     trade_profile_id = db.Column(
         db.Integer,
-        db.ForeignKey("trade_profiles.id"),
+        db.ForeignKey("trade_profiles.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     trade_profile_version_id = db.Column(
         db.Integer,
-        db.ForeignKey("trade_profile_versions.id"),
+        db.ForeignKey("trade_profile_versions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -261,12 +321,22 @@ class Trade(db.Model):
     trade_profile = db.relationship(
         "TradeProfile",
         foreign_keys=[trade_profile_id],
-        backref=db.backref("trades", lazy=True),
+        backref=db.backref(
+            "trades",
+            lazy=True,
+            cascade="save-update, merge",
+            passive_deletes=True,
+        ),
     )
     trade_profile_version = db.relationship(
         "TradeProfileVersion",
         foreign_keys=[trade_profile_version_id],
-        backref=db.backref("attached_trades", lazy=True),
+        backref=db.backref(
+            "attached_trades",
+            lazy=True,
+            cascade="save-update, merge",
+            passive_deletes=True,
+        ),
     )
 
 
@@ -274,10 +344,15 @@ class MT5Account(db.Model):
     __tablename__ = "mt5_account"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     trade_account_id = db.Column(
         db.Integer,
-        db.ForeignKey("trade_accounts.id"),
+        db.ForeignKey("trade_accounts.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -304,7 +379,12 @@ class TradeProfile(db.Model):
         index=True,
         default=generate_trade_pubkey,
     )
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     name = db.Column(db.String(80), nullable=False)
     current_version_number = db.Column(db.Integer, nullable=False, default=1)
     is_archived = db.Column(db.Boolean, nullable=False, default=False)
@@ -320,6 +400,7 @@ class TradeProfile(db.Model):
         backref="trade_profile",
         lazy=True,
         cascade="all, delete-orphan",
+        passive_deletes=True,
         order_by="TradeProfileVersion.version_number.asc()",
     )
 
@@ -342,7 +423,7 @@ class TradeProfileVersion(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     trade_profile_id = db.Column(
         db.Integer,
-        db.ForeignKey("trade_profiles.id"),
+        db.ForeignKey("trade_profiles.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -420,7 +501,7 @@ class AIPromptHistory(db.Model):
         "AIGeneratedResponse",
         backref="prompt_history",
         lazy=True,
-        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -455,17 +536,22 @@ class AIGeneratedResponse(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     trade_account_id = db.Column(
         db.Integer,
-        db.ForeignKey("trade_accounts.id"),
+        db.ForeignKey("trade_accounts.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
     prompt_history_id = db.Column(
         db.Integer,
-        db.ForeignKey("ai_prompt_history.id"),
-        nullable=False,
+        db.ForeignKey("ai_prompt_history.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
     kind = db.Column(db.String(64), nullable=False, default="dashboard_advice")

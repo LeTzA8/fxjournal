@@ -225,10 +225,6 @@ def delete_trade_account(trade_account_pubkey):
         user_id=user_id,
         trade_account_id=account.id,
     ).count()
-    deleted_ai_review_count = AIGeneratedResponse.query.filter_by(
-        user_id=user_id,
-        trade_account_id=account.id,
-    ).count()
     active_trade_account_id = session.get("active_trade_account_id")
     confirmation_text = request.form.get(
         "delete_trade_account_confirmation", ""
@@ -284,16 +280,10 @@ def delete_trade_account(trade_account_pubkey):
     else:
         session.pop("active_trade_account_id", None)
 
-    review_msg = (
-        f" and {deleted_ai_review_count} linked AI review"
-        f"{'' if deleted_ai_review_count == 1 else 's'}"
-        if deleted_ai_review_count
-        else ""
-    )
     replacement_msg = " A fresh Main Account was created." if replacement_created else ""
     success_message = (
         f"Deleted trade account '{deleted_name}', {deleted_trade_count} linked trade"
-        f"{'' if deleted_trade_count == 1 else 's'}{review_msg}."
+        f"{'' if deleted_trade_count == 1 else 's'}."
         f"{replacement_msg}"
     )
     if wants_json_response:
@@ -347,7 +337,6 @@ def delete_all_trade_accounts():
 
     trade_count = Trade.query.filter_by(user_id=user_id).count()
     account_count = TradeAccount.query.filter_by(user_id=user_id).count()
-    ai_review_count = AIGeneratedResponse.query.filter_by(user_id=user_id).count()
     try:
         orphan_ai_reviews = AIGeneratedResponse.query.filter_by(
             user_id=user_id,
@@ -386,8 +375,8 @@ def delete_all_trade_accounts():
     session["active_trade_account_id"] = replacement_account.id
 
     flash(
-        f"Deleted {account_count} trade accounts, {trade_count} linked trades, and "
-        f"{ai_review_count} linked AI review{'s' if ai_review_count != 1 else ''}. "
+        f"Deleted {account_count} trade account{'s' if account_count != 1 else ''} and "
+        f"{trade_count} linked trade{'s' if trade_count != 1 else ''}. "
         "A fresh Main Account was created.",
         "success",
     )
