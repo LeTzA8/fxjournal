@@ -1555,10 +1555,41 @@ def register_public_auth_routes(
         mt5_accounts = (
             MT5Account.query.order_by(MT5Account.created_at.desc(), MT5Account.id.desc()).all()
         )
+        mt5_form_users = (
+            User.query.join(TradeAccount, TradeAccount.user_id == User.id)
+            .filter(TradeAccount.account_type == "CFD")
+            .distinct()
+            .order_by(User.username.asc(), User.id.asc())
+            .all()
+        )
+        cfd_trade_accounts = (
+            TradeAccount.query.filter_by(account_type="CFD")
+            .order_by(
+                TradeAccount.user_id.asc(),
+                TradeAccount.is_default.desc(),
+                TradeAccount.name.asc(),
+                TradeAccount.id.asc(),
+            )
+            .all()
+        )
+        mt5_trade_accounts_by_user = {}
+        for trade_account in cfd_trade_accounts:
+            mt5_trade_accounts_by_user.setdefault(str(trade_account.user_id), []).append(
+                {
+                    "id": trade_account.id,
+                    "label": (
+                        f"{trade_account.name} "
+                        f"({'Default' if trade_account.is_default else 'Secondary'}) "
+                        f"[ID: {trade_account.id}]"
+                    ),
+                }
+            )
         return render_admin_page(
             admin_user=admin_user,
             section="mt5",
             mt5_accounts=mt5_accounts,
+            mt5_form_users=mt5_form_users,
+            mt5_trade_accounts_by_user=mt5_trade_accounts_by_user,
         )
 
     @app.route("/dashboard/admin/access/mt5/create", methods=["POST"])

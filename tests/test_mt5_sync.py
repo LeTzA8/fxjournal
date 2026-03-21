@@ -232,8 +232,7 @@ def test_admin_mt5_create_list_and_trigger_sync(app_ctx, client, monkeypatch):
     assert b"33333333" in list_response.data
     assert trigger_response.status_code == 302
     assert captured["queue"] == "mt5_sync"
-    assert captured["args"][0] == mt5_account.id
-    assert captured["args"][4] == "investor-pass"
+    assert captured["args"] == [mt5_account.id]
 
 
 def test_celery_includes_mt5_sync_module():

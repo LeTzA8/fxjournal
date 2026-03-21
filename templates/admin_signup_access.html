@@ -242,11 +242,19 @@
                 <form action="{{ url_for('admin_mt5_create_account') }}" method="post" class="code-form" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                    <label for="user_id">User ID</label>
-                    <input id="user_id" name="user_id" type="number" min="1" step="1" required>
+                    <label for="user_id">User</label>
+                    <select id="user_id" name="user_id" required>
+                        <option value="">Select a user</option>
+                        {% for user in mt5_form_users %}
+                        <option value="{{ user.id }}">{{ user.username }} ({{ user.email }}) [ID: {{ user.id }}]</option>
+                        {% endfor %}
+                    </select>
 
-                    <label for="trade_account_id">Trade Account ID</label>
-                    <input id="trade_account_id" name="trade_account_id" type="number" min="1" step="1" required>
+                    <label for="trade_account_id">Trade Account</label>
+                    <select id="trade_account_id" name="trade_account_id" required disabled>
+                        <option value="">Select a user first</option>
+                    </select>
+                    <p class="helper-note">Only CFD trade accounts appear here.</p>
 
                     <label for="account_number">MT5 Account Number</label>
                     <input id="account_number" name="account_number" type="text" maxlength="50" required>
@@ -330,6 +338,43 @@
                 {% endif %}
             </article>
         </section>
+        <script>
+            (function() {
+                const userSelect = document.getElementById("user_id");
+                const tradeAccountSelect = document.getElementById("trade_account_id");
+                if (!userSelect || !tradeAccountSelect) {
+                    return;
+                }
+
+                const tradeAccountsByUser = {{ mt5_trade_accounts_by_user|tojson }};
+
+                function renderTradeAccounts() {
+                    const userId = userSelect.value;
+                    const tradeAccounts = tradeAccountsByUser[userId] || [];
+
+                    tradeAccountSelect.innerHTML = "";
+
+                    const placeholder = document.createElement("option");
+                    placeholder.value = "";
+                    placeholder.textContent = userId
+                        ? (tradeAccounts.length ? "Select a trade account" : "No CFD trade accounts for this user")
+                        : "Select a user first";
+                    tradeAccountSelect.appendChild(placeholder);
+
+                    tradeAccountSelect.disabled = !userId || tradeAccounts.length === 0;
+
+                    tradeAccounts.forEach(function(account) {
+                        const option = document.createElement("option");
+                        option.value = String(account.id);
+                        option.textContent = account.label;
+                        tradeAccountSelect.appendChild(option);
+                    });
+                }
+
+                userSelect.addEventListener("change", renderTradeAccounts);
+                renderTradeAccounts();
+            })();
+        </script>
         {% else %}
         <section class="panel-grid admin-main-grid">
             <article class="panel create-code-panel">
