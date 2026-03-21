@@ -1,10 +1,10 @@
 import sys
 import os
-from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ai_service import maybe_generate_weekly_dashboard_advice
+from datetime import datetime, timedelta
+
 from celery_app import celery
 from celery_workers.cache import (
     AI_STATUS_FAILED_TTL,
@@ -127,6 +127,8 @@ def generate_weekly_ai_task(
         AI_STATUS_RUNNING_TTL,
     )
     try:
+        from ai_service import maybe_generate_weekly_dashboard_advice
+
         result = maybe_generate_weekly_dashboard_advice(
             user_id=user_id,
             trade_account_id=trade_account_id,

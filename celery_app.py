@@ -8,10 +8,11 @@ import importlib.util
 from pathlib import Path
 
 from celery import Celery
+from celery.app.task import Task as CeleryTask
 from celery.schedules import crontab
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv("FXJournal Main.env")
 
 _flask_app = None
 
@@ -61,6 +62,15 @@ def _resolve_flask_app():
     return _flask_app
 
 
+class FlaskTask(CeleryTask):
+    abstract = True
+
+    def __call__(self, *args, **kwargs):
+        flask_app = _resolve_flask_app()
+        with flask_app.app_context():
+            return self.run(*args, **kwargs)
+
+
 def _create_celery():
     broker_url, backend_url = _resolve_redis_url()
     celery_app = Celery(
@@ -68,6 +78,7 @@ def _create_celery():
         broker=broker_url,
         backend=backend_url,
         include=["celery_workers.tasks", "celery_workers.mt5_sync"],
+        task_cls=FlaskTask,
     )
     celery_app.conf.update(
         task_serializer="json",
@@ -85,16 +96,6 @@ def _create_celery():
             },
         },
     )
-
-    class FlaskTask(celery_app.Task):
-        abstract = True
-
-        def __call__(self, *args, **kwargs):
-            flask_app = _resolve_flask_app()
-            with flask_app.app_context():
-                return self.run(*args, **kwargs)
-
-    celery_app.Task = FlaskTask
     return celery_app
 
 

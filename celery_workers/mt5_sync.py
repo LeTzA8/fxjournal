@@ -81,7 +81,7 @@ def sync_mt5_account(self, mt5_account_id):
     account_number = account.account_number
     server = account.server
     terminal_path = account.terminal_path
-    days_back = 7
+    is_first_sync = account.last_synced_at is None
 
     init_kwargs = {}
     if terminal_path:
@@ -94,7 +94,10 @@ def sync_mt5_account(self, mt5_account_id):
         if not mt5.login(int(account_number), password=investor_password, server=server):
             raise RuntimeError(f"MT5 login failed: {mt5.last_error()}")
 
-        from_date = datetime.now(timezone.utc) - timedelta(days=days_back)
+        if is_first_sync:
+            from_date = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        else:
+            from_date = datetime.now(timezone.utc) - timedelta(days=7)
         to_date = datetime.now(timezone.utc)
         deals = mt5.history_deals_get(from_date, to_date) or []
 
