@@ -44,7 +44,7 @@ def _find_base_appdata(base_path: str):
             continue
         origin = os.path.join(entry.path, "origin.txt")
         try:
-            content = open(origin, encoding="utf-8", errors="ignore").read().strip().rstrip("\\")
+            content = open(origin, encoding="utf-16", errors="ignore").read().strip().rstrip("\\")
             if os.path.normcase(content) == target:
                 return entry.path
         except OSError:
