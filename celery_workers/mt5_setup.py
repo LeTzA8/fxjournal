@@ -74,7 +74,12 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         # can fail on a fresh copy because the server list is empty and the
         # terminal hasn't had a chance to fetch it from MetaQuotes.
         proc = subprocess.Popen(
-            [terminal_exe],
+            [
+                terminal_exe,
+                f"/login:{login}",
+                f"/password:{investor_password}",
+                f"/server:{server}",
+            ],
             cwd=terminal_dir,
         )
 
@@ -82,17 +87,19 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             # Poll until the terminal is accepting connections (up to 2 min).
             deadline = time.time() + 120
             ready = False
+            last_init_error = None
             while time.time() < deadline:
-                if mt5.initialize(terminal_exe, timeout=5000):
+                if mt5.initialize(terminal_exe, timeout=15000):
                     mt5.shutdown()
                     ready = True
                     break
+                last_init_error = mt5.last_error()
                 mt5.shutdown()
                 time.sleep(5)
 
             if not ready:
                 raise RuntimeError(
-                    f"MT5 terminal did not become ready within 120s: {mt5.last_error()}"
+                    f"MT5 terminal did not become ready within 120s: {last_init_error}"
                 )
 
             # Terminal is up — now authenticate.
