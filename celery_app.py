@@ -1,14 +1,6 @@
 import sys
 import os
 
-if os.environ.get("CELERY_POOL") == "gevent":
-    from gevent import monkey
-
-    monkey.patch_all()
-    from psycogreen.gevent import patch_psycopg
-
-    patch_psycopg()
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import importlib
@@ -105,8 +97,8 @@ def _create_celery():
         },
     }
     configured_pool = os.environ.get("CELERY_POOL", "").strip().lower()
-    if configured_pool == "gevent":
-        celery_config["worker_pool"] = "gevent"
+    if configured_pool in {"threads", "solo"}:
+        celery_config["worker_pool"] = configured_pool
     elif os.name == "nt":
         # Celery's default prefork pool is not reliable on Windows. Force a
         # single-process worker so tasks execute without spawn/prefork tracing.
