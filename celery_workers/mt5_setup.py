@@ -4,6 +4,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import shutil
+import subprocess
+import time
 
 from celery_app import celery
 
@@ -22,7 +24,7 @@ class PermanentSetupError(RuntimeError):
     """Raised when setup is running on the wrong host or missing required local config."""
 
 
-@celery.task(bind=True, max_retries=2, default_retry_delay=30)
+@celery.task(bind=True, max_retries=2, default_retry_delay=30, queue="mt5_setup")
 def setup_mt5_terminal(self, mt5_account_id: int):
     """
     Set up a new MT5 terminal for a user account.
@@ -67,13 +69,39 @@ def setup_mt5_terminal(self, mt5_account_id: int):
 
         import MetaTrader5 as mt5
 
+        # Pre-launch the terminal so it can auto-update and resolve the broker
+        # server before we attempt to authenticate. Without this, initialize()
+        # can fail on a fresh copy because the server list is empty and the
+        # terminal hasn't had a chance to fetch it from MetaQuotes.
+        proc = subprocess.Popen(
+            [terminal_exe],
+            cwd=terminal_dir,
+        )
+
         try:
+            # Poll until the terminal is accepting connections (up to 2 min).
+            deadline = time.time() + 120
+            ready = False
+            while time.time() < deadline:
+                if mt5.initialize(terminal_exe, timeout=5000):
+                    mt5.shutdown()
+                    ready = True
+                    break
+                mt5.shutdown()
+                time.sleep(5)
+
+            if not ready:
+                raise RuntimeError(
+                    f"MT5 terminal did not become ready within 120s: {mt5.last_error()}"
+                )
+
+            # Terminal is up — now authenticate.
             result = mt5.initialize(
                 terminal_exe,
                 login=login,
                 password=investor_password,
                 server=server,
-                portable=True,
+                timeout=120000,
             )
 
             if not result:
@@ -91,6 +119,10 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                 )
         finally:
             mt5.shutdown()
+            try:
+                proc.terminate()
+            except Exception:
+                pass
 
         account.terminal_path = terminal_exe
         account.is_active = True
@@ -109,7 +141,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         raise self.retry(exc=exc)
 
 
-@celery.task(bind=True, max_retries=2, default_retry_delay=10)
+@celery.task(bind=True, max_retries=2, default_retry_delay=10, queue="mt5_setup")
 def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str):
     """
     Clean up MT5 terminal files when an MT5Account is deleted.

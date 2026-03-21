@@ -99,6 +99,9 @@ def _create_celery():
                 "schedule": 300,
             },
         },
+        "task_routes": {
+            "celery_workers.mt5_setup.*": {"queue": "mt5_setup"},
+        },
     }
     configured_pool = os.environ.get("CELERY_POOL", "").strip().lower()
     if configured_pool in {"threads", "solo"}:
