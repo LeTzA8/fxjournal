@@ -1672,7 +1672,7 @@ def register_public_auth_routes(
 
             setup_mt5_terminal.apply_async(
                 args=[mt5_account.id],
-                queue="mt5_sync",
+                queue="mt5_setup",
             )
         except Exception as exc:
             current_app.logger.warning(
@@ -1702,7 +1702,7 @@ def register_public_auth_routes(
 
             setup_mt5_terminal.apply_async(
                 args=[mt5_account_id],
-                queue="mt5_sync",
+                queue="mt5_setup",
             )
         except Exception as exc:
             db.session.rollback()
