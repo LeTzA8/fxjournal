@@ -69,7 +69,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
 
         try:
             result = mt5.initialize(
-                path=terminal_exe,
+                terminal_exe,
                 login=login,
                 password=investor_password,
                 server=server,
