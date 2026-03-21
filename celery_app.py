@@ -80,12 +80,12 @@ def _create_celery():
         include=["celery_workers.tasks", "celery_workers.mt5_sync"],
         task_cls=FlaskTask,
     )
-    celery_app.conf.update(
-        task_serializer="json",
-        result_serializer="json",
-        accept_content=["json"],
-        broker_connection_retry_on_startup=True,
-        beat_schedule={
+    celery_config = {
+        "task_serializer": "json",
+        "result_serializer": "json",
+        "accept_content": ["json"],
+        "broker_connection_retry_on_startup": True,
+        "beat_schedule": {
             "cleanup-weekly-checkins": {
                 "task": "celery_workers.tasks.cleanup_weekly_checkins_task",
                 "schedule": crontab(hour=3, minute=0, day_of_week=1),
@@ -95,6 +95,16 @@ def _create_celery():
                 "schedule": 300,
             },
         },
+    }
+    if os.name == "nt":
+        # Celery's default prefork pool is not reliable on Windows. Force a
+        # single-process worker so tasks execute without spawn/prefork tracing.
+        celery_config.update(
+            worker_pool="solo",
+            worker_concurrency=1,
+        )
+    celery_app.conf.update(
+        **celery_config,
     )
     return celery_app
 
