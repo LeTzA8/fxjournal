@@ -133,7 +133,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             new_appdata = os.path.join(APPDATA_TERMINAL_PATH, new_hash)
             new_origin = os.path.join(new_appdata, "origin.txt")
             if os.path.exists(new_origin):
-                origin_content = open(new_origin, encoding="utf-8", errors="ignore").read().strip().rstrip("\\")
+                origin_content = open(new_origin, encoding="utf-16", errors="ignore").read().strip().rstrip("\\")
                 if os.path.normcase(origin_content) != os.path.normcase(os.path.abspath(terminal_dir)):
                     raise PermanentSetupError(
                         f"New AppData origin.txt mismatch: expected {terminal_dir}, got {origin_content}"
