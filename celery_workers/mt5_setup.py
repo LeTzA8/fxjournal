@@ -125,7 +125,6 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             shutil.copytree(
                 MT5_BASE_PATH,
                 terminal_dir,
-                ignore=shutil.ignore_patterns("metaeditor64.exe", "metaeditor.exe"),
             )
 
         if not os.path.exists(terminal_exe):
