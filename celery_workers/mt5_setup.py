@@ -26,14 +26,6 @@ APPDATA_TERMINAL_PATH = os.path.join(
 IGNORED_APPDATA_FOLDERS = {"Common", "Community"}
 
 
-def _get_appdata_folders() -> set:
-    if not os.path.isdir(APPDATA_TERMINAL_PATH):
-        return set()
-    return {
-        e.name for e in os.scandir(APPDATA_TERMINAL_PATH)
-        if e.is_dir() and e.name not in IGNORED_APPDATA_FOLDERS
-    }
-
 
 def _find_base_appdata(base_path: str):
     target = os.path.normcase(os.path.abspath(base_path))
@@ -50,6 +42,44 @@ def _find_base_appdata(base_path: str):
         except OSError:
             pass
     return None
+
+
+def _clear_chart_profiles(appdata_path: str):
+    charts_path = os.path.join(appdata_path, "MQL5", "Profiles", "Charts")
+    if os.path.isdir(charts_path):
+        shutil.rmtree(charts_path, ignore_errors=True)
+    os.makedirs(charts_path, exist_ok=True)
+
+
+def _find_child_dir(parent_path: str, dir_name: str):
+    if not os.path.isdir(parent_path):
+        return None
+    target_name = os.path.normcase(dir_name.strip())
+    for entry in os.scandir(parent_path):
+        if entry.is_dir() and os.path.normcase(entry.name) == target_name:
+            return entry.path
+    return None
+
+
+def _clear_market_watch_selection(appdata_path: str, server_name: str):
+    bases_path = _find_child_dir(appdata_path, "bases")
+    if bases_path is None:
+        return
+
+    server_path = _find_child_dir(bases_path, server_name)
+    if server_path is None:
+        return
+
+    symbols_path = _find_child_dir(server_path, "Symbols")
+    if symbols_path is None:
+        return
+
+    for entry in os.scandir(symbols_path):
+        if entry.is_file() and entry.name.lower().startswith("selected") and entry.name.lower().endswith(".dat"):
+            try:
+                os.remove(entry.path)
+            except OSError:
+                pass
 
 
 class PermanentSetupError(RuntimeError):
@@ -92,7 +122,11 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         terminal_exe = os.path.join(terminal_dir, "terminal64.exe")
 
         if not os.path.exists(terminal_dir):
-            shutil.copytree(MT5_BASE_PATH, terminal_dir)
+            shutil.copytree(
+                MT5_BASE_PATH,
+                terminal_dir,
+                ignore=shutil.ignore_patterns("metaeditor64.exe", "metaeditor.exe"),
+            )
 
         if not os.path.exists(terminal_exe):
             raise PermanentSetupError(
@@ -107,46 +141,34 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                 "ensure the base terminal has been run at least once"
             )
 
-        # Snapshot existing AppData folders so we can detect the new one
-        folders_before = _get_appdata_folders()
-
         # Launch the terminal briefly — this causes MT5 to create its AppData folder
         proc = subprocess.Popen([terminal_exe], cwd=terminal_dir)
 
         try:
-            # Wait up to 30s for the new AppData folder to appear
-            new_hash = None
+            # Wait up to 30s for the AppData folder to appear, detected via origin.txt
+            # (works even if the folder already existed from a prior run)
+            new_appdata = None
             deadline = time.time() + 30
             while time.time() < deadline:
-                new_folders = _get_appdata_folders() - folders_before
-                if new_folders:
-                    new_hash = new_folders.pop()
+                new_appdata = _find_base_appdata(terminal_dir)
+                if new_appdata:
                     break
                 time.sleep(2)
 
-            if new_hash is None:
+            if new_appdata is None:
                 raise PermanentSetupError(
                     "MT5 AppData folder not created after launch — check MT5 installation"
                 )
 
-            # Verify the new folder's origin.txt matches the new terminal path
-            new_appdata = os.path.join(APPDATA_TERMINAL_PATH, new_hash)
-            new_origin = os.path.join(new_appdata, "origin.txt")
-            if os.path.exists(new_origin):
-                origin_content = open(new_origin, encoding="utf-16", errors="ignore").read().strip().rstrip("\\")
-                if os.path.normcase(origin_content) != os.path.normcase(os.path.abspath(terminal_dir)):
-                    raise PermanentSetupError(
-                        f"New AppData origin.txt mismatch: expected {terminal_dir}, got {origin_content}"
-                    )
+            new_hash = os.path.basename(new_appdata)
 
             # Copy servers.dat from base AppData so the new terminal knows
             # how to resolve the broker server address
             src_servers = os.path.join(base_appdata, "config", "servers.dat")
             dst_config = os.path.join(new_appdata, "config")
             os.makedirs(dst_config, exist_ok=True)
-            dst_servers = os.path.join(dst_config, "servers.dat")
             if os.path.exists(src_servers):
-                shutil.copy2(src_servers, dst_servers)
+                shutil.copy2(src_servers, os.path.join(dst_config, "servers.dat"))
 
             account.appdata_hash = new_hash
         finally:
@@ -179,6 +201,9 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                 )
         finally:
             mt5.shutdown()
+
+        _clear_chart_profiles(new_appdata)
+        _clear_market_watch_selection(new_appdata, server)
 
         account.terminal_path = terminal_exe
         account.is_active = True
@@ -223,16 +248,10 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str):
     if terminal_dir and os.path.exists(terminal_dir):
         shutil.rmtree(terminal_dir, ignore_errors=True)
 
-    appdata = os.environ.get("APPDATA", "")
-    if appdata and appdata_hash:
-        hash_folder = os.path.join(
-            appdata,
-            "MetaQuotes",
-            "Terminal",
-            appdata_hash,
-        )
-        if os.path.exists(hash_folder):
-            shutil.rmtree(hash_folder, ignore_errors=True)
+    # Verify the correct AppData folder via origin.txt before deleting
+    appdata_folder = _find_base_appdata(terminal_dir)
+    if appdata_folder and os.path.exists(appdata_folder):
+        shutil.rmtree(appdata_folder, ignore_errors=True)
 
     return {
         "terminal_dir": terminal_dir,

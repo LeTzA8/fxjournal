@@ -1775,7 +1775,7 @@ def register_public_auth_routes(
 
                 cleanup_mt5_terminal.apply_async(
                     args=[account.terminal_path, account.appdata_hash],
-                    queue="mt5_sync",
+                    queue="mt5_setup",
                 )
             except Exception as exc:
                 current_app.logger.warning(
