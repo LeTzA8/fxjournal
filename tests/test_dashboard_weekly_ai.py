@@ -115,3 +115,36 @@ def test_dashboard_home_marks_running_trade_rows(app_ctx, client, monkeypatch):
     assert response.status_code == 200
     assert b'class="running-trade"' in response.data
     assert b"Running" in response.data
+
+
+def test_dashboard_home_normalizes_broken_rule_prefix_in_weekly_ai_review(app_ctx, client, monkeypatch):
+    _user, _trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-ai-review-user",
+        email="dashboard-ai-review@example.com",
+    )
+
+    review = type(
+        "Review",
+        (),
+        {"response_text": "Key Takeaways\n- Supported insight.\n\u00e2\u2020' Rule: Keep risk fixed."},
+    )()
+
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": review,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    response = client.get("/dashboard")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Rule: Keep risk fixed." in response_text
+    assert "\u00e2\u2020'" not in response_text

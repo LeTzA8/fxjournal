@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import re
 import statistics
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -52,6 +53,13 @@ MIN_CLOSED_TRADES_FOR_ADVICE = 3
 SAME_TRADE_IDEA_REENTRY_WINDOW_MINUTES = 60
 REVENGE_REENTRY_WINDOW_MINUTES = 30
 logger = logging.getLogger(__name__)
+
+_DASHBOARD_ADVICE_RULE_PREFIX_REPLACEMENTS = (
+    ("\u2192 Rule:", "Rule:"),
+    ("\u00e2\u2020\u2019 Rule:", "Rule:"),
+    ("\u00e2\u2020' Rule:", "Rule:"),
+    ("\u00c3\u00a2\u00e2\u20ac\u00a0\u00e2\u20ac\u2122 Rule:", "Rule:"),
+)
 
 
 class AIConfigError(RuntimeError):
@@ -120,6 +128,20 @@ def load_prompt_text(prompt_filename=None):
         "prompt_text": prompt_text,
         "source_path": str(path.relative_to(Path(__file__).resolve().parent)),
     }
+
+
+def normalize_dashboard_advice_text(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    normalized = text
+    for broken_prefix, replacement in _DASHBOARD_ADVICE_RULE_PREFIX_REPLACEMENTS:
+        normalized = normalized.replace(broken_prefix, replacement)
+
+    normalized = re.sub(r"(?im)^[ \t]*[-*]\s*Rule:\s*", "Rule: ", normalized)
+    normalized = re.sub(r"(?im)^[ \t]*Rule:\s*", "Rule: ", normalized)
+    return normalized.strip()
 
 
 def hash_text(value):
@@ -1247,14 +1269,14 @@ def build_dashboard_advice_messages(payload, prompt_filename=None, profile_adjus
 def extract_response_text(response_payload):
     output_text = str(response_payload.get("output_text") or "").strip()
     if output_text:
-        return output_text
+        return normalize_dashboard_advice_text(output_text)
 
     text_chunks = []
     for item in response_payload.get("output", []):
         for content in item.get("content", []):
             if content.get("type") in {"output_text", "text"} and content.get("text"):
                 text_chunks.append(str(content["text"]).strip())
-    return "\n\n".join(chunk for chunk in text_chunks if chunk).strip()
+    return normalize_dashboard_advice_text("\n\n".join(chunk for chunk in text_chunks if chunk).strip())
 
 
 def describe_empty_response(response_payload):

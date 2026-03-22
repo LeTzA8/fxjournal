@@ -259,7 +259,7 @@
                         {% endif %}
                     </p>
                     {% if weekly_ai_review %}
-                    <p class="insight-body">{{ weekly_ai_review.response_text|trim }}</p>
+                    <p class="insight-body">{{ weekly_ai_review_text|trim }}</p>
                     {% elif weekly_ai_is_generating %}
                     <div class="ai-generating-shell" aria-live="polite" aria-busy="true">
                         <span class="ai-loading-orb" aria-hidden="true"></span>

@@ -9,6 +9,7 @@ from ai_service import (
     get_latest_trade_week_period,
     get_latest_weekly_dashboard_advice,
     get_weekly_dashboard_period,
+    normalize_dashboard_advice_text,
     should_generate_weekly_dashboard_advice,
 )
 from celery_workers.cache import (
@@ -352,6 +353,7 @@ def _build_week_on_week_insight(current_week_stats, previous_week_stats):
 def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
     account_id = getattr(active_trade_account, "id", None)
     weekly_ai_review = None
+    weekly_ai_review_text = ""
     weekly_ai_generated_at_label = ""
     weekly_ai_period_label = ""
     weekly_ai_empty_message = DEFAULT_WEEKLY_AI_EMPTY_MESSAGE
@@ -371,6 +373,8 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
             trade_account_id=account_id,
             period_start_utc=latest_trade_period["period_start_utc"],
         )
+        if weekly_ai_review is not None:
+            weekly_ai_review_text = normalize_dashboard_advice_text(weekly_ai_review.response_text)
 
         ai_status = None
         try:
@@ -477,6 +481,7 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
 
     return {
         "weekly_ai_review": weekly_ai_review,
+        "weekly_ai_review_text": weekly_ai_review_text,
         "weekly_ai_generated_at_label": weekly_ai_generated_at_label,
         "weekly_ai_period_label": weekly_ai_period_label,
         "weekly_ai_empty_message": weekly_ai_empty_message,
@@ -561,6 +566,11 @@ def home():
         previous_week_stats,
     )
     weekly_ai_state = _get_weekly_ai_state(user_id, active_trade_account, timezone_name)
+    weekly_ai_review_text = weekly_ai_state.get("weekly_ai_review_text", "")
+    if not weekly_ai_review_text and weekly_ai_state["weekly_ai_review"] is not None:
+        weekly_ai_review_text = normalize_dashboard_advice_text(
+            weekly_ai_state["weekly_ai_review"].response_text
+        )
     weekly_checkin_banner_state = _get_weekly_checkin_banner_state(user_id, active_trade_account)
     has_any_trades = bool(user_trades)
     has_closed_trades = closed_trade_count > 0
@@ -586,6 +596,7 @@ def home():
         week_on_week_insight=week_on_week_insight,
         chart_points=chart_points,
         weekly_ai_review=weekly_ai_state["weekly_ai_review"],
+        weekly_ai_review_text=weekly_ai_review_text,
         weekly_ai_generated_at_label=weekly_ai_state["weekly_ai_generated_at_label"],
         weekly_ai_period_label=weekly_ai_state["weekly_ai_period_label"],
         weekly_ai_empty_message=weekly_ai_state["weekly_ai_empty_message"],

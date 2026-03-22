@@ -8,6 +8,7 @@ from ai_service import (
     format_payload_for_prompt,
     load_prompt_text,
     maybe_generate_weekly_dashboard_advice,
+    normalize_dashboard_advice_text,
 )
 from models import (
     AIGeneratedResponse,
@@ -410,7 +411,22 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "split_group_size" in prompt_text
     assert "Key Takeaways" in prompt_text
     assert "Start with one unlabeled summary paragraph of 2-3 sentences." in prompt_text
-    assert 'End with one final bullet prefixed exactly with "→ Rule:"' in prompt_text
+    assert "Under Key Takeaways, write 2-4 bullets total. Never write more than 4." in prompt_text
+    assert "Do not add a weak bullet just to hit a target count." in prompt_text
+    assert "Every bullet must anchor to a specific trade idea or sequence from" in prompt_text
+    assert "Choose the 2-4 most informative trade ideas or sequences from the" in prompt_text
+    assert "If the week has 5 or fewer trade ideas, aim for the summary plus" in prompt_text
+    assert "Use split_group_size, split_group_role, and possible_split_order to" in prompt_text
+    assert 'End with one final standalone line prefixed exactly with "Rule:"' in prompt_text
+    assert "If TRADER PROFILE ADJUSTMENTS are provided in the input, follow them for" in prompt_text
+    assert "The summary should set context, not restate the bullets line for line." in prompt_text
+    assert "If the summary already states the weekly result, the first bullet" in prompt_text
+    assert "If all closed trades lost, say there were no winning trades instead" in prompt_text
+    assert "avoid awkward phrasing like Tokyo-related sessions." in prompt_text
+    assert "Prioritize bullets in this order when the data supports it:" in prompt_text
+    assert "Prefer the most concrete and teachable insight, not just the most" in prompt_text
+    assert "Prefer a session, behaviour, execution, or pattern rule over a" in prompt_text
+    assert "Only use a symbol-only rule when the week's issue was truly isolated" in prompt_text
     assert "Do not use paragraph prose anywhere in the response." not in prompt_text
     assert "Never reveal exact account metrics from the payload." in prompt_text
     assert "Keep the response between 100 and 150 words." not in prompt_text
@@ -418,6 +434,15 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "possible_split_order" in prompt_text
     assert "same_trade_idea_reentry alone does not mean revenge or impulsiveness." in prompt_text
     assert "Use only these optional plain-text section labels in the response:" not in prompt_text
+
+
+def test_normalize_dashboard_advice_text_fixes_rule_prefix_variants():
+    text = "Key Takeaways\n- Supported insight.\n\u00e2\u2020' Rule: Keep risk fixed."
+
+    normalized = normalize_dashboard_advice_text(text)
+
+    assert normalized.endswith("Rule: Keep risk fixed.")
+    assert "\u00e2\u2020'" not in normalized
 
 
 def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, monkeypatch):
@@ -759,7 +784,7 @@ def test_maybe_generate_weekly_dashboard_advice_generates_when_three_closed_trad
         lambda messages, model=None: {
             "model": "gpt-5-mini",
             "status": "completed",
-            "output_text": "EDGE\n- Supported insight.\n→ Rule: Keep risk fixed.",
+            "output_text": "EDGE\n- Supported insight.\n\u00e2\u2020' Rule: Keep risk fixed.",
             "usage": {},
             "output": [],
         },
@@ -776,6 +801,7 @@ def test_maybe_generate_weekly_dashboard_advice_generates_when_three_closed_trad
     assert result["generated"] is True
     assert result["record"] is not None
     assert result["record"].trade_count_used == 3
+    assert result["record"].response_text.endswith("Rule: Keep risk fixed.")
 
 
 def test_force_weekly_generation_appends_new_response_for_same_period(app_ctx, monkeypatch):
