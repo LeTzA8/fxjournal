@@ -112,7 +112,6 @@ def sync_mt5_account(self, mt5_account_id):
     init_kwargs = {}
     if terminal_path:
         init_kwargs["path"] = terminal_path
-    init_kwargs["portable"] = True
 
     if not mt5.initialize(**init_kwargs):
         raise RuntimeError(f"MT5 init failed: {mt5.last_error()}")

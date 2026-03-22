@@ -50,7 +50,6 @@ def _clear_chart_profiles(appdata_path: str):
         shutil.rmtree(charts_path, ignore_errors=True)
     os.makedirs(charts_path, exist_ok=True)
 
-
 def _find_child_dir(parent_path: str, dir_name: str):
     if not os.path.isdir(parent_path):
         return None
@@ -143,10 +142,10 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         # Launch the terminal briefly — this causes MT5 to create its AppData folder
         proc = subprocess.Popen([terminal_exe], cwd=terminal_dir)
 
+        new_appdata = None
         try:
             # Wait up to 30s for the AppData folder to appear, detected via origin.txt
             # (works even if the folder already existed from a prior run)
-            new_appdata = None
             deadline = time.time() + 30
             while time.time() < deadline:
                 new_appdata = _find_base_appdata(terminal_dir)
@@ -165,20 +164,27 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             # how to resolve the broker server address
             src_servers = os.path.join(base_appdata, "config", "servers.dat")
             dst_config = os.path.join(new_appdata, "config")
+            terminal_config = os.path.join(terminal_dir, "config")
             os.makedirs(dst_config, exist_ok=True)
+            os.makedirs(terminal_config, exist_ok=True)
             if os.path.exists(src_servers):
                 shutil.copy2(src_servers, os.path.join(dst_config, "servers.dat"))
+                shutil.copy2(src_servers, os.path.join(terminal_config, "servers.dat"))
 
             account.appdata_hash = new_hash
         finally:
             proc.terminate()
             proc.wait(timeout=10)
 
+        # Clear the default chart workspace after the bootstrap launch and
+        # before the Python API logs into the account.
+        _clear_chart_profiles(new_appdata)
+
         import MetaTrader5 as mt5
 
         try:
             result = mt5.initialize(
-                terminal_exe,
+                path=terminal_exe,
                 login=login,
                 password=investor_password,
                 server=server,
@@ -201,7 +207,6 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         finally:
             mt5.shutdown()
 
-        _clear_chart_profiles(new_appdata)
         _clear_market_watch_selection(new_appdata, server)
 
         account.terminal_path = terminal_exe
