@@ -290,6 +290,17 @@ be something the trader can act on immediately.
   to one symbol or one symbol clearly dominated the week's outcome.
 - Use a specific trade or sequence as evidence, but phrase the rule so
   it still applies across similar trades next week.
+- The rule should almost never mention two different symbols.
+- Default to broader process language such as after a loss, after a
+  stop-out, on the next re-entry, during your most active session, or
+  on add-on entries.
+- If the evidence comes from one named trade, translate it into a
+  broader setup, session, or behaviour rule.
+- Bad rule example: "After the XAUUSD stop, wait one full session
+  before re-entering USDJPY."
+- Better rule example: "After a large stop-out, wait one full session
+  before any re-entry and keep the next setup the same size or
+  smaller."
 
 Edge cases:
 - If the week had fewer than 3 closed trades, the rule should focus

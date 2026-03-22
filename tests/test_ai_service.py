@@ -427,6 +427,10 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Prefer the most concrete and teachable insight, not just the most" in prompt_text
     assert "Prefer a session, behaviour, execution, or pattern rule over a" in prompt_text
     assert "Only use a symbol-only rule when the week's issue was truly isolated" in prompt_text
+    assert "The rule should almost never mention two different symbols." in prompt_text
+    assert "Default to broader process language such as after a loss, after a" in prompt_text
+    assert 'Bad rule example: "After the XAUUSD stop, wait one full session' in prompt_text
+    assert 'Better rule example: "After a large stop-out, wait one full session' in prompt_text
     assert "Do not use paragraph prose anywhere in the response." not in prompt_text
     assert "Never reveal exact account metrics from the payload." in prompt_text
     assert "Keep the response between 100 and 150 words." not in prompt_text
