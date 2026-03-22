@@ -91,8 +91,26 @@ def test_format_payload_for_prompt_includes_trade_fields_and_signed_drawdown():
                 "duration_minutes": 84.0,
                 "opened_at": "2026-03-10 14:00:00 UTC",
                 "closed_at": "2026-03-10 15:24:00 UTC",
+                "trade_sequence_number": 2,
+                "trade_number_in_session": 2,
+                "prev_trade_pnl": -80.0,
+                "minutes_since_prev_close": 12.0,
+                "size_vs_prev_trade": "larger",
+                "loss_streak_before_trade": 1,
+                "is_post_loss_trade": True,
+                "same_symbol_reentry": True,
+                "same_trade_idea_reentry": True,
+                "is_potential_revenge": True,
+                "planned_rr": 3.2,
+                "realized_rr": 1.12,
+                "tp_capture_pct": 35.0,
+                "closed_before_tp": True,
+                "closed_before_sl": None,
                 "outlier_size": False,
                 "possible_split_order": False,
+                "split_group_size": 1,
+                "split_group_index": 1,
+                "split_group_role": "solo",
                 "is_likely_corrective": False,
                 "trade_note": "Held through the close.",
             }
@@ -111,8 +129,19 @@ def test_format_payload_for_prompt_includes_trade_fields_and_signed_drawdown():
     assert "entry_session: New York" in prompt_text
     assert "exit_session: New York" in prompt_text
     assert "duration_minutes: 84.00" in prompt_text
+    assert "trade_sequence_number: 2" in prompt_text
+    assert "prev_trade_pnl: -80.00" in prompt_text
+    assert "minutes_since_prev_close: 12.00" in prompt_text
+    assert "size_vs_prev_trade: larger" in prompt_text
+    assert "same_trade_idea_reentry: true" in prompt_text
+    assert "is_potential_revenge: true" in prompt_text
+    assert "planned_rr: 3.20" in prompt_text
+    assert "realized_rr: 1.12" in prompt_text
+    assert "tp_capture_pct: 35.00%" in prompt_text
+    assert "closed_before_tp: true" in prompt_text
     assert "outlier_size: false" in prompt_text
     assert "possible_split_order: false" in prompt_text
+    assert "split_group_role: solo" in prompt_text
     assert "is_likely_corrective: false" in prompt_text
 
 
@@ -158,6 +187,15 @@ def test_build_trade_payload_serializes_trade_risk_fields_and_session(app_ctx):
     assert payload["trades"][0]["exit_session"] == "New York"
     assert payload["trades"][0]["session"] == "New York"
     assert payload["trades"][0]["duration_minutes"] == 45.0
+    assert payload["trades"][0]["trade_sequence_number"] == 1
+    assert payload["trades"][0]["trade_number_in_session"] == 1
+    assert payload["trades"][0]["planned_rr"] == 3.0
+    assert payload["trades"][0]["realized_rr"] == 1.25
+    assert payload["trades"][0]["tp_capture_pct"] == 41.67
+    assert payload["trades"][0]["closed_before_tp"] is True
+    assert payload["trades"][0]["closed_before_sl"] is None
+    assert payload["trades"][0]["split_group_size"] == 1
+    assert payload["trades"][0]["split_group_role"] == "solo"
 
 
 def test_format_payload_for_prompt_handles_missing_trade_session():
@@ -187,8 +225,26 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
                     "duration_minutes": None,
                     "opened_at": None,
                     "closed_at": "2026-03-10 14:45:00 UTC",
+                    "trade_sequence_number": 1,
+                    "trade_number_in_session": 1,
+                    "prev_trade_pnl": None,
+                    "minutes_since_prev_close": None,
+                    "size_vs_prev_trade": None,
+                    "loss_streak_before_trade": 0,
+                    "is_post_loss_trade": False,
+                    "same_symbol_reentry": False,
+                    "same_trade_idea_reentry": False,
+                    "is_potential_revenge": False,
+                    "planned_rr": None,
+                    "realized_rr": None,
+                    "tp_capture_pct": None,
+                    "closed_before_tp": None,
+                    "closed_before_sl": None,
                     "outlier_size": True,
                     "possible_split_order": False,
+                    "split_group_size": 1,
+                    "split_group_index": 1,
+                    "split_group_role": "solo",
                     "is_likely_corrective": True,
                     "trade_note": None,
                 }
@@ -200,6 +256,8 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
     assert "exit_session: London" in prompt_text
     assert "outlier_size: true" in prompt_text
     assert "is_likely_corrective: true" in prompt_text
+    assert "closed_before_tp: -" in prompt_text
+    assert "closed_before_sl: -" in prompt_text
 
 
 def test_format_payload_for_prompt_includes_profile_and_checkin_sections_when_populated():
@@ -344,12 +402,22 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "entry_session" in prompt_text
     assert "exit_session" in prompt_text
     assert "entry_session, exit_session, duration_minutes" in prompt_text
+    assert "trade_sequence_number" in prompt_text
+    assert "same_trade_idea_reentry" in prompt_text
+    assert "is_potential_revenge" in prompt_text
+    assert "planned_rr, realized_rr, tp_capture_pct" in prompt_text
+    assert "closed_before_tp" in prompt_text
+    assert "split_group_size" in prompt_text
+    assert "Key Takeaways" in prompt_text
+    assert "Start with one unlabeled summary paragraph of 2-3 sentences." in prompt_text
     assert 'End with one final bullet prefixed exactly with "→ Rule:"' in prompt_text
-    assert "Do not use paragraph prose anywhere in the response." in prompt_text
+    assert "Do not use paragraph prose anywhere in the response." not in prompt_text
     assert "Never reveal exact account metrics from the payload." in prompt_text
     assert "Keep the response between 100 and 150 words." not in prompt_text
     assert "notes_coverage" in prompt_text
     assert "possible_split_order" in prompt_text
+    assert "same_trade_idea_reentry alone does not mean revenge or impulsiveness." in prompt_text
+    assert "Use only these optional plain-text section labels in the response:" not in prompt_text
 
 
 def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, monkeypatch):
@@ -433,8 +501,89 @@ def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, mon
 
     assert len(eur_trades) == 2
     assert all(trade["possible_split_order"] is True for trade in eur_trades)
+    assert {trade["split_group_size"] for trade in eur_trades} == {2}
+    assert {trade["split_group_role"] for trade in eur_trades} == {"lead", "add_on"}
     assert gbp_trade["outlier_size"] is True
     assert gbp_trade["is_likely_corrective"] is True
+
+
+def test_build_trade_payload_adds_sequence_and_revenge_context(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-sequence-user",
+        email="ai-sequence@example.com",
+    )
+
+    db.session.add_all(
+        [
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="EURUSD",
+                side="BUY",
+                entry_price=1.1000,
+                exit_price=1.0990,
+                stop_loss=1.0980,
+                take_profit=1.1040,
+                lot_size=1.0,
+                pnl=-100.0,
+                opened_at=datetime(2026, 3, 10, 10, 0, 0),
+                closed_at=datetime(2026, 3, 10, 10, 15, 0),
+            ),
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="EURUSD",
+                side="BUY",
+                entry_price=1.0995,
+                exit_price=1.1010,
+                stop_loss=1.0975,
+                take_profit=1.1035,
+                lot_size=1.5,
+                pnl=150.0,
+                opened_at=datetime(2026, 3, 10, 10, 20, 0),
+                closed_at=datetime(2026, 3, 10, 10, 40, 0),
+            ),
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="GBPUSD",
+                side="SELL",
+                entry_price=1.2700,
+                exit_price=1.2690,
+                stop_loss=1.2715,
+                take_profit=1.2670,
+                lot_size=1.0,
+                pnl=100.0,
+                opened_at=datetime(2026, 3, 10, 12, 0, 0),
+                closed_at=datetime(2026, 3, 10, 12, 35, 0),
+            ),
+        ]
+    )
+    db.session.commit()
+
+    payload = build_trade_payload(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        period_start_utc=datetime(2026, 3, 10, 0, 0, 0),
+        period_end_utc=datetime(2026, 3, 11, 0, 0, 0),
+        closed_trades_only=True,
+    )
+
+    second_trade = next(
+        trade
+        for trade in payload["trades"]
+        if trade["symbol"] == "EURUSD" and trade["pnl"] == 150.0
+    )
+
+    assert second_trade["trade_sequence_number"] == 2
+    assert second_trade["prev_trade_pnl"] == -100.0
+    assert second_trade["minutes_since_prev_close"] == 5.0
+    assert second_trade["size_vs_prev_trade"] == "larger"
+    assert second_trade["loss_streak_before_trade"] == 1
+    assert second_trade["is_post_loss_trade"] is True
+    assert second_trade["same_symbol_reentry"] is True
+    assert second_trade["same_trade_idea_reentry"] is True
+    assert second_trade["is_potential_revenge"] is True
 
 
 def test_build_trade_payload_assigns_cross_week_trade_to_close_week(app_ctx):

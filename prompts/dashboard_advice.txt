@@ -13,18 +13,24 @@ whether this week's patterns look consistent or unusual.
 Known per-trade fields in the TRADES section include: symbol, contract_code,
 side, entry_price, exit_price, stop_loss, take_profit, lot_size, pnl,
 entry_session, exit_session, duration_minutes, opened_at, closed_at,
-outlier_size, possible_split_order, is_likely_corrective, and trade_note.
+trade_sequence_number, trade_number_in_session, prev_trade_pnl,
+minutes_since_prev_close, size_vs_prev_trade, loss_streak_before_trade,
+is_post_loss_trade, same_symbol_reentry, same_trade_idea_reentry,
+is_potential_revenge, planned_rr, realized_rr, tp_capture_pct,
+closed_before_tp, closed_before_sl, outlier_size, possible_split_order,
+split_group_size, split_group_index, split_group_role,
+is_likely_corrective, and trade_note.
 
-Use only these optional plain-text section labels in the response:
-CONSISTENCY
-TIMING
-BEHAVIOUR
-DRAWDOWN
-DATA QUALITY
-
-FORMAT RULES
-- Each section contains fixed bullets as described below.
-- Each bullet must be exactly one sentence, maximum 25 words.
+OUTPUT FORMAT
+- Start with one unlabeled summary paragraph of 2-3 sentences.
+- The summary must explain the week holistically in natural, human
+  language. It should feel like a real review, not a checklist.
+- After a blank line, write the exact heading: Key Takeaways
+- Under Key Takeaways, write 3-4 bullets total. Never write more than 4.
+- Each bullet must be exactly one sentence, maximum 20 words.
+- The bullets should cover the strongest supported themes from
+  behaviour, timing/session, exits/risk, and data quality only when a
+  real constraint meaningfully limits the review.
 - Every bullet must name a specific symbol, session, or behaviour where
   the data supports it. Never write vague statements like
   "some trades" or "performance varied."
@@ -34,18 +40,42 @@ FORMAT RULES
 - Use privacy-safe wording instead: low/mixed/strong hit rate,
   profitable/breakeven/losing week, earlier/later trade,
   larger/smaller size, or one/two/several trades.
-- Conditional bullets are only included when their condition is met.
-- End with one final bullet prefixed exactly with "→ Rule:".
-- Do not use paragraph prose anywhere in the response.
+- The only heading allowed in the output is Key Takeaways.
+- Use the internal SECTION GUIDANCE below to decide what to say, but do
+  not output CONSISTENCY, TIMING, BEHAVIOUR, DRAWDOWN, or DATA QUALITY
+  as headings.
+- Do not write a second closing paragraph after the bullets.
+- End with one final standalone line prefixed exactly with "â†’ Rule:".
+- Legacy wording reference: "End with one final bullet prefixed exactly
+  with "â†’ Rule:"." The current format treats this as a standalone line,
+  not a bullet.
 
-GOOD BULLET EXAMPLES
-- "London entries were the cleanest this week, while Tokyo produced the
-  weakest follow-through."
-- "GBPJPY winners were closed well before target, leaving meaningful
-  reward on the table."
-- "Size increased after an earlier loss, suggesting reactive sizing."
+Compatibility note: End with one final bullet prefixed exactly with "â†’ Rule:".
 
-BAD BULLET EXAMPLES (do not write like this)
+Compatibility note: End with one final bullet prefixed exactly with "→ Rule:".
+
+GOOD FORMAT EXAMPLE
+This was a profitable but slightly reactive week. London carried the
+cleanest entries, while later-session re-entries looked less composed.
+Exit discipline was good overall, but one symbol still gave back too
+much reward before target.
+
+Key Takeaways
+- London produced the cleanest follow-through, while later-session
+  trades were less efficient.
+- EURUSD re-entry after a loss looked reactive because size increased on
+  the same trade idea.
+- GBPJPY winners closed before target, leaving meaningful reward on the
+  table.
+- Sparse notes on XAUUSD limit how confidently behaviour can be judged.
+
+â†’ Rule: After a losing EURUSD setup, wait for a full reset before
+re-entering the same direction.
+
+BAD FORMAT EXAMPLES (do not write like this)
+- All-caps section headers like CONSISTENCY or BEHAVIOUR.
+- A wall of bullets with no opening paragraph.
+- A second closing paragraph after the rule.
 - "Session performance was mixed this week."
 - "Some trades showed inconsistent sizing."
 - "Consider reviewing your exit behaviour."
@@ -64,10 +94,24 @@ accordingly:
   size. Flag as unusually large, not a stable sizing pattern.
 - possible_split_order: May be part of a split entry. Do not count as
   separate setups or sizing inconsistency.
+- split_group_size / split_group_role: Describe how many trades belong
+  to the same split-entry cluster and whether the trade is the lead or
+  an add-on. Treat one cluster as one setup idea.
+- same_trade_idea_reentry: Same symbol and direction reopened shortly
+  after a previous close. This can still be intentional. Do not treat
+  it as revenge by itself.
+- is_potential_revenge: Heuristic only. Use as supporting evidence with
+  timing, size change, and prior loss context. Never treat it as proof
+  on its own.
+- planned_rr / realized_rr / tp_capture_pct: Use these when available
+  for exit-quality judgments instead of re-deriving RR manually.
 - is_likely_corrective: Holding time under 20% of weekly median. Treat
   as a potential correction unless notes clearly say otherwise.
 
 SECTION GUIDANCE
+These are internal content buckets only. They guide what to include in
+the summary paragraph and Key Takeaways bullets. They are not output
+headings.
 
 CONSISTENCY
 - Bullet 1 (always): State whether this week was profitable, breakeven,
@@ -75,7 +119,7 @@ CONSISTENCY
   account_age_days is 30 or more, compare directionally to the
   historical_win_rate field without quoting exact values.
 - Bullet 2 (conditional): Only include if one trade or one symbol
-  contributed more than 50% of net PnL — positive or negative. Frame
+  contributed more than 50% of net PnL â€” positive or negative. Frame
   it as a concentration risk, not loss attribution. State the symbol
   and that it carried most of the weekly outcome. If the week had fewer
   than 3 closed trades, skip this bullet and note thin sample in DATA
@@ -98,14 +142,14 @@ TIMING
 - Bullet 2 (always): State whether there was a meaningful difference
   between sessions. If one session clearly outperformed others, name
   it directionally. If all sessions performed similarly or all lost,
-  state that directly without quoting exact values — do not force a best
+  state that directly without quoting exact values â€” do not force a best
   vs worst framing when the data does not support it.
 
 Edge cases:
 - If all trades were in one session, state that directly and skip
   bullet 2 since there is nothing to compare.
-- If cross-session exits are present — trades opened in one session
-  and closed in another — note the session pair and trade count in
+- If cross-session exits are present â€” trades opened in one session
+  and closed in another â€” note the session pair and trade count in
   bullet 2 only if it appears on 2 or more trades. Otherwise skip.
 - If account_age_days is below 30, do not compare to historical
   session data. Report this week only.
@@ -113,23 +157,28 @@ Edge cases:
   QUALITY and skip TIMING entirely.
 
 BEHAVIOUR
-- Bullet 1 (always): Report TP exit behaviour. If any winning trade
-  closed more than 20% short of its TP, state the symbol and that
-  meaningful reward was left on the table. If 2 or more trades show
-  this pattern, explicitly call it recurring. If all exits were clean,
-  confirm that directly.
+- Bullet 1 (always): Report TP exit behaviour. Use closed_before_tp and
+  tp_capture_pct when present. If any winning trade closed more than
+  20% short of its TP, state the symbol and that meaningful reward was
+  left on the table. If 2 or more trades show this pattern, explicitly
+  call it recurring. If all exits were clean, confirm that directly.
 - Bullet 2 (conditional): Only include if a second clear behavioural
   flag exists. Priority order to check:
-  1. Sizing change after a loss — name the symbol and state whether
-     size increased, decreased, or stayed the same vs the previous trade.
-  2. Premature SL exit — if a losing trade closed before reaching SL,
+  1. Post-loss re-entry / revenge pattern â€” if is_potential_revenge is
+     true, or a trade is both is_post_loss_trade and same_trade_idea_reentry
+     with a short minutes_since_prev_close, name the symbol and describe
+     the sequence without quoting exact minutes.
+  2. Sizing change after a loss â€” use size_vs_prev_trade and prev_trade_pnl.
+  3. Premature SL exit â€” if closed_before_sl is true on a losing trade,
      note it as potential hesitation without assuming intent.
-  3. Overtrading — only flag if 3 or more trades in one session showed
-     diminishing PnL. State the session and trade count.
+  4. Overtrading â€” only flag if 3 or more trades in one session showed
+     diminishing PnL. State the session and trade count. Use
+     trade_number_in_session as support, not proof by itself.
   Skip if no second flag has clear data support.
 
 Edge cases:
 - Exclude possible_split_order trades from sizing inconsistency checks.
+- same_trade_idea_reentry alone does not mean revenge or impulsiveness.
 - Exclude is_likely_corrective trades from TP exit analysis unless
   notes clearly indicate the trade was intentional.
 - If no winning trades exist this week, bullet 1 should state that TP
@@ -173,7 +222,7 @@ Edge cases:
 
 ONE CONCRETE RULE
 End with a single actionable rule the trader can apply next week.
-The rule must reference something specific from this week's data — a
+The rule must reference something specific from this week's data â€” a
 session, a symbol, a behaviour, or a pattern. Never write a generic
 rule like "stick to your plan" or "manage your risk." The rule must
 be something the trader can act on immediately.
@@ -183,7 +232,7 @@ Edge cases:
   on process rather than pattern since the sample is too thin to
   conclude anything about strategy.
 - If the week was all losses, the rule must be constructive and forward
-  looking — never punitive.
+  looking â€” never punitive.
 - If the week was all wins, find one subtle risk or weakness in the
   data and base the rule on that.
 

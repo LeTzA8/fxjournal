@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import math
 import os
 import statistics
 from datetime import datetime, timedelta, timezone
@@ -23,8 +24,11 @@ from models import (
 from trading import (
     build_trade_analytics,
     classify_trading_session,
+    did_trade_reach_level,
     ensure_utc_aware,
     format_trade_symbol,
+    get_trade_account_type,
+    get_trade_level_validation_issues,
     is_extremely_long_duration_minutes,
     resolve_net_pnl,
 )
@@ -45,6 +49,8 @@ WEEKLY_CUTOFF_HOUR = 17
 WEEKLY_CUTOFF_MINUTE = 30
 WEEKLY_ACTIVITY_LOOKBACK_DAYS = 3
 MIN_CLOSED_TRADES_FOR_ADVICE = 3
+SAME_TRADE_IDEA_REENTRY_WINDOW_MINUTES = 60
+REVENGE_REENTRY_WINDOW_MINUTES = 30
 logger = logging.getLogger(__name__)
 
 
@@ -546,6 +552,284 @@ def _format_bool(value):
     return "true" if bool(value) else "false"
 
 
+def _format_optional_bool(value):
+    if value is None:
+        return "-"
+    return _format_bool(value)
+
+
+def _coerce_float(value):
+    if value in {None, ""}:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _minutes_between(earlier, later):
+    earlier_utc = ensure_utc_aware(earlier)
+    later_utc = ensure_utc_aware(later)
+    if earlier_utc is None or later_utc is None or later_utc < earlier_utc:
+        return None
+    return _round_metric((later_utc - earlier_utc).total_seconds() / 60.0)
+
+
+def _lot_sizes_match(first_size, second_size):
+    if first_size is None or second_size is None:
+        return False
+    return math.isclose(first_size, second_size, rel_tol=0.05, abs_tol=0.01)
+
+
+def _describe_size_change(current_size, previous_size):
+    if current_size is None or previous_size is None:
+        return None
+    if _lot_sizes_match(current_size, previous_size):
+        return "same"
+    return "larger" if current_size > previous_size else "smaller"
+
+
+def _calculate_trade_rr(target_price, entry_price, stop_loss, side=None, *, signed=False):
+    if target_price is None or entry_price is None or stop_loss is None:
+        return None
+    normalized_side = str(side or "BUY").strip().upper()
+    if normalized_side == "SELL":
+        if stop_loss <= entry_price:
+            return None
+        move_amount = entry_price - target_price
+    else:
+        if stop_loss >= entry_price:
+            return None
+        move_amount = target_price - entry_price
+    risk_amount = abs(entry_price - stop_loss)
+    if risk_amount == 0:
+        return None
+    if signed:
+        return _round_metric(move_amount / risk_amount)
+    if move_amount <= 0:
+        return None
+    return _round_metric(move_amount / risk_amount)
+
+
+def _get_trade_identity(trade):
+    trade_id = getattr(trade, "id", None)
+    return f"id:{trade_id}" if trade_id is not None else f"obj:{id(trade)}"
+
+
+def _get_trade_sort_key(trade):
+    opened_at = ensure_utc_aware(getattr(trade, "opened_at", None)) or datetime.min.replace(tzinfo=timezone.utc)
+    closed_at = ensure_utc_aware(getattr(trade, "closed_at", None)) or datetime.min.replace(tzinfo=timezone.utc)
+    return (opened_at, closed_at, getattr(trade, "id", 0) or 0)
+
+
+def _get_split_group_key(trade):
+    split_bucket = _floor_timestamp_to_five_minutes(getattr(trade, "opened_at", None))
+    if split_bucket is None:
+        return None
+    return (
+        (format_trade_symbol(trade) or "").strip().upper(),
+        (getattr(trade, "side", "") or "").strip().upper(),
+        split_bucket,
+    )
+
+
+def _build_trade_exit_quality(trade, trade_pnl):
+    result = {
+        "planned_rr": None,
+        "realized_rr": None,
+        "tp_capture_pct": None,
+        "closed_before_tp": None,
+        "closed_before_sl": None,
+    }
+    instrument_type = get_trade_account_type(trade)
+    validation_issues = get_trade_level_validation_issues(
+        getattr(trade, "entry_price", None),
+        getattr(trade, "stop_loss", None),
+        getattr(trade, "take_profit", None),
+        getattr(trade, "side", None),
+        getattr(trade, "symbol", None),
+        instrument_type=instrument_type,
+        contract_code=getattr(trade, "contract_code", None),
+    )
+    stop_loss_is_valid = not (
+        validation_issues["stop_loss_too_close"] or validation_issues["invalid_stop_loss_side"]
+    )
+    take_profit_is_valid = not (
+        validation_issues["take_profit_too_close"] or validation_issues["invalid_take_profit_side"]
+    )
+
+    if stop_loss_is_valid and take_profit_is_valid:
+        result["planned_rr"] = _calculate_trade_rr(
+            getattr(trade, "take_profit", None),
+            getattr(trade, "entry_price", None),
+            getattr(trade, "stop_loss", None),
+            getattr(trade, "side", None),
+        )
+
+    if stop_loss_is_valid:
+        result["realized_rr"] = _calculate_trade_rr(
+            getattr(trade, "exit_price", None),
+            getattr(trade, "entry_price", None),
+            getattr(trade, "stop_loss", None),
+            getattr(trade, "side", None),
+            signed=True,
+        )
+
+    if result["planned_rr"] is not None and result["realized_rr"] is not None and result["realized_rr"] > 0:
+        result["tp_capture_pct"] = _round_metric((result["realized_rr"] / result["planned_rr"]) * 100.0)
+
+    if (
+        trade_pnl is not None
+        and trade_pnl > 0
+        and getattr(trade, "exit_price", None) is not None
+        and getattr(trade, "take_profit", None) is not None
+        and take_profit_is_valid
+    ):
+        result["closed_before_tp"] = not did_trade_reach_level(
+            getattr(trade, "exit_price", None),
+            getattr(trade, "take_profit", None),
+            getattr(trade, "side", None),
+            "tp",
+            getattr(trade, "symbol", None),
+            instrument_type=instrument_type,
+            contract_code=getattr(trade, "contract_code", None),
+        )
+    elif (
+        trade_pnl is not None
+        and trade_pnl < 0
+        and getattr(trade, "exit_price", None) is not None
+        and getattr(trade, "stop_loss", None) is not None
+        and stop_loss_is_valid
+    ):
+        result["closed_before_sl"] = not did_trade_reach_level(
+            getattr(trade, "exit_price", None),
+            getattr(trade, "stop_loss", None),
+            getattr(trade, "side", None),
+            "sl",
+            getattr(trade, "symbol", None),
+            instrument_type=instrument_type,
+            contract_code=getattr(trade, "contract_code", None),
+        )
+
+    return result
+
+
+def _build_trade_annotations(trades):
+    chronological_trades = sorted(trades, key=_get_trade_sort_key)
+    split_group_members = {}
+    for trade in chronological_trades:
+        group_key = _get_split_group_key(trade)
+        if group_key is None:
+            continue
+        split_group_members.setdefault(group_key, []).append(_get_trade_identity(trade))
+
+    split_group_lookup = {}
+    for trade in chronological_trades:
+        identity = _get_trade_identity(trade)
+        split_group_lookup[identity] = {
+            "split_group_size": 1,
+            "split_group_index": 1,
+            "split_group_role": "solo",
+            "possible_split_order": False,
+            "group_key": _get_split_group_key(trade),
+        }
+
+    for group_key, member_ids in split_group_members.items():
+        group_size = len(member_ids)
+        for index, member_id in enumerate(member_ids, start=1):
+            split_group_lookup[member_id] = {
+                "split_group_size": group_size,
+                "split_group_index": index,
+                "split_group_role": "solo" if group_size == 1 else ("lead" if index == 1 else "add_on"),
+                "possible_split_order": group_size >= 2,
+                "group_key": group_key,
+            }
+
+    annotations = {}
+    previous_trade = None
+    previous_trade_pnl = None
+    current_loss_streak = 0
+    session_counts = {}
+    last_same_idea_trade = {}
+
+    for sequence_number, trade in enumerate(chronological_trades, start=1):
+        identity = _get_trade_identity(trade)
+        current_symbol = (format_trade_symbol(trade) or "").strip().upper()
+        current_side = (getattr(trade, "side", "") or "").strip().upper()
+        current_session = _get_trade_session(trade)
+        session_key = current_session or "__unknown__"
+        session_counts[session_key] = session_counts.get(session_key, 0) + 1
+        current_group = split_group_lookup[identity]
+        trade_lot_size = _coerce_float(getattr(trade, "lot_size", None))
+
+        minutes_since_prev_close = None
+        size_vs_prev_trade = None
+        same_symbol_reentry = False
+        is_post_loss_trade = False
+        if previous_trade is not None:
+            minutes_since_prev_close = _minutes_between(getattr(previous_trade, "closed_at", None), getattr(trade, "opened_at", None))
+            previous_lot_size = _coerce_float(getattr(previous_trade, "lot_size", None))
+            size_vs_prev_trade = _describe_size_change(trade_lot_size, previous_lot_size)
+            previous_symbol = (format_trade_symbol(previous_trade) or "").strip().upper()
+            same_symbol_reentry = bool(minutes_since_prev_close is not None and previous_symbol == current_symbol)
+            is_post_loss_trade = previous_trade_pnl is not None and previous_trade_pnl < 0
+
+        same_trade_idea_reentry = False
+        same_idea_key = (current_symbol, current_side)
+        previous_same_idea = last_same_idea_trade.get(same_idea_key)
+        if previous_same_idea is not None and previous_same_idea["group_key"] != current_group["group_key"]:
+            same_idea_gap_minutes = _minutes_between(
+                getattr(previous_same_idea["trade"], "closed_at", None),
+                getattr(trade, "opened_at", None),
+            )
+            if (
+                same_idea_gap_minutes is not None
+                and same_idea_gap_minutes <= SAME_TRADE_IDEA_REENTRY_WINDOW_MINUTES
+            ):
+                same_trade_idea_reentry = True
+
+        is_potential_revenge = bool(
+            is_post_loss_trade
+            and same_trade_idea_reentry
+            and minutes_since_prev_close is not None
+            and minutes_since_prev_close <= REVENGE_REENTRY_WINDOW_MINUTES
+            and size_vs_prev_trade in {"same", "larger"}
+            and not current_group["possible_split_order"]
+        )
+
+        annotations[identity] = {
+            "trade_sequence_number": sequence_number,
+            "trade_number_in_session": session_counts[session_key],
+            "prev_trade_pnl": previous_trade_pnl,
+            "minutes_since_prev_close": minutes_since_prev_close,
+            "size_vs_prev_trade": size_vs_prev_trade,
+            "loss_streak_before_trade": current_loss_streak,
+            "is_post_loss_trade": is_post_loss_trade,
+            "same_symbol_reentry": same_symbol_reentry,
+            "same_trade_idea_reentry": same_trade_idea_reentry,
+            "is_potential_revenge": is_potential_revenge,
+            "split_group_size": current_group["split_group_size"],
+            "split_group_index": current_group["split_group_index"],
+            "split_group_role": current_group["split_group_role"],
+            "possible_split_order": current_group["possible_split_order"],
+        }
+
+        current_trade_pnl = resolve_net_pnl(trade)
+        if current_trade_pnl is not None and current_trade_pnl < 0:
+            current_loss_streak += 1
+        else:
+            current_loss_streak = 0
+
+        previous_trade = trade
+        previous_trade_pnl = current_trade_pnl
+        last_same_idea_trade[same_idea_key] = {
+            "trade": trade,
+            "group_key": current_group["group_key"],
+        }
+
+    return annotations
+
+
 def build_trade_payload(
     *,
     user_id,
@@ -571,32 +855,21 @@ def build_trade_payload(
         trades,
         display_timezone_name=get_ai_timezone_name(),
     )
+    trade_annotations = _build_trade_annotations(trades)
 
     notes_with_content = 0
     lot_sizes = []
-    split_order_groups = {}
     durations = []
     for trade in trades:
         note = (trade.trade_note or "").strip()
         if note:
             notes_with_content += 1
-        if trade.lot_size not in {None, ""}:
-            try:
-                lot_sizes.append(float(trade.lot_size))
-            except (TypeError, ValueError):
-                pass
+        trade_lot_size = _coerce_float(trade.lot_size)
+        if trade_lot_size is not None:
+            lot_sizes.append(trade_lot_size)
         duration_minutes = _get_trade_duration_minutes(trade)
         if duration_minutes is not None and not is_extremely_long_duration_minutes(duration_minutes):
             durations.append(duration_minutes)
-        split_bucket = _floor_timestamp_to_five_minutes(trade.opened_at)
-        if split_bucket is None:
-            continue
-        group_key = (
-            (format_trade_symbol(trade) or "").strip().upper(),
-            (trade.side or "").strip().upper(),
-            split_bucket,
-        )
-        split_order_groups[group_key] = split_order_groups.get(group_key, 0) + 1
 
     median_lot_size = statistics.median(lot_sizes) if lot_sizes else None
     median_duration_minutes = statistics.median(durations) if durations else None
@@ -610,19 +883,12 @@ def build_trade_payload(
 
     serialized_trades = []
     for trade in trades:
+        identity = _get_trade_identity(trade)
+        annotation = trade_annotations.get(identity, {})
+        trade_pnl = resolve_net_pnl(trade)
         duration_minutes = _get_trade_duration_minutes(trade)
-        split_bucket = _floor_timestamp_to_five_minutes(trade.opened_at)
-        group_key = (
-            (format_trade_symbol(trade) or "").strip().upper(),
-            (trade.side or "").strip().upper(),
-            split_bucket,
-        ) if split_bucket is not None else None
-        trade_lot_size = None
-        if trade.lot_size not in {None, ""}:
-            try:
-                trade_lot_size = float(trade.lot_size)
-            except (TypeError, ValueError):
-                trade_lot_size = None
+        trade_lot_size = _coerce_float(trade.lot_size)
+        exit_quality = _build_trade_exit_quality(trade, trade_pnl)
         serialized_trades.append(
             {
                 "symbol": format_trade_symbol(trade),
@@ -633,23 +899,39 @@ def build_trade_payload(
                 "stop_loss": trade.stop_loss,
                 "take_profit": trade.take_profit,
                 "lot_size": trade.lot_size,
-                "pnl": resolve_net_pnl(trade),
+                "pnl": trade_pnl,
                 "entry_session": _classify_trade_session(trade.opened_at),
                 "exit_session": _classify_trade_session(trade.closed_at),
                 "session": _get_trade_session(trade),
                 "duration_minutes": duration_minutes,
                 "opened_at": format_utc_timestamp(trade.opened_at),
                 "closed_at": format_utc_timestamp(trade.closed_at),
+                "trade_sequence_number": annotation.get("trade_sequence_number"),
+                "trade_number_in_session": annotation.get("trade_number_in_session"),
+                "prev_trade_pnl": annotation.get("prev_trade_pnl"),
+                "minutes_since_prev_close": annotation.get("minutes_since_prev_close"),
+                "size_vs_prev_trade": annotation.get("size_vs_prev_trade"),
+                "loss_streak_before_trade": annotation.get("loss_streak_before_trade"),
+                "is_post_loss_trade": bool(annotation.get("is_post_loss_trade")),
+                "same_symbol_reentry": bool(annotation.get("same_symbol_reentry")),
+                "same_trade_idea_reentry": bool(annotation.get("same_trade_idea_reentry")),
+                "is_potential_revenge": bool(annotation.get("is_potential_revenge")),
                 "trade_note": (trade.trade_note or "").strip() or None,
+                "planned_rr": exit_quality["planned_rr"],
+                "realized_rr": exit_quality["realized_rr"],
+                "tp_capture_pct": exit_quality["tp_capture_pct"],
+                "closed_before_tp": exit_quality["closed_before_tp"],
+                "closed_before_sl": exit_quality["closed_before_sl"],
                 "outlier_size": bool(
                     median_lot_size
                     and median_lot_size > 0
                     and trade_lot_size is not None
                     and trade_lot_size > median_lot_size * 3
                 ),
-                "possible_split_order": bool(
-                    group_key is not None and split_order_groups.get(group_key, 0) >= 2
-                ),
+                "possible_split_order": bool(annotation.get("possible_split_order")),
+                "split_group_size": annotation.get("split_group_size", 1),
+                "split_group_index": annotation.get("split_group_index", 1),
+                "split_group_role": annotation.get("split_group_role") or "solo",
                 "is_likely_corrective": bool(
                     median_duration_minutes
                     and median_duration_minutes > 0
@@ -907,8 +1189,26 @@ def format_payload_for_prompt(payload):
                 f"   duration_minutes: {_format_number(trade.get('duration_minutes'))}",
                 f"   opened_at: {trade.get('opened_at') or '-'}",
                 f"   closed_at: {trade.get('closed_at') or '-'}",
+                f"   trade_sequence_number: {trade.get('trade_sequence_number') if trade.get('trade_sequence_number') is not None else '-'}",
+                f"   trade_number_in_session: {trade.get('trade_number_in_session') if trade.get('trade_number_in_session') is not None else '-'}",
+                f"   prev_trade_pnl: {_format_signed_currency(trade.get('prev_trade_pnl'))}",
+                f"   minutes_since_prev_close: {_format_number(trade.get('minutes_since_prev_close'))}",
+                f"   size_vs_prev_trade: {trade.get('size_vs_prev_trade') or '-'}",
+                f"   loss_streak_before_trade: {trade.get('loss_streak_before_trade') if trade.get('loss_streak_before_trade') is not None else '-'}",
+                f"   is_post_loss_trade: {_format_bool(trade.get('is_post_loss_trade'))}",
+                f"   same_symbol_reentry: {_format_bool(trade.get('same_symbol_reentry'))}",
+                f"   same_trade_idea_reentry: {_format_bool(trade.get('same_trade_idea_reentry'))}",
+                f"   is_potential_revenge: {_format_bool(trade.get('is_potential_revenge'))}",
+                f"   planned_rr: {_format_number(trade.get('planned_rr'))}",
+                f"   realized_rr: {_format_number(trade.get('realized_rr'))}",
+                f"   tp_capture_pct: {_format_percent(trade.get('tp_capture_pct'))}",
+                f"   closed_before_tp: {_format_optional_bool(trade.get('closed_before_tp'))}",
+                f"   closed_before_sl: {_format_optional_bool(trade.get('closed_before_sl'))}",
                 f"   outlier_size: {_format_bool(trade.get('outlier_size'))}",
                 f"   possible_split_order: {_format_bool(trade.get('possible_split_order'))}",
+                f"   split_group_size: {trade.get('split_group_size') if trade.get('split_group_size') is not None else '-'}",
+                f"   split_group_index: {trade.get('split_group_index') if trade.get('split_group_index') is not None else '-'}",
+                f"   split_group_role: {trade.get('split_group_role') or '-'}",
                 f"   is_likely_corrective: {_format_bool(trade.get('is_likely_corrective'))}",
                 f"   trade_note: {note}",
             ]

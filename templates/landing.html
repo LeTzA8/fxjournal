@@ -44,7 +44,7 @@
 
     <article class="landing-hero" data-reveal-scope data-reveal-immediate>
         <div class="landing-hero-inner">
-            <p class="hero-badge landing-reveal" data-reveal-delay="40">Currently in open beta</p>
+            <p class="hero-badge landing-reveal" data-reveal-delay="40">Currently in open beta - limited-time free access</p>
             <p class="eyebrow landing-reveal" data-reveal-delay="125">FX, CFD, and Futures Journal</p>
             <h1 class="hero-title landing-reveal" data-reveal-delay="210">A simple trading journal built for clear review and consistent execution.</h1>
             <p class="muted lead landing-reveal" data-reveal-delay="295">
@@ -52,7 +52,7 @@
                 spot your patterns, and get AI feedback specific to your trading.
             </p>
             <p class="hero-note landing-reveal" data-reveal-delay="335">
-                Built by traders, for traders.
+                Built by traders, for traders. Free while beta access is open.
             </p>
 
             <div class="landing-copy landing-reveal" id="workflow" data-reveal-delay="380">
@@ -88,10 +88,18 @@
                 <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Log New Trade</a>
                 <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Contact</a>
                 {% else %}
-                <a href="{{ url_for('register') }}" class="submit-btn hero-cta">Try Now</a>
+                <a href="{{ url_for('register') }}" class="submit-btn hero-cta">Start Free</a>
                 <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask a Question</a>
                 {% endif %}
             </div>
+
+            {% if not user_logged_in %}
+            <div class="hero-reassurance landing-reveal" data-reveal-delay="520" aria-label="Signup reassurance">
+                <span>Limited-time access</span>
+                <span>Free during open beta</span>
+                <span>No credit card required</span>
+            </div>
+            {% endif %}
 
             <div class="hero-hook landing-reveal" data-reveal-delay="560" aria-hidden="true">
                 <div class="hook-glow"></div>
@@ -218,6 +226,55 @@
                             alt="FX Journal import page showing upload options, import rules, and account destination controls."
                             loading="lazy"
                         >
+                    </figure>
+                </article>
+                <article class="feature-showcase-card feature-showcase-card-placeholder landing-reveal" data-reveal-delay="500">
+                    <div class="feature-showcase-copy">
+                        <div class="feature-kicker-row">
+                            <p class="feature-kicker">MT5 Sync</p>
+                            <span class="feature-access-pill">Request Access</span>
+                        </div>
+                        <h3><span class="feature-title-accent">Approval-based sync</span> Request MT5 sync for supported accounts without repeated file uploads</h3>
+                        <p>
+                            MT5 Sync is available through an access request for supported accounts, giving active traders a cleaner path from broker history to journal review.
+                        </p>
+                        <p class="feature-detail">
+                            Once approved, you can submit investor or read-only details in-app, track sync access status, and keep trade history fresher with less manual exporting.
+                        </p>
+                    </div>
+                    <figure class="feature-shot feature-shot-placeholder feature-shot-sync" aria-hidden="true">
+                        <div class="feature-placeholder-chrome">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        <div class="feature-placeholder-body">
+                            <div class="feature-placeholder-row">
+                                <span>Access</span>
+                                <strong>Requested in app</strong>
+                            </div>
+                            <div class="feature-placeholder-row">
+                                <span>Review</span>
+                                <strong>Manual approval</strong>
+                            </div>
+                            <div class="feature-placeholder-row">
+                                <span>Credentials</span>
+                                <strong>Read-only only</strong>
+                            </div>
+                        </div>
+                        <div class="feature-placeholder-summary feature-sync-summary">
+                            <span class="feature-placeholder-label">How it works</span>
+                            <div class="feature-placeholder-tags">
+                                <span>Approved accounts</span>
+                                <span>Sync status</span>
+                                <span>Secure onboarding</span>
+                            </div>
+                            <div class="feature-sync-steps" aria-hidden="true">
+                                <span>Request</span>
+                                <span>Approve</span>
+                                <span>Sync</span>
+                            </div>
+                        </div>
                     </figure>
                 </article>
                 {#
@@ -913,6 +970,36 @@
         flex-wrap: wrap;
     }
 
+    .hero-reassurance {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+        margin: 0.85rem auto 0;
+        max-width: 100%;
+    }
+
+    .hero-reassurance span {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 30px;
+        padding: 0.34rem 0.72rem;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+        background: color-mix(in srgb, var(--surface) 78%, transparent);
+        color: color-mix(in srgb, var(--muted) 72%, var(--ink));
+        font-family: var(--landing-font-mono);
+        font-size: 0.67rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        box-shadow: 0 8px 18px rgba(2, 6, 23, 0.12);
+    }
+
     body.landing-layout.js-landing-animate .landing-reveal {
         opacity: 0;
         transform: translateY(24px) scale(0.988);
@@ -1329,6 +1416,13 @@
         align-content: start;
     }
 
+    .feature-kicker-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.55rem;
+    }
+
     .feature-showcase-copy h3 {
         margin: 0;
         font-size: clamp(1.2rem, 2.2vw, 1.6rem);
@@ -1389,6 +1483,64 @@
             color-mix(in srgb, var(--surface) 82%, transparent);
     }
 
+    .feature-access-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+        border: 1px solid color-mix(in srgb, var(--good) 62%, var(--border));
+        border-radius: 999px;
+        padding: 0.24rem 0.64rem;
+        background: color-mix(in srgb, var(--good) 16%, var(--surface));
+        color: color-mix(in srgb, var(--good) 84%, white 16%);
+        box-shadow: 0 10px 22px rgba(34, 197, 94, 0.14);
+        font-family: var(--landing-font-mono);
+        font-size: 0.66rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .feature-access-pill::after {
+        content: "";
+        position: absolute;
+        inset: -20% auto -20% -42%;
+        width: 34%;
+        background: linear-gradient(
+            115deg,
+            transparent 0%,
+            rgba(255, 255, 255, 0.05) 20%,
+            rgba(255, 255, 255, 0.34) 48%,
+            rgba(255, 255, 255, 0.08) 72%,
+            transparent 100%
+        );
+        transform: skewX(-18deg) translateX(0);
+        animation: feature-access-pill-sheen 3.2s ease-in-out infinite;
+        pointer-events: none;
+        z-index: -1;
+    }
+
+    @keyframes feature-access-pill-sheen {
+        0% {
+            transform: skewX(-18deg) translateX(0);
+            opacity: 0;
+        }
+        12% {
+            opacity: 0.95;
+        }
+        38% {
+            transform: skewX(-18deg) translateX(420%);
+            opacity: 0;
+        }
+        100% {
+            transform: skewX(-18deg) translateX(420%);
+            opacity: 0;
+        }
+    }
+
     .feature-shot-placeholder {
         display: grid;
         gap: 0.75rem;
@@ -1398,6 +1550,13 @@
         background:
             linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent),
             linear-gradient(135deg, rgba(27, 38, 59, 0.78), rgba(8, 15, 26, 0.94));
+    }
+
+    .feature-shot-sync {
+        background:
+            radial-gradient(circle at top right, rgba(74, 222, 128, 0.18), transparent 36%),
+            linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent),
+            linear-gradient(135deg, rgba(18, 33, 30, 0.84), rgba(8, 15, 26, 0.96));
     }
 
     .feature-placeholder-chrome {
@@ -1472,6 +1631,32 @@
         color: rgba(224, 242, 254, 0.92);
         font-size: 0.74rem;
         font-weight: 600;
+    }
+
+    .feature-sync-summary {
+        gap: 0.7rem;
+    }
+
+    .feature-sync-steps {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.45rem;
+    }
+
+    .feature-sync-steps span {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 2rem;
+        padding: 0.35rem 0.5rem;
+        border-radius: 999px;
+        background: rgba(34, 197, 94, 0.12);
+        border: 1px solid rgba(134, 239, 172, 0.2);
+        color: rgba(220, 252, 231, 0.94);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-align: center;
     }
 
     .feature-kicker {
