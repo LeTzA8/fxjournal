@@ -28,6 +28,8 @@
                 {% if account_rows %}
                 <div class="account-list" id="tradeAccountList">
                     {% for trade_account in account_rows %}
+                    {% set pending_mt5_request = pending_mt5_requests_by_trade_account.get(trade_account.id) %}
+                    {% set mt5_is_linked = trade_account.id in linked_mt5_trade_account_ids %}
                     <article
                         class="account-card {% if active_trade_account and trade_account.id == active_trade_account.id %}active{% endif %}"
                         data-trade-account-card
@@ -56,6 +58,11 @@
                                 <span class="chip default default-chip">Default</span>
                                 {% else %}
                                 <span class="chip default default-chip" hidden>Default</span>
+                                {% endif %}
+                                {% if trade_account.account_type == "CFD" and mt5_is_linked %}
+                                <span class="chip default">MT5 Linked</span>
+                                {% elif trade_account.account_type == "CFD" and pending_mt5_request %}
+                                <span class="chip default">MT5 Request Pending</span>
                                 {% endif %}
                             </div>
                         </div>
@@ -105,6 +112,37 @@
                                 aria-controls="deleteTradeAccountDialog"
                             >Delete</a>
                         </div>
+
+                        {% if trade_account.account_type == "CFD" %}
+                        <div class="mt5-request-block">
+                            <p class="account-meta mt5-request-title">MT5 Sync Access</p>
+                            {% if mt5_is_linked %}
+                            <p class="account-meta">This trade account already has MT5 sync access configured.</p>
+                            {% elif pending_mt5_request %}
+                            <p class="account-meta">
+                                Request submitted {{ pending_mt5_request.created_at.strftime("%Y-%m-%d %H:%M UTC") if pending_mt5_request.created_at else "recently" }}.
+                            </p>
+                            {% if pending_mt5_request.request_note %}
+                            <p class="account-meta">Note: {{ pending_mt5_request.request_note }}</p>
+                            {% endif %}
+                            <button type="button" class="ghost-btn" disabled aria-disabled="true">Request Pending</button>
+                            {% else %}
+                            <form action="{{ url_for('trade_accounts.request_mt5_access', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="mt5-request-form">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
+                                <label for="mt5_request_note_{{ trade_account.pubkey }}">Optional note</label>
+                                <textarea
+                                    id="mt5_request_note_{{ trade_account.pubkey }}"
+                                    name="request_note"
+                                    maxlength="500"
+                                    rows="2"
+                                    placeholder="Anything I should know before reviewing this MT5 access request?"
+                                ></textarea>
+                                <button type="submit" class="submit-btn">Request MT5 Sync Access</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                     </article>
                     {% endfor %}
                 </div>
@@ -430,6 +468,30 @@
         align-items: center;
         gap: 0.45rem;
         flex-wrap: wrap; }
+
+    .mt5-request-block { display: grid;
+        gap: 0.45rem;
+        padding-top: 0.2rem;
+        border-top: 1px solid color-mix(in srgb, var(--border) 82%, transparent); }
+
+    .mt5-request-title { font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em; }
+
+    .mt5-request-form { display: grid;
+        gap: 0.45rem; }
+
+    .mt5-request-form label { font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em; }
+
+    .mt5-request-form textarea { border: 1px solid #c7d5cb;
+        border-radius: 10px;
+        padding: 0.58rem 0.66rem;
+        font: inherit;
+        resize: vertical;
+        min-height: 3.5rem; }
 
     .create-form { display: grid;
         gap: 0.62rem; }

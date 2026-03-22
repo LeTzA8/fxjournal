@@ -102,6 +102,8 @@ def sync_mt5_account(self, mt5_account_id):
     account = db.session.get(MT5Account, mt5_account_id)
     if account is None or not account.is_active:
         return {"error": "MT5Account not found or inactive"}
+    if account.is_orphaned:
+        return {"error": "MT5Account is orphaned"}
 
     investor_password = decrypt_password(account.investor_password_encrypted)
     account_number = account.account_number
@@ -162,7 +164,13 @@ def sync_mt5_account(self, mt5_account_id):
 @celery.task
 def sync_all_active_mt5_accounts():
     from models import MT5Account
-    accounts = MT5Account.query.filter_by(is_active=True).all()
+    accounts = (
+        MT5Account.query.filter(
+            MT5Account.is_active.is_(True),
+            MT5Account.user_id.isnot(None),
+            MT5Account.trade_account_id.isnot(None),
+        ).all()
+    )
     if not accounts:
         return
     for account in accounts:

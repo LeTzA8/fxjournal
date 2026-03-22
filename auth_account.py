@@ -12,6 +12,7 @@ from ai_service import get_latest_trade_week_period
 from models import (
     AllowedSignupEmailDomain,
     MT5Account,
+    MT5AccessRequest,
     SignupCode,
     Trade,
     TradeAccount,
@@ -1556,6 +1557,11 @@ def register_public_auth_routes(
         mt5_accounts = (
             MT5Account.query.order_by(MT5Account.created_at.desc(), MT5Account.id.desc()).all()
         )
+        pending_mt5_requests = (
+            MT5AccessRequest.query.filter_by(status=MT5AccessRequest.STATUS_PENDING)
+            .order_by(MT5AccessRequest.created_at.asc(), MT5AccessRequest.id.asc())
+            .all()
+        )
         mt5_trade_counts_by_account = {}
         trade_account_ids = sorted(
             {
@@ -1608,13 +1614,16 @@ def register_public_auth_routes(
                     ),
                 }
             )
+        orphaned_mt5_count = sum(1 for account in mt5_accounts if account.is_orphaned)
         return render_admin_page(
             admin_user=admin_user,
             section="mt5",
             mt5_accounts=mt5_accounts,
+            pending_mt5_requests=pending_mt5_requests,
             mt5_trade_counts_by_account=mt5_trade_counts_by_account,
             mt5_form_users=mt5_form_users,
             mt5_trade_accounts_by_user=mt5_trade_accounts_by_user,
+            orphaned_mt5_count=orphaned_mt5_count,
         )
 
     @app.route("/dashboard/admin/access/mt5/create", methods=["POST"])
@@ -1642,6 +1651,16 @@ def register_public_auth_routes(
             )
         if str(trade_account.account_type or "").strip().upper() != "CFD":
             return build_admin_redirect("mt5", "MT5 sync currently supports CFD trade accounts only.", "error")
+        existing_mt5_account = MT5Account.query.filter_by(trade_account_id=trade_account.id).first()
+        if existing_mt5_account is not None:
+            return build_admin_redirect(
+                "mt5",
+                (
+                    f"Trade account {trade_account.name} already has MT5 account "
+                    f"{existing_mt5_account.account_number} linked to it."
+                ),
+                "error",
+            )
 
         try:
             mt5_account = MT5Account(
@@ -1659,7 +1678,14 @@ def register_public_auth_routes(
         except (RuntimeError, ValueError) as exc:
             db.session.rollback()
             return build_admin_redirect("mt5", str(exc), "error")
-        except (IntegrityError, OperationalError):
+        except IntegrityError:
+            db.session.rollback()
+            return build_admin_redirect(
+                "mt5",
+                "That trade account already has an MT5 account linked to it.",
+                "error",
+            )
+        except OperationalError:
             db.session.rollback()
             return build_admin_redirect(
                 "mt5",
@@ -1696,6 +1722,12 @@ def register_public_auth_routes(
     @root_admin_required
     def admin_mt5_setup_terminal(mt5_account_id):
         account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        if account.is_orphaned:
+            return build_admin_redirect(
+                "mt5",
+                "That MT5 account is orphaned. Delete it manually from admin when you're ready.",
+                "error",
+            )
 
         try:
             from celery_workers.mt5_setup import setup_mt5_terminal
@@ -1727,6 +1759,12 @@ def register_public_auth_routes(
     @root_admin_required
     def admin_mt5_trigger_sync(mt5_account_id):
         account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        if account.is_orphaned:
+            return build_admin_redirect(
+                "mt5",
+                "That MT5 account is orphaned. Delete it manually from admin when you're ready.",
+                "error",
+            )
         if not account.is_active:
             return build_admin_redirect("mt5", "That MT5 account is inactive.", "error")
 
@@ -1753,6 +1791,68 @@ def register_public_auth_routes(
         return build_admin_redirect(
             "mt5",
             f"MT5 sync queued for account {account.account_number}.",
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/mt5/requests/<int:request_id>/approve", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_approve_request(request_id):
+        admin_user = get_current_root_admin_user()
+        request_row = MT5AccessRequest.query.filter_by(id=request_id).first_or_404()
+        if request_row.status != MT5AccessRequest.STATUS_PENDING:
+            return build_admin_redirect(
+                "mt5",
+                "That MT5 access request has already been reviewed.",
+                "info",
+            )
+
+        try:
+            request_row.status = MT5AccessRequest.STATUS_APPROVED
+            request_row.reviewed_at = utcnow_naive()
+            request_row.reviewed_by_user_id = admin_user.id if admin_user else None
+            db.session.commit()
+        except (OperationalError, IntegrityError):
+            db.session.rollback()
+            return build_admin_redirect(
+                "mt5",
+                "Could not approve that MT5 access request right now. Please try again.",
+                "error",
+            )
+
+        return build_admin_redirect(
+            "mt5",
+            f"Approved MT5 access request for {request_row.trade_account.name}.",
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/mt5/requests/<int:request_id>/reject", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_reject_request(request_id):
+        admin_user = get_current_root_admin_user()
+        request_row = MT5AccessRequest.query.filter_by(id=request_id).first_or_404()
+        if request_row.status != MT5AccessRequest.STATUS_PENDING:
+            return build_admin_redirect(
+                "mt5",
+                "That MT5 access request has already been reviewed.",
+                "info",
+            )
+
+        try:
+            request_row.status = MT5AccessRequest.STATUS_REJECTED
+            request_row.reviewed_at = utcnow_naive()
+            request_row.reviewed_by_user_id = admin_user.id if admin_user else None
+            db.session.commit()
+        except (OperationalError, IntegrityError):
+            db.session.rollback()
+            return build_admin_redirect(
+                "mt5",
+                "Could not reject that MT5 access request right now. Please try again.",
+                "error",
+            )
+
+        return build_admin_redirect(
+            "mt5",
+            f"Rejected MT5 access request for {request_row.trade_account.name}.",
             "success",
         )
 

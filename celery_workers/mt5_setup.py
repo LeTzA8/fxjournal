@@ -107,6 +107,8 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         account = db.session.get(MT5Account, mt5_account_id)
         if account is None:
             return {"error": "MT5Account not found"}
+        if account.is_orphaned:
+            raise PermanentSetupError("setup_mt5_terminal cannot run for an orphaned MT5 account")
 
         user_id = account.user_id
         trade_account_id = account.trade_account_id

@@ -1,7 +1,10 @@
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
+import os
+
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, OperationalError
 
+from auth_account import send_email_placeholder
 from extensions import limiter
 from helpers.core import (
     build_unique_trade_account_pubkey,
@@ -13,7 +16,7 @@ from helpers.core import (
     parse_trade_account_size,
     resolve_active_trade_account,
 )
-from models import AIGeneratedResponse, Trade, TradeAccount, db
+from models import AIGeneratedResponse, MT5AccessRequest, MT5Account, Trade, TradeAccount, db
 from trading import get_account_type_choices, normalize_account_type
 from helpers.utils import TRUE_VALUES, login_required
 
@@ -188,6 +191,107 @@ def update_trade_account(trade_account_pubkey):
     account.account_type = account_type
     db.session.commit()
     flash(f"Trade account '{account.name}' updated successfully.", "success")
+    return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+
+
+@bp.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/request-mt5-access", methods=["POST"])
+@limiter.limit(
+    "3 per minute;20 per day",
+    methods=["POST"],
+    error_message="Too many MT5 access requests. Please wait and try again later.",
+)
+@login_required
+def request_mt5_access(trade_account_pubkey):
+    user_id = session["user_id"]
+    account = get_user_trade_account_by_pubkey(user_id, trade_account_pubkey)
+    if not account:
+        flash("Trade account not found.", "error")
+        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+
+    if str(account.account_type or "").strip().upper() != "CFD":
+        flash("MT5 sync access can only be requested for CFD trade accounts.", "error")
+        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+
+    if MT5Account.query.filter_by(trade_account_id=account.id).first() is not None:
+        flash("This trade account already has MT5 sync access configured.", "error")
+        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+
+    if (
+        MT5AccessRequest.query.filter_by(
+            trade_account_id=account.id,
+            status=MT5AccessRequest.STATUS_PENDING,
+        ).first()
+        is not None
+    ):
+        flash("An MT5 sync access request is already pending for this trade account.", "error")
+        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+
+    request_note = (request.form.get("request_note") or "").strip()
+    if len(request_note) > 500:
+        flash("MT5 request note must be 500 characters or less.", "error")
+        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+
+    request_row = MT5AccessRequest(
+        user_id=user_id,
+        trade_account_id=account.id,
+        status=MT5AccessRequest.STATUS_PENDING,
+        request_note=request_note or None,
+    )
+
+    try:
+        db.session.add(request_row)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        flash("An MT5 sync access request is already pending for this trade account.", "error")
+        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+    except OperationalError:
+        db.session.rollback()
+        flash("Could not submit that MT5 sync access request right now. Please try again.", "error")
+        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+
+    feedback_to_email = os.getenv("FEEDBACK_TO_EMAIL", "").strip().lower()
+    email_sent = False
+    if feedback_to_email:
+        email_subject = f"[FX Journal MT5 Request] {session.get('username', 'User')} requested access"
+        email_body = (
+            "New MT5 sync access request\n\n"
+            f"Request ID: {request_row.id}\n"
+            f"Submitted at: {request_row.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+            f"User ID: {user_id}\n"
+            f"Username: {session.get('username', 'User')}\n"
+            f"Trade Account ID: {account.id}\n"
+            f"Trade Account Name: {account.name}\n"
+            f"Trade Account Type: {account.account_type}\n"
+            f"Account Pubkey: {account.pubkey}\n"
+            f"Note: {request_row.request_note or '-'}\n"
+        )
+        try:
+            email_result = send_email_placeholder(
+                feedback_to_email,
+                email_subject,
+                email_body,
+            )
+            email_sent = bool((email_result or {}).get("sent"))
+        except Exception as exc:
+            current_app.logger.warning(
+                "MT5 access request email failed for request_id=%s: %s",
+                request_row.id,
+                exc,
+            )
+    else:
+        current_app.logger.warning(
+            "MT5 access request submitted without FEEDBACK_TO_EMAIL configured: request_id=%s",
+            request_row.id,
+        )
+
+    if email_sent:
+        flash("MT5 sync access request submitted. I'll review it soon.", "success")
+    else:
+        flash(
+            "MT5 sync access request submitted and queued for review, but email notification could not be delivered.",
+            "info",
+        )
     return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
 
 
@@ -389,6 +493,7 @@ def trade_accounts():
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_rows = get_user_trade_accounts(user_id)
+    account_ids = [account.id for account in account_rows]
     account_trade_counts = dict(
         db.session.query(Trade.trade_account_id, func.count(Trade.id))
         .filter_by(user_id=user_id)
@@ -404,6 +509,22 @@ def trade_accounts():
         .group_by(AIGeneratedResponse.trade_account_id)
         .all()
     )
+    pending_mt5_requests_by_trade_account = {}
+    linked_mt5_trade_account_ids = set()
+    if account_ids:
+        pending_mt5_requests_by_trade_account = {
+            request_row.trade_account_id: request_row
+            for request_row in MT5AccessRequest.query.filter(
+                MT5AccessRequest.trade_account_id.in_(account_ids),
+                MT5AccessRequest.status == MT5AccessRequest.STATUS_PENDING,
+            ).all()
+        }
+        linked_mt5_trade_account_ids = {
+            trade_account_id
+            for trade_account_id, in db.session.query(MT5Account.trade_account_id)
+            .filter(MT5Account.trade_account_id.in_(account_ids))
+            .all()
+        }
     edit_pubkey = request.args.get("edit", "").strip() or request.args.get(
         "edit_id", ""
     ).strip()
@@ -445,4 +566,6 @@ def trade_accounts():
         total_trade_count=total_trade_count,
         total_ai_review_count=total_ai_review_count,
         active_trade_account=active_trade_account,
+        pending_mt5_requests_by_trade_account=pending_mt5_requests_by_trade_account,
+        linked_mt5_trade_account_ids=linked_mt5_trade_account_ids,
     )

@@ -396,7 +396,7 @@ def test_admin_mt5_create_persists_inactive_account_when_setup_queue_fails(app_c
     assert mt5_account.appdata_hash is None
 
 
-def test_mt5_account_is_deleted_with_trade_account(app_ctx, monkeypatch):
+def test_mt5_account_becomes_orphaned_with_trade_account_delete(app_ctx, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
 
@@ -413,12 +413,18 @@ def test_mt5_account_is_deleted_with_trade_account(app_ctx, monkeypatch):
 
     db.session.delete(trade_account)
     db.session.commit()
+    db.session.expire_all()
 
-    assert db.session.get(MT5Account, mt5_account_id) is None
+    orphaned_account = db.session.get(MT5Account, mt5_account_id)
+
+    assert orphaned_account is not None
+    assert orphaned_account.user_id == user.id
+    assert orphaned_account.trade_account_id is None
+    assert orphaned_account.is_orphaned is True
     assert db.session.get(User, user.id) is not None
 
 
-def test_mt5_account_is_deleted_with_user(app_ctx, monkeypatch):
+def test_mt5_account_becomes_orphaned_with_user_delete(app_ctx, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
 
@@ -435,10 +441,15 @@ def test_mt5_account_is_deleted_with_user(app_ctx, monkeypatch):
 
     deleted_count = delete_users_with_related_data([user.id])
     db.session.commit()
+    db.session.expire_all()
 
     assert deleted_count == 1
     assert db.session.get(User, user.id) is None
-    assert db.session.get(MT5Account, mt5_account_id) is None
+    orphaned_account = db.session.get(MT5Account, mt5_account_id)
+    assert orphaned_account is not None
+    assert orphaned_account.user_id is None
+    assert orphaned_account.trade_account_id is None
+    assert orphaned_account.is_orphaned is True
 
 
 def test_celery_includes_mt5_modules():

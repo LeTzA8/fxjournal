@@ -1,0 +1,370 @@
+import html
+import os
+
+from cryptography.fernet import Fernet
+import pytest
+
+import routes.trade_accounts as trade_accounts_module
+from extensions import limiter
+from helpers.utils import encrypt_password
+from models import MT5AccessRequest, MT5Account, TradeAccount, User, db
+
+
+def _create_user_with_account(
+    *,
+    username,
+    email,
+    account_name="Main Account",
+    account_type="CFD",
+    is_default=True,
+):
+    user = User(
+        username=username,
+        email=email,
+        password="hashed-password",
+        email_verified=True,
+        signup_status="approved",
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    trade_account = TradeAccount(
+        user_id=user.id,
+        name=account_name,
+        account_type=account_type,
+        is_default=is_default,
+    )
+    db.session.add(trade_account)
+    db.session.commit()
+    return user, trade_account
+
+
+def _log_in_user(client, user, trade_account):
+    with client.session_transaction() as session_state:
+        session_state["user_id"] = user.id
+        session_state["username"] = user.username
+        session_state["display_timezone"] = "UTC"
+        session_state["active_trade_account_id"] = trade_account.id
+
+
+def _log_in_root_admin(client, *, email, username):
+    os.environ["ADMIN_USER_EMAILS"] = email
+    user, trade_account = _create_user_with_account(
+        username=username,
+        email=email,
+    )
+    user.is_admin = True
+    db.session.commit()
+    _log_in_user(client, user, trade_account)
+    return user, trade_account
+
+
+@pytest.fixture(autouse=True)
+def disable_mt5_request_rate_limits(test_app):
+    previous_value = test_app.config.get("RATELIMIT_ENABLED")
+    test_app.config["RATELIMIT_ENABLED"] = False
+    limiter.reset()
+    yield
+    limiter.reset()
+    if previous_value is None:
+        test_app.config.pop("RATELIMIT_ENABLED", None)
+    else:
+        test_app.config["RATELIMIT_ENABLED"] = previous_value
+
+
+def test_user_can_submit_mt5_access_request_and_send_email(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("FEEDBACK_TO_EMAIL", "support@example.com")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-request-user",
+        email="mt5-request-user@example.com",
+        account_name="Request Account",
+    )
+    _log_in_user(client, user, trade_account)
+
+    captured = {}
+
+    def _fake_send_email(to_email, subject, text_body, html_body=None):
+        captured["to_email"] = to_email
+        captured["subject"] = subject
+        captured["text_body"] = text_body
+        captured["html_body"] = html_body
+        return {"sent": True, "mode": "test"}
+
+    monkeypatch.setattr(trade_accounts_module, "send_email_placeholder", _fake_send_email)
+
+    response = client.post(
+        f"/dashboard/trade-accounts/{trade_account.pubkey}/request-mt5-access",
+        data={"request_note": "Please enable MT5 sync for this account."},
+        follow_redirects=True,
+    )
+
+    request_row = MT5AccessRequest.query.filter_by(trade_account_id=trade_account.id).one()
+
+    assert response.status_code == 200
+    assert request_row.user_id == user.id
+    assert request_row.trade_account_id == trade_account.id
+    assert request_row.status == MT5AccessRequest.STATUS_PENDING
+    assert request_row.request_note == "Please enable MT5 sync for this account."
+    assert captured["to_email"] == "support@example.com"
+    assert "Request Account" in captured["text_body"]
+    assert "Please enable MT5 sync for this account." in captured["text_body"]
+    response_text = html.unescape(response.get_data(as_text=True))
+    assert "MT5 sync access request submitted. I'll review it soon." in response_text
+
+
+def test_mt5_access_request_is_kept_when_email_notification_is_unavailable(app_ctx, client, monkeypatch):
+    monkeypatch.delenv("FEEDBACK_TO_EMAIL", raising=False)
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-request-no-email",
+        email="mt5-request-no-email@example.com",
+        account_name="No Email Account",
+    )
+    _log_in_user(client, user, trade_account)
+
+    response = client.post(
+        f"/dashboard/trade-accounts/{trade_account.pubkey}/request-mt5-access",
+        data={"request_note": "No email configured."},
+        follow_redirects=True,
+    )
+
+    request_row = MT5AccessRequest.query.filter_by(trade_account_id=trade_account.id).one()
+
+    assert response.status_code == 200
+    assert request_row.status == MT5AccessRequest.STATUS_PENDING
+    assert request_row.request_note == "No email configured."
+    assert (
+        b"MT5 sync access request submitted and queued for review, but email notification could not be delivered."
+        in response.data
+    )
+
+
+def test_mt5_access_request_rejects_non_cfd_trade_accounts(app_ctx, client):
+    user, trade_account = _create_user_with_account(
+        username="mt5-request-futures",
+        email="mt5-request-futures@example.com",
+        account_name="Futures Account",
+        account_type="FUTURES",
+    )
+    _log_in_user(client, user, trade_account)
+
+    response = client.post(
+        f"/dashboard/trade-accounts/{trade_account.pubkey}/request-mt5-access",
+        data={},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert MT5AccessRequest.query.filter_by(trade_account_id=trade_account.id).count() == 0
+    assert b"MT5 sync access can only be requested for CFD trade accounts." in response.data
+
+
+def test_mt5_access_request_rejects_accounts_with_existing_mt5_link(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-request-linked",
+        email="mt5-request-linked@example.com",
+        account_name="Linked Account",
+    )
+    _log_in_user(client, user, trade_account)
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            account_number="99110001",
+            investor_password_encrypted=encrypt_password("investor-pass"),
+            server="Broker-Server",
+            is_active=False,
+        )
+    )
+    db.session.commit()
+
+    response = client.post(
+        f"/dashboard/trade-accounts/{trade_account.pubkey}/request-mt5-access",
+        data={},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert MT5AccessRequest.query.filter_by(trade_account_id=trade_account.id).count() == 0
+    assert b"This trade account already has MT5 sync access configured." in response.data
+
+
+def test_mt5_access_request_rejects_duplicate_pending_requests(app_ctx, client):
+    user, trade_account = _create_user_with_account(
+        username="mt5-request-pending",
+        email="mt5-request-pending@example.com",
+        account_name="Pending Account",
+    )
+    _log_in_user(client, user, trade_account)
+    db.session.add(
+        MT5AccessRequest(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            status=MT5AccessRequest.STATUS_PENDING,
+            request_note="Already waiting.",
+        )
+    )
+    db.session.commit()
+
+    response = client.post(
+        f"/dashboard/trade-accounts/{trade_account.pubkey}/request-mt5-access",
+        data={"request_note": "Please submit again."},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert MT5AccessRequest.query.filter_by(trade_account_id=trade_account.id).count() == 1
+    assert b"An MT5 sync access request is already pending for this trade account." in response.data
+
+
+def test_trade_accounts_page_shows_mt5_request_states(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+
+    user, requestable_account = _create_user_with_account(
+        username="mt5-request-states",
+        email="mt5-request-states@example.com",
+        account_name="Requestable CFD",
+    )
+    pending_account = TradeAccount(
+        user_id=user.id,
+        name="Pending CFD",
+        account_type="CFD",
+        is_default=False,
+    )
+    linked_account = TradeAccount(
+        user_id=user.id,
+        name="Linked CFD",
+        account_type="CFD",
+        is_default=False,
+    )
+    futures_account = TradeAccount(
+        user_id=user.id,
+        name="Futures Only",
+        account_type="FUTURES",
+        is_default=False,
+    )
+    db.session.add_all([pending_account, linked_account, futures_account])
+    db.session.commit()
+
+    db.session.add(
+        MT5AccessRequest(
+            user_id=user.id,
+            trade_account_id=pending_account.id,
+            status=MT5AccessRequest.STATUS_PENDING,
+            request_note="Still waiting.",
+        )
+    )
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
+            trade_account_id=linked_account.id,
+            account_number="99110002",
+            investor_password_encrypted=encrypt_password("investor-pass"),
+            server="Broker-Server",
+            is_active=False,
+        )
+    )
+    db.session.commit()
+
+    _log_in_user(client, user, requestable_account)
+
+    response = client.get("/dashboard/trade-accounts")
+
+    assert response.status_code == 200
+    assert b"Request MT5 Sync Access" in response.data
+    assert b"Request Pending" in response.data
+    assert b"MT5 Linked" in response.data
+    assert b"Still waiting." in response.data
+
+
+def test_admin_mt5_page_shows_pending_requests_and_supports_review(app_ctx, client):
+    root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-request-root@example.com",
+        username="mt5-request-root",
+    )
+
+    first_user, first_account = _create_user_with_account(
+        username="mt5-review-first",
+        email="mt5-review-first@example.com",
+        account_name="First Review Account",
+    )
+    second_user, second_account = _create_user_with_account(
+        username="mt5-review-second",
+        email="mt5-review-second@example.com",
+        account_name="Second Review Account",
+    )
+    first_request = MT5AccessRequest(
+        user_id=first_user.id,
+        trade_account_id=first_account.id,
+        status=MT5AccessRequest.STATUS_PENDING,
+        request_note="Please approve this one.",
+    )
+    second_request = MT5AccessRequest(
+        user_id=second_user.id,
+        trade_account_id=second_account.id,
+        status=MT5AccessRequest.STATUS_PENDING,
+        request_note="Please reject this one.",
+    )
+    db.session.add_all([first_request, second_request])
+    db.session.commit()
+
+    list_response = client.get("/dashboard/admin/access/mt5")
+    approve_response = client.post(
+        f"/dashboard/admin/access/mt5/requests/{first_request.id}/approve",
+        data={},
+        follow_redirects=True,
+    )
+    reject_response = client.post(
+        f"/dashboard/admin/access/mt5/requests/{second_request.id}/reject",
+        data={},
+        follow_redirects=True,
+    )
+    db.session.expire_all()
+
+    approved_request = db.session.get(MT5AccessRequest, first_request.id)
+    rejected_request = db.session.get(MT5AccessRequest, second_request.id)
+
+    assert list_response.status_code == 200
+    assert b"Pending MT5 Requests" in list_response.data
+    assert b"First Review Account" in list_response.data
+    assert b"Second Review Account" in list_response.data
+    assert approve_response.status_code == 200
+    assert reject_response.status_code == 200
+    assert approved_request.status == MT5AccessRequest.STATUS_APPROVED
+    assert rejected_request.status == MT5AccessRequest.STATUS_REJECTED
+    assert approved_request.reviewed_by_user_id == root_user.id
+    assert rejected_request.reviewed_by_user_id == root_user.id
+    assert approved_request.reviewed_at is not None
+    assert rejected_request.reviewed_at is not None
+
+
+def test_non_root_user_cannot_review_mt5_access_requests(app_ctx, client):
+    user, trade_account = _create_user_with_account(
+        username="mt5-review-blocked-user",
+        email="mt5-review-blocked-user@example.com",
+    )
+    request_owner, request_account = _create_user_with_account(
+        username="mt5-review-request-owner",
+        email="mt5-review-request-owner@example.com",
+        account_name="Blocked Review Account",
+    )
+    request_row = MT5AccessRequest(
+        user_id=request_owner.id,
+        trade_account_id=request_account.id,
+        status=MT5AccessRequest.STATUS_PENDING,
+    )
+    db.session.add(request_row)
+    db.session.commit()
+    _log_in_user(client, user, trade_account)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/requests/{request_row.id}/approve",
+        data={},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404

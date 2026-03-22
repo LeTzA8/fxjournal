@@ -234,6 +234,47 @@
         </section>
         {% elif section == "mt5" %}
         <section class="panel-grid admin-main-grid">
+            <article class="panel spotlight-panel">
+                <div class="panel-head">
+                    <h2>Pending MT5 Requests</h2>
+                    <span class="soft">{{ pending_mt5_requests|length }} pending</span>
+                </div>
+                <p class="helper-note">Approve or reject access requests here, then use the MT5 account form below when you are ready to onboard manually.</p>
+                {% if pending_mt5_requests %}
+                <div class="pending-list">
+                    {% for request_row in pending_mt5_requests %}
+                    <article class="pending-card">
+                        <div class="pending-meta">
+                            <p class="pending-name">
+                                {{ request_row.user.username if request_row.user else "Unknown User" }}
+                                {% if request_row.trade_account %}
+                                for {{ request_row.trade_account.name }}
+                                {% endif %}
+                            </p>
+                            <p class="pending-line">{{ request_row.user.email if request_row.user else "User record unavailable" }}</p>
+                            <p class="pending-line">User ID: {{ request_row.user_id }}</p>
+                            <p class="pending-line">Trade Account ID: {{ request_row.trade_account_id }}</p>
+                            <p class="pending-line">Requested: {{ request_row.created_at.strftime("%Y-%m-%d %H:%M UTC") if request_row.created_at else "-" }}</p>
+                            <p class="pending-line">Note: {{ request_row.request_note or "No note provided." }}</p>
+                        </div>
+                        <div class="inline-actions">
+                            <form action="{{ url_for('admin_mt5_approve_request', request_id=request_row.id) }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="submit-btn">Approve</button>
+                            </form>
+                            <form action="{{ url_for('admin_mt5_reject_request', request_id=request_row.id) }}" method="post">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="ghost-btn danger-btn">Reject</button>
+                            </form>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="helper-note">No pending MT5 access requests right now.</p>
+                {% endif %}
+            </article>
+
             <article class="panel create-code-panel">
                 <div class="panel-head">
                     <h2>Add MT5 Account</h2>
@@ -272,7 +313,9 @@
             <article class="panel codes-panel">
                 <div class="panel-head">
                     <h2>MT5 Accounts</h2>
-                    <span class="soft">{{ mt5_accounts|length }} total</span>
+                    <span class="soft">
+                        {{ mt5_accounts|length }} total{% if orphaned_mt5_count %}, {{ orphaned_mt5_count }} orphaned{% endif %}
+                    </span>
                 </div>
                 {% if mt5_accounts %}
                 <div class="table-shell admin-table-shell">
@@ -290,20 +333,21 @@
                         <tbody>
                             {% for account in mt5_accounts %}
                             {% set trade_count = mt5_trade_counts_by_account.get(account.id, 0) %}
+                            {% set is_orphaned = account.is_orphaned %}
                             {% set delete_disabled = account.is_active and trade_count > 0 %}
                             <tr>
                                 <td>
                                     <div class="user-cell">
-                                        <strong>{{ account.user.username if account.user else "Unknown User" }}</strong>
-                                        <span>{{ account.user.email if account.user else "No email" }}</span>
-                                        <span>ID: {{ account.user_id }}</span>
+                                        <strong>{{ account.user.username if account.user else "Orphaned User" }}</strong>
+                                        <span>{{ account.user.email if account.user else "User record deleted" }}</span>
+                                        <span>{{ "ID: %s"|format(account.user_id) if account.user_id is not none else "User link cleared" }}</span>
                                     </div>
                                 </td>
                                 <td>
                                     <div class="user-cell">
-                                        <strong>{{ account.trade_account.name if account.trade_account else "Unknown Account" }}</strong>
-                                        <span>ID: {{ account.trade_account_id }}</span>
-                                        <span>{{ account.trade_account.account_type if account.trade_account else "-" }}</span>
+                                        <strong>{{ account.trade_account.name if account.trade_account else "Orphaned Trade Account" }}</strong>
+                                        <span>{{ "ID: %s"|format(account.trade_account_id) if account.trade_account_id is not none else "Trade account link cleared" }}</span>
+                                        <span>{{ account.trade_account.account_type if account.trade_account else "Deleted" }}</span>
                                         <span>Trades: {{ trade_count }}</span>
                                     </div>
                                 </td>
@@ -313,23 +357,30 @@
                                         <span>{{ account.server }}</span>
                                         <span>{{ account.terminal_path or "Terminal not set up yet" }}</span>
                                         <span>{{ account.appdata_hash or "AppData hash pending" }}</span>
+                                        {% if is_orphaned %}
+                                        <span>Orphaned record awaiting manual delete</span>
+                                        {% endif %}
                                     </div>
                                 </td>
                                 <td>
+                                    {% if is_orphaned %}
+                                    <span class="chip default">Orphaned</span>
+                                    {% else %}
                                     <span class="chip {{ 'success-chip' if account.is_active else 'danger-chip' }}">
                                         {{ "Active" if account.is_active else "Inactive" }}
                                     </span>
+                                    {% endif %}
                                 </td>
                                 <td>{{ account.last_synced_at.strftime("%Y-%m-%d %H:%M UTC") if account.last_synced_at else "Never" }}</td>
                                 <td>
                                     <div class="inline-actions">
                                         <form action="{{ url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="submit-btn">Setup Terminal</button>
+                                            <button type="submit" class="submit-btn" {% if is_orphaned %}disabled aria-disabled="true" title="Orphaned MT5 accounts cannot be set up."{% endif %}>Setup Terminal</button>
                                         </form>
                                         <form action="{{ url_for('admin_mt5_trigger_sync', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="submit-btn" {% if not account.is_active %}disabled aria-disabled="true"{% endif %}>Trigger Sync</button>
+                                            <button type="submit" class="submit-btn" {% if not account.is_active or is_orphaned %}disabled aria-disabled="true"{% if is_orphaned %} title="Orphaned MT5 accounts cannot be synced."{% endif %}{% endif %}>Trigger Sync</button>
                                         </form>
                                         <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

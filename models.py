@@ -58,7 +58,21 @@ class User(db.Model):
         "MT5Account",
         backref="user",
         lazy=True,
+        passive_deletes=True,
+    )
+    mt5_access_requests = db.relationship(
+        "MT5AccessRequest",
+        foreign_keys="MT5AccessRequest.user_id",
+        back_populates="user",
+        lazy=True,
         cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    reviewed_mt5_access_requests = db.relationship(
+        "MT5AccessRequest",
+        foreign_keys="MT5AccessRequest.reviewed_by_user_id",
+        back_populates="reviewed_by_user",
+        lazy=True,
         passive_deletes=True,
     )
     user_profile = db.relationship(
@@ -220,6 +234,13 @@ class TradeAccount(db.Model):
         "MT5Account",
         backref="trade_account",
         lazy=True,
+        passive_deletes=True,
+    )
+    mt5_access_requests = db.relationship(
+        "MT5AccessRequest",
+        foreign_keys="MT5AccessRequest.trade_account_id",
+        back_populates="trade_account",
+        lazy=True,
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
@@ -342,6 +363,52 @@ class Trade(db.Model):
 
 class MT5Account(db.Model):
     __tablename__ = "mt5_account"
+    __table_args__ = (
+        db.UniqueConstraint("trade_account_id", name="uq_mt5_account_trade_account_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    trade_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trade_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    account_number = db.Column(db.String(50), nullable=False)
+    investor_password_encrypted = db.Column(db.Text, nullable=False)
+    server = db.Column(db.String(100), nullable=False)
+    terminal_path = db.Column(db.String(500), nullable=True)
+    appdata_hash = db.Column(db.String(100), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    last_synced_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+
+    @property
+    def is_orphaned(self):
+        return self.user_id is None or self.trade_account_id is None
+
+
+class MT5AccessRequest(db.Model):
+    __tablename__ = "mt5_access_request"
+    __table_args__ = (
+        db.Index(
+            "uq_mt5_access_request_pending_trade_account",
+            "trade_account_id",
+            unique=True,
+            sqlite_where=db.text("status = 'pending'"),
+            postgresql_where=db.text("status = 'pending'"),
+        ),
+        db.Index("ix_mt5_access_request_status_created", "status", "created_at"),
+    )
+
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
@@ -356,14 +423,32 @@ class MT5Account(db.Model):
         nullable=False,
         index=True,
     )
-    account_number = db.Column(db.String(50), nullable=False)
-    investor_password_encrypted = db.Column(db.Text, nullable=False)
-    server = db.Column(db.String(100), nullable=False)
-    terminal_path = db.Column(db.String(500), nullable=True)
-    appdata_hash = db.Column(db.String(100), nullable=True)
-    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
-    last_synced_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    status = db.Column(db.String(16), nullable=False, default=STATUS_PENDING, index=True)
+    request_note = db.Column(db.Text, nullable=True)
+    reviewed_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, index=True)
+
+    user = db.relationship(
+        "User",
+        foreign_keys=[user_id],
+        back_populates="mt5_access_requests",
+    )
+    reviewed_by_user = db.relationship(
+        "User",
+        foreign_keys=[reviewed_by_user_id],
+        back_populates="reviewed_mt5_access_requests",
+    )
+    trade_account = db.relationship(
+        "TradeAccount",
+        foreign_keys=[trade_account_id],
+        back_populates="mt5_access_requests",
+    )
 
 
 class TradeProfile(db.Model):
