@@ -29,6 +29,7 @@
                 <div class="account-list" id="tradeAccountList">
                     {% for trade_account in account_rows %}
                     {% set pending_mt5_request = pending_mt5_requests_by_trade_account.get(trade_account.id) %}
+                    {% set approved_mt5_request = approved_mt5_requests_by_trade_account.get(trade_account.id) %}
                     {% set mt5_is_linked = trade_account.id in linked_mt5_trade_account_ids %}
                     <article
                         class="account-card {% if active_trade_account and trade_account.id == active_trade_account.id %}active{% endif %}"
@@ -63,6 +64,8 @@
                                 <span class="chip default">MT5 Linked</span>
                                 {% elif trade_account.account_type == "CFD" and pending_mt5_request %}
                                 <span class="chip default">MT5 Request Pending</span>
+                                {% elif trade_account.account_type == "CFD" and approved_mt5_request %}
+                                <span class="chip default">MT5 Approved</span>
                                 {% endif %}
                             </div>
                         </div>
@@ -125,21 +128,15 @@
                             {% if pending_mt5_request.request_note %}
                             <p class="account-meta">Note: {{ pending_mt5_request.request_note }}</p>
                             {% endif %}
-                            <button type="button" class="ghost-btn" disabled aria-disabled="true">Request Pending</button>
+                            <p class="account-meta">I'll review it from admin and let this move forward there.</p>
+                            {% elif approved_mt5_request %}
+                            <p class="account-meta">
+                                Access approved{% if approved_mt5_request.reviewed_at %} {{ approved_mt5_request.reviewed_at.strftime("%Y-%m-%d %H:%M UTC") }}{% endif %}.
+                            </p>
+                            <p class="account-meta">Submit your MT5 account number, read-only investor password, and server from the dashboard card.</p>
                             {% else %}
-                            <form action="{{ url_for('trade_accounts.request_mt5_access', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="mt5-request-form">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
-                                <label for="mt5_request_note_{{ trade_account.pubkey }}">Optional note</label>
-                                <textarea
-                                    id="mt5_request_note_{{ trade_account.pubkey }}"
-                                    name="request_note"
-                                    maxlength="500"
-                                    rows="2"
-                                    placeholder="Anything I should know before reviewing this MT5 access request?"
-                                ></textarea>
-                                <button type="submit" class="submit-btn">Request MT5 Sync Access</button>
-                            </form>
+                            <p class="account-meta">Manage MT5 requests from the dashboard card instead of per-account forms.</p>
+                            <a href="{{ url_for('dashboard.home', _anchor='mt5-access') }}" class="ghost-link btn-link">Open Dashboard MT5 Access</a>
                             {% endif %}
                         </div>
                         {% endif %}

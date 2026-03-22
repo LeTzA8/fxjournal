@@ -12,7 +12,7 @@ from auth_account import (
 )
 from extensions import limiter
 from helpers.core import delete_users_with_related_data, is_local_dev_environment
-from models import Trade, User, db
+from models import MT5Account, Trade, User, db
 from helpers.utils import env_int, login_required, utcnow_naive
 
 TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
@@ -387,6 +387,8 @@ def delete_account():
         flash("To delete your account, type DELETE and check the confirmation box.", "error")
         return redirect(url_for("account.account"))
 
+    linked_mt5_count = MT5Account.query.filter_by(user_id=user.id).count()
+
     try:
         delete_users_with_related_data([user.id])
         db.session.commit()
@@ -396,5 +398,14 @@ def delete_account():
         return redirect(url_for("account.account"))
 
     session.clear()
-    flash("Your account and all related trades, trade accounts, and AI reviews have been deleted.", "success")
+    cleanup_note = (
+        " Limited cleanup-only MT5 terminal records may remain temporarily until terminal cleanup is completed."
+        if linked_mt5_count
+        else ""
+    )
+    flash(
+        "Your account and all related trades, trade accounts, and AI reviews have been deleted."
+        f"{cleanup_note}",
+        "success",
+    )
     return redirect(url_for("login"))

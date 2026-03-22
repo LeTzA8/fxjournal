@@ -29,6 +29,7 @@ from helpers.core import (
     resolve_active_trade_account,
     sanitize_error_message,
 )
+from helpers.legal import LEGAL_LAST_UPDATED
 
 from extensions import limiter
 from routes import all_blueprints, mt5_internal_bp
@@ -132,7 +133,6 @@ limiter.init_app(app)
 
 TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
-LEGAL_LAST_UPDATED = "March 8, 2026"
 CONTACT_CATEGORY_CHOICES = (
     "Feedback",
     "Bug Report",

@@ -239,7 +239,7 @@
                     <h2>Pending MT5 Requests</h2>
                     <span class="soft">{{ pending_mt5_requests|length }} pending</span>
                 </div>
-                <p class="helper-note">Approve or reject access requests here, then use the MT5 account form below when you are ready to onboard manually.</p>
+                <p class="helper-note">Approve or reject access requests here. Once approved, the user can submit MT5 details from the dashboard, or you can still add them manually below.</p>
                 {% if pending_mt5_requests %}
                 <div class="pending-list">
                     {% for request_row in pending_mt5_requests %}
@@ -300,8 +300,9 @@
                     <label for="account_number">MT5 Account Number</label>
                     <input id="account_number" name="account_number" type="text" maxlength="50" required>
 
-                    <label for="investor_password">Investor Password</label>
+                    <label for="investor_password">Investor Password (Read-Only Only)</label>
                     <input id="investor_password" name="investor_password" type="password" required>
+                    <p class="helper-note">Use investor/view-only credentials here, never a master password or any credential that can place trades or withdraw funds.</p>
 
                     <label for="server">Server</label>
                     <input id="server" name="server" type="text" maxlength="100" required>
@@ -314,7 +315,7 @@
                 <div class="panel-head">
                     <h2>MT5 Accounts</h2>
                     <span class="soft">
-                        {{ mt5_accounts|length }} total{% if orphaned_mt5_count %}, {{ orphaned_mt5_count }} orphaned{% endif %}
+                        {{ mt5_accounts|length }} total{% if orphaned_mt5_count %}, {{ orphaned_mt5_count }} cleanup-only{% endif %}
                     </span>
                 </div>
                 {% if mt5_accounts %}
@@ -338,15 +339,15 @@
                             <tr>
                                 <td>
                                     <div class="user-cell">
-                                        <strong>{{ account.user.username if account.user else "Orphaned User" }}</strong>
-                                        <span>{{ account.user.email if account.user else "User record deleted" }}</span>
-                                        <span>{{ "ID: %s"|format(account.user_id) if account.user_id is not none else "User link cleared" }}</span>
+                                        <strong>{{ account.user.username if account.user else "Cleanup-only MT5 record" }}</strong>
+                                        <span>{{ account.user.email if account.user else "Original user link cleared" }}</span>
+                                        <span>{{ "ID: %s"|format(account.user_id) if account.user_id is not none else "User ID removed during cleanup" }}</span>
                                     </div>
                                 </td>
                                 <td>
                                     <div class="user-cell">
-                                        <strong>{{ account.trade_account.name if account.trade_account else "Orphaned Trade Account" }}</strong>
-                                        <span>{{ "ID: %s"|format(account.trade_account_id) if account.trade_account_id is not none else "Trade account link cleared" }}</span>
+                                        <strong>{{ account.trade_account.name if account.trade_account else "Cleanup-only terminal record" }}</strong>
+                                        <span>{{ "ID: %s"|format(account.trade_account_id) if account.trade_account_id is not none else "Trade account ID removed during cleanup" }}</span>
                                         <span>{{ account.trade_account.account_type if account.trade_account else "Deleted" }}</span>
                                         <span>Trades: {{ trade_count }}</span>
                                     </div>
@@ -358,13 +359,14 @@
                                         <span>{{ account.terminal_path or "Terminal not set up yet" }}</span>
                                         <span>{{ account.appdata_hash or "AppData hash pending" }}</span>
                                         {% if is_orphaned %}
-                                        <span>Orphaned record awaiting manual delete</span>
+                                        <span>Cleanup-only record awaiting manual delete</span>
+                                        <span>Marked for cleanup: {{ account.cleanup_marked_at.strftime("%Y-%m-%d %H:%M UTC") if account.cleanup_marked_at else "Pending timestamp" }}</span>
                                         {% endif %}
                                     </div>
                                 </td>
                                 <td>
                                     {% if is_orphaned %}
-                                    <span class="chip default">Orphaned</span>
+                                    <span class="chip default">Cleanup Pending</span>
                                     {% else %}
                                     <span class="chip {{ 'success-chip' if account.is_active else 'danger-chip' }}">
                                         {{ "Active" if account.is_active else "Inactive" }}
@@ -376,11 +378,11 @@
                                     <div class="inline-actions">
                                         <form action="{{ url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="submit-btn" {% if is_orphaned %}disabled aria-disabled="true" title="Orphaned MT5 accounts cannot be set up."{% endif %}>Setup Terminal</button>
+                                            <button type="submit" class="submit-btn" {% if is_orphaned %}disabled aria-disabled="true" title="Cleanup-only MT5 records cannot be set up."{% endif %}>Setup Terminal</button>
                                         </form>
                                         <form action="{{ url_for('admin_mt5_trigger_sync', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="submit-btn" {% if not account.is_active or is_orphaned %}disabled aria-disabled="true"{% if is_orphaned %} title="Orphaned MT5 accounts cannot be synced."{% endif %}{% endif %}>Trigger Sync</button>
+                                            <button type="submit" class="submit-btn" {% if not account.is_active or is_orphaned %}disabled aria-disabled="true"{% if is_orphaned %} title="Cleanup-only MT5 records cannot be synced."{% endif %}{% endif %}>Trigger Sync</button>
                                         </form>
                                         <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

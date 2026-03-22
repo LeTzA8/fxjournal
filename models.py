@@ -1,6 +1,8 @@
 import secrets
 
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import event, or_
+from sqlalchemy.orm import Session
 
 from helpers.utils import utcnow_naive  # noqa: F401 – re-exported for existing callers
 
@@ -18,6 +20,15 @@ def generate_trade_pubkey():
 
 def generate_trade_account_pubkey():
     return secrets.token_hex(TRADE_ACCOUNT_PUBKEY_BYTES)
+
+
+def mask_mt5_account_number_for_cleanup(account_number):
+    text_value = str(account_number or "").strip()
+    if text_value.startswith("cleanup-"):
+        return text_value[:50]
+    digits_only = "".join(character for character in text_value if character.isdigit())
+    suffix = digits_only[-4:] if digits_only else (text_value[-4:] if text_value else "unknown")
+    return f"cleanup-{suffix}"[:50]
 
 
 class User(db.Model):
@@ -380,17 +391,34 @@ class MT5Account(db.Model):
         nullable=True,
     )
     account_number = db.Column(db.String(50), nullable=False)
-    investor_password_encrypted = db.Column(db.Text, nullable=False)
+    investor_password_encrypted = db.Column(db.Text, nullable=True)
     server = db.Column(db.String(100), nullable=False)
     terminal_path = db.Column(db.String(500), nullable=True)
     appdata_hash = db.Column(db.String(100), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
     last_synced_at = db.Column(db.DateTime, nullable=True)
+    cleanup_marked_at = db.Column(db.DateTime, nullable=True, index=True)
+    mt5_consent_accepted_at = db.Column(db.DateTime, nullable=True)
+    mt5_consent_version = db.Column(db.String(32), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
 
     @property
     def is_orphaned(self):
         return self.user_id is None or self.trade_account_id is None
+
+    @property
+    def is_cleanup_only(self):
+        return self.is_orphaned and not self.investor_password_encrypted
+
+    def mark_for_cleanup(self, *, marked_at=None):
+        self.user_id = None
+        self.trade_account_id = None
+        self.account_number = mask_mt5_account_number_for_cleanup(self.account_number)
+        self.investor_password_encrypted = None
+        self.is_active = False
+        self.cleanup_marked_at = marked_at or self.cleanup_marked_at or utcnow_naive()
+        self.mt5_consent_accepted_at = None
+        self.mt5_consent_version = None
 
 
 class MT5AccessRequest(db.Model):
@@ -649,3 +677,34 @@ class AIGeneratedResponse(db.Model):
     period_start_utc = db.Column(db.DateTime, nullable=True)
     period_end_utc = db.Column(db.DateTime, nullable=True)
     generated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+
+
+@event.listens_for(Session, "before_flush")
+def mark_deleted_mt5_accounts_for_cleanup(session, _flush_context, _instances):
+    deleted_user_ids = {
+        user.id
+        for user in session.deleted
+        if isinstance(user, User) and user.id is not None
+    }
+    deleted_trade_account_ids = {
+        trade_account.id
+        for trade_account in session.deleted
+        if isinstance(trade_account, TradeAccount) and trade_account.id is not None
+    }
+    if not deleted_user_ids and not deleted_trade_account_ids:
+        return
+
+    filters = []
+    if deleted_user_ids:
+        filters.append(MT5Account.user_id.in_(deleted_user_ids))
+    if deleted_trade_account_ids:
+        filters.append(MT5Account.trade_account_id.in_(deleted_trade_account_ids))
+
+    marked_at = utcnow_naive()
+    with session.no_autoflush:
+        mt5_accounts = session.query(MT5Account).filter(or_(*filters)).all()
+
+    for account in mt5_accounts:
+        if account in session.deleted:
+            continue
+        account.mark_for_cleanup(marked_at=marked_at)

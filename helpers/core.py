@@ -10,6 +10,8 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import selectinload
 
 from models import (
+    MT5AccessRequest,
+    MT5Account,
     Trade,
     TradeAccount,
     TradeProfile,
@@ -415,6 +417,75 @@ def get_user_trade_accounts(user_id):
         .order_by(TradeAccount.is_default.desc(), TradeAccount.id.asc())
         .all()
     )
+
+
+def build_mt5_access_state(user_id, trade_accounts=None):
+    account_rows = trade_accounts if trade_accounts is not None else get_user_trade_accounts(user_id)
+    account_ids = [account.id for account in account_rows]
+    pending_requests_by_trade_account = {}
+    approved_requests_by_trade_account = {}
+    linked_mt5_trade_account_ids = set()
+
+    if account_ids:
+        linked_mt5_trade_account_ids = {
+            trade_account_id
+            for trade_account_id, in db.session.query(MT5Account.trade_account_id)
+            .filter(
+                MT5Account.trade_account_id.in_(account_ids),
+                MT5Account.trade_account_id.isnot(None),
+            )
+            .all()
+        }
+        request_rows = (
+            MT5AccessRequest.query.filter(
+                MT5AccessRequest.trade_account_id.in_(account_ids),
+                MT5AccessRequest.status.in_(
+                    [
+                        MT5AccessRequest.STATUS_PENDING,
+                        MT5AccessRequest.STATUS_APPROVED,
+                    ]
+                ),
+            )
+            .order_by(MT5AccessRequest.created_at.desc(), MT5AccessRequest.id.desc())
+            .all()
+        )
+        for request_row in request_rows:
+            if request_row.status == MT5AccessRequest.STATUS_PENDING:
+                pending_requests_by_trade_account.setdefault(
+                    request_row.trade_account_id,
+                    request_row,
+                )
+                continue
+            if request_row.status == MT5AccessRequest.STATUS_APPROVED:
+                approved_requests_by_trade_account.setdefault(
+                    request_row.trade_account_id,
+                    request_row,
+                )
+
+    cfd_trade_accounts = [
+        account
+        for account in account_rows
+        if normalize_account_type(account.account_type) == "CFD"
+    ]
+    requestable_mt5_accounts = []
+    approved_mt5_accounts = []
+    for account in cfd_trade_accounts:
+        if account.id in linked_mt5_trade_account_ids:
+            continue
+        if account.id in pending_requests_by_trade_account:
+            continue
+        if account.id in approved_requests_by_trade_account:
+            approved_mt5_accounts.append(account)
+            continue
+        requestable_mt5_accounts.append(account)
+
+    return {
+        "pending_requests_by_trade_account": pending_requests_by_trade_account,
+        "approved_requests_by_trade_account": approved_requests_by_trade_account,
+        "linked_mt5_trade_account_ids": linked_mt5_trade_account_ids,
+        "requestable_mt5_accounts": requestable_mt5_accounts,
+        "approved_mt5_accounts": approved_mt5_accounts,
+    }
 
 
 def ensure_trade_account_for_user(user_id):

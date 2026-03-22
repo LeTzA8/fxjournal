@@ -1725,7 +1725,7 @@ def register_public_auth_routes(
         if account.is_orphaned:
             return build_admin_redirect(
                 "mt5",
-                "That MT5 account is orphaned. Delete it manually from admin when you're ready.",
+                "That MT5 record is cleanup-only now. Delete it manually from admin when you're ready.",
                 "error",
             )
 
@@ -1762,7 +1762,7 @@ def register_public_auth_routes(
         if account.is_orphaned:
             return build_admin_redirect(
                 "mt5",
-                "That MT5 account is orphaned. Delete it manually from admin when you're ready.",
+                "That MT5 record is cleanup-only now. Delete it manually from admin when you're ready.",
                 "error",
             )
         if not account.is_active:

@@ -82,9 +82,14 @@ def test_mt5_account_remains_orphaned_after_trade_account_delete(app_ctx, monkey
     orphaned_account = db.session.get(MT5Account, mt5_account.id)
 
     assert orphaned_account is not None
-    assert orphaned_account.user_id == user.id
+    assert orphaned_account.user_id is None
     assert orphaned_account.trade_account_id is None
     assert orphaned_account.is_orphaned is True
+    assert orphaned_account.is_cleanup_only is True
+    assert orphaned_account.account_number == "cleanup-0001"
+    assert orphaned_account.investor_password_encrypted is None
+    assert orphaned_account.is_active is False
+    assert orphaned_account.cleanup_marked_at is not None
 
 
 def test_mt5_account_remains_orphaned_after_user_delete(app_ctx, monkeypatch):
@@ -111,6 +116,11 @@ def test_mt5_account_remains_orphaned_after_user_delete(app_ctx, monkeypatch):
     assert orphaned_account.user_id is None
     assert orphaned_account.trade_account_id is None
     assert orphaned_account.is_orphaned is True
+    assert orphaned_account.is_cleanup_only is True
+    assert orphaned_account.account_number == "cleanup-0002"
+    assert orphaned_account.investor_password_encrypted is None
+    assert orphaned_account.is_active is False
+    assert orphaned_account.cleanup_marked_at is not None
 
 
 def test_admin_mt5_panel_marks_orphaned_accounts_and_blocks_actions(app_ctx, client, monkeypatch):
@@ -147,13 +157,13 @@ def test_admin_mt5_panel_marks_orphaned_accounts_and_blocks_actions(app_ctx, cli
     )
 
     assert list_response.status_code == 200
-    assert b"77110003" in list_response.data
-    assert b"Orphaned" in list_response.data
-    assert b"Orphaned record awaiting manual delete" in list_response.data
+    assert b"cleanup-0003" in list_response.data
+    assert b"Cleanup Pending" in list_response.data
+    assert b"Cleanup-only record awaiting manual delete" in list_response.data
     assert setup_response.status_code == 200
-    assert b"That MT5 account is orphaned." in setup_response.data
+    assert b"That MT5 record is cleanup-only now." in setup_response.data
     assert sync_response.status_code == 200
-    assert b"That MT5 account is orphaned." in sync_response.data
+    assert b"That MT5 record is cleanup-only now." in sync_response.data
 
 
 def test_sync_all_active_mt5_accounts_skips_orphaned_accounts(app_ctx, monkeypatch):
@@ -193,4 +203,7 @@ def test_sync_all_active_mt5_accounts_skips_orphaned_accounts(app_ctx, monkeypat
     mt5_sync_module.sync_all_active_mt5_accounts.run()
 
     assert captured_ids == [(active_account.id, "mt5_sync")]
-    assert db.session.get(MT5Account, orphan_account.id).is_orphaned is True
+    scrubbed_account = db.session.get(MT5Account, orphan_account.id)
+    assert scrubbed_account.is_orphaned is True
+    assert scrubbed_account.is_cleanup_only is True
+    assert scrubbed_account.account_number == "cleanup-0005"

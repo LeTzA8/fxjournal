@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from auth_account import send_email_placeholder
 from extensions import limiter
 from helpers.core import (
+    build_mt5_access_state,
     build_unique_trade_account_pubkey,
     get_active_trade_account_for_user,
     get_safe_internal_next,
@@ -16,11 +17,16 @@ from helpers.core import (
     parse_trade_account_size,
     resolve_active_trade_account,
 )
+from helpers.legal import LEGAL_LAST_UPDATED
 from models import AIGeneratedResponse, MT5AccessRequest, MT5Account, Trade, TradeAccount, db
 from trading import get_account_type_choices, normalize_account_type
-from helpers.utils import TRUE_VALUES, login_required
+from helpers.utils import TRUE_VALUES, encrypt_password, login_required, utcnow_naive
 
 bp = Blueprint("trade_accounts", __name__)
+
+
+def _get_mt5_access_redirect_target():
+    return get_safe_internal_next("dashboard.home")
 
 
 @bp.route("/dashboard/trade-accounts/switch", methods=["POST"])
@@ -194,6 +200,7 @@ def update_trade_account(trade_account_pubkey):
     return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
 
 
+@bp.route("/dashboard/mt5/request-access", methods=["POST"])
 @bp.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/request-mt5-access", methods=["POST"])
 @limiter.limit(
     "3 per minute;20 per day",
@@ -201,35 +208,41 @@ def update_trade_account(trade_account_pubkey):
     error_message="Too many MT5 access requests. Please wait and try again later.",
 )
 @login_required
-def request_mt5_access(trade_account_pubkey):
+def request_mt5_access(trade_account_pubkey=None):
     user_id = session["user_id"]
-    account = get_user_trade_account_by_pubkey(user_id, trade_account_pubkey)
+    selected_pubkey = (trade_account_pubkey or request.form.get("trade_account_pubkey") or "").strip()
+    if not selected_pubkey:
+        flash("Choose a CFD trade account first.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+
+    account = get_user_trade_account_by_pubkey(user_id, selected_pubkey)
     if not account:
         flash("Trade account not found.", "error")
-        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+        return redirect(_get_mt5_access_redirect_target())
 
-    if str(account.account_type or "").strip().upper() != "CFD":
+    if normalize_account_type(account.account_type) != "CFD":
         flash("MT5 sync access can only be requested for CFD trade accounts.", "error")
-        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+        return redirect(_get_mt5_access_redirect_target())
 
-    if MT5Account.query.filter_by(trade_account_id=account.id).first() is not None:
+    mt5_access_state = build_mt5_access_state(user_id, [account])
+    if account.id in mt5_access_state["linked_mt5_trade_account_ids"]:
         flash("This trade account already has MT5 sync access configured.", "error")
-        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+        return redirect(_get_mt5_access_redirect_target())
 
-    if (
-        MT5AccessRequest.query.filter_by(
-            trade_account_id=account.id,
-            status=MT5AccessRequest.STATUS_PENDING,
-        ).first()
-        is not None
-    ):
+    if account.id in mt5_access_state["pending_requests_by_trade_account"]:
         flash("An MT5 sync access request is already pending for this trade account.", "error")
-        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+        return redirect(_get_mt5_access_redirect_target())
+    if account.id in mt5_access_state["approved_requests_by_trade_account"]:
+        flash(
+            "This trade account is already approved for MT5 sync. Submit your MT5 read-only account details below.",
+            "info",
+        )
+        return redirect(_get_mt5_access_redirect_target())
 
     request_note = (request.form.get("request_note") or "").strip()
     if len(request_note) > 500:
         flash("MT5 request note must be 500 characters or less.", "error")
-        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+        return redirect(_get_mt5_access_redirect_target())
 
     request_row = MT5AccessRequest(
         user_id=user_id,
@@ -244,11 +257,11 @@ def request_mt5_access(trade_account_pubkey):
     except IntegrityError:
         db.session.rollback()
         flash("An MT5 sync access request is already pending for this trade account.", "error")
-        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+        return redirect(_get_mt5_access_redirect_target())
     except OperationalError:
         db.session.rollback()
         flash("Could not submit that MT5 sync access request right now. Please try again.", "error")
-        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+        return redirect(_get_mt5_access_redirect_target())
 
     feedback_to_email = os.getenv("FEEDBACK_TO_EMAIL", "").strip().lower()
     email_sent = False
@@ -292,7 +305,99 @@ def request_mt5_access(trade_account_pubkey):
             "MT5 sync access request submitted and queued for review, but email notification could not be delivered.",
             "info",
         )
-    return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+    return redirect(_get_mt5_access_redirect_target())
+
+
+@bp.route("/dashboard/mt5/submit-details", methods=["POST"])
+@limiter.limit(
+    "3 per minute;20 per day",
+    methods=["POST"],
+    error_message="Too many MT5 detail submissions. Please wait and try again later.",
+)
+@login_required
+def submit_mt5_details():
+    user_id = session["user_id"]
+    selected_pubkey = (request.form.get("trade_account_pubkey") or "").strip()
+    if not selected_pubkey:
+        flash("Choose an approved CFD trade account first.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+
+    account = get_user_trade_account_by_pubkey(user_id, selected_pubkey)
+    if not account:
+        flash("Trade account not found.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+
+    if normalize_account_type(account.account_type) != "CFD":
+        flash("MT5 sync currently supports CFD trade accounts only.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+
+    mt5_access_state = build_mt5_access_state(user_id, [account])
+    if account.id in mt5_access_state["linked_mt5_trade_account_ids"]:
+        flash("This trade account already has MT5 sync access configured.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+
+    approved_request = mt5_access_state["approved_requests_by_trade_account"].get(account.id)
+    if approved_request is None:
+        if account.id in mt5_access_state["pending_requests_by_trade_account"]:
+            flash("This MT5 sync request is still pending review.", "error")
+        else:
+            flash("This trade account has not been approved for MT5 sync yet.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+
+    account_number = (request.form.get("account_number") or "").strip()
+    investor_password = request.form.get("investor_password") or ""
+    server = (request.form.get("server") or "").strip()
+    mt5_sync_consent = (request.form.get("mt5_sync_consent") or "").strip().lower()
+
+    if not account_number or not investor_password or not server:
+        flash("Account number, investor password, and server are required.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+    if mt5_sync_consent not in TRUE_VALUES:
+        flash(
+            "Confirm that you are submitting MT5 investor/read-only credentials and accept the Terms and Privacy Policy for MT5 sync.",
+            "error",
+        )
+        return redirect(_get_mt5_access_redirect_target())
+    if len(account_number) > 50:
+        flash("MT5 account number must be 50 characters or less.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+    if len(server) > 100:
+        flash("MT5 server must be 100 characters or less.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+
+    try:
+        mt5_account = MT5Account(
+            user_id=user_id,
+            trade_account_id=account.id,
+            account_number=account_number,
+            investor_password_encrypted=encrypt_password(investor_password),
+            server=server,
+            terminal_path=None,
+            appdata_hash=None,
+            is_active=False,
+            mt5_consent_accepted_at=utcnow_naive(),
+            mt5_consent_version=LEGAL_LAST_UPDATED,
+        )
+        db.session.add(mt5_account)
+        db.session.commit()
+    except (RuntimeError, ValueError) as exc:
+        db.session.rollback()
+        flash(str(exc), "error")
+        return redirect(_get_mt5_access_redirect_target())
+    except IntegrityError:
+        db.session.rollback()
+        flash("This trade account already has MT5 sync access configured.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+    except OperationalError:
+        db.session.rollback()
+        flash("Could not save your MT5 account details right now. Please try again.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+
+    flash(
+        f"MT5 account details saved for {account.name}. I'll finish the onboarding from admin.",
+        "success",
+    )
+    return redirect(_get_mt5_access_redirect_target())
 
 
 @bp.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/delete", methods=["POST"])
@@ -329,6 +434,7 @@ def delete_trade_account(trade_account_pubkey):
         user_id=user_id,
         trade_account_id=account.id,
     ).count()
+    linked_mt5_count = MT5Account.query.filter_by(trade_account_id=account.id).count()
     active_trade_account_id = session.get("active_trade_account_id")
     confirmation_text = request.form.get(
         "delete_trade_account_confirmation", ""
@@ -385,10 +491,16 @@ def delete_trade_account(trade_account_pubkey):
         session.pop("active_trade_account_id", None)
 
     replacement_msg = " A fresh Main Account was created." if replacement_created else ""
+    cleanup_msg = (
+        " Linked MT5 terminal cleanup records were kept temporarily until terminal cleanup is completed."
+        if linked_mt5_count
+        else ""
+    )
     success_message = (
         f"Deleted trade account '{deleted_name}', {deleted_trade_count} linked trade"
         f"{'' if deleted_trade_count == 1 else 's'}."
         f"{replacement_msg}"
+        f"{cleanup_msg}"
     )
     if wants_json_response:
         default_trade_account = (
@@ -441,6 +553,12 @@ def delete_all_trade_accounts():
 
     trade_count = Trade.query.filter_by(user_id=user_id).count()
     account_count = TradeAccount.query.filter_by(user_id=user_id).count()
+    account_ids = [account_id for account_id, in db.session.query(TradeAccount.id).filter_by(user_id=user_id).all()]
+    linked_mt5_count = 0
+    if account_ids:
+        linked_mt5_count = (
+            MT5Account.query.filter(MT5Account.trade_account_id.in_(account_ids)).count()
+        )
     try:
         orphan_ai_reviews = AIGeneratedResponse.query.filter_by(
             user_id=user_id,
@@ -481,7 +599,12 @@ def delete_all_trade_accounts():
     flash(
         f"Deleted {account_count} trade account{'s' if account_count != 1 else ''} and "
         f"{trade_count} linked trade{'s' if trade_count != 1 else ''}. "
-        "A fresh Main Account was created.",
+        "A fresh Main Account was created."
+        + (
+            " Linked MT5 terminal cleanup records were kept temporarily until terminal cleanup is completed."
+            if linked_mt5_count
+            else ""
+        ),
         "success",
     )
     return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
@@ -493,7 +616,6 @@ def trade_accounts():
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_rows = get_user_trade_accounts(user_id)
-    account_ids = [account.id for account in account_rows]
     account_trade_counts = dict(
         db.session.query(Trade.trade_account_id, func.count(Trade.id))
         .filter_by(user_id=user_id)
@@ -509,22 +631,7 @@ def trade_accounts():
         .group_by(AIGeneratedResponse.trade_account_id)
         .all()
     )
-    pending_mt5_requests_by_trade_account = {}
-    linked_mt5_trade_account_ids = set()
-    if account_ids:
-        pending_mt5_requests_by_trade_account = {
-            request_row.trade_account_id: request_row
-            for request_row in MT5AccessRequest.query.filter(
-                MT5AccessRequest.trade_account_id.in_(account_ids),
-                MT5AccessRequest.status == MT5AccessRequest.STATUS_PENDING,
-            ).all()
-        }
-        linked_mt5_trade_account_ids = {
-            trade_account_id
-            for trade_account_id, in db.session.query(MT5Account.trade_account_id)
-            .filter(MT5Account.trade_account_id.in_(account_ids))
-            .all()
-        }
+    mt5_access_state = build_mt5_access_state(user_id, account_rows)
     edit_pubkey = request.args.get("edit", "").strip() or request.args.get(
         "edit_id", ""
     ).strip()
@@ -566,6 +673,7 @@ def trade_accounts():
         total_trade_count=total_trade_count,
         total_ai_review_count=total_ai_review_count,
         active_trade_account=active_trade_account,
-        pending_mt5_requests_by_trade_account=pending_mt5_requests_by_trade_account,
-        linked_mt5_trade_account_ids=linked_mt5_trade_account_ids,
+        pending_mt5_requests_by_trade_account=mt5_access_state["pending_requests_by_trade_account"],
+        approved_mt5_requests_by_trade_account=mt5_access_state["approved_requests_by_trade_account"],
+        linked_mt5_trade_account_ids=mt5_access_state["linked_mt5_trade_account_ids"],
     )

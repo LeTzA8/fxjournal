@@ -345,7 +345,7 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
     assert mt5_account.is_active is False
     assert mt5_account.terminal_path is None
     assert mt5_account.appdata_hash is None
-    assert create_captured["queue"] == "mt5_sync"
+    assert create_captured["queue"] == "mt5_setup"
     assert create_captured["args"] == [mt5_account.id]
     assert list_response.status_code == 200
     assert b"33333333" in list_response.data
@@ -353,7 +353,7 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
     assert b"Terminal not set up yet" in list_response.data
     assert b"AppData hash pending" in list_response.data
     assert setup_response.status_code == 302
-    assert setup_captured["queue"] == "mt5_sync"
+    assert setup_captured["queue"] == "mt5_setup"
     assert setup_captured["args"] == [mt5_account.id]
     assert trigger_response.status_code == 302
     assert sync_captured == {}
@@ -418,9 +418,14 @@ def test_mt5_account_becomes_orphaned_with_trade_account_delete(app_ctx, monkeyp
     orphaned_account = db.session.get(MT5Account, mt5_account_id)
 
     assert orphaned_account is not None
-    assert orphaned_account.user_id == user.id
+    assert orphaned_account.user_id is None
     assert orphaned_account.trade_account_id is None
     assert orphaned_account.is_orphaned is True
+    assert orphaned_account.is_cleanup_only is True
+    assert orphaned_account.account_number == "cleanup-4444"
+    assert orphaned_account.investor_password_encrypted is None
+    assert orphaned_account.is_active is False
+    assert orphaned_account.cleanup_marked_at is not None
     assert db.session.get(User, user.id) is not None
 
 
@@ -450,6 +455,11 @@ def test_mt5_account_becomes_orphaned_with_user_delete(app_ctx, monkeypatch):
     assert orphaned_account.user_id is None
     assert orphaned_account.trade_account_id is None
     assert orphaned_account.is_orphaned is True
+    assert orphaned_account.is_cleanup_only is True
+    assert orphaned_account.account_number == "cleanup-5555"
+    assert orphaned_account.investor_password_encrypted is None
+    assert orphaned_account.is_active is False
+    assert orphaned_account.cleanup_marked_at is not None
 
 
 def test_celery_includes_mt5_modules():

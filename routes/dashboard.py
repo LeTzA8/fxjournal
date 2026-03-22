@@ -22,7 +22,12 @@ from celery_workers.cache import (
     set_ai_status,
     set_cached,
 )
-from helpers.core import get_active_trade_account_for_user, get_display_timezone_name
+from helpers.core import (
+    build_mt5_access_state,
+    get_active_trade_account_for_user,
+    get_display_timezone_name,
+    get_user_trade_accounts,
+)
 from helpers.utils import login_required, utcnow_naive
 from models import Trade, WeeklyCheckin, db
 from trading import (
@@ -485,6 +490,8 @@ def home():
     username = session.get("username", "User")
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
+    account_rows = get_user_trade_accounts(user_id)
+    mt5_access_state = build_mt5_access_state(user_id, account_rows)
     user_trades = _load_user_trades(user_id, active_trade_account)
 
     timezone_name = get_display_timezone_name()
@@ -590,6 +597,16 @@ def home():
         has_ai_review=has_ai_review,
         show_whats_next_banner=show_whats_next_banner,
         weekly_ai_min_closed_trades=MIN_CLOSED_TRADES_FOR_ADVICE,
+        mt5_cfd_accounts=[
+            account
+            for account in account_rows
+            if str(account.account_type or "").strip().upper() == "CFD"
+        ],
+        requestable_mt5_accounts=mt5_access_state["requestable_mt5_accounts"],
+        approved_mt5_accounts=mt5_access_state["approved_mt5_accounts"],
+        pending_mt5_requests_by_trade_account=mt5_access_state["pending_requests_by_trade_account"],
+        approved_mt5_requests_by_trade_account=mt5_access_state["approved_requests_by_trade_account"],
+        linked_mt5_trade_account_ids=mt5_access_state["linked_mt5_trade_account_ids"],
     )
 
 
