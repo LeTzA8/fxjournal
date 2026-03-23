@@ -64,8 +64,8 @@
 
         :root[data-theme="dark"] {
             color-scheme: dark;
-            --bg: #010205;
-            --bg-spot: #07101a;
+            --bg: #000103;
+            --bg-spot: #050b12;
             --card: #07090d;
             --surface: #0c1118;
             --border: #182234;
@@ -93,9 +93,20 @@
 
         body.app-layout {
             background:
-                radial-gradient(circle at top, color-mix(in srgb, var(--accent) 18%, transparent), transparent 34%),
-                radial-gradient(circle at 82% 8%, rgba(56, 189, 248, 0.12), transparent 22%),
-                linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 88%, #06101a) 48%, #02050a 100%);
+                radial-gradient(circle at top, color-mix(in srgb, var(--accent) 12%, transparent), transparent 32%),
+                radial-gradient(circle at 82% 8%, rgba(56, 189, 248, 0.08), transparent 20%),
+                linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 92%, #04090f) 48%, #010307 100%);
+        }
+
+        body.app-layout::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            background:
+                linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0%, rgba(0, 0, 0, 0.24) 24%, rgba(0, 0, 0, 0.42) 100%),
+                radial-gradient(circle at top, rgba(2, 6, 12, 0.24), transparent 42%);
         }
 
         .neon-ribbon-canvas {
@@ -106,7 +117,7 @@
             z-index: -2;
             pointer-events: none;
             opacity: 0;
-            filter: saturate(1.18) contrast(1.08);
+            filter: saturate(1.12) contrast(1.04) brightness(0.82);
             transition: opacity 260ms ease;
         }
 
