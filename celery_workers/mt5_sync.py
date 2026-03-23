@@ -70,8 +70,35 @@ def aggregate_deals_to_trades(
         position_deals = sorted(position_deals, key=lambda deal: getattr(deal, "time", 0) or 0)
         entry_deals = [deal for deal in position_deals if getattr(deal, "entry", None) == entry_in]
         exit_deals = [deal for deal in position_deals if getattr(deal, "entry", None) in exit_entries]
+        exit_price = _weighted_average_price(exit_deals)
+        exit_volume = sum(_deal_volume(deal) for deal in exit_deals)
+        latest_exit_deal = exit_deals[-1] if exit_deals else None
+        total_commission = sum(float(getattr(deal, "commission", 0.0) or 0.0) for deal in position_deals)
+        total_swap = sum(float(getattr(deal, "swap", 0.0) or 0.0) for deal in position_deals)
+        total_profit = sum(float(getattr(deal, "profit", 0.0) or 0.0) for deal in position_deals)
 
         if not entry_deals:
+            if exit_deals and exit_price is not None and exit_volume > 0:
+                trades.append(
+                    {
+                        "symbol": getattr(latest_exit_deal, "symbol", None),
+                        "side": None,
+                        "entry_price": None,
+                        "exit_price": exit_price,
+                        "lot_size": exit_volume,
+                        "pnl": total_profit,
+                        "commission": total_commission,
+                        "swap": total_swap,
+                        "stop_loss": None,
+                        "take_profit": None,
+                        "opened_at": None,
+                        "closed_at": _to_utc_iso(getattr(latest_exit_deal, "time", None)),
+                        "mt5_position": str(position_id),
+                        "trade_note": str(getattr(latest_exit_deal, "comment", "") or "").strip() or None,
+                        "source_timezone": "UTC",
+                        "is_open": False,
+                    }
+                )
             continue
 
         entry_deal = entry_deals[0]
@@ -80,13 +107,7 @@ def aggregate_deals_to_trades(
         if entry_price is None or entry_volume <= 0:
             continue
 
-        exit_price = _weighted_average_price(exit_deals)
-        exit_volume = sum(_deal_volume(deal) for deal in exit_deals)
-        latest_exit_deal = exit_deals[-1] if exit_deals else None
         side = "BUY" if getattr(entry_deal, "type", None) == deal_type_buy else "SELL"
-        total_commission = sum(float(getattr(deal, "commission", 0.0) or 0.0) for deal in position_deals)
-        total_swap = sum(float(getattr(deal, "swap", 0.0) or 0.0) for deal in position_deals)
-        total_profit = sum(float(getattr(deal, "profit", 0.0) or 0.0) for deal in position_deals)
 
         # Keep the trade open until the full entry volume has been offset.
         if exit_deals and exit_volume + 1e-9 >= entry_volume and exit_price is not None:

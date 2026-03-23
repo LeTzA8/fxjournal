@@ -117,7 +117,15 @@ def sync_mt5_trades():
         for row in normalized_rows:
             mt5_position = row.get("mt5_position")
             existing_trade = existing_trades.get(mt5_position) if mt5_position is not None else None
+            is_close_only_row = (
+                row.get("closed_at") is not None
+                and row.get("opened_at") is None
+                and row.get("entry_price") is None
+            )
             if existing_trade is None:
+                if is_close_only_row:
+                    skipped_count += 1
+                    continue
                 rows_to_insert.append(row)
                 continue
 

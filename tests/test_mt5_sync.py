@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 import logging
 import sys
 from types import SimpleNamespace
@@ -149,6 +150,35 @@ def test_aggregate_deals_to_trades_treats_extra_exit_entries_as_closes():
     assert trades[0]["exit_price"] == pytest.approx(1.255)
     assert trades[0]["pnl"] == pytest.approx(25.0)
     assert trades[0]["trade_note"] == "close by"
+    assert trades[0]["is_open"] is False
+
+
+def test_aggregate_deals_to_trades_emits_close_only_row_when_entry_is_outside_window():
+    trades = aggregate_deals_to_trades(
+        [
+            _deal(
+                position_id=3003,
+                entry=1,
+                type=1,
+                price=1.255,
+                volume=0.5,
+                time=1_710_003_600,
+                profit=25.0,
+                commission=-0.4,
+                symbol="EURUSD",
+                comment="weekend close",
+            ),
+        ],
+    )
+
+    assert len(trades) == 1
+    assert trades[0]["symbol"] == "EURUSD"
+    assert trades[0]["entry_price"] is None
+    assert trades[0]["opened_at"] is None
+    assert trades[0]["exit_price"] == pytest.approx(1.255)
+    assert trades[0]["lot_size"] == pytest.approx(0.5)
+    assert trades[0]["pnl"] == pytest.approx(25.0)
+    assert trades[0]["trade_note"] == "weekend close"
     assert trades[0]["is_open"] is False
 
 
@@ -429,6 +459,83 @@ def test_internal_mt5_sync_updates_existing_open_trade_when_close_arrives(app_ct
 
     assert open_response.status_code == 200
     assert open_response.get_json() == {"saved": 1, "updated": 0, "skipped": 0, "errors": 0}
+    assert close_response.status_code == 200
+    assert close_response.get_json() == {"saved": 0, "updated": 1, "skipped": 0, "errors": 0}
+    assert trade.exit_price == pytest.approx(1.09)
+    assert trade.pnl == pytest.approx(48.5)
+    assert trade.commission == pytest.approx(-0.5)
+    assert trade.swap == pytest.approx(-0.1)
+    assert trade.closed_at is not None
+
+
+def test_internal_mt5_sync_updates_existing_open_trade_from_close_only_row(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-close-only-user",
+        email="mt5-close-only@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="34343434",
+    )
+
+    open_trade = Trade(
+        pubkey="closeonlytrade01",
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.085,
+        exit_price=None,
+        lot_size=0.01,
+        pnl=None,
+        commission=-0.25,
+        swap=0.0,
+        opened_at=datetime(2026, 3, 10, 8, 0, 0),
+        closed_at=None,
+        mt5_position="55550000",
+    )
+    db.session.add(open_trade)
+    db.session.commit()
+
+    close_only_payload = {
+        "mt5_account_id": mt5_account.id,
+        "trades": [
+            {
+                "symbol": "EURUSD",
+                "side": "",
+                "entry_price": None,
+                "exit_price": 1.09,
+                "lot_size": 0.01,
+                "pnl": 48.5,
+                "commission": -0.5,
+                "swap": -0.1,
+                "stop_loss": None,
+                "take_profit": None,
+                "opened_at": None,
+                "closed_at": "2026-03-21T10:00:00+00:00",
+                "mt5_position": 55550000,
+                "trade_note": "close only",
+                "is_open": False,
+            }
+        ],
+    }
+
+    close_response = client.post(
+        "/api/internal/mt5/sync",
+        json=close_only_payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    trade = Trade.query.filter_by(
+        trade_account_id=trade_account.id,
+        mt5_position="55550000",
+    ).one()
+
     assert close_response.status_code == 200
     assert close_response.get_json() == {"saved": 0, "updated": 1, "skipped": 0, "errors": 0}
     assert trade.exit_price == pytest.approx(1.09)
