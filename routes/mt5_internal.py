@@ -3,6 +3,7 @@ from datetime import timezone
 
 from flask import Blueprint, current_app, jsonify, request
 
+from celery_workers.cache import CacheUnavailableError, invalidate
 from helpers.core import build_normalized_trade_insert_batch
 from helpers.utils import utcnow_naive
 from models import MT5Account, Trade, db
@@ -180,6 +181,15 @@ def sync_mt5_trades():
             db.session.add_all(insert_batch)
         account.last_synced_at = utcnow_naive()
         db.session.commit()
+        if saved_count or updated_count:
+            try:
+                invalidate(user_id=account.user_id, trade_account_id=account.trade_account_id)
+            except CacheUnavailableError as exc:
+                current_app.logger.warning(
+                    "MT5 sync cache invalidation unavailable for mt5_account_id=%s: %s",
+                    mt5_account_id,
+                    exc,
+                )
         return jsonify(
             {
                 "saved": saved_count,

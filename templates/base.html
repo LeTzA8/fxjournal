@@ -64,18 +64,18 @@
 
         :root[data-theme="dark"] {
             color-scheme: dark;
-            --bg: #030507;
-            --bg-spot: #0a1018;
-            --card: #0b1017;
-            --surface: #101722;
-            --border: #202a3a;
-            --ink: #f8fafc;
-            --accent: #4562ff;
-            --accent-hover: #354ff0;
-            --muted: #8f9bb0;
-            --good: #1fc66a;
-            --bad: #f15a60;
-            --neon-ribbon-opacity: 0.96;
+            --bg: #010205;
+            --bg-spot: #07101a;
+            --card: #07090d;
+            --surface: #0c1118;
+            --border: #182234;
+            --ink: #f4f8ff;
+            --accent: #4f7cff;
+            --accent-hover: #3e69f2;
+            --muted: #9aa9c7;
+            --good: #34e59a;
+            --bad: #ff767d;
+            --neon-ribbon-opacity: 1;
             --curve-draw-ease: cubic-bezier(.22, .61, .36, 1);
         }
 
@@ -91,6 +91,13 @@
             isolation: isolate;
         }
 
+        body.app-layout {
+            background:
+                radial-gradient(circle at top, color-mix(in srgb, var(--accent) 18%, transparent), transparent 34%),
+                radial-gradient(circle at 82% 8%, rgba(56, 189, 248, 0.12), transparent 22%),
+                linear-gradient(180deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 88%, #06101a) 48%, #02050a 100%);
+        }
+
         .neon-ribbon-canvas {
             position: fixed;
             inset: 0;
@@ -99,7 +106,7 @@
             z-index: -2;
             pointer-events: none;
             opacity: 0;
-            filter: saturate(1.05) contrast(1.02);
+            filter: saturate(1.18) contrast(1.08);
             transition: opacity 260ms ease;
         }
 
@@ -247,7 +254,8 @@
             align-items: center;
             justify-content: center;
             flex: 0 0 auto;
-            z-index: 4;
+            isolation: isolate;
+            z-index: 50;
         }
 
         .help-tooltip-button {
@@ -315,6 +323,7 @@
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
+            z-index: 51;
             transition:
                 opacity 160ms ease,
                 transform 160ms ease,
@@ -339,6 +348,18 @@
             opacity: 1;
             visibility: visible;
             transform: translate(-50%, 0);
+        }
+
+        body.app-layout .metric,
+        body.app-layout .panel {
+            position: relative;
+        }
+
+        body.app-layout .metric:has(.help-tooltip:hover),
+        body.app-layout .metric:has(.help-tooltip:focus-within),
+        body.app-layout .panel:has(.help-tooltip:hover),
+        body.app-layout .panel:has(.help-tooltip:focus-within) {
+            z-index: 40;
         }
 
         body.auth-layout main {
@@ -475,10 +496,10 @@
             flex-wrap: nowrap;
             border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
             border-radius: 16px;
-            background: color-mix(in srgb, var(--card) 30%, transparent);
-            backdrop-filter: blur(8px) saturate(1.05);
-            -webkit-backdrop-filter: blur(8px) saturate(1.05);
-            box-shadow: 0 8px 20px rgba(2, 6, 23, 0.1);
+            background: color-mix(in srgb, var(--card) 44%, transparent);
+            backdrop-filter: blur(10px) saturate(1.14);
+            -webkit-backdrop-filter: blur(10px) saturate(1.14);
+            box-shadow: 0 12px 28px rgba(2, 6, 23, 0.2);
         }
 
         .site-brand {
@@ -677,10 +698,10 @@
             margin: 0 auto;
             border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
             border-radius: 14px;
-            background: color-mix(in srgb, var(--card) 48%, transparent);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            box-shadow: 0 8px 24px rgba(2, 6, 23, 0.12);
+            background: color-mix(in srgb, var(--card) 58%, transparent);
+            backdrop-filter: blur(10px) saturate(1.08);
+            -webkit-backdrop-filter: blur(10px) saturate(1.08);
+            box-shadow: 0 12px 28px rgba(2, 6, 23, 0.18);
             padding: 0.8rem 1rem;
             display: flex;
             align-items: center;
@@ -752,8 +773,8 @@
             padding: 1rem 1.05rem 1.02rem;
             border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
             border-radius: 18px;
-            background: color-mix(in srgb, var(--card) 97%, transparent);
-            box-shadow: 0 14px 32px rgba(2, 6, 23, 0.16);
+            background: color-mix(in srgb, var(--card) 98%, transparent);
+            box-shadow: 0 18px 38px rgba(2, 6, 23, 0.24);
         }
 
         body.app-layout .head-row {
@@ -796,8 +817,8 @@
 
         body.app-layout .panel {
             border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-            background: color-mix(in srgb, var(--card) 97%, transparent);
-            box-shadow: 0 14px 32px rgba(2, 6, 23, 0.16);
+            background: color-mix(in srgb, var(--card) 98%, transparent);
+            box-shadow: 0 18px 38px rgba(2, 6, 23, 0.22);
         }
 
         body.app-layout .panel-head {
@@ -818,7 +839,7 @@
             max-width: 100%;
             border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
             border-radius: 14px;
-            background: color-mix(in srgb, var(--surface) 96%, transparent);
+            background: color-mix(in srgb, var(--surface) 98%, transparent);
             overflow-x: auto;
             overflow-y: hidden;
             -webkit-overflow-scrolling: touch;
@@ -1116,13 +1137,13 @@
         body.app-layout .good,
         body.auth-layout .good,
         body.landing-layout .good {
-            color: var(--good) !important;
+            color: color-mix(in srgb, var(--good) 92%, white 8%) !important;
         }
 
         body.app-layout .bad,
         body.auth-layout .bad,
         body.landing-layout .bad {
-            color: var(--bad) !important;
+            color: color-mix(in srgb, var(--bad) 92%, white 8%) !important;
         }
 
         body.app-layout .pip-note,

@@ -1640,6 +1640,7 @@ def build_trade_analytics(
 ):
     display_timezone = get_timezone(display_timezone_name)
     now_utc = ensure_utc_aware(now_utc or utcnow_naive())
+    sort_floor_utc = datetime.min.replace(tzinfo=timezone.utc)
     now_local = now_utc.astimezone(display_timezone)
     week_start_local = (now_local - timedelta(days=now_local.weekday())).replace(
         hour=0,
@@ -1690,6 +1691,8 @@ def build_trade_analytics(
 
         opened_local = opened_at_utc.astimezone(display_timezone) if opened_at_utc else None
         closed_local = closed_at_utc.astimezone(display_timezone) if closed_at_utc else None
+        realized_at_utc = closed_at_utc or opened_at_utc
+        realized_at_local = closed_local or opened_local
         record = {
             "trade": trade,
             "pnl": float(pnl_value),
@@ -1701,6 +1704,8 @@ def build_trade_analytics(
             "closed_at_utc": closed_at_utc,
             "opened_at_local": opened_local,
             "closed_at_local": closed_local,
+            "realized_at_utc": realized_at_utc,
+            "realized_at_local": realized_at_local,
             "opened_label": opened_local.strftime("%d %b %Y %H:%M") if opened_local else "-",
             "closed_label": closed_local.strftime("%d %b %Y %H:%M") if closed_local else "-",
             "weekday": WEEKDAY_NAMES[opened_local.weekday()] if opened_local else "Unknown",
@@ -1711,6 +1716,13 @@ def build_trade_analytics(
             "status": "Closed" if trade.exit_price is not None else "Running",
         }
         closed_records.append(record)
+
+    closed_records.sort(
+        key=lambda record: (
+            record["realized_at_utc"] or record["opened_at_utc"] or sort_floor_utc,
+            getattr(record["trade"], "id", 0) or 0,
+        )
+    )
 
     total_closed = len(closed_records)
     wins = sum(1 for record in closed_records if record["pnl"] > 0)
@@ -1788,12 +1800,12 @@ def build_trade_analytics(
     max_drawdown = 0.0
 
     for record in closed_records:
-        opened_local = record["opened_at_local"]
-        if opened_local:
-            trading_days.add(opened_local.date().isoformat())
-            if opened_local >= week_start_local:
+        realized_local = record["realized_at_local"]
+        if realized_local:
+            trading_days.add(realized_local.date().isoformat())
+            if realized_local >= week_start_local:
                 weekly_pnl += record["pnl"]
-            if opened_local >= month_start_local:
+            if realized_local >= month_start_local:
                 monthly_pnl += record["pnl"]
 
         running_equity += record["pnl"]
@@ -1801,21 +1813,21 @@ def build_trade_analytics(
         max_drawdown = min(max_drawdown, running_equity - peak_equity)
         record["equity_after_trade"] = round(running_equity, 2)
 
-        if opened_local:
-            day_key = opened_local.date().isoformat()
+        if realized_local:
+            day_key = realized_local.date().isoformat()
             daily_equity[day_key] = {
                 "date": day_key,
-                "label": opened_local.strftime("%d %b"),
+                "label": realized_local.strftime("%d %b"),
                 "equity": round(running_equity, 2),
             }
 
         equity_curve.append(
             {
-                "date": record["opened_at_local"].strftime("%Y-%m-%d %H:%M")
-                if record["opened_at_local"]
+                "date": record["realized_at_local"].strftime("%Y-%m-%d %H:%M")
+                if record["realized_at_local"]
                 else f"trade-{record['trade'].id}",
-                "label": record["opened_at_local"].strftime("%d %b")
-                if record["opened_at_local"]
+                "label": record["realized_at_local"].strftime("%d %b")
+                if record["realized_at_local"]
                 else "Unknown",
                 "equity": round(running_equity, 2),
                 "pnl": round(record["pnl"], 2),

@@ -468,6 +468,91 @@ def test_internal_mt5_sync_updates_existing_open_trade_when_close_arrives(app_ct
     assert trade.closed_at is not None
 
 
+def test_internal_mt5_sync_invalidates_dashboard_caches_when_trade_changes(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-cache-user",
+        email="mt5-cache@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="45454545",
+    )
+
+    invalidation_calls = []
+    monkeypatch.setattr(
+        "routes.mt5_internal.invalidate",
+        lambda user_id, trade_account_id=None: invalidation_calls.append((user_id, trade_account_id)),
+    )
+
+    open_payload = {
+        "mt5_account_id": mt5_account.id,
+        "trades": [
+            {
+                "symbol": "EURUSD",
+                "side": "buy",
+                "entry_price": 1.085,
+                "exit_price": None,
+                "lot_size": 0.01,
+                "pnl": None,
+                "commission": -0.25,
+                "swap": 0.0,
+                "stop_loss": None,
+                "take_profit": None,
+                "opened_at": "2026-03-21T08:00:00+00:00",
+                "closed_at": None,
+                "mt5_position": 78787878,
+                "trade_note": "open",
+                "is_open": True,
+            }
+        ],
+    }
+    closed_payload = {
+        "mt5_account_id": mt5_account.id,
+        "trades": [
+            {
+                "symbol": "EURUSD",
+                "side": "buy",
+                "entry_price": 1.085,
+                "exit_price": 1.09,
+                "lot_size": 0.01,
+                "pnl": 48.5,
+                "commission": -0.5,
+                "swap": -0.1,
+                "stop_loss": None,
+                "take_profit": None,
+                "opened_at": "2026-03-21T08:00:00+00:00",
+                "closed_at": "2026-03-21T10:00:00+00:00",
+                "mt5_position": 78787878,
+                "trade_note": "closed",
+                "is_open": False,
+            }
+        ],
+    }
+
+    open_response = client.post(
+        "/api/internal/mt5/sync",
+        json=open_payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+    close_response = client.post(
+        "/api/internal/mt5/sync",
+        json=closed_payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    assert open_response.status_code == 200
+    assert close_response.status_code == 200
+    assert invalidation_calls == [
+        (user.id, trade_account.id),
+        (user.id, trade_account.id),
+    ]
+
+
 def test_internal_mt5_sync_updates_existing_open_trade_from_close_only_row(app_ctx, client, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)

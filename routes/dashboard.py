@@ -59,9 +59,9 @@ WEEKLY_AI_UNAVAILABLE_MESSAGE = (
     "Weekly AI review is temporarily unavailable. Please try again in a little while."
 )
 WEEKLY_AI_PROMPT_FILENAME = "dashboard_advice.txt"
-DASHBOARD_CACHE_PREFIX = "dashboard_v2"
-ANALYTICS_CACHE_PREFIX = "analytics_v2"
-RR_SUMMARY_CACHE_PREFIX = "rr_summary_v4"
+DASHBOARD_CACHE_PREFIX = "dashboard_v3"
+ANALYTICS_CACHE_PREFIX = "analytics_v3"
+RR_SUMMARY_CACHE_PREFIX = "rr_summary_v5"
 
 
 def _serialize_datetime(value):
@@ -162,7 +162,9 @@ def _serialize_dashboard_cache_payload(analytics):
         "chart_points": analytics.get("daily_equity_curve") or [],
         "closed_records": [
             {
-                "opened_at_local": _serialize_datetime(record.get("opened_at_local")),
+                "realized_at_local": _serialize_datetime(
+                    record.get("realized_at_local") or record.get("opened_at_local")
+                ),
                 "pnl": record.get("pnl"),
             }
             for record in (analytics.get("closed_records") or [])
@@ -178,7 +180,9 @@ def _deserialize_dashboard_cache_payload(payload):
         "chart_points": payload.get("chart_points") or [],
         "closed_records": [
             {
-                "opened_at_local": _deserialize_datetime(record.get("opened_at_local")),
+                "realized_at_local": _deserialize_datetime(
+                    record.get("realized_at_local") or record.get("opened_at_local")
+                ),
                 "pnl": record.get("pnl"),
             }
             for record in (payload.get("closed_records") or [])
@@ -255,7 +259,7 @@ def _load_dashboard_analytics(user_id, active_trade_account, user_trades, timezo
         "chart_points": payload["chart_points"],
         "closed_records": [
             {
-                "opened_at_local": record.get("opened_at_local"),
+                "realized_at_local": record.get("realized_at_local") or record.get("opened_at_local"),
                 "pnl": record.get("pnl"),
             }
             for record in (analytics.get("closed_records") or [])
@@ -288,10 +292,10 @@ def _build_cached_rr_summary(user_id, active_trade_account, user_trades):
 def _summarize_week(records, start_local, end_local=None):
     weekly_records = []
     for record in records:
-        opened_local = record.get("opened_at_local")
-        if opened_local is None or opened_local < start_local:
+        realized_local = record.get("realized_at_local") or record.get("opened_at_local")
+        if realized_local is None or realized_local < start_local:
             continue
-        if end_local is not None and opened_local >= end_local:
+        if end_local is not None and realized_local >= end_local:
             continue
         weekly_records.append(record)
 

@@ -313,7 +313,7 @@
                     </p>
                 </article>
                 <article class="metric">
-                    <p class="metric-label">Opened This Week</p>
+                    <p class="metric-label">Realized This Week</p>
                     <p class="metric-value{% if not has_closed_trades %} muted-value{% endif %}">
                         {% if has_closed_trades %}
                             {% if net_pnl_week > 0 %}+{% endif %}${{ '%.2f'|format(net_pnl_week) }}
@@ -1785,67 +1785,67 @@
         opacity: 0;
         animation: area-fade 3.6s ease forwards; }
 
-    .chart-area.positive { fill: rgba(47, 138, 88, 0.22); }
+    .chart-area.positive { fill: color-mix(in srgb, var(--good) 18%, transparent); }
 
-    .chart-area.negative { fill: rgba(220, 38, 38, 0.18); }
+    .chart-area.negative { fill: color-mix(in srgb, var(--bad) 14%, transparent); }
 
     .chart-glow { fill: none;
-        stroke-width: 4.6;
+        stroke-width: 3.4;
         stroke-linecap: round;
         stroke-linejoin: round;
-        opacity: 0.2;
-        filter: blur(3px);
+        opacity: 0.16;
+        filter: blur(2.4px);
         stroke-dasharray: 1200;
         stroke-dashoffset: 1200;
         animation: draw-line 4.4s var(--curve-draw-ease) forwards; }
 
     .chart-glow.positive,
-    .chart-path.positive { stroke: #2f8a58; }
+    .chart-path.positive { stroke: var(--good); }
 
     .chart-glow.negative,
-    .chart-path.negative { stroke: #dc2626; }
+    .chart-path.negative { stroke: var(--bad); }
 
     .chart-path { fill: none;
-        stroke-width: 1.45;
+        stroke-width: 1.2;
         stroke-linecap: round;
         stroke-linejoin: round;
         stroke-dasharray: 1200;
         stroke-dashoffset: 1200;
         animation: draw-line 4.4s var(--curve-draw-ease) forwards; }
 
-    .zero-line { stroke: #475569;
-        stroke-width: 1.6;
+    .zero-line { stroke: color-mix(in srgb, var(--muted) 62%, transparent);
+        stroke-width: 1.35;
         stroke-dasharray: 6 4;
         opacity: 0.9; }
 
-    .chart-point { fill: #ffffff;
-        stroke-width: 1.4;
+    .chart-point { fill: color-mix(in srgb, var(--card) 88%, transparent);
+        stroke-width: 1.2;
         cursor: default;
         transition: transform 150ms ease;
         transform-origin: center; }
 
-    .chart-point.positive { stroke: #2f8a58; }
+    .chart-point.positive { stroke: var(--good); }
 
-    .chart-point.negative { stroke: #dc2626; }
+    .chart-point.negative { stroke: var(--bad); }
 
-    .chart-point.flat { stroke: #475569; }
+    .chart-point.flat { stroke: color-mix(in srgb, var(--muted) 72%, transparent); }
 
     .chart-point.drawdown-marker { fill: #fff6ed;
         stroke: #c05621;
         cursor: pointer; }
 
-    .chart-point.hover-marker { fill: #ecfdf5;
+    .chart-point.hover-marker { fill: color-mix(in srgb, var(--good) 10%, var(--card));
         opacity: 0;
         pointer-events: none;
         transition: opacity 120ms ease; }
 
-    .chart-point.hover-marker.positive { stroke: #1f7942; }
+    .chart-point.hover-marker.positive { stroke: color-mix(in srgb, var(--good) 92%, white 8%); }
 
-    .chart-point.hover-marker.negative { stroke: #dc2626;
-        fill: #fef2f2; }
+    .chart-point.hover-marker.negative { stroke: var(--bad);
+        fill: color-mix(in srgb, var(--bad) 10%, var(--card)); }
 
-    .chart-point.hover-marker.flat { stroke: #475569;
-        fill: #f8fafc; }
+    .chart-point.hover-marker.flat { stroke: color-mix(in srgb, var(--muted) 72%, transparent);
+        fill: color-mix(in srgb, var(--surface) 78%, var(--card)); }
 
     .chart-point.hover-marker.is-active { opacity: 1; }
 

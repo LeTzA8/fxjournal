@@ -1,9 +1,17 @@
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 
 import trading
-from trading import build_rr_summary, calc_pnl_values, derive_exit_price, resolve_pips, resolve_ticks
+from trading import (
+    build_rr_summary,
+    build_trade_analytics,
+    calc_pnl_values,
+    derive_exit_price,
+    resolve_pips,
+    resolve_ticks,
+)
 
 
 def make_trade(**overrides):
@@ -316,3 +324,45 @@ def test_build_rr_summary_excludes_invalid_stop_geometry():
     assert summary["avg_planned_rr"] == 2.0
     assert summary["avg_actual_rr"] == 1.8
     assert summary["rr_capture_ratio"] == 0.9
+
+
+def test_build_trade_analytics_uses_close_time_for_realized_curves_and_weekly_pnl():
+    trade_account = SimpleNamespace(account_type="CFD", account_size=None)
+    trade = SimpleNamespace(
+        id=1,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=1.10500,
+        stop_loss=None,
+        take_profit=None,
+        lot_size=1.0,
+        contract_code=None,
+        trade_account=trade_account,
+        pnl=500.0,
+        commission=0.0,
+        swap=0.0,
+        opened_at=datetime(2026, 3, 14, 9, 0, 0),
+        closed_at=datetime(2026, 3, 23, 10, 0, 0),
+    )
+
+    analytics = build_trade_analytics(
+        [trade],
+        display_timezone_name="UTC",
+        now_utc=datetime(2026, 3, 23, 12, 0, 0, tzinfo=timezone.utc),
+    )
+
+    assert analytics["summary"]["weekly_pnl"] == pytest.approx(500.0)
+    assert analytics["daily_equity_curve"] == [
+        {"date": "2026-03-23", "label": "23 Mar", "equity": 500.0}
+    ]
+    assert analytics["equity_curve"][0]["date"] == "2026-03-23 10:00"
+    assert analytics["closed_records"][0]["realized_at_local"] == datetime(
+        2026,
+        3,
+        23,
+        10,
+        0,
+        0,
+        tzinfo=timezone.utc,
+    )
