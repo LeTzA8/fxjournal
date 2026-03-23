@@ -7,9 +7,53 @@
     }
 
     .onboarding-form {
-        margin-top: 1.35rem;
+        margin-top: 1.05rem;
         display: grid;
         gap: 1.35rem;
+    }
+
+    .onboarding-progress {
+        margin-top: 1rem;
+        display: grid;
+        gap: 0.65rem;
+    }
+
+    .onboarding-progress-label {
+        margin: 0;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .onboarding-progress-steps {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.55rem;
+    }
+
+    .onboarding-progress-step {
+        display: grid;
+        gap: 0.12rem;
+        padding: 0.72rem 0.78rem;
+        border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--accent) 8%, var(--card));
+    }
+
+    .onboarding-progress-index {
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--accent) 44%, var(--ink));
+    }
+
+    .onboarding-progress-name {
+        font-size: 0.88rem;
+        font-weight: 700;
+        color: var(--ink);
     }
 
     .onboarding-fieldset {
@@ -106,6 +150,12 @@
         color: var(--ink);
         text-decoration: underline;
     }
+
+    @media (max-width: 640px) {
+        .onboarding-progress-steps {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -126,6 +176,23 @@
         <p class="eyebrow">Personalize your workspace</p>
         <h1>A few quick questions</h1>
         <p class="subtext">These answers help tailor your AI review and dashboard experience. You can skip for now if you prefer.</p>
+        <div class="onboarding-progress" aria-label="Onboarding steps">
+            <p class="onboarding-progress-label">3 quick setup steps</p>
+            <div class="onboarding-progress-steps">
+                <article class="onboarding-progress-step">
+                    <span class="onboarding-progress-index">Step 1 of 3</span>
+                    <span class="onboarding-progress-name">Trading style</span>
+                </article>
+                <article class="onboarding-progress-step">
+                    <span class="onboarding-progress-index">Step 2 of 3</span>
+                    <span class="onboarding-progress-name">Main instruments</span>
+                </article>
+                <article class="onboarding-progress-step">
+                    <span class="onboarding-progress-index">Step 3 of 3</span>
+                    <span class="onboarding-progress-name">Experience level</span>
+                </article>
+            </div>
+        </div>
         {% if error %}
         <p class="notice error">{{ error }}</p>
         {% endif %}

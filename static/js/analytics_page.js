@@ -287,7 +287,8 @@
         if (!svg) return;
         const width = 560;
         const height = 240;
-        const pad = { t: 24, r: 18, b: 34, l: 18 };
+        const bottomPad = Number.isFinite(Number(options.bottomPad)) ? Number(options.bottomPad) : 34;
+        const pad = { t: 24, r: 18, b: bottomPad, l: 18 };
         const plotW = width - pad.l - pad.r;
         const plotH = height - pad.t - pad.b;
         const cleaned = data.filter((item) => Number.isFinite(Number(options.value(item))));
@@ -316,6 +317,20 @@
 
         cleaned.forEach((item, index) => {
             const value = Number(options.value(item));
+            const labelLines = (
+                typeof options.labelLines === "function"
+                    ? options.labelLines(item)
+                    : [options.label(item)]
+            )
+                .map((line) => String(line || "").trim())
+                .filter(Boolean)
+                .slice(0, 2);
+            const labelFontSize = Number.isFinite(Number(options.labelFontSize))
+                ? Number(options.labelFontSize)
+                : 11;
+            const labelLineHeight = Number.isFinite(Number(options.labelLineHeight))
+                ? Number(options.labelLineHeight)
+                : Math.max(labelFontSize, 11);
             const distanceFromBaseline = Math.abs(value - baselineValue);
             const maxDistance = Math.max(Math.abs(maxValue - baselineValue), Math.abs(baselineValue - minValue), 1);
             const barH = Math.max((distanceFromBaseline / maxDistance) * (plotH / 2 - 14), 2);
@@ -328,17 +343,33 @@
             rect.setAttribute("width", String(barW));
             rect.setAttribute("height", String(barH));
             rect.setAttribute("rx", "8");
-            rect.setAttribute("fill", value >= baselineValue ? "rgba(34, 197, 94, 0.72)" : "rgba(239, 68, 68, 0.72)");
+            rect.setAttribute(
+                "fill",
+                value >= baselineValue
+                    ? "color-mix(in srgb, var(--good) 72%, transparent)"
+                    : "color-mix(in srgb, var(--bad) 72%, transparent)",
+            );
             svg.appendChild(rect);
 
             const caption = document.createElementNS("http://www.w3.org/2000/svg", "text");
             caption.setAttribute("x", String(x + barW / 2));
-            caption.setAttribute("y", String(height - 12));
             caption.setAttribute("text-anchor", "middle");
-            caption.setAttribute("font-size", "11");
+            caption.setAttribute("font-size", String(labelFontSize));
             caption.setAttribute("font-weight", "700");
             caption.setAttribute("fill", "currentColor");
-            caption.textContent = options.label(item);
+            if (labelLines.length > 1) {
+                caption.setAttribute("y", String(height - 22));
+                labelLines.forEach((line, lineIndex) => {
+                    const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+                    tspan.setAttribute("x", String(x + barW / 2));
+                    tspan.setAttribute("dy", lineIndex === 0 ? "0" : String(labelLineHeight));
+                    tspan.textContent = line;
+                    caption.appendChild(tspan);
+                });
+            } else {
+                caption.setAttribute("y", String(height - 12));
+                caption.textContent = labelLines[0] || "";
+            }
             svg.appendChild(caption);
 
             const topLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -365,6 +396,10 @@
     renderBarChart("sessionChart", sessionData, {
         value: (item) => item.net_pnl ?? 0,
         label: (item) => item.name || "",
+        labelLines: (item) => String(item.name || "").split(" / "),
+        labelFontSize: 9,
+        labelLineHeight: 10,
+        bottomPad: 48,
         caption: (item) => `$${Number(item.net_pnl ?? 0) > 0 ? "+" : ""}${Number(item.net_pnl ?? 0).toFixed(0)}`,
     });
 })();

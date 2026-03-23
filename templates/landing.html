@@ -44,18 +44,18 @@
 
     <article class="landing-hero" data-reveal-scope data-reveal-immediate>
         <div class="landing-hero-inner">
-            <p class="hero-badge landing-reveal" data-reveal-delay="40">Currently in open beta - limited-time free access</p>
-            <p class="eyebrow landing-reveal" data-reveal-delay="125">FX, CFD, and Futures Journal</p>
-            <h1 class="hero-title landing-reveal" data-reveal-delay="210">A simple trading journal built for clear review and consistent execution.</h1>
-            <p class="muted lead landing-reveal" data-reveal-delay="295">
+            <p class="hero-badge landing-reveal" data-reveal-delay="240">Currently in open beta - limited-time free access</p>
+            <p class="eyebrow landing-reveal" data-reveal-delay="340">FX, CFD, and Futures Journal</p>
+            <h1 class="hero-title landing-reveal" data-reveal-delay="460">A simple trading journal built for clear review and consistent execution.</h1>
+            <p class="muted lead landing-reveal" data-reveal-delay="760">
                 FX Journal is built for traders who want to review their trades without the noise. Record your trades,
                 spot your patterns, and get AI feedback specific to your trading.
             </p>
-            <p class="hero-note landing-reveal" data-reveal-delay="335">
+            <p class="hero-note landing-reveal" data-reveal-delay="860">
                 Built by traders, for traders. Free while beta access is open.
             </p>
 
-            <div class="landing-copy landing-reveal" id="workflow" data-reveal-delay="380">
+            <div class="landing-copy landing-reveal" id="workflow" data-reveal-delay="980">
                 <p class="landing-copy-title">How you use it</p>
                 <ol>
                     <li>
@@ -82,7 +82,7 @@
                 </ol>
             </div>
 
-            <div class="landing-actions landing-reveal" data-reveal-delay="465">
+            <div class="landing-actions landing-reveal" data-reveal-delay="1120">
                 {% if user_logged_in %}
                 <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>
                 <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Log New Trade</a>
@@ -94,14 +94,14 @@
             </div>
 
             {% if not user_logged_in %}
-            <div class="hero-reassurance landing-reveal" data-reveal-delay="520" aria-label="Signup reassurance">
+            <div class="hero-reassurance landing-reveal" data-reveal-delay="1240" aria-label="Signup reassurance">
                 <span>Limited-time access</span>
                 <span>Free during open beta</span>
                 <span>No credit card required</span>
             </div>
             {% endif %}
 
-            <div class="hero-hook landing-reveal" data-reveal-delay="560" aria-hidden="true">
+            <div class="hero-hook landing-reveal" data-reveal-delay="1360" aria-hidden="true">
                 <div class="hook-glow"></div>
                 <div class="hook-lane"></div>
                 <div class="hook-candles">
@@ -228,51 +228,44 @@
                         >
                     </figure>
                 </article>
-                <article class="feature-showcase-card feature-showcase-card-placeholder landing-reveal" data-reveal-delay="500">
+                <article class="feature-showcase-card feature-showcase-card-sync landing-reveal" data-reveal-delay="500">
                     <div class="feature-showcase-copy">
                         <div class="feature-kicker-row">
-                            <p class="feature-kicker">MT5 Sync</p>
+                            <p class="feature-kicker">Automatic MT5 Sync</p>
                             <span class="feature-access-pill">Request Access</span>
                         </div>
-                        <h3><span class="feature-title-accent">Approval-based sync</span> Request MT5 sync for supported accounts without repeated file uploads</h3>
+                        <h3><span class="feature-title-accent">Keep broker history fresh</span> Sync approved MT5 accounts into the journal without repeated exports</h3>
                         <p>
-                            MT5 Sync is available through an access request for supported accounts, giving active traders a cleaner path from broker history to journal review.
+                            Automatic MT5 Sync lets approved accounts pull read-only MT5 history into FX Journal, so your dashboard, analytics, and trade review stay closer to the live account state.
                         </p>
                         <p class="feature-detail">
-                            Once approved, you can submit investor or read-only details in-app, track sync access status, and keep trade history fresher with less manual exporting.
+                            Request access in-app, submit investor credentials only after approval, and cut down the repeated export-import cycle that slows down regular journaling.
                         </p>
                     </div>
-                    <figure class="feature-shot feature-shot-placeholder feature-shot-sync" aria-hidden="true">
-                        <div class="feature-placeholder-chrome">
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                        </div>
-                        <div class="feature-placeholder-body">
-                            <div class="feature-placeholder-row">
-                                <span>Access</span>
-                                <strong>Requested in app</strong>
+                    <figure class="feature-shot feature-shot-sync-card" aria-hidden="true">
+                        <div class="feature-sync-visual">
+                            <div class="feature-sync-visual-head">
+                                <span class="feature-sync-visual-pill">Approved account</span>
+                                <span class="feature-sync-visual-pill is-accent">Read-only only</span>
                             </div>
-                            <div class="feature-placeholder-row">
-                                <span>Review</span>
-                                <strong>Manual approval</strong>
+                            <div class="feature-sync-visual-list">
+                                <div class="feature-sync-visual-row">
+                                    <span class="feature-sync-visual-label">History pull</span>
+                                    <strong class="feature-sync-visual-value">Automatic</strong>
+                                </div>
+                                <div class="feature-sync-visual-row">
+                                    <span class="feature-sync-visual-label">Permissions</span>
+                                    <strong class="feature-sync-visual-value">Investor access</strong>
+                                </div>
+                                <div class="feature-sync-visual-row">
+                                    <span class="feature-sync-visual-label">Best for</span>
+                                    <strong class="feature-sync-visual-value">Less manual upkeep</strong>
+                                </div>
                             </div>
-                            <div class="feature-placeholder-row">
-                                <span>Credentials</span>
-                                <strong>Read-only only</strong>
-                            </div>
-                        </div>
-                        <div class="feature-placeholder-summary feature-sync-summary">
-                            <span class="feature-placeholder-label">How it works</span>
-                            <div class="feature-placeholder-tags">
-                                <span>Approved accounts</span>
-                                <span>Sync status</span>
+                            <div class="feature-sync-visual-badges">
                                 <span>Secure onboarding</span>
-                            </div>
-                            <div class="feature-sync-steps" aria-hidden="true">
-                                <span>Request</span>
-                                <span>Approve</span>
-                                <span>Sync</span>
+                                <span>Sync status</span>
+                                <span>Approved accounts</span>
                             </div>
                         </div>
                     </figure>
@@ -308,8 +301,9 @@
                 <div class="founder-copy landing-reveal" data-reveal-delay="110">
                     <h2 id="founder-title">A real early-stage product, built from an actual problem.</h2>
                     <p>
-                        My name is Daniel. I am an A-Level graduate from Singapore, currently learning computer science
-                        to prepare for university, and I am also a aspiring forex trader.
+                        My name is Daniel. I am an A-Level graduate from Singapore, currently studying computer science
+                        before university, and I am also an aspiring forex trader building the kind of journal I wanted
+                        for my own review process.
                     </p>
                     <p>
                         I built FX Journal because the other journaling tools I found either felt too expensive, too
@@ -848,17 +842,17 @@
         color: rgba(255, 255, 255, 0.98);
         text-shadow: 0 0 24px rgba(255, 255, 255, 0.12);
         transition:
-            opacity 760ms cubic-bezier(.22, .61, .36, 1),
-            transform 760ms cubic-bezier(.22, .61, .36, 1),
-            filter 560ms cubic-bezier(.22, .61, .36, 1),
-            color 980ms cubic-bezier(.22, .61, .36, 1),
-            text-shadow 980ms cubic-bezier(.22, .61, .36, 1);
+            opacity 920ms cubic-bezier(.22, .61, .36, 1),
+            transform 920ms cubic-bezier(.22, .61, .36, 1),
+            filter 720ms cubic-bezier(.22, .61, .36, 1),
+            color 1180ms cubic-bezier(.22, .61, .36, 1),
+            text-shadow 1180ms cubic-bezier(.22, .61, .36, 1);
         transition-delay:
-            var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))),
-            var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))),
-            var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))),
-            calc(var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))) + 180ms),
-            calc(var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))) + 180ms);
+            var(--word-delay, calc(var(--word-index, 0) * 58ms + var(--word-base-delay, 0ms))),
+            var(--word-delay, calc(var(--word-index, 0) * 58ms + var(--word-base-delay, 0ms))),
+            var(--word-delay, calc(var(--word-index, 0) * 58ms + var(--word-base-delay, 0ms))),
+            calc(var(--word-delay, calc(var(--word-index, 0) * 58ms + var(--word-base-delay, 0ms))) + 320ms),
+            calc(var(--word-delay, calc(var(--word-index, 0) * 58ms + var(--word-base-delay, 0ms))) + 320ms);
     }
 
     body.landing-layout.js-landing-animate .hero-title.is-visible .hero-word {
@@ -874,11 +868,11 @@
         opacity: 1;
         transform: scaleX(1);
         transition:
-            transform 620ms cubic-bezier(.22, .61, .36, 1),
+            transform 760ms cubic-bezier(.22, .61, .36, 1),
             opacity 260ms ease;
         transition-delay:
-            calc(var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))) + 360ms),
-            calc(var(--word-delay, calc(var(--word-index, 0) * 40ms + var(--word-base-delay, 0ms))) + 360ms);
+            calc(var(--word-delay, calc(var(--word-index, 0) * 58ms + var(--word-base-delay, 0ms))) + 760ms),
+            calc(var(--word-delay, calc(var(--word-index, 0) * 58ms + var(--word-base-delay, 0ms))) + 760ms);
     }
 
     .landing-hero .lead {
@@ -1010,6 +1004,13 @@
             filter 520ms cubic-bezier(.22, .61, .36, 1);
         transition-delay: var(--enter-delay, 0ms);
         will-change: opacity, transform;
+    }
+
+    body.landing-layout.js-landing-animate .landing-hero .landing-reveal {
+        transition:
+            opacity 860ms cubic-bezier(.22, .61, .36, 1),
+            transform 860ms cubic-bezier(.22, .61, .36, 1),
+            filter 640ms cubic-bezier(.22, .61, .36, 1);
     }
 
     body.landing-layout.js-landing-animate .landing-reveal.is-visible {
@@ -1461,9 +1462,9 @@
         overflow: hidden;
         border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
         background:
-            linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent),
-            color-mix(in srgb, var(--surface-strong) 90%, #09111f);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            linear-gradient(180deg, color-mix(in srgb, var(--ink) 8%, transparent), transparent),
+            color-mix(in srgb, var(--surface) 90%, var(--bg));
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent);
         aspect-ratio: 16 / 9;
         min-height: 14.75rem;
         padding: 0.9rem;
@@ -1477,7 +1478,7 @@
         object-position: center;
     }
 
-    .feature-showcase-card-placeholder {
+    .feature-showcase-card-sync {
         background:
             radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 16%, transparent), transparent 38%),
             color-mix(in srgb, var(--surface) 82%, transparent);
@@ -1494,8 +1495,8 @@
         border-radius: 999px;
         padding: 0.24rem 0.64rem;
         background: color-mix(in srgb, var(--good) 16%, var(--surface));
-        color: color-mix(in srgb, var(--good) 84%, white 16%);
-        box-shadow: 0 10px 22px rgba(34, 197, 94, 0.14);
+        color: color-mix(in srgb, var(--good) 84%, var(--ink));
+        box-shadow: 0 10px 22px color-mix(in srgb, var(--good) 14%, transparent);
         font-family: var(--landing-font-mono);
         font-size: 0.66rem;
         font-weight: 800;
@@ -1512,9 +1513,9 @@
         background: linear-gradient(
             115deg,
             transparent 0%,
-            rgba(255, 255, 255, 0.05) 20%,
-            rgba(255, 255, 255, 0.34) 48%,
-            rgba(255, 255, 255, 0.08) 72%,
+            color-mix(in srgb, var(--ink) 5%, transparent) 20%,
+            color-mix(in srgb, var(--ink) 26%, transparent) 48%,
+            color-mix(in srgb, var(--ink) 8%, transparent) 72%,
             transparent 100%
         );
         transform: skewX(-18deg) translateX(0);
@@ -1541,122 +1542,87 @@
         }
     }
 
-    .feature-shot-placeholder {
-        display: grid;
-        gap: 0.75rem;
-        min-height: 14.75rem;
-        padding: 0.9rem;
-        align-content: start;
+    .feature-shot-sync-card {
         background:
-            linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent),
-            linear-gradient(135deg, rgba(27, 38, 59, 0.78), rgba(8, 15, 26, 0.94));
+            radial-gradient(circle at top right, color-mix(in srgb, var(--good) 18%, transparent), transparent 36%),
+            linear-gradient(180deg, color-mix(in srgb, var(--ink) 7%, transparent), transparent),
+            linear-gradient(135deg, color-mix(in srgb, var(--surface) 92%, transparent), color-mix(in srgb, var(--bg) 88%, transparent));
     }
 
-    .feature-shot-sync {
-        background:
-            radial-gradient(circle at top right, rgba(74, 222, 128, 0.18), transparent 36%),
-            linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent),
-            linear-gradient(135deg, rgba(18, 33, 30, 0.84), rgba(8, 15, 26, 0.96));
-    }
-
-    .feature-placeholder-chrome {
-        display: inline-flex;
-        gap: 0.35rem;
-    }
-
-    .feature-placeholder-chrome span {
-        width: 0.55rem;
-        height: 0.55rem;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.42);
-    }
-
-    .feature-placeholder-body,
-    .feature-placeholder-summary {
+    .feature-sync-visual {
         display: grid;
-        gap: 0.75rem;
-        padding: 0.9rem;
-        border-radius: 14px;
-        background: rgba(7, 12, 20, 0.44);
-        border: 1px solid rgba(255, 255, 255, 0.08);
+        gap: 0.72rem;
+        width: min(100%, 26rem);
+        padding: 1rem;
+        border-radius: 16px;
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        background: color-mix(in srgb, var(--surface) 90%, var(--bg));
+        box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ink) 6%, transparent);
     }
 
-    .feature-placeholder-dropzone {
-        padding: 0.9rem 1rem;
-        border-radius: 12px;
-        border: 1px dashed rgba(148, 163, 184, 0.55);
-        color: rgba(255, 255, 255, 0.9);
-        font-family: var(--landing-font-mono);
-        font-size: 0.78rem;
-        letter-spacing: 0.04em;
-        background: rgba(15, 23, 42, 0.55);
-    }
-
-    .feature-placeholder-row,
-    .feature-placeholder-metric {
-        display: flex;
-        justify-content: space-between;
-        gap: 1rem;
-        align-items: baseline;
-    }
-
-    .feature-placeholder-row span,
-    .feature-placeholder-metric span,
-    .feature-placeholder-label {
-        color: rgba(191, 219, 254, 0.72);
-        font-size: 0.76rem;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-    }
-
-    .feature-placeholder-row strong,
-    .feature-placeholder-metric strong {
-        color: rgba(255, 255, 255, 0.94);
-        font-size: 0.85rem;
-        font-weight: 700;
-        text-align: right;
-    }
-
-    .feature-placeholder-tags {
+    .feature-sync-visual-head,
+    .feature-sync-visual-badges {
         display: flex;
         flex-wrap: wrap;
         gap: 0.45rem;
     }
 
-    .feature-placeholder-tags span {
-        padding: 0.34rem 0.6rem;
-        border-radius: 999px;
-        background: rgba(56, 189, 248, 0.14);
-        border: 1px solid rgba(125, 211, 252, 0.2);
-        color: rgba(224, 242, 254, 0.92);
-        font-size: 0.74rem;
-        font-weight: 600;
-    }
-
-    .feature-sync-summary {
-        gap: 0.7rem;
-    }
-
-    .feature-sync-steps {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 0.45rem;
-    }
-
-    .feature-sync-steps span {
+    .feature-sync-visual-pill,
+    .feature-sync-visual-badges span {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 2rem;
-        padding: 0.35rem 0.5rem;
+        padding: 0.34rem 0.6rem;
         border-radius: 999px;
-        background: rgba(34, 197, 94, 0.12);
-        border: 1px solid rgba(134, 239, 172, 0.2);
-        color: rgba(220, 252, 231, 0.94);
+        border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        color: color-mix(in srgb, var(--muted) 76%, var(--ink));
         font-size: 0.72rem;
         font-weight: 700;
-        letter-spacing: 0.02em;
+        letter-spacing: 0.03em;
         text-align: center;
+    }
+
+    .feature-sync-visual-pill.is-accent {
+        border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+        background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+        color: color-mix(in srgb, var(--accent) 74%, var(--ink));
+    }
+
+    .feature-sync-visual-list {
+        display: grid;
+        gap: 0.58rem;
+        padding: 0.88rem 0.92rem;
+        border-radius: 14px;
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        background: color-mix(in srgb, var(--surface) 94%, transparent);
+    }
+
+    .feature-sync-visual-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.9rem;
+        align-items: baseline;
+    }
+
+    .feature-sync-visual-label {
+        color: var(--muted);
+        font-size: 0.76rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .feature-sync-visual-value {
+        color: var(--ink);
+        font-size: 0.88rem;
+        font-weight: 700;
+        text-align: right;
+    }
+
+    .feature-sync-visual-badges span {
+        background: color-mix(in srgb, var(--good) 10%, var(--surface));
+        border-color: color-mix(in srgb, var(--good) 30%, var(--border));
+        color: color-mix(in srgb, var(--good) 68%, var(--ink));
     }
 
     .feature-kicker {
@@ -1788,7 +1754,7 @@
         }
 
         .feature-shot,
-        .feature-shot-placeholder {
+        .feature-shot-sync-card {
             aspect-ratio: unset;
             height: 14rem;
             min-height: 0;

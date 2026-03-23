@@ -115,6 +115,15 @@ def is_trade_running(trade):
     )
 
 
+def is_weekly_checkin_complete(checkin):
+    if checkin is None:
+        return False
+    emotional_state = str(getattr(checkin, "emotional_state", "") or "").strip()
+    plan_adherence = str(getattr(checkin, "plan_adherence", "") or "").strip()
+    execution_quality = str(getattr(checkin, "execution_quality", "") or "").strip()
+    return bool(emotional_state and plan_adherence and execution_quality)
+
+
 def build_trade_duplicate_key(
     *,
     symbol,

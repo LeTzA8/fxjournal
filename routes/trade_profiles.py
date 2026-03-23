@@ -27,7 +27,7 @@ def strategies():
         try:
             create_trade_profile(user_id, name, short_description)
             db.session.commit()
-            flash("Trade profile created successfully.", "success")
+            flash("Strategy created successfully.", "success")
             return redirect(url_for("trade_profiles.strategies"))
         except ValueError as exc:
             db.session.rollback()
@@ -35,7 +35,7 @@ def strategies():
             return redirect(url_for("trade_profiles.strategies"))
         except (OperationalError, IntegrityError):
             db.session.rollback()
-            flash("Could not create the trade profile right now. Please try again.", "error")
+            flash("Could not create the strategy right now. Please try again.", "error")
             return redirect(url_for("trade_profiles.strategies"))
 
     profiles = get_user_trade_profiles(user_id)
@@ -62,7 +62,7 @@ def edit_strategy(profile_pubkey):
     user_id = session["user_id"]
     profile = get_user_trade_profile_by_pubkey(user_id, profile_pubkey)
     if profile is None:
-        flash("Trade profile not found.", "error")
+        flash("Strategy not found.", "error")
         return redirect(url_for("trade_profiles.strategies"))
 
     name = request.form.get("name", "").strip()
@@ -70,7 +70,7 @@ def edit_strategy(profile_pubkey):
     try:
         update_trade_profile(profile, name, short_description)
         db.session.commit()
-        flash("Trade profile updated successfully and saved as a new version.", "success")
+        flash("Strategy updated successfully and saved as a new version.", "success")
         return redirect(url_for("trade_profiles.strategies"))
     except ValueError as exc:
         db.session.rollback()
@@ -78,7 +78,7 @@ def edit_strategy(profile_pubkey):
         return redirect(url_for("trade_profiles.strategies", edit=profile.pubkey))
     except (OperationalError, IntegrityError):
         db.session.rollback()
-        flash("Could not update the trade profile right now. Please try again.", "error")
+        flash("Could not update the strategy right now. Please try again.", "error")
         return redirect(url_for("trade_profiles.strategies", edit=profile.pubkey))
 
 
@@ -89,11 +89,11 @@ def archive_strategy(profile_pubkey):
     user_id = session["user_id"]
     profile = get_user_trade_profile_by_pubkey(user_id, profile_pubkey)
     if profile is None:
-        flash("Trade profile not found.", "error")
+        flash("Strategy not found.", "error")
         return redirect(url_for("trade_profiles.strategies"))
 
     profile.is_archived = True
     profile.updated_at = utcnow_naive()
     db.session.commit()
-    flash("Trade profile archived successfully.", "success")
+    flash("Strategy archived successfully.", "success")
     return redirect(url_for("trade_profiles.strategies"))

@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import routes.dashboard as dashboard_routes
-from models import Trade, TradeAccount, User, db
+from models import Trade, TradeAccount, User, UserProfile, db
 
 
 def _create_logged_in_user(client, username, email):
@@ -187,3 +187,31 @@ def test_dashboard_home_normalizes_broken_rule_prefix_in_weekly_ai_review(app_ct
     assert response.status_code == 200
     assert "Rule: Keep risk fixed." in response_text
     assert "\u00e2\u2020'" not in response_text
+
+
+def test_dashboard_home_shows_onboarding_banner_when_profile_was_skipped(app_ctx, client, monkeypatch):
+    user, _trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-onboarding-skip-user",
+        email="dashboard-onboarding-skip@example.com",
+    )
+    db.session.add(UserProfile(user_id=user.id, skipped=True))
+    db.session.commit()
+
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b"Complete Onboarding" in response.data
+    assert b"You skipped the questionnaire earlier" in response.data

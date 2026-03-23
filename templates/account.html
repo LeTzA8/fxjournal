@@ -24,62 +24,92 @@
         </header>
 
         <section class="panel-grid">
-            <article class="panel profile-panel">
+            <div class="account-side-stack">
+                <article class="panel profile-panel">
+                    <div class="panel-head">
+                        <h2>Account Overview</h2>
+                        <span class="soft">Core Details</span>
+                    </div>
+
+                    <dl class="profile-list">
+                        <div class="profile-row">
+                            <dt>Username</dt>
+                            <dd>{{ account_user.username }}</dd>
+                        </div>
+                        <div class="profile-row">
+                            <dt>Primary Email</dt>
+                            <dd>{{ account_user.email }}</dd>
+                        </div>
+                        <div class="profile-row">
+                            <dt>Email Status</dt>
+                            <dd>
+                                {% if email_verified %}
+                                Verified
+                                {% else %}
+                                Needs verification
+                                {% endif %}
+                            </dd>
+                        </div>
+                        <div class="profile-row">
+                            <dt>Display Timezone</dt>
+                            <dd>{{ display_timezone_name }}</dd>
+                        </div>
+                        <div class="profile-row">
+                            <dt>Active Account</dt>
+                            <dd>{{ active_trade_account.name if active_trade_account else "No active trade account" }}</dd>
+                        </div>
+                    </dl>
+                    {% if not email_verified %}
+                    <p class="helper-note">Email not verified yet. Verify your current email before requesting an email change.</p>
+                    {% endif %}
+                </article>
+
+                <article class="panel profile-panel trading-profile-panel">
+                    <div class="panel-head">
+                        <h2>Trading Profile</h2>
+                        <span class="soft">AI Tuning</span>
+                    </div>
+
+                    <p class="helper-note profile-summary">
+                        {% if onboarding_completed %}
+                        These onboarding answers help FX Journal tune jargon, examples, and weekly AI review tone around how you actually trade.
+                        {% elif onboarding_was_skipped %}
+                        You skipped this earlier, which is fine. You can set it here now so the dashboard and AI reviews feel more tailored to your trading.
+                        {% else %}
+                        Set this once and update it anytime. These answers shape timeframe assumptions, market examples, and jargon level across the app.
+                        {% endif %}
+                    </p>
+                    <div class="profile-tag-grid" aria-label="Trading profile answers">
+                        {% for card in trading_profile_cards %}
+                        <article class="profile-tag">
+                            <span class="profile-tag-label">{{ card.label }}</span>
+                            <strong class="profile-tag-value">{{ card.value }}</strong>
+                            <span class="profile-tag-meta">{{ card.value_hint }}</span>
+                            <p class="profile-tag-help">{{ card.help }}</p>
+                        </article>
+                        {% endfor %}
+                    </div>
+                    <div class="card-action-row">
+                        <button
+                            type="button"
+                            class="submit-btn"
+                            id="openTradingProfileDialog"
+                            aria-haspopup="dialog"
+                            aria-controls="tradingProfileDialog"
+                        >
+                            Edit Trading Profile
+                        </button>
+                    </div>
+                </article>
+            </div>
+
+            <article class="panel action-panel">
                 <div class="panel-head">
-                    <h2>Profile Overview</h2>
-                    <span class="soft">Read Only</span>
+                    <h2>Manage Settings</h2>
+                    <span class="soft">Popup Forms</span>
                 </div>
 
-                <dl class="profile-list">
-                    <div class="profile-row">
-                        <dt>Username</dt>
-                        <dd>{{ account_user.username }}</dd>
-                    </div>
-                    <div class="profile-row">
-                        <dt>Email</dt>
-                        <dd>{{ account_user.email }}</dd>
-                    </div>
-                    <div class="profile-row">
-                        <dt>Email Verified</dt>
-                        <dd>
-                            {% if email_verified %}
-                            Yes
-                            {% else %}
-                            No
-                            {% endif %}
-                        </dd>
-                    </div>
-                    <div class="profile-row">
-                        <dt>Total Trades</dt>
-                        <dd>{{ total_trades }}</dd>
-                    </div>
-                    <div class="profile-row">
-                        <dt>Closed Trades</dt>
-                        <dd>{{ closed_trades }}</dd>
-                    </div>
-                    <div class="profile-row">
-                        <dt>Running Trades</dt>
-                        <dd>{{ running_trades }}</dd>
-                    </div>
-                    <div class="profile-row">
-                        <dt>Imported Trades</dt>
-                        <dd>{{ imported_trades }}</dd>
-                    </div>
-                    <div class="profile-row">
-                        <dt>Display Timezone</dt>
-                        <dd>{{ display_timezone_name }}</dd>
-                    </div>
-                </dl>
-                {% if not email_verified %}
-                <p class="helper-note">Email not verified yet. Verify your current email before requesting an email change.</p>
-                {% endif %}
-            </article>
-
-            <article class="panel edit-panel">
-                <div class="panel-head">
-                    <h2>Edit Details</h2>
-                    <span class="soft">Secure Form</span>
-                </div>
+                <p class="helper-note">Open edit and delete actions only when you need them so the page stays easier to scan.</p>
 
                 {% if pending_email %}
                 <div class="pending-email-box">
@@ -114,43 +144,23 @@
                 </div>
                 {% endif %}
 
-                <form action="/account" method="post" class="account-form" data-themed-validation>
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                    <label for="username">Username</label>
-                    <input
-                        id="username"
-                        name="username"
-                        type="text"
-                        value="{{ account_user.username }}"
-                        required
-                        maxlength="80"
-                        autocomplete="username"
+                <div class="action-stack">
+                    <button
+                        type="button"
+                        class="submit-btn"
+                        id="openAccountDetailsDialog"
+                        aria-haspopup="dialog"
+                        aria-controls="accountDetailsDialog"
                     >
-
-                    <label for="email">Email</label>
-                    <input
-                        id="email"
-                        name="email"
-                        type="email"
-                        value="{{ account_user.email }}"
-                        required
-                        maxlength="120"
-                        autocomplete="email"
-                    >
-                    <p class="helper-note">Changing your email requires confirmation from both your current email address and your new email address.</p>
-
-                    <div class="form-actions">
-                        <button type="submit" class="submit-btn">Save Changes</button>
-                        <button type="reset" class="ghost-btn" aria-label="Reset account form">Reset</button>
-                    </div>
-                </form>
+                        Edit Account Details
+                    </button>
+                </div>
 
                 <hr class="section-divider">
                 <h3 class="section-title">Password Reset</h3>
                 <p class="helper-note">Use email link reset instead of entering passwords here.</p>
                 <p class="helper-note">Reset link will be sent to <strong>{{ account_user.email }}</strong>.</p>
-                <form action="/account/password-reset-email" method="post" class="password-reset-form">
+                <form action="{{ url_for('account.account_password_reset_email') }}" method="post" class="password-reset-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="submit-btn">Email Password Reset Link</button>
                 </form>
@@ -163,33 +173,159 @@
                 <p class="helper-note danger-note">
                     This permanently deletes your user profile, all trade accounts, all trades, and all linked AI reviews. This action cannot be undone.
                 </p>
-                <form action="{{ url_for('account.delete_account') }}" method="post" class="delete-account-form" data-themed-validation>
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <label for="delete_confirmation">
-                        Type <strong>DELETE</strong> to confirm
-                    </label>
-                    <input
-                        id="delete_confirmation"
-                        name="delete_confirmation"
-                        type="text"
-                        placeholder="DELETE"
-                        required
-                        autocomplete="off"
-                    >
-                    <label class="delete-check">
-                        <input id="delete_acknowledge" name="delete_acknowledge" type="checkbox" required>
-                        <span>I understand this is permanent and cannot be undone.</span>
-                    </label>
-                    <div class="form-actions">
-                        <button type="submit" class="logout-btn delete-btn">Delete My Account</button>
-                    </div>
-                </form>
+                <button
+                    type="button"
+                    class="logout-btn delete-btn"
+                    id="openDeleteAccountDialog"
+                    aria-haspopup="dialog"
+                    aria-controls="deleteAccountDialog"
+                >
+                    Delete My Account
+                </button>
             </article>
         </section>
     </div>
 </section>
 
+<dialog id="accountDetailsDialog" class="confirm-dialog action-dialog" aria-labelledby="accountDetailsDialogTitle">
+    <div class="confirm-dialog-shell">
+        <div class="panel-head">
+            <h2 id="accountDetailsDialogTitle">Edit Account Details</h2>
+            <span class="soft">Secure Form</span>
+        </div>
+        <form action="{{ url_for('account.account') }}" method="post" class="account-form" data-themed-validation>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="form_name" value="account_details">
+
+            <label for="dialog_username">Username</label>
+            <input
+                id="dialog_username"
+                name="username"
+                type="text"
+                value="{{ account_user.username }}"
+                required
+                maxlength="80"
+                autocomplete="username"
+            >
+
+            <label for="dialog_email">Email</label>
+            <input
+                id="dialog_email"
+                name="email"
+                type="email"
+                value="{{ account_user.email }}"
+                required
+                maxlength="120"
+                autocomplete="email"
+            >
+            <p class="helper-note">Changing your email requires confirmation from both your current email address and your new email address.</p>
+
+            <div class="dialog-actions form-actions">
+                <button type="button" class="ghost-btn" id="cancelAccountDetailsDialog">Cancel</button>
+                <button type="submit" class="submit-btn">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<dialog id="tradingProfileDialog" class="confirm-dialog action-dialog" aria-labelledby="tradingProfileDialogTitle">
+    <div class="confirm-dialog-shell">
+        <div class="panel-head">
+            <h2 id="tradingProfileDialogTitle">Edit Trading Profile</h2>
+            <span class="soft">AI Tuning</span>
+        </div>
+        <form action="{{ url_for('account.account') }}" method="post" class="trading-profile-form" data-themed-validation>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="form_name" value="trading_profile">
+
+            <div class="trading-profile-fields">
+                <div class="trading-profile-field">
+                    <label for="profile_trading_style">Trading Style</label>
+                    <p class="helper-note">Use the closest match for your normal holding period. Intraday means same-day trades held for hours.</p>
+                    <select id="profile_trading_style" name="trading_style" required>
+                        <option value="">Select trading style</option>
+                        {% for option in trading_style_options %}
+                        <option value="{{ option.value }}" {% if profile_values.trading_style == option.value %}selected{% endif %}>
+                            {{ option.label }}{% if option.hint %} ({{ option.hint }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="trading-profile-field">
+                    <label for="profile_instruments">Main Instruments</label>
+                    <p class="helper-note">This tells the AI what markets you want examples and comparisons anchored to most of the time.</p>
+                    <select id="profile_instruments" name="instruments" required>
+                        <option value="">Select main instruments</option>
+                        {% for option in instrument_options %}
+                        <option value="{{ option.value }}" {% if profile_values.instruments == option.value %}selected{% endif %}>
+                            {{ option.label }}{% if option.hint %} ({{ option.hint }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="trading-profile-field">
+                    <label for="profile_experience_level">Experience Level</label>
+                    <p class="helper-note">This keeps the review language at the right level, from more guided coaching to more direct, higher-context feedback.</p>
+                    <select id="profile_experience_level" name="experience_level" required>
+                        <option value="">Select experience level</option>
+                        {% for option in experience_level_options %}
+                        <option value="{{ option.value }}" {% if profile_values.experience_level == option.value %}selected{% endif %}>
+                            {{ option.label }}{% if option.hint %} ({{ option.hint }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="dialog-actions form-actions">
+                <button type="button" class="ghost-btn" id="cancelTradingProfileDialog">Cancel</button>
+                <button type="submit" class="submit-btn">Save Trading Profile</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<dialog id="deleteAccountDialog" class="confirm-dialog" aria-labelledby="deleteAccountDialogTitle">
+    <div class="confirm-dialog-shell">
+        <div class="panel-head">
+            <h2 id="deleteAccountDialogTitle">Delete Account</h2>
+            <span class="soft">Danger Zone</span>
+        </div>
+        <p class="helper-note danger-note">
+            This permanently deletes your user profile, all trade accounts, all trades, and all linked AI reviews. This action cannot be undone.
+        </p>
+        <form action="{{ url_for('account.delete_account') }}" method="post" class="delete-account-form" data-themed-validation>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label for="delete_confirmation">
+                Type <strong>DELETE</strong> to confirm
+            </label>
+            <input
+                id="delete_confirmation"
+                name="delete_confirmation"
+                type="text"
+                placeholder="DELETE"
+                required
+                autocomplete="off"
+            >
+            <label class="delete-check">
+                <input id="delete_acknowledge" name="delete_acknowledge" type="checkbox" required>
+                <span>I understand this is permanent and cannot be undone.</span>
+            </label>
+            <div class="dialog-actions form-actions">
+                <button type="button" class="ghost-btn" id="cancelDeleteAccountDialog">Cancel</button>
+                <button type="submit" class="logout-btn delete-btn">Delete My Account</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
 <style>
+    .action-dialog .confirm-dialog-shell {
+        border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+    }
+
     .logout-btn { border: 1px solid #d3b1ae;  border-radius: 8px;
         padding: 0.46rem 0.7rem;
         font-weight: 700;
@@ -197,10 +333,27 @@
         letter-spacing: 0.03em;
         text-transform: uppercase;
         cursor: pointer; }
-.panel-grid { display: grid;
-        grid-template-columns: 1fr 1.1fr;
+    .panel-grid { display: grid;
+        grid-template-columns: minmax(280px, 0.88fr) minmax(0, 1.12fr);
         gap: 0.8rem;
         align-items: start; }
+
+    .account-side-stack { display: grid;
+        gap: 0.8rem; }
+
+    .action-panel,
+    .action-stack,
+    .card-action-row { display: grid;
+        gap: 0.7rem; }
+
+    .card-action-row {
+        margin-top: 0.78rem;
+        justify-items: start;
+    }
+
+    .action-stack > * {
+        justify-self: start;
+    }
 
     .panel { border-radius: 14px;
         padding: 0.9rem;
@@ -229,6 +382,55 @@
         font-weight: 700;
         text-align: right;
         overflow-wrap: anywhere; }
+
+    .profile-summary { margin-top: 0; }
+
+    .profile-tag-grid { display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.6rem;
+        margin-top: 0.2rem; }
+
+    .profile-tag { display: grid;
+        gap: 0.24rem;
+        padding: 0.72rem 0.78rem;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 84%, var(--card)); }
+
+    .profile-tag-label { font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted); }
+
+    .profile-tag-value { font-size: 0.9rem;
+        color: var(--ink); }
+
+    .profile-tag-meta {
+        font-size: 0.74rem;
+        font-weight: 700;
+        color: color-mix(in srgb, var(--accent) 54%, var(--ink));
+    }
+
+    .profile-tag-help {
+        margin: 0;
+        font-size: 0.78rem;
+        line-height: 1.45;
+        color: var(--muted);
+    }
+
+    .trading-profile-form { display: grid;
+        gap: 0.7rem; }
+
+    .trading-profile-fields {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .trading-profile-field {
+        display: grid;
+        gap: 0.32rem;
+    }
 
     .account-form { display: grid;
         gap: 0.64rem; }
@@ -263,12 +465,14 @@
         font-weight: 700; text-transform: uppercase;
         letter-spacing: 0.04em; }
 
-    .account-form input { width: 100%;
+    .account-form input,
+    .trading-profile-form select { width: 100%;
         border: 1px solid #c7d5cb; border-radius: 10px;
         padding: 0.66rem 0.72rem; font: inherit;
         transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease; }
 
-    .account-form input:focus { outline: none;
+    .account-form input:focus,
+    .trading-profile-form select:focus { outline: none;
         border-color: #2b7d50;
         box-shadow: 0 0 0 4px rgba(43, 125, 80, 0.15);
         transform: translateY(-1px); }
@@ -357,6 +561,11 @@
         cursor: pointer;
         box-shadow: 0 5px 14px rgba(34, 107, 69, 0.22); }
 
+    .account-link-btn { display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none; }
+
     .submit-btn:hover { filter: brightness(1.03);
         transform: translateY(-1px); }
 
@@ -367,7 +576,8 @@
         letter-spacing: 0.03em;
         text-transform: uppercase;
         cursor: pointer; }
-@media (max-width: 980px) { .panel-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 980px) { .panel-grid { grid-template-columns: 1fr; }
+        .profile-tag-grid { grid-template-columns: 1fr; } }
 
     @media (max-width: 700px) { .dash-wrap { padding: 0.9rem; }
 
@@ -385,4 +595,8 @@
         .profile-row dd { text-align: left; } }
 </style>
 
+{% endblock %}
+
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/account_page.js') }}"></script>
 {% endblock %}

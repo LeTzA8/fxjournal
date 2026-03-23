@@ -5,7 +5,6 @@ from sqlalchemy.exc import OperationalError
 
 from ai_service import (
     MIN_CLOSED_TRADES_FOR_ADVICE,
-    get_current_market_week_period,
     get_latest_trade_week_period,
     get_latest_weekly_dashboard_advice,
     get_weekly_dashboard_period,
@@ -28,10 +27,11 @@ from helpers.core import (
     get_active_trade_account_for_user,
     get_display_timezone_name,
     get_user_trade_accounts,
+    is_weekly_checkin_complete,
     is_trade_running,
 )
 from helpers.utils import login_required, utcnow_naive
-from models import Trade, WeeklyCheckin, db
+from models import Trade, UserProfile, WeeklyCheckin, db
 from trading import (
     SMALL_SAMPLE_MIN_TRADES,
     build_rr_summary,
@@ -120,14 +120,16 @@ def _get_weekly_checkin_banner_state(user_id, active_trade_account):
     if account_id is None:
         return {
             "show_weekly_checkin_banner": False,
+            "weekly_checkin_was_skipped": False,
             "weekly_checkin_closed_trade_count": 0,
         }
 
-    period = get_current_market_week_period(now_utc=utcnow_naive())
+    period = get_weekly_dashboard_period(now_utc=utcnow_naive())
     closed_trade_count = _count_closed_trades_for_period(user_id, account_id, period)
     if closed_trade_count <= 0:
         return {
             "show_weekly_checkin_banner": False,
+            "weekly_checkin_was_skipped": False,
             "weekly_checkin_closed_trade_count": 0,
         }
 
@@ -142,9 +144,27 @@ def _get_weekly_checkin_banner_state(user_id, active_trade_account):
         existing_checkin = None
         closed_trade_count = 0
 
+    checkin_is_complete = is_weekly_checkin_complete(existing_checkin)
+
     return {
-        "show_weekly_checkin_banner": existing_checkin is None and closed_trade_count > 0,
+        "show_weekly_checkin_banner": not checkin_is_complete and closed_trade_count > 0,
+        "weekly_checkin_was_skipped": existing_checkin is not None and not checkin_is_complete,
         "weekly_checkin_closed_trade_count": closed_trade_count,
+    }
+
+
+def _get_onboarding_banner_state(user_id):
+    try:
+        profile = UserProfile.query.filter_by(user_id=user_id).first()
+    except OperationalError:
+        db.session.rollback()
+        profile = None
+
+    is_complete = profile is not None and getattr(profile, "completed_at", None) is not None
+    was_skipped = bool(profile is not None and getattr(profile, "skipped", False) and not is_complete)
+    return {
+        "show_onboarding_banner": not is_complete,
+        "onboarding_was_skipped": was_skipped,
     }
 
 
@@ -578,6 +598,7 @@ def home():
             weekly_ai_state["weekly_ai_review"].response_text
         )
     weekly_checkin_banner_state = _get_weekly_checkin_banner_state(user_id, active_trade_account)
+    onboarding_banner_state = _get_onboarding_banner_state(user_id)
     has_any_trades = bool(user_trades)
     has_closed_trades = closed_trade_count > 0
     has_ai_review = weekly_ai_state["weekly_ai_review"] is not None
@@ -607,7 +628,10 @@ def home():
         weekly_ai_period_label=weekly_ai_state["weekly_ai_period_label"],
         weekly_ai_empty_message=weekly_ai_state["weekly_ai_empty_message"],
         weekly_ai_is_generating=weekly_ai_state["weekly_ai_is_generating"],
+        show_onboarding_banner=onboarding_banner_state["show_onboarding_banner"],
+        onboarding_was_skipped=onboarding_banner_state["onboarding_was_skipped"],
         show_weekly_checkin_banner=weekly_checkin_banner_state["show_weekly_checkin_banner"],
+        weekly_checkin_was_skipped=weekly_checkin_banner_state["weekly_checkin_was_skipped"],
         weekly_checkin_closed_trade_count=weekly_checkin_banner_state["weekly_checkin_closed_trade_count"],
         has_any_trades=has_any_trades,
         has_closed_trades=has_closed_trades,

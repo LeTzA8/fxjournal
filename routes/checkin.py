@@ -2,8 +2,8 @@ from datetime import timedelta
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
-from ai_service import get_current_market_week_period
-from helpers.core import get_active_trade_account_for_user
+from ai_service import get_weekly_dashboard_period
+from helpers.core import get_active_trade_account_for_user, is_weekly_checkin_complete
 from helpers.utils import login_required, utcnow_naive
 from models import Trade, WeeklyCheckin, db
 
@@ -79,7 +79,7 @@ def _get_current_weekly_checkin(*, user_id, trade_account_id, period):
 
 def _render_checkin_page(*, error=None, form_data=None, active_trade_account=None, period=None):
     form_data = form_data or {}
-    period = period or get_current_market_week_period()
+    period = period or get_weekly_dashboard_period()
     week_start_utc = period.get("period_start_utc")
     week_end_utc = period.get("period_end_utc")
     week_label = ""
@@ -114,7 +114,7 @@ def checkin():
     if active_trade_account is None:
         return redirect(url_for("dashboard.home"))
 
-    period = get_current_market_week_period(now_utc=utcnow_naive())
+    period = get_weekly_dashboard_period(now_utc=utcnow_naive())
     closed_trade_count = _count_closed_trades_for_period(
         user_id=user_id,
         trade_account_id=active_trade_account.id,
@@ -125,7 +125,9 @@ def checkin():
         trade_account_id=active_trade_account.id,
         period=period,
     )
-    if closed_trade_count <= 0 or (existing_checkin is not None and request.method == "GET"):
+    if closed_trade_count <= 0 or (
+        is_weekly_checkin_complete(existing_checkin) and request.method == "GET"
+    ):
         return redirect(url_for("dashboard.home"))
 
     if request.method == "POST":
@@ -181,7 +183,7 @@ def skip_checkin():
     if active_trade_account is None:
         return redirect(url_for("dashboard.home"))
 
-    period = get_current_market_week_period(now_utc=utcnow_naive())
+    period = get_weekly_dashboard_period(now_utc=utcnow_naive())
     closed_trade_count = _count_closed_trades_for_period(
         user_id=user_id,
         trade_account_id=active_trade_account.id,

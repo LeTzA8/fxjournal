@@ -401,12 +401,12 @@ def batch_update_trade_profile():
         return redirect(url_for("trades.manage_trades"))
     except (OperationalError, IntegrityError):
         db.session.rollback()
-        flash("Could not update the selected trade profiles right now.", "error")
+        flash("Could not update the selected strategies right now.", "error")
         return redirect(url_for("trades.manage_trades"))
 
     action_label = "cleared" if not selected_profile_pubkey else "updated"
     flash(
-        f"Trade profile {action_label} for {len(trades_to_update)} trade"
+        f"Strategy {action_label} for {len(trades_to_update)} trade"
         f"{'s' if len(trades_to_update) != 1 else ''}.",
         "success",
     )
@@ -895,7 +895,7 @@ def trade_detail(trade_pubkey):
             trade_profile_version.short_description
             if trade_profile_version is not None
             and trade_profile_version.short_description
-            else "No trade profile attached to this trade."
+            else "No strategy attached to this trade."
         ),
     )
 

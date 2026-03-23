@@ -3,6 +3,12 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from auth_account import (
+    ONBOARDING_EXPERIENCE_LEVEL_OPTIONS,
+    ONBOARDING_INSTRUMENT_OPTIONS,
+    ONBOARDING_TRADING_STYLE_OPTIONS,
+    VALID_ONBOARDING_EXPERIENCE_LEVELS,
+    VALID_ONBOARDING_INSTRUMENTS,
+    VALID_ONBOARDING_TRADING_STYLES,
     build_external_url,
     generate_email_change_token,
     generate_password_reset_token,
@@ -12,11 +18,48 @@ from auth_account import (
 )
 from extensions import limiter
 from helpers.core import delete_users_with_related_data, is_local_dev_environment
-from models import MT5Account, Trade, User, db
+from models import MT5Account, User, UserProfile, db
 from helpers.utils import env_int, login_required, utcnow_naive
 
 TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
+
+TRADING_STYLE_LABELS = {
+    "scalper": "Scalper",
+    "intraday": "Intraday",
+    "swing": "Swing",
+    "position": "Position",
+}
+INSTRUMENT_LABELS = {
+    "forex": "Forex only",
+    "indices": "Indices only",
+    "gold": "Gold / Commodities",
+    "mixed": "Mixed",
+}
+EXPERIENCE_LEVEL_LABELS = {
+    "beginner": "Just starting out",
+    "intermediate": "Some experience",
+    "experienced": "Experienced",
+}
+TRADING_STYLE_HINTS = {
+    option["value"]: option.get("hint", "") for option in ONBOARDING_TRADING_STYLE_OPTIONS
+}
+INSTRUMENT_HINTS = {
+    option["value"]: option.get("hint", "") for option in ONBOARDING_INSTRUMENT_OPTIONS
+}
+EXPERIENCE_LEVEL_HINTS = {
+    option["value"]: option.get("hint", "") for option in ONBOARDING_EXPERIENCE_LEVEL_OPTIONS
+}
+PROFILE_FIELD_HELP = {
+    "trading_style": "Sets the timeframe lens the AI uses when it talks about pacing, holding time, and execution rhythm.",
+    "instruments": "Guides whether examples lean more FX-specific, index-focused, commodity-focused, or mixed across markets.",
+    "experience_level": "Controls jargon depth and how much the AI should explain versus assume.",
+}
+PROFILE_EMPTY_HINTS = {
+    "trading_style": "Pick the closest usual holding period.",
+    "instruments": "Choose the markets you trade most often.",
+    "experience_level": "Choose the level that matches your real comfort today.",
+}
 
 bp = Blueprint("account", __name__)
 
@@ -25,8 +68,44 @@ bp = Blueprint("account", __name__)
 @login_required
 def account():
     user = User.query.filter_by(id=session["user_id"]).first_or_404()
+    profile = user.user_profile
 
     if request.method == "POST":
+        form_name = request.form.get("form_name", "account_details").strip().lower()
+
+        if form_name == "trading_profile":
+            trading_style = request.form.get("trading_style", "").strip().lower()
+            instruments = request.form.get("instruments", "").strip().lower()
+            experience_level = request.form.get("experience_level", "").strip().lower()
+
+            if (
+                trading_style not in VALID_ONBOARDING_TRADING_STYLES
+                or instruments not in VALID_ONBOARDING_INSTRUMENTS
+                or experience_level not in VALID_ONBOARDING_EXPERIENCE_LEVELS
+            ):
+                flash("Choose one option for trading style, markets, and experience level.", "error")
+                return redirect(url_for("account.account"))
+
+            if profile is None:
+                profile = UserProfile(user_id=user.id)
+                db.session.add(profile)
+
+            profile.trading_style = trading_style
+            profile.instruments = instruments
+            profile.experience_level = experience_level
+            profile.completed_at = profile.completed_at or utcnow_naive()
+            profile.skipped = False
+
+            try:
+                db.session.commit()
+            except OperationalError:
+                db.session.rollback()
+                flash("Could not update your trading profile right now. Please try again.", "error")
+                return redirect(url_for("account.account"))
+
+            flash("Trading profile updated successfully.", "success")
+            return redirect(url_for("account.account"))
+
         username = request.form.get("username", "").strip()
         email = request.form.get("email", "").strip().lower()
 
@@ -182,22 +261,48 @@ def account():
     ):
         debug_email_change_new_link = ""
 
-    total_trades = Trade.query.filter_by(user_id=user.id).count()
-    closed_trades = (
-        Trade.query.filter_by(user_id=user.id)
-        .filter(
-            or_(
-                Trade.closed_at.isnot(None),
-                Trade.exit_price.isnot(None),
-                Trade.pnl.isnot(None),
-            )
-        )
-        .count()
+    onboarding_completed = profile is not None and getattr(profile, "completed_at", None) is not None
+    onboarding_was_skipped = bool(
+        profile is not None and getattr(profile, "skipped", False) and not onboarding_completed
     )
-    imported_trades = (
-        Trade.query.filter_by(user_id=user.id)
-        .filter(Trade.import_signature.isnot(None))
-        .count()
+    profile_values = {
+        "trading_style": str(getattr(profile, "trading_style", "") or "").strip().lower(),
+        "instruments": str(getattr(profile, "instruments", "") or "").strip().lower(),
+        "experience_level": str(getattr(profile, "experience_level", "") or "").strip().lower(),
+    }
+    trading_profile = {
+        "trading_style": TRADING_STYLE_LABELS.get(profile_values["trading_style"], "Not set"),
+        "instruments": INSTRUMENT_LABELS.get(profile_values["instruments"], "Not set"),
+        "experience_level": EXPERIENCE_LEVEL_LABELS.get(profile_values["experience_level"], "Not set"),
+    }
+    trading_profile_cards = (
+        {
+            "label": "Trading style",
+            "value": trading_profile["trading_style"],
+            "value_hint": TRADING_STYLE_HINTS.get(
+                profile_values["trading_style"],
+                PROFILE_EMPTY_HINTS["trading_style"],
+            ),
+            "help": PROFILE_FIELD_HELP["trading_style"],
+        },
+        {
+            "label": "Markets",
+            "value": trading_profile["instruments"],
+            "value_hint": INSTRUMENT_HINTS.get(
+                profile_values["instruments"],
+                PROFILE_EMPTY_HINTS["instruments"],
+            ),
+            "help": PROFILE_FIELD_HELP["instruments"],
+        },
+        {
+            "label": "Experience",
+            "value": trading_profile["experience_level"],
+            "value_hint": EXPERIENCE_LEVEL_HINTS.get(
+                profile_values["experience_level"],
+                PROFILE_EMPTY_HINTS["experience_level"],
+            ),
+            "help": PROFILE_FIELD_HELP["experience_level"],
+        },
     )
 
     return render_template(
@@ -206,10 +311,6 @@ def account():
         username=session.get("username", "User"),
         account_user=user,
         email_verified=bool(user.email_verified),
-        total_trades=total_trades,
-        closed_trades=closed_trades,
-        running_trades=max(total_trades - closed_trades, 0),
-        imported_trades=imported_trades,
         debug_reset_link=debug_reset_link or None,
         debug_email_change_current_link=debug_email_change_current_link or None,
         debug_email_change_new_link=debug_email_change_new_link or None,
@@ -217,6 +318,14 @@ def account():
         pending_email_change_requested_at=user.pending_email_change_requested_at,
         pending_email_change_current_verified=bool(user.pending_email_change_current_verified_at),
         pending_email_change_new_verified=bool(user.pending_email_change_new_verified_at),
+        onboarding_completed=onboarding_completed,
+        onboarding_was_skipped=onboarding_was_skipped,
+        trading_profile=trading_profile,
+        trading_profile_cards=trading_profile_cards,
+        profile_values=profile_values,
+        trading_style_options=ONBOARDING_TRADING_STYLE_OPTIONS,
+        instrument_options=ONBOARDING_INSTRUMENT_OPTIONS,
+        experience_level_options=ONBOARDING_EXPERIENCE_LEVEL_OPTIONS,
         user_trade_accounts=getattr(g, "user_trade_accounts", []),
         active_trade_account=getattr(g, "active_trade_account", None),
     )

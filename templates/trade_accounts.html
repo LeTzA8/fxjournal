@@ -18,7 +18,12 @@
             </div>
         </header>
 
-        <section class="panel-grid">
+        <section
+            class="panel-grid"
+            data-trade-accounts-page
+            data-initial-edit-pubkey="{% if edit_target %}{{ edit_target.pubkey }}{% endif %}"
+            data-initial-delete-pubkey="{% if delete_target %}{{ delete_target.pubkey }}{% endif %}"
+        >
             <article class="panel accounts-panel">
                 <div class="panel-head">
                     <h2>Current Accounts</h2>
@@ -100,11 +105,20 @@
                             </form>
                             {% endif %}
                             <a
-                                href="{{ url_for('trade_accounts.trade_accounts', edit=trade_account.pubkey) }}#editor"
+                                href="{{ url_for('trade_accounts.trade_accounts', edit=trade_account.pubkey) }}"
                                 class="ghost-link btn-link"
+                                data-open-trade-account-editor
+                                data-editor-mode="edit"
+                                data-editor-account-pubkey="{{ trade_account.pubkey }}"
+                                data-editor-name="{{ trade_account.name }}"
+                                data-editor-external-id="{{ trade_account.external_account_id or '' }}"
+                                data-editor-account-size="{% if trade_account.account_size is not none %}{{ '%.2f'|format(trade_account.account_size) }}{% endif %}"
+                                data-editor-account-type="{{ trade_account.account_type }}"
+                                aria-haspopup="dialog"
+                                aria-controls="tradeAccountEditorDialog"
                             >Edit</a>
                             <a
-                                href="{{ url_for('trade_accounts.trade_accounts', edit=trade_account.pubkey, delete=trade_account.pubkey) }}#danger-zone"
+                                href="{{ url_for('trade_accounts.trade_accounts', delete=trade_account.pubkey) }}"
                                 class="ghost-link btn-link danger-btn"
                                 data-open-delete-account-modal
                                 data-delete-account-pubkey="{{ trade_account.pubkey }}"
@@ -144,208 +158,123 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <p class="helper-note">No trade accounts yet. Create your first one in the panel on the right, then set it as your working account for trades, imports, and analytics.</p>
+                <p class="helper-note">No trade accounts yet. Create your first one from the actions panel, then set it as your working account for trades, imports, and analytics.</p>
                 {% endif %}
             </article>
 
-            <article
-                id="editor"
-                class="panel create-panel"
-                data-edit-target-pubkey="{% if edit_target %}{{ edit_target.pubkey }}{% endif %}"
-            >
+            <article class="panel action-panel">
                 <div class="panel-head">
-                    <h2>{% if edit_target %}Edit Account{% else %}Create Account{% endif %}</h2>
-                    <span class="soft">{% if edit_target %}Selected{% else %}New{% endif %}</span>
+                    <h2>Account Actions</h2>
+                    <span class="soft">Popup Forms</span>
                 </div>
-                {% if not edit_target %}
-                <p class="helper-note">Use one account per broker, challenge, or funded program so your stats stay separated and easier to review.</p>
-                {% endif %}
+                <p id="tradeAccountAlert" class="account-alert" role="status" hidden></p>
+                <p class="helper-note">Keep the page focused on the account list. Open create, edit, or delete flows only when you need them.</p>
 
-                {% if edit_target %}
-                <form action="{{ url_for('trade_accounts.update_trade_account', trade_account_pubkey=edit_target.pubkey) }}" method="post" class="create-form" data-themed-validation>
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
-
-                    <label for="trade_account_name">Account Name</label>
-                    <input
-                        id="trade_account_name"
-                        name="trade_account_name"
-                        type="text"
-                        required
-                        maxlength="80"
-                        value="{{ edit_target.name }}"
+                <div class="action-stack">
+                    <button
+                        type="button"
+                        class="submit-btn"
+                        id="openCreateTradeAccountDialog"
+                        data-open-trade-account-editor
+                        data-editor-mode="create"
+                        aria-haspopup="dialog"
+                        aria-controls="tradeAccountEditorDialog"
                     >
+                        New Account
+                    </button>
+                    <p class="helper-note">Use one account per broker, challenge, or funded program so your stats stay separated and easier to review.</p>
+                </div>
 
-                    <label for="external_account_id">External ID (optional)</label>
-                    <input
-                        id="external_account_id"
-                        name="external_account_id"
-                        type="text"
-                        maxlength="80"
-                        value="{{ edit_target.external_account_id or '' }}"
-                        placeholder="Optional broker/prop account ID"
+                <hr class="section-divider">
+                <div class="action-stack">
+                    <p class="helper-note">Edit or delete individual accounts from the card buttons. Use the global delete only when you truly want a clean reset.</p>
+                    <button
+                        type="button"
+                        class="ghost-btn danger-btn"
+                        id="openDeleteAllTradeAccountsDialog"
+                        aria-haspopup="dialog"
+                        aria-controls="deleteAllTradeAccountsDialog"
                     >
-
-                    <label for="account_size">Account Size (optional)</label>
-                    <input
-                        id="account_size"
-                        name="account_size"
-                        type="number"
-                        inputmode="decimal"
-                        min="0.01"
-                        step="0.01"
-                        value="{% if edit_target.account_size is not none %}{{ '%.2f'|format(edit_target.account_size) }}{% endif %}"
-                        placeholder="Used for risk % of account"
-                    >
-
-                    <label for="account_type">Account Type</label>
-                    <select id="account_type" name="account_type" required>
-                        {% for option in account_type_choices %}
-                        <option value="{{ option }}" {% if edit_target.account_type == option %}selected{% endif %}>{{ "Futures" if option == "FUTURES" else "CFD" }}</option>
-                        {% endfor %}
-                    </select>
-
-                    <div class="inline-actions">
-                        <button type="submit" class="submit-btn">Save Changes</button>
-                        <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-link btn-link">Cancel</a>
-                    </div>
-                </form>
-                {% else %}
-                <form action="{{ url_for('trade_accounts.create_trade_account') }}" method="post" class="create-form" data-themed-validation>
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
-
-                    <label for="trade_account_name">Account Name</label>
-                    <input
-                        id="trade_account_name"
-                        name="trade_account_name"
-                        type="text"
-                        required
-                        maxlength="80"
-                        placeholder="e.g. FTMO Challenge, Personal Live"
-                    >
-
-                    <label for="external_account_id">External ID (optional)</label>
-                    <input
-                        id="external_account_id"
-                        name="external_account_id"
-                        type="text"
-                        maxlength="80"
-                        placeholder="Optional broker/prop account ID"
-                    >
-
-                    <label for="account_size">Account Size (optional)</label>
-                    <input
-                        id="account_size"
-                        name="account_size"
-                        type="number"
-                        inputmode="decimal"
-                        min="0.01"
-                        step="0.01"
-                        placeholder="Used for risk % of account"
-                    >
-
-                    <label for="account_type">Account Type</label>
-                    <select id="account_type" name="account_type" required>
-                        {% for option in account_type_choices %}
-                        <option value="{{ option }}" {% if option == "CFD" %}selected{% endif %}>{{ "Futures" if option == "FUTURES" else "CFD" }}</option>
-                        {% endfor %}
-                    </select>
-
-                    <label class="toggle-row" for="set_as_default">
-                        <input id="set_as_default" name="set_as_default" type="checkbox" value="1">
-                        Set as default account
-                    </label>
-
-                    <button type="submit" class="submit-btn">Create Account</button>
-                </form>
-                {% endif %}
+                        Delete All Accounts
+                    </button>
+                </div>
 
                 <hr class="section-divider">
                 <p class="helper-note">Tip: Use distinct names like <strong>Live</strong>, <strong>Demo</strong>, or <strong>Challenge</strong> for clarity.</p>
-
-                {% if delete_target %}
-                <hr class="section-divider">
-                <section id="danger-zone" class="danger-zone">
-                    <div class="panel-head">
-                        <h2>Delete This Account</h2>
-                        <span class="soft">Fallback</span>
-                    </div>
-                    <p class="helper-note danger-note">
-                        This permanently deletes <strong>{{ delete_target.name }}</strong>, its {{ delete_target_trade_count }} trade{% if delete_target_trade_count != 1 %}s{% endif %}, and {{ delete_target_ai_review_count }} linked AI review{% if delete_target_ai_review_count != 1 %}s{% endif %}.
-                    </p>
-                    <form action="{{ url_for('trade_accounts.delete_trade_account', trade_account_pubkey=delete_target.pubkey) }}" method="post" class="danger-form" data-themed-validation>
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
-
-                        <label for="delete_trade_account_confirmation_fallback">
-                            Type <strong>DELETE</strong> to confirm
-                        </label>
-                        <input
-                            id="delete_trade_account_confirmation_fallback"
-                            name="delete_trade_account_confirmation"
-                            type="text"
-                            placeholder="DELETE"
-                            required
-                            autocomplete="off"
-                        >
-                        <label class="delete-check">
-                            <input
-                                id="delete_trade_account_acknowledge_fallback"
-                                name="delete_trade_account_acknowledge"
-                                type="checkbox"
-                                required
-                            >
-                            <span>I understand this permanently removes this trade account and everything inside it.</span>
-                        </label>
-                        <div class="inline-actions">
-                            <button type="submit" class="ghost-btn danger-btn">Delete This Trade Account</button>
-                            <a href="{{ url_for('trade_accounts.trade_accounts', edit=delete_target.pubkey) }}#editor" class="ghost-link btn-link">Cancel</a>
-                        </div>
-                    </form>
-                </section>
-                {% endif %}
-
-                <hr class="section-divider">
-                <section class="danger-zone">
-                    <div class="panel-head">
-                        <h2>Delete All Trade Accounts</h2>
-                        <span class="soft">Danger Zone</span>
-                    </div>
-                    <p class="helper-note danger-note">
-                        This deletes all {{ account_rows|length }} trade account{% if account_rows|length != 1 %}s{% endif %}, all {{ total_trade_count }} trade{% if total_trade_count != 1 %}s{% endif %}, and all {{ total_ai_review_count }} linked AI review{% if total_ai_review_count != 1 %}s{% endif %}. A fresh Main Account will be created immediately after.
-                    </p>
-                    <form action="{{ url_for('trade_accounts.delete_all_trade_accounts') }}" method="post" class="danger-form" data-themed-validation>
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
-
-                        <label for="delete_all_trade_accounts_confirmation">
-                            Type <strong>DELETE</strong> to confirm
-                        </label>
-                        <input
-                            id="delete_all_trade_accounts_confirmation"
-                            name="delete_all_trade_accounts_confirmation"
-                            type="text"
-                            placeholder="DELETE"
-                            required
-                            autocomplete="off"
-                        >
-                        <label class="delete-check">
-                            <input
-                                id="delete_all_trade_accounts_acknowledge"
-                                name="delete_all_trade_accounts_acknowledge"
-                                type="checkbox"
-                                required
-                            >
-                            <span>I understand this removes every trade account, all related trades, and all linked AI reviews for this user.</span>
-                        </label>
-                        <button type="submit" class="ghost-btn danger-btn">Delete All Trade Accounts</button>
-                    </form>
-                </section>
             </article>
         </section>
     </div>
 </section>
+
+<dialog id="tradeAccountEditorDialog" class="confirm-dialog action-dialog" aria-labelledby="tradeAccountEditorTitle">
+    <div class="confirm-dialog-shell">
+        <div class="panel-head">
+            <h2 id="tradeAccountEditorTitle">Create Account</h2>
+            <span id="tradeAccountEditorMode" class="soft">New</span>
+        </div>
+        <p id="tradeAccountEditorHelp" class="helper-note">
+            Use one account per broker, challenge, or funded program so your stats stay separated and easier to review.
+        </p>
+        <form
+            id="tradeAccountEditorForm"
+            method="post"
+            class="create-form"
+            data-themed-validation
+            data-create-action="{{ url_for('trade_accounts.create_trade_account') }}"
+            data-update-action-template="{{ url_for('trade_accounts.update_trade_account', trade_account_pubkey='__TRADE_ACCOUNT_PUBKEY__') }}"
+        >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
+
+            <label for="tradeAccountDialogName">Account Name</label>
+            <input
+                id="tradeAccountDialogName"
+                name="trade_account_name"
+                type="text"
+                required
+                maxlength="80"
+                placeholder="e.g. FTMO Challenge, Personal Live"
+            >
+
+            <label for="tradeAccountDialogExternalId">External ID (optional)</label>
+            <input
+                id="tradeAccountDialogExternalId"
+                name="external_account_id"
+                type="text"
+                maxlength="80"
+                placeholder="Optional broker or prop account ID"
+            >
+
+            <label for="tradeAccountDialogSize">Account Size (optional)</label>
+            <input
+                id="tradeAccountDialogSize"
+                name="account_size"
+                type="number"
+                inputmode="decimal"
+                min="0.01"
+                step="0.01"
+                placeholder="Used for risk % of account"
+            >
+
+            <label for="tradeAccountDialogType">Account Type</label>
+            <select id="tradeAccountDialogType" name="account_type" required>
+                {% for option in account_type_choices %}
+                <option value="{{ option }}" {% if option == "CFD" %}selected{% endif %}>{{ "Futures" if option == "FUTURES" else "CFD" }}</option>
+                {% endfor %}
+            </select>
+
+            <label id="tradeAccountDialogDefaultRow" class="toggle-row" for="tradeAccountDialogDefault">
+                <input id="tradeAccountDialogDefault" name="set_as_default" type="checkbox" value="1">
+                Set as default account
+            </label>
+
+            <div class="dialog-actions inline-actions">
+                <button type="button" class="ghost-btn" id="cancelTradeAccountEditor">Cancel</button>
+                <button type="submit" class="submit-btn" id="submitTradeAccountEditor">Create Account</button>
+            </div>
+        </form>
+    </div>
+</dialog>
 
 <dialog id="deleteTradeAccountDialog" class="confirm-dialog" aria-labelledby="deleteTradeAccountTitle">
     <div class="confirm-dialog-shell">
@@ -395,11 +324,57 @@
     </div>
 </dialog>
 
+<dialog id="deleteAllTradeAccountsDialog" class="confirm-dialog" aria-labelledby="deleteAllTradeAccountsTitle">
+    <div class="confirm-dialog-shell">
+        <div class="panel-head">
+            <h2 id="deleteAllTradeAccountsTitle">Delete All Trade Accounts</h2>
+            <span class="soft">Danger Zone</span>
+        </div>
+        <p class="helper-note danger-note">
+            This deletes all {{ account_rows|length }} trade account{% if account_rows|length != 1 %}s{% endif %}, all {{ total_trade_count }} trade{% if total_trade_count != 1 %}s{% endif %}, and all {{ total_ai_review_count }} linked AI review{% if total_ai_review_count != 1 %}s{% endif %}. A fresh Main Account will be created immediately after.
+        </p>
+        <form action="{{ url_for('trade_accounts.delete_all_trade_accounts') }}" method="post" class="danger-form" data-themed-validation>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
+
+            <label for="deleteAllTradeAccountsConfirmation">
+                Type <strong>DELETE</strong> to confirm
+            </label>
+            <input
+                id="deleteAllTradeAccountsConfirmation"
+                name="delete_all_trade_accounts_confirmation"
+                type="text"
+                placeholder="DELETE"
+                required
+                autocomplete="off"
+            >
+            <label class="delete-check">
+                <input
+                    id="deleteAllTradeAccountsAcknowledge"
+                    name="delete_all_trade_accounts_acknowledge"
+                    type="checkbox"
+                    required
+                >
+                <span>I understand this removes every trade account, all related trades, and all linked AI reviews for this user.</span>
+            </label>
+            <div class="dialog-actions inline-actions">
+                <button type="button" class="ghost-btn" id="cancelDeleteAllTradeAccounts">Cancel</button>
+                <button type="submit" class="ghost-btn danger-btn">Delete All Trade Accounts</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
 <style>
 
+    .account-alert { border-radius: 10px;
+        padding: 0.68rem 0.78rem;
+        font-size: 0.82rem;
+        font-weight: 700; }
     .account-alert.success { border: 1px solid #b5dcc2; }
     .account-alert.info { border: 1px solid #bfd8e7; }
     .account-alert.error { border: 1px solid #e6c1bf; }
+    .action-dialog .confirm-dialog-shell { border-color: color-mix(in srgb, var(--accent) 24%, var(--border)); }
 
     .panel-grid { display: grid;
         grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
@@ -409,6 +384,10 @@
     .panel { border-radius: 14px;
         padding: 0.9rem;
     }
+
+    .action-panel,
+    .action-stack { display: grid;
+        gap: 0.7rem; }
 
     h2 { margin: 0;
         font-size: 1rem; }

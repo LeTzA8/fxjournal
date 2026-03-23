@@ -499,11 +499,13 @@
         border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
         border-radius: 10px;
         padding: 0.72rem;
-        background: color-mix(in srgb, var(--surface) 90%, transparent);
+        background: color-mix(in srgb, var(--surface) 92%, var(--card));
+        box-shadow: 0 12px 24px rgba(2, 6, 23, 0.14);
         min-width: 0; }
 
-    .manage-action-card-danger { border-color: color-mix(in srgb, var(--bad) 24%, var(--border));
-        background: color-mix(in srgb, var(--bad) 5%, var(--card)); }
+    .manage-action-card-danger { border-color: color-mix(in srgb, var(--bad) 36%, var(--border));
+        background: color-mix(in srgb, var(--bad) 10%, var(--card));
+        box-shadow: 0 12px 24px rgba(127, 29, 29, 0.12); }
 
     .manage-action-head { display: flex;
         align-items: flex-start;
@@ -524,15 +526,20 @@
 
     .batch-delete-form { min-width: 0; }
 
-    .batch-delete-form select { border: 1px solid #c6d4ca;  border-radius: 8px;
+    .batch-delete-form select { border: 1px solid color-mix(in srgb, var(--bad) 24%, var(--border));  border-radius: 8px;
         padding: 0.4rem 0.55rem;
         font-size: 0.78rem;
         min-width: 0;
-        width: 100%; }
+        width: 100%;
+        background: color-mix(in srgb, var(--surface) 94%, var(--card));
+        color: var(--ink); }
 
     .batch-delete-form select:disabled {
-        opacity: 0.6;
+        opacity: 1;
         cursor: not-allowed;
+        background: color-mix(in srgb, var(--surface) 86%, var(--card));
+        color: var(--muted);
+        border-color: color-mix(in srgb, var(--border) 88%, transparent);
     }
 
     .batch-delete-btn { border: 1px solid #d6b4b2;  border-radius: 8px;
@@ -583,10 +590,12 @@
     .batch-profile-fields select { min-height: 40px;
         min-width: 0;
         flex: 1 1 220px;
-        border: 1px solid #c6d4ca;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
         border-radius: 8px;
         padding: 0.4rem 0.55rem;
-        font-size: 0.75rem; }
+        font-size: 0.75rem;
+        background: color-mix(in srgb, var(--surface) 94%, var(--card));
+        color: var(--ink); }
 
     .bulk-select-all { display: inline-flex;
         align-items: center;
@@ -617,7 +626,7 @@
     }
 
     .batch-delete-btn:disabled {
-        opacity: 0.58;
+        opacity: 0.74;
         cursor: not-allowed;
     }
 
@@ -635,7 +644,7 @@
         white-space: nowrap; }
 
     .batch-assign-btn:disabled {
-        opacity: 0.58;
+        opacity: 0.74;
         cursor: not-allowed;
     }
 

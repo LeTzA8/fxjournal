@@ -167,7 +167,7 @@
     <div class="login-card checkin-card">
         <p class="eyebrow">Weekly Check-In</p>
         <h1>Give the AI a little context</h1>
-        <p class="subtext">This only takes a moment and helps the weekly review weigh behaviour, execution, and tone against what actually happened in your trades.</p>
+        <p class="subtext">This only takes a moment and helps the weekly review weigh behaviour, execution, and tone against what actually happened during that completed trade week.</p>
 
         <div class="checkin-meta">
             {% if active_trade_account %}
@@ -186,7 +186,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             <fieldset class="checkin-fieldset">
-                <legend class="checkin-legend">Q1. How was your emotional state this week?</legend>
+                <legend class="checkin-legend">Q1. How was your emotional state during that week?</legend>
                 <div class="checkin-options">
                     {% for option in emotional_state_options %}
                     <label class="checkin-option">
@@ -200,7 +200,7 @@
             </fieldset>
 
             <fieldset class="checkin-fieldset">
-                <legend class="checkin-legend">Q2. How well did you follow your trading plan?</legend>
+                <legend class="checkin-legend">Q2. How well did you follow your trading plan that week?</legend>
                 <div class="checkin-options">
                     {% for option in plan_adherence_options %}
                     <label class="checkin-option">
@@ -214,7 +214,7 @@
             </fieldset>
 
             <fieldset class="checkin-fieldset">
-                <legend class="checkin-legend">Q3. How was your overall execution quality?</legend>
+                <legend class="checkin-legend">Q3. How was your overall execution quality that week?</legend>
                 <div class="checkin-options">
                     {% for option in execution_quality_options %}
                     <label class="checkin-option">
@@ -245,7 +245,7 @@
 
         <form action="{{ url_for('checkin.skip_checkin') }}" method="post" class="checkin-skip-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="checkin-skip-button">Skip this week</button>
+            <button type="submit" class="checkin-skip-button">Skip for now</button>
         </form>
     </div>
 </section>

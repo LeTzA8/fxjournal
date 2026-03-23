@@ -18,11 +18,15 @@
             </div>
         </header>
 
-        <section class="profile-grid">
+        <section
+            class="profile-grid"
+            data-trade-profiles-page
+            data-initial-edit-pubkey="{% if edit_target %}{{ edit_target.pubkey }}{% endif %}"
+        >
             <article class="panel profile-list-panel">
                 <div class="panel-head">
                     <h2>Strategy Library</h2>
-                    <span class="soft">{{ trade_profiles|length }} active</span>
+                    <span class="soft">{{ trade_profiles|length }} strategies</span>
                 </div>
                 <div class="profile-list">
                     {% for profile in trade_profiles %}
@@ -34,67 +38,132 @@
                                 <p class="profile-meta">v{{ profile.current_version_number }}</p>
                             </div>
                             <div class="profile-card-actions">
-                                <a href="{{ url_for('trade_profiles.strategies', edit=profile.pubkey) }}" class="edit-link">Edit</a>
-                                <form action="{{ url_for('trade_profiles.archive_strategy', profile_pubkey=profile.pubkey) }}" method="post">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="archive-btn">Archive</button>
-                                </form>
+                                {% set version_description = version.short_description if version and version.short_description else "" %}
+                                <a
+                                    href="{{ url_for('trade_profiles.strategies', edit=profile.pubkey) }}"
+                                    class="edit-link"
+                                    data-open-strategy-editor
+                                    data-editor-mode="edit"
+                                    data-editor-profile-pubkey="{{ profile.pubkey }}"
+                                    data-editor-name="{{ profile.name }}"
+                                    data-editor-description="{{ version_description }}"
+                                    aria-haspopup="dialog"
+                                    aria-controls="strategyEditorDialog"
+                                >Edit</a>
+                                <button
+                                    type="button"
+                                    class="archive-btn"
+                                    data-open-archive-strategy-dialog
+                                    data-archive-profile-pubkey="{{ profile.pubkey }}"
+                                    data-archive-profile-name="{{ profile.name }}"
+                                    aria-haspopup="dialog"
+                                    aria-controls="archiveStrategyDialog"
+                                >
+                                    Archive
+                                </button>
                             </div>
                         </div>
                         <p class="profile-description">{{ version.short_description if version and version.short_description else "No description added yet. Include the setup idea, trigger, or rules you want to remember when tagging trades." }}</p>
                     </article>
                     {% else %}
-                    <p class="empty-copy">No strategies yet. Create your first one on the right, then attach it to trades so you can review performance by setup instead of memory.</p>
+                    <p class="empty-copy">No strategies yet. Create your first one from the action panel, then attach it to trades so you can review performance by setup instead of memory.</p>
                     {% endfor %}
                 </div>
             </article>
 
-            <article class="panel profile-form-panel">
+            <article class="panel profile-action-panel">
                 <div class="panel-head">
-                    <h2>{% if edit_target %}Edit Strategy{% else %}New Strategy{% endif %}</h2>
-                    <span class="soft">{% if edit_target %}Creates new version{% else %}Version 1{% endif %}</span>
+                    <h2>Strategy Actions</h2>
+                    <span class="soft">Popup Forms</span>
                 </div>
-                {% if not edit_target %}
-                <p class="empty-copy">Start with the setup name and a short description of the entry model, confirmation, or execution rules you want to track.</p>
-                {% endif %}
-                <form
-                    action="{% if edit_target %}{{ url_for('trade_profiles.edit_strategy', profile_pubkey=edit_target.pubkey) }}{% else %}{{ url_for('trade_profiles.strategies') }}{% endif %}"
-                    method="post"
-                    class="profile-form"
-                >
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <label for="name">Strategy Name</label>
-                    <input
-                        id="name"
-                        name="name"
-                        type="text"
-                        maxlength="80"
-                        value="{% if edit_target %}{{ edit_target.name }}{% endif %}"
-                        placeholder="ICT Venom, Mean Reversal, NY Open Sweep..."
-                        required
+                <p class="empty-copy">Start with the setup name and a short description of the entry model, confirmation, or execution rules you want to track. Open create or edit only when you need it.</p>
+                <div class="profile-action-stack">
+                    <button
+                        type="button"
+                        class="submit-btn"
+                        id="openCreateStrategyDialog"
+                        data-open-strategy-editor
+                        data-editor-mode="create"
+                        aria-haspopup="dialog"
+                        aria-controls="strategyEditorDialog"
                     >
-
-                    <label for="short_description">Strategy Description</label>
-                    <textarea
-                        id="short_description"
-                        name="short_description"
-                        rows="6"
-                        placeholder="Short summary of the setup, trigger, or the latest version change..."
-                    >{% if edit_target %}{% set edit_version = profile_versions.get(edit_target.id) %}{{ edit_version.short_description if edit_version and edit_version.short_description else "" }}{% endif %}</textarea>
-
-                    <div class="form-actions">
-                        <button type="submit" class="submit-btn">{% if edit_target %}Save New Version{% else %}Create Profile{% endif %}</button>
-                        {% if edit_target %}
-                        <a href="{{ url_for('trade_profiles.strategies') }}" class="ghost-link">Cancel</a>
-                        {% endif %}
-                    </div>
-                </form>
+                        New Strategy
+                    </button>
+                    <p class="empty-copy">Edit and archive actions stay on each strategy card so the page stays focused on the library itself.</p>
+                </div>
             </article>
         </section>
     </div>
 </section>
 
+<dialog id="strategyEditorDialog" class="confirm-dialog action-dialog" aria-labelledby="strategyEditorTitle">
+    <div class="confirm-dialog-shell">
+        <div class="panel-head">
+            <h2 id="strategyEditorTitle">New Strategy</h2>
+            <span id="strategyEditorMode" class="soft">Version 1</span>
+        </div>
+        <p id="strategyEditorHelp" class="empty-copy">Start with the setup name and a short description of the entry model, confirmation, or execution rules you want to track.</p>
+        <form
+            id="strategyEditorForm"
+            action="{{ url_for('trade_profiles.strategies') }}"
+            method="post"
+            class="profile-form"
+            data-edit-action-template="{{ url_for('trade_profiles.edit_strategy', profile_pubkey='__PROFILE_PUBKEY__') }}"
+        >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label for="strategyDialogName">Strategy Name</label>
+            <input
+                id="strategyDialogName"
+                name="name"
+                type="text"
+                maxlength="80"
+                placeholder="ICT Venom, Mean Reversal, NY Open Sweep..."
+                required
+            >
+
+            <label for="strategyDialogDescription">Strategy Description</label>
+            <textarea
+                id="strategyDialogDescription"
+                name="short_description"
+                rows="6"
+                placeholder="Short summary of the setup, trigger, or the latest version change..."
+            ></textarea>
+
+            <div class="dialog-actions form-actions">
+                <button type="button" class="ghost-btn" id="cancelStrategyEditor">Cancel</button>
+                <button type="submit" class="submit-btn" id="submitStrategyEditor">Create Strategy</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+<dialog id="archiveStrategyDialog" class="confirm-dialog" aria-labelledby="archiveStrategyTitle">
+    <div class="confirm-dialog-shell">
+        <div class="panel-head">
+            <h2 id="archiveStrategyTitle">Archive Strategy</h2>
+            <span class="soft">Keep History</span>
+        </div>
+        <p id="archiveStrategyLead" class="empty-copy">Archive this strategy to remove it from the active library while keeping its past trade tags and versions intact.</p>
+        <form
+            id="archiveStrategyForm"
+            method="post"
+            class="danger-form"
+            data-action-template="{{ url_for('trade_profiles.archive_strategy', profile_pubkey='__PROFILE_PUBKEY__') }}"
+        >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="dialog-actions form-actions">
+                <button type="button" class="ghost-btn" id="cancelArchiveStrategy">Cancel</button>
+                <button type="submit" class="archive-btn">Archive Strategy</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
 <style>
+    .action-dialog .confirm-dialog-shell {
+        border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+    }
+
     .panel {
         border-radius: 14px;
         padding: 0.9rem;
@@ -111,12 +180,13 @@
         gap: 0.8rem; }
 
     .profile-list-panel,
-    .profile-form-panel {
+    .profile-action-panel {
         overflow: hidden;
     }
 
     .profile-list,
-    .profile-form { display: grid;
+    .profile-form,
+    .profile-action-stack { display: grid;
         gap: 0.75rem; }
 
     .profile-card { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
@@ -181,10 +251,17 @@
 
     .profile-form input,
     .profile-form textarea { width: 100%;
-        border: 1px solid #c7d5cb;
+        border: 1px solid var(--border);
         border-radius: 10px;
         padding: 0.68rem 0.75rem;
-        font: inherit; }
+        font: inherit;
+        color: var(--ink);
+        background: var(--surface); }
+
+    .profile-form input::placeholder,
+    .profile-form textarea::placeholder {
+        color: var(--muted);
+    }
 
     .profile-form textarea { resize: vertical;
         min-height: 150px; }
@@ -194,12 +271,16 @@
         padding: 0.65rem 0.8rem;
         font-weight: 700; }
 
-    .profile-alert.success { border: 1px solid #b5dcc2; }
-    .profile-alert.error { border: 1px solid #e6c1bf; }
-    .profile-alert.info { border: 1px solid #bfd8e7; }
+    .profile-alert.success { border: 1px solid color-mix(in srgb, var(--good) 36%, var(--border)); }
+    .profile-alert.error { border: 1px solid color-mix(in srgb, var(--bad) 36%, var(--border)); }
+    .profile-alert.info { border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border)); }
 
     @media (max-width: 900px) {
         .profile-grid { grid-template-columns: 1fr; }
     }
 </style>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/trade_profiles_page.js') }}"></script>
 {% endblock %}

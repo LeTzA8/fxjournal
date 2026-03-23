@@ -44,8 +44,8 @@
             span.textContent = word;
             span.setAttribute("aria-hidden", "true");
             span.style.setProperty("--word-index", String(index));
-            span.style.setProperty("--word-base-delay", "80ms");
-            span.style.setProperty("--word-delay", `${80 + index * 40}ms`);
+            span.style.setProperty("--word-base-delay", "620ms");
+            span.style.setProperty("--word-delay", `${620 + index * 58}ms`);
             fragment.appendChild(span);
             if (index < arr.length - 1) {
                 fragment.appendChild(document.createTextNode(" "));

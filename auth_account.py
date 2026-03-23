@@ -796,7 +796,7 @@ def register_public_auth_routes(
     def onboarding():
         user_id = session["user_id"]
         profile = get_user_profile(user_id)
-        if user_profile_is_done(profile):
+        if profile is not None and getattr(profile, "completed_at", None) is not None:
             return redirect(url_for("dashboard.home"))
 
         if request.method == "POST":
@@ -828,6 +828,7 @@ def register_public_auth_routes(
             profile.completed_at = utcnow_naive()
             profile.skipped = False
             db.session.commit()
+            flash("You're all set! Taking you to your dashboard...", "success")
             return redirect(url_for("dashboard.home"))
 
         return render_onboarding_page(profile=profile)
