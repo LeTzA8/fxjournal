@@ -1,6 +1,6 @@
 param(
     [string]$RepoRoot = "",
-    [string]$Queues = "mt5_sync,mt5_setup",
+    [int]$Concurrency = 10,
     [string]$LogLevel = "INFO",
     [int]$RestartDelaySeconds = 5
 )
@@ -16,21 +16,26 @@ if (-not (Test-Path $pythonExe)) {
     throw "Python executable not found at $pythonExe"
 }
 
+if ($Concurrency -lt 1) {
+    throw "Concurrency must be at least 1."
+}
+
 Set-Location $RepoRoot
 
 while ($true) {
     $startedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Write-Host "[$startedAt] Starting FX Journal MT5 worker for queues: $Queues"
+    Write-Host "[$startedAt] Starting FX Journal MT5 sync worker pool=threads concurrency=$Concurrency"
 
     & $pythonExe -m celery -A celery_app.celery worker `
-        --pool=solo `
+        --pool=threads `
+        --concurrency=$Concurrency `
         --loglevel=$LogLevel `
-        --queues=$Queues `
-        --hostname="mt5@$env:COMPUTERNAME"
+        --queues=mt5_sync `
+        --hostname="mt5-sync@$env:COMPUTERNAME"
 
     $exitCode = $LASTEXITCODE
     $stoppedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Write-Warning "[$stoppedAt] FX Journal MT5 worker exited with code $exitCode. Restarting in $RestartDelaySeconds second(s)."
+    Write-Warning "[$stoppedAt] FX Journal MT5 sync worker exited with code $exitCode. Restarting in $RestartDelaySeconds second(s)."
 
     Start-Sleep -Seconds $RestartDelaySeconds
 }

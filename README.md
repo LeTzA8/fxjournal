@@ -200,13 +200,17 @@ The MT5 sync/setup worker is Windows-only.
 - If a Windows worker starts without `REDIS_URL`, Celery falls back to an in-memory broker, which will not consume tasks from your shared production queue.
 - For a VM-hosted MT5 worker, prefer running it under a supervisor instead of a one-off terminal session.
 
-Example restart-loop launcher:
+Example restart-loop launchers:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\windows\run_mt5_worker.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\run_mt5_setup_worker.ps1
 ```
 
-This starts a `solo` Celery worker for `mt5_sync` and `mt5_setup` and restarts it if the process exits.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\run_mt5_sync_worker.ps1
+```
+
+These start dedicated MT5 Celery workers and restart them if the process exits.
 
 ## Design Goals
 
