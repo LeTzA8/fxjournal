@@ -185,7 +185,13 @@ def account():
     total_trades = Trade.query.filter_by(user_id=user.id).count()
     closed_trades = (
         Trade.query.filter_by(user_id=user.id)
-        .filter(Trade.exit_price.isnot(None))
+        .filter(
+            or_(
+                Trade.closed_at.isnot(None),
+                Trade.exit_price.isnot(None),
+                Trade.pnl.isnot(None),
+            )
+        )
         .count()
     )
     imported_trades = (

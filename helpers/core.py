@@ -101,6 +101,20 @@ def get_trade_size_label(account_type):
     return "Contracts" if normalize_account_type(account_type) == "FUTURES" else "Lots"
 
 
+def trade_has_close_signal(*, exit_price=None, closed_at=None, pnl=None):
+    return closed_at is not None or exit_price is not None or pnl is not None
+
+
+def is_trade_running(trade):
+    if trade is None:
+        return False
+    return not trade_has_close_signal(
+        exit_price=getattr(trade, "exit_price", None),
+        closed_at=getattr(trade, "closed_at", None),
+        pnl=resolve_pnl(trade),
+    )
+
+
 def build_trade_duplicate_key(
     *,
     symbol,

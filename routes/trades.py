@@ -16,6 +16,7 @@ from helpers.core import (
     get_trade_size_label,
     get_user_trade_by_pubkey_or_404,
     get_user_trade_profiles,
+    is_trade_running,
     is_local_dev_environment,
     parse_local_datetime_input,
     resolve_trade_profile_form_state,
@@ -196,14 +197,20 @@ def render_trades_page(*, manage_mode=False):
     size_label = get_trade_size_label(active_trade_account.account_type)
     timezone_name = get_display_timezone_name()
     for trade in user_trades:
+        trade_is_running = is_trade_running(trade)
         trade_account_type = get_trade_account_type(trade)
         opened_at_local = to_display_timezone(trade.opened_at, timezone_name)
         trade_profile = getattr(trade, "trade_profile", None)
         trade_profile_version = getattr(trade, "trade_profile_version", None)
         duration_minutes = None
         if trade.opened_at is not None:
-            duration_end = trade.closed_at or utcnow_naive()
-            if duration_end >= trade.opened_at:
+            if trade.closed_at is not None:
+                duration_end = trade.closed_at
+            elif trade_is_running:
+                duration_end = utcnow_naive()
+            else:
+                duration_end = None
+            if duration_end is not None and duration_end >= trade.opened_at:
                 duration_minutes = (
                     duration_end - trade.opened_at
                 ).total_seconds() / 60.0
@@ -250,7 +257,7 @@ def render_trades_page(*, manage_mode=False):
                 if trade.opened_at
                 else "-",
                 "duration_label": format_duration_minutes(duration_minutes),
-                "is_running": trade.exit_price is None,
+                "is_running": trade_is_running,
             }
         )
 
@@ -563,6 +570,7 @@ def new_trade():
         form_mode="new",
         opened_at_value="",
         closed_at_value="",
+        trade_is_running=True,
         analytics_timezone=get_display_timezone_name(),
         trade_profile_options=profile_form_state["trade_profile_options"],
         selected_trade_profile_pubkey=profile_form_state[
@@ -843,6 +851,7 @@ def trade_detail(trade_pubkey):
         trade.swap,
     )
     trade_account_type = get_trade_account_type(trade)
+    trade_is_running = is_trade_running(trade)
     timezone_name = get_display_timezone_name()
     opened_at_local = to_display_timezone(trade.opened_at, timezone_name)
     closed_at_local = to_display_timezone(trade.closed_at, timezone_name)
@@ -861,6 +870,7 @@ def trade_detail(trade_pubkey):
         trade_ticks=trade_ticks,
         planned_rr=planned_rr,
         actual_rr=actual_rr,
+        trade_is_running=trade_is_running,
         trade_account_type=trade_account_type,
         trade_size_label=get_trade_size_label(trade_account_type),
         trade_opened_at_label=opened_at_local.strftime("%d %b %Y %H:%M")
@@ -1047,6 +1057,7 @@ def edit_trade(trade_pubkey):
         form_mode="edit",
         opened_at_value=format_local_datetime_input(trade.opened_at),
         closed_at_value=format_local_datetime_input(trade.closed_at),
+        trade_is_running=is_trade_running(trade),
         analytics_timezone=get_display_timezone_name(),
         trade_profile_options=profile_form_state["trade_profile_options"],
         selected_trade_profile_pubkey=profile_form_state[

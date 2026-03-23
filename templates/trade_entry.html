@@ -109,8 +109,8 @@
 
                     <label for="status">Status</label>
                     <select id="status" name="status" required>
-                        <option value="Closed" {% if trade and trade.exit_price is not none %}selected{% endif %}>Closed</option>
-                        <option value="Running" {% if (not trade) or trade.exit_price is none %}selected{% endif %}>Running</option>
+                        <option value="Closed" {% if (trade and not trade_is_running) %}selected{% endif %}>Closed</option>
+                        <option value="Running" {% if (not trade) or trade_is_running %}selected{% endif %}>Running</option>
                     </select>
 
                     <label for="opened_at">Opened At</label>

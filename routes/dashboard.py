@@ -28,6 +28,7 @@ from helpers.core import (
     get_active_trade_account_for_user,
     get_display_timezone_name,
     get_user_trade_accounts,
+    is_trade_running,
 )
 from helpers.utils import login_required, utcnow_naive
 from models import Trade, WeeklyCheckin, db
@@ -523,6 +524,7 @@ def home():
 
     recent_trades = []
     for trade in user_trades:
+        trade_is_running = is_trade_running(trade)
         pnl_value = resolve_net_pnl(trade)
         opened_local = to_display_timezone(trade.opened_at, timezone_name)
         trade_date = opened_local.strftime("%d %b %Y") if opened_local else "-"
@@ -542,7 +544,7 @@ def home():
                 "side": trade.side,
                 "pnl": pnl_value,
                 "session_label": classify_trading_session(trade.opened_at) if trade.opened_at else "-",
-                "is_running": trade.exit_price is None,
+                "is_running": trade_is_running,
             }
         )
 

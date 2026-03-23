@@ -12,7 +12,28 @@ from celery.app.task import Task as CeleryTask
 from celery.schedules import crontab
 from dotenv import load_dotenv
 
-load_dotenv("FXJournal Main.env")
+
+def _load_runtime_env():
+    configured_env_file = os.getenv("FXJ_ENV_FILE", "").strip()
+    env_candidates = []
+    if configured_env_file:
+        env_candidates.append(configured_env_file)
+    env_candidates.extend([
+        ".env",
+        "FXJournal Main.env",
+        "fxjournal.env",
+    ])
+
+    seen = set()
+    for candidate in env_candidates:
+        candidate = str(candidate or "").strip()
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        load_dotenv(candidate, override=False)
+
+
+_load_runtime_env()
 
 _flask_app = None
 
@@ -89,6 +110,7 @@ def _create_celery():
         "result_serializer": "json",
         "accept_content": ["json"],
         "broker_connection_retry_on_startup": True,
+        "worker_prefetch_multiplier": 1,
         "beat_schedule": {
             "cleanup-weekly-checkins": {
                 "task": "celery_workers.tasks.cleanup_weekly_checkins_task",
@@ -101,6 +123,7 @@ def _create_celery():
         },
         "task_routes": {
             "celery_workers.mt5_setup.*": {"queue": "mt5_setup"},
+            "celery_workers.mt5_sync.sync_mt5_account": {"queue": "mt5_sync"},
         },
     }
     configured_pool = os.environ.get("CELERY_POOL", "").strip().lower()

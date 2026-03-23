@@ -1,12 +1,12 @@
 import os
-
-import os
+import logging
+import sys
 from types import SimpleNamespace
 
 import pytest
 from cryptography.fernet import Fernet
 
-from celery_workers.mt5_sync import aggregate_deals_to_trades
+from celery_workers.mt5_sync import aggregate_deals_to_trades, sync_mt5_account
 from celery_app import celery
 from helpers.core import delete_users_with_related_data
 from helpers.utils import decrypt_password, encrypt_password
@@ -150,6 +150,79 @@ def test_aggregate_deals_to_trades_treats_extra_exit_entries_as_closes():
     assert trades[0]["pnl"] == pytest.approx(25.0)
     assert trades[0]["trade_note"] == "close by"
     assert trades[0]["is_open"] is False
+
+
+def test_sync_mt5_account_skips_when_same_account_is_already_locked(monkeypatch):
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: False)
+
+    result = sync_mt5_account.run(123)
+
+    assert result == {"skipped": "sync already running"}
+
+
+def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-log-user",
+        email="mt5-log@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="44445555",
+    )
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+
+    fake_mt5 = SimpleNamespace(
+        DEAL_ENTRY_IN=0,
+        DEAL_ENTRY_OUT=1,
+        DEAL_ENTRY_INOUT=2,
+        DEAL_ENTRY_OUT_BY=3,
+        DEAL_TYPE_BUY=0,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        history_deals_get=lambda *args, **kwargs: [
+            _deal(position_id=4004, price=1.25, time=1_710_000_000, symbol="EURUSD"),
+            _deal(
+                position_id=4004,
+                entry=1,
+                price=1.255,
+                time=1_710_003_600,
+                symbol="EURUSD",
+                profit=25.0,
+                comment="close",
+            ),
+        ],
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"saved": 0, "updated": 1, "skipped": 0, "errors": 0}
+
+    monkeypatch.setattr("celery_workers.mt5_sync.requests.post", lambda *args, **kwargs: DummyResponse())
+
+    caplog.set_level(logging.INFO, logger="celery_workers.mt5_sync")
+
+    result = sync_mt5_account.run(mt5_account.id)
+
+    assert result == {"saved": 0, "updated": 1, "skipped": 0, "errors": 0}
+    assert f"mt5_account_id={mt5_account.id}" in caplog.text
+    assert f"user_id={user.id}" in caplog.text
+    assert f"trade_account_id={trade_account.id}" in caplog.text
+    assert "aggregated_trades=1" in caplog.text
+    assert "closed_trades=1" in caplog.text
 
 
 def test_encrypt_password_round_trip_requires_key(monkeypatch):

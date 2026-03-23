@@ -117,6 +117,45 @@ def test_dashboard_home_marks_running_trade_rows(app_ctx, client, monkeypatch):
     assert b"Running" in response.data
 
 
+def test_dashboard_home_does_not_mark_closed_timestamp_trade_as_running(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-closed-timestamp-user",
+        email="dashboard-closed-timestamp@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    closed_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.085,
+        exit_price=None,
+        lot_size=0.01,
+        opened_at=datetime(2026, 3, 22, 8, 0, 0),
+        closed_at=datetime(2026, 3, 22, 10, 0, 0),
+    )
+    db.session.add(closed_trade)
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b'class="running-trade"' not in response.data
+    assert b'<span class="running-pill">Running</span>' not in response.data
+
+
 def test_dashboard_home_normalizes_broken_rule_prefix_in_weekly_ai_review(app_ctx, client, monkeypatch):
     _user, _trade_account = _create_logged_in_user(
         client,

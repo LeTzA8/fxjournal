@@ -40,7 +40,7 @@
                     <input id="entry_price" type="text" value="{{ '%.5f'|format(trade.entry_price) if trade and trade.entry_price is not none else '' }}" readonly>
 
                     <label for="exit_price">Exit Price</label>
-                    <input id="exit_price" type="text" value="{{ '%.5f'|format(trade.exit_price) if trade and trade.exit_price is not none else 'Open' }}" readonly>
+                    <input id="exit_price" type="text" value="{{ '%.5f'|format(trade.exit_price) if trade and trade.exit_price is not none else ('Open' if trade_is_running else '-') }}" readonly>
 
                     <label for="stop_loss">Stop Loss</label>
                     <input id="stop_loss" type="text" value="{{ '%.5f'|format(trade.stop_loss) if trade and trade.stop_loss is not none else '-' }}" readonly>
@@ -80,7 +80,7 @@
                     <input id="ticks" type="text" value="{% if trade_ticks is not none %}{{ '%+.1f'|format(trade_ticks) }} ticks{% else %}-{% endif %}" readonly>
 
                     <label for="status">Status</label>
-                    <input id="status" type="text" value="{% if trade and trade.exit_price is not none %}Closed{% else %}Running{% endif %}" readonly>
+                    <input id="status" type="text" value="{% if trade_is_running %}Running{% else %}Closed{% endif %}" readonly>
 
                     <label for="opened_at_display">Opened At ({{ analytics_timezone }})</label>
                     <input id="opened_at_display" type="text" value="{{ trade_opened_at_label }}" readonly>
@@ -212,7 +212,6 @@
 </style>
 
 {% endblock %}
-
 
 
 

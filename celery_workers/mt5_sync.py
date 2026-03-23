@@ -4,10 +4,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+import logging
+import uuid
 
 import requests
 
 from celery_app import celery
+
+logger = logging.getLogger(__name__)
 
 
 def _to_utc_iso(timestamp_value):
@@ -131,80 +135,210 @@ def aggregate_deals_to_trades(
     return trades
 
 
-@celery.task(bind=True, max_retries=2, default_retry_delay=30)
+def _sync_lock_key(mt5_account_id):
+    return f"mt5_sync_lock:{mt5_account_id}"
+
+
+def _mask_account_number_for_log(account_number):
+    text_value = str(account_number or "").strip()
+    if not text_value:
+        return "unknown"
+    suffix = text_value[-4:] if len(text_value) >= 4 else text_value
+    return f"...{suffix}"
+
+
+def _summarize_trade_states(trades):
+    open_trades = sum(1 for trade in trades if trade.get("is_open"))
+    closed_trades = max(len(trades) - open_trades, 0)
+    return open_trades, closed_trades
+
+
+@celery.task(
+    bind=True,
+    max_retries=2,
+    default_retry_delay=30,
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def sync_mt5_account(self, mt5_account_id):
+    from celery_workers.cache import CacheUnavailableError, claim_lock, release_lock
+
+    task_id = getattr(getattr(self, "request", None), "id", None)
+    lock_token = uuid.uuid4().hex
+    lock_acquired = False
+    lock_enabled = True
+    user_id = None
+    trade_account_id = None
+    account_suffix = "unknown"
+    is_first_sync = None
+    from_date = None
+    to_date = None
+    raw_deal_count = 0
+    aggregated_trade_count = 0
+    open_trade_count = 0
+    closed_trade_count = 0
     try:
-        import MetaTrader5 as mt5
-    except ImportError as exc:
-        raise RuntimeError("MetaTrader5 not installed on this worker.") from exc
+        try:
+            lock_acquired = claim_lock(_sync_lock_key(mt5_account_id), lock_token, ttl=600)
+        except CacheUnavailableError:
+            lock_enabled = False
+            lock_acquired = True
 
-    from helpers.utils import decrypt_password
-    from models import MT5Account, db
+        if not lock_acquired:
+            logger.info(
+                "MT5 sync skipped because another task already holds the lock. task_id=%s mt5_account_id=%s",
+                task_id,
+                mt5_account_id,
+            )
+            return {"skipped": "sync already running"}
 
-    account = db.session.get(MT5Account, mt5_account_id)
-    if account is None or not account.is_active:
-        return {"error": "MT5Account not found or inactive"}
-    if account.is_orphaned:
-        return {"error": "MT5Account is orphaned"}
+        try:
+            import MetaTrader5 as mt5
+        except ImportError as exc:
+            raise RuntimeError("MetaTrader5 not installed on this worker.") from exc
 
-    investor_password = decrypt_password(account.investor_password_encrypted)
-    account_number = account.account_number
-    server = account.server
-    terminal_path = account.terminal_path
-    is_first_sync = account.last_synced_at is None
+        from helpers.utils import decrypt_password
+        from models import MT5Account, db
 
-    init_kwargs = {}
-    if terminal_path:
-        init_kwargs["path"] = terminal_path
+        account = db.session.get(MT5Account, mt5_account_id)
+        if account is None or not account.is_active:
+            logger.warning(
+                "MT5 sync skipped because account is missing or inactive. task_id=%s mt5_account_id=%s",
+                task_id,
+                mt5_account_id,
+            )
+            return {"error": "MT5Account not found or inactive"}
+        if account.is_orphaned:
+            logger.warning(
+                "MT5 sync skipped because account is orphaned. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s",
+                task_id,
+                mt5_account_id,
+                account.user_id,
+                account.trade_account_id,
+            )
+            return {"error": "MT5Account is orphaned"}
 
-    if not mt5.initialize(**init_kwargs):
-        raise RuntimeError(f"MT5 init failed: {mt5.last_error()}")
+        user_id = account.user_id
+        trade_account_id = account.trade_account_id
+        investor_password = decrypt_password(account.investor_password_encrypted)
+        account_number = account.account_number
+        account_suffix = _mask_account_number_for_log(account_number)
+        server = account.server
+        terminal_path = account.terminal_path
+        is_first_sync = account.last_synced_at is None
 
-    try:
-        if not mt5.login(int(account_number), password=investor_password, server=server):
-            raise RuntimeError(f"MT5 login failed: {mt5.last_error()}")
+        init_kwargs = {}
+        if terminal_path:
+            init_kwargs["path"] = terminal_path
 
-        if is_first_sync:
-            from_date = datetime(2000, 1, 1, tzinfo=timezone.utc)
-        else:
-            from_date = datetime.now(timezone.utc) - timedelta(days=7)
-        to_date = datetime.now(timezone.utc)
-        deals = mt5.history_deals_get(from_date, to_date) or []
+        if not mt5.initialize(**init_kwargs):
+            raise RuntimeError(f"MT5 init failed: {mt5.last_error()}")
 
-        trades = aggregate_deals_to_trades(
-            deals,
-            entry_in=getattr(mt5, "DEAL_ENTRY_IN", 0),
-            entry_out=getattr(mt5, "DEAL_ENTRY_OUT", 1),
-            extra_exit_entries=(
-                getattr(mt5, "DEAL_ENTRY_INOUT", None),
-                getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
-            ),
-            deal_type_buy=getattr(mt5, "DEAL_TYPE_BUY", 0),
-        )
+        try:
+            if not mt5.login(int(account_number), password=investor_password, server=server):
+                raise RuntimeError(f"MT5 login failed: {mt5.last_error()}")
 
-        base_url = os.environ.get("FLASK_API_URL", "https://myfxjournal.com").strip() or "https://myfxjournal.com"
-        sync_secret = os.environ.get("MT5_SYNC_SECRET", "").strip()
-        if not sync_secret:
-            raise RuntimeError("MT5_SYNC_SECRET is required for MT5 sync.")
+            if is_first_sync:
+                from_date = datetime(2000, 1, 1, tzinfo=timezone.utc)
+            else:
+                from_date = datetime.now(timezone.utc) - timedelta(days=7)
+            to_date = datetime.now(timezone.utc)
+            logger.info(
+                "MT5 sync starting. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s first_sync=%s from_date=%s to_date=%s",
+                task_id,
+                mt5_account_id,
+                user_id,
+                trade_account_id,
+                account_suffix,
+                is_first_sync,
+                from_date.isoformat(),
+                to_date.isoformat(),
+            )
+            deals = mt5.history_deals_get(from_date, to_date) or []
+            raw_deal_count = len(deals)
 
-        response = requests.post(
-            f"{base_url}/api/internal/mt5/sync",
-            json={
-                "mt5_account_id": mt5_account_id,
-                "trades": trades,
-            },
-            headers={
-                "X-Sync-Secret": sync_secret,
-                "Content-Type": "application/json",
-            },
-            timeout=30,
-        )
-        response.raise_for_status()
-        return response.json()
-    except Exception as exc:
-        raise self.retry(exc=exc)
+            trades = aggregate_deals_to_trades(
+                deals,
+                entry_in=getattr(mt5, "DEAL_ENTRY_IN", 0),
+                entry_out=getattr(mt5, "DEAL_ENTRY_OUT", 1),
+                extra_exit_entries=(
+                    getattr(mt5, "DEAL_ENTRY_INOUT", None),
+                    getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
+                ),
+                deal_type_buy=getattr(mt5, "DEAL_TYPE_BUY", 0),
+            )
+            aggregated_trade_count = len(trades)
+            open_trade_count, closed_trade_count = _summarize_trade_states(trades)
+            logger.info(
+                "MT5 sync prepared payload. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s open_trades=%s closed_trades=%s",
+                task_id,
+                mt5_account_id,
+                user_id,
+                trade_account_id,
+                account_suffix,
+                raw_deal_count,
+                aggregated_trade_count,
+                open_trade_count,
+                closed_trade_count,
+            )
+
+            base_url = os.environ.get("FLASK_API_URL", "https://myfxjournal.com").strip() or "https://myfxjournal.com"
+            sync_secret = os.environ.get("MT5_SYNC_SECRET", "").strip()
+            if not sync_secret:
+                raise RuntimeError("MT5_SYNC_SECRET is required for MT5 sync.")
+
+            response = requests.post(
+                f"{base_url}/api/internal/mt5/sync",
+                json={
+                    "mt5_account_id": mt5_account_id,
+                    "trades": trades,
+                },
+                headers={
+                    "X-Sync-Secret": sync_secret,
+                    "Content-Type": "application/json",
+                },
+                timeout=30,
+            )
+            response.raise_for_status()
+            result = response.json()
+            logger.info(
+                "MT5 sync completed. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s open_trades=%s closed_trades=%s saved=%s updated=%s skipped=%s errors=%s",
+                task_id,
+                mt5_account_id,
+                user_id,
+                trade_account_id,
+                account_suffix,
+                raw_deal_count,
+                aggregated_trade_count,
+                open_trade_count,
+                closed_trade_count,
+                result.get("saved"),
+                result.get("updated"),
+                result.get("skipped"),
+                result.get("errors"),
+            )
+            return result
+        except Exception as exc:
+            logger.exception(
+                "MT5 sync failed and will retry. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s",
+                task_id,
+                mt5_account_id,
+                user_id,
+                trade_account_id,
+                account_suffix,
+                raw_deal_count,
+                aggregated_trade_count,
+                exc_info=exc,
+            )
+            raise self.retry(exc=exc)
+        finally:
+            mt5.shutdown()
     finally:
-        mt5.shutdown()
+        if lock_enabled and lock_acquired:
+            try:
+                release_lock(_sync_lock_key(mt5_account_id), lock_token)
+            except CacheUnavailableError:
+                pass
 
 
 @celery.task

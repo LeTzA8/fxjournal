@@ -14,6 +14,12 @@ AI_STATUS_RUNNING_TTL = 900
 AI_STATUS_FAILED_TTL = 600
 
 _redis_client = None
+_LOCK_RELEASE_SCRIPT = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+end
+return 0
+"""
 
 
 class CacheUnavailableError(RuntimeError):
@@ -149,5 +155,29 @@ def clear_ai_status(user_id, trade_account_id=None, period_start_utc=None):
                 trade_account_id=trade_account_id,
                 period_start_utc=period_start_utc,
             )
+        )
+    )
+
+
+def claim_lock(lock_key, token, ttl):
+    return bool(
+        _run_redis(
+            lambda: _client().set(
+                str(lock_key),
+                str(token),
+                ex=int(ttl),
+                nx=True,
+            )
+        )
+    )
+
+
+def release_lock(lock_key, token):
+    _run_redis(
+        lambda: _client().eval(
+            _LOCK_RELEASE_SCRIPT,
+            1,
+            str(lock_key),
+            str(token),
         )
     )

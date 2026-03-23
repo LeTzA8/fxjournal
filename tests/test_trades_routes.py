@@ -80,6 +80,34 @@ def test_manual_trade_detail_shows_rr_and_split_fees(app_ctx, client):
     assert b'value="135.70"' in detail_response.data
 
 
+def test_trade_detail_treats_closed_timestamp_trade_as_closed(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-detail-closed-user",
+        email="trade-detail-closed@example.com",
+    )
+
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=None,
+        lot_size=1.00,
+        opened_at=datetime(2026, 3, 10, 9, 0, 0),
+        closed_at=datetime(2026, 3, 10, 10, 24, 0),
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    detail_response = client.get(f"/dashboard/trades/{trade.pubkey}")
+
+    assert detail_response.status_code == 200
+    assert b'<input id="status" type="text" value="Closed" readonly>' in detail_response.data
+    assert b'<input id="exit_price" type="text" value="-" readonly>' in detail_response.data
+
+
 def test_analytics_page_shows_planned_vs_real_rr_panel(app_ctx, client):
     user, trade_account = _create_logged_in_user(
         client,
