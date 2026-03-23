@@ -671,6 +671,7 @@ class AIGeneratedResponse(db.Model):
     kind = db.Column(db.String(64), nullable=False, default="dashboard_advice")
     model = db.Column(db.String(64), nullable=False, default="gpt-5-mini")
     response_text = db.Column(db.Text, nullable=False)
+    payload_json = db.Column(db.Text, nullable=True)
     payload_hash = db.Column(db.String(64), nullable=True, index=True)
     trade_count_used = db.Column(db.Integer, nullable=False, default=0)
     source_last_trade_id = db.Column(db.Integer, nullable=True)

@@ -17,7 +17,7 @@ level.
 
 Known per-trade fields in the TRADES section include: symbol, contract_code,
 side, entry_price, exit_price, stop_loss, take_profit, lot_size, pnl,
-entry_session, exit_session, duration_minutes, opened_at, closed_at,
+entry_session, exit_session, session, duration_minutes, opened_at, closed_at,
 trade_sequence_number, trade_number_in_session, prev_trade_pnl,
 minutes_since_prev_close, size_vs_prev_trade, loss_streak_before_trade,
 is_post_loss_trade, same_symbol_reentry, same_trade_idea_reentry,
@@ -110,12 +110,27 @@ DATA FLAGS
 The payload may include the following flags. Adjust your analysis
 accordingly:
 
-- notes_coverage: A ratio between 0.0 and 1.0 where 0.50 means half
-  of trades have notes. If below 0.50, note the gap explicitly in DATA
-  QUALITY and limit qualitative analysis.
+- notes_coverage: A ratio between 0.0 and 1.0 based on weekly trade
+  tickets with non-empty trade_note text.
+- notes_with_content / notes_missing / notes_confidence: Use these to
+  judge how much confidence is justified in behavioural or emotional
+  interpretation. If notes_confidence is low, only make psychology or
+  intent claims when the anchor trade itself has a note, and say sparse
+  notes limit certainty.
+- notes_basis: Explains what counted toward notes_coverage. Follow it
+  literally instead of guessing what "coverage" means.
 - account_age_days: Days since the first trade on this account. If
   below 30, skip all historical comparisons and state history is too
   limited to compare.
+- top_symbol_by_trade_count / top_symbol_trade_share_pct: Identify the
+  most concentrated symbol by weekly closed-trade count. Use this for
+  symbol concentration and data-quality context.
+- top_symbol_by_abs_pnl / top_symbol_abs_pnl_share_pct: Identify the
+  symbol that carried the largest share of total absolute weekly symbol
+  PnL. Use this for outcome concentration.
+- largest_trade_symbol / largest_trade_abs_pnl_share_pct: Identify
+  whether one trade dominated the week's outcome. Use this for single-
+  trade concentration, not for assigning blame.
 - outlier_size: Lot size is more than 3x the user's median weekly lot
   size. Flag as unusually large, not a stable sizing pattern.
 - possible_split_order: May be part of a split entry. Do not count as
@@ -173,13 +188,14 @@ CONSISTENCY
   or losing and whether the hit rate was low, mixed, or strong. If
   account_age_days is 30 or more, compare directionally to the
   historical_win_rate field without quoting exact values.
-- Bullet 2 (conditional): Only include if one trade or one symbol
-  contributed more than 50% of net PnL â€” positive or negative. Frame
-  it as a concentration risk, not loss attribution. State the symbol
-  and that it carried most of the weekly outcome. If the week had fewer
-  than 3 closed trades, skip this bullet and note thin sample in DATA
-  QUALITY instead. If result was genuinely spread across trades, skip
-  entirely.
+- Bullet 2 (conditional): Only include if top_symbol_abs_pnl_share_pct
+  or largest_trade_abs_pnl_share_pct is above 50%. Frame it as a
+  concentration risk, not loss attribution. Name the dominant symbol
+  when the symbol-level metric is the driver, and use the largest-trade
+  metric only when one trade clearly carried the outcome. If the week
+  had fewer than 3 closed trades, skip this bullet and note thin sample
+  in DATA QUALITY instead. If result was genuinely spread across trades,
+  skip entirely.
 
 Edge cases:
 - If all trades lost or all trades won, state it factually without
@@ -197,14 +213,14 @@ TIMING
 - Bullet 2 (always): State whether there was a meaningful difference
   between sessions. If one session clearly outperformed others, name
   it directionally. If all sessions performed similarly or all lost,
-  state that directly without quoting exact values â€” do not force a best
+  state that directly without quoting exact values; do not force a best
   vs worst framing when the data does not support it.
 
 Edge cases:
 - If all trades were in one session, state that directly and skip
   bullet 2 since there is nothing to compare.
-- If cross-session exits are present â€” trades opened in one session
-  and closed in another â€” note the session pair and trade count in
+- If cross-session exits are present - trades opened in one session
+  and closed in another - note the session pair and trade count in
   bullet 2 only if it appears on 2 or more trades. Otherwise skip.
 - If account_age_days is below 30, do not compare to historical
   session data. Report this week only.
@@ -219,14 +235,14 @@ BEHAVIOUR
   call it recurring. If all exits were clean, confirm that directly.
 - Bullet 2 (conditional): Only include if a second clear behavioural
   flag exists. Priority order to check:
-  1. Post-loss re-entry / revenge pattern â€” if is_potential_revenge is
+  1. Post-loss re-entry / revenge pattern - if is_potential_revenge is
      true, or a trade is both is_post_loss_trade and same_trade_idea_reentry
      with a short minutes_since_prev_close, name the symbol and describe
      the sequence without quoting exact minutes.
-  2. Sizing change after a loss â€” use size_vs_prev_trade and prev_trade_pnl.
-  3. Premature SL exit â€” if closed_before_sl is true on a losing trade,
+  2. Sizing change after a loss - use size_vs_prev_trade and prev_trade_pnl.
+  3. Premature SL exit - if closed_before_sl is true on a losing trade,
      note it as potential hesitation without assuming intent.
-  4. Overtrading â€” only flag if 3 or more trades in one session showed
+  4. Overtrading - only flag if 3 or more trades in one session showed
      diminishing PnL. State the session and trade count. Use
      trade_number_in_session as support, not proof by itself.
   Skip if no second flag has clear data support.
@@ -238,6 +254,8 @@ Edge cases:
 - same_trade_idea_reentry alone does not mean revenge or impulsiveness.
 - Exclude is_likely_corrective trades from TP exit analysis unless
   notes clearly indicate the trade was intentional.
+- If notes_confidence is low and the relevant trade has no note, keep
+  behavioural or emotional inference explicitly tentative.
 - If no winning trades exist this week, bullet 1 should state that TP
   exit behaviour cannot be assessed and move to the next available flag.
 - If only one trade exists, skip BEHAVIOUR entirely and note thin
@@ -262,9 +280,8 @@ Edge cases:
 
 DATA QUALITY
 Only include this section if at least one of these conditions is true:
-notes_coverage is below 0.50, account_age_days is below 30, split
-orders are present, or one symbol represents more than 70% of weekly
-trades.
+notes_confidence is low, account_age_days is below 30, split orders are
+present, or top_symbol_trade_share_pct is 70% or higher.
 - Bullet 1: State the specific constraint and what it limits in this
   review.
 - Bullet 2 (conditional): Only include if a second distinct constraint
@@ -272,14 +289,14 @@ trades.
 Skip this section entirely if none of the above conditions apply.
 
 Edge cases:
-- If both account_age_days is below 30 AND notes_coverage is below
-  0.50, combine into one bullet to avoid redundancy.
+- If both account_age_days is below 30 AND notes_confidence is low,
+  combine into one bullet to avoid redundancy.
 - If split orders are the only data quality flag and they were already
   handled correctly in BEHAVIOUR, skip DATA QUALITY entirely.
 
 ONE CONCRETE RULE
 End with a single actionable rule the trader can apply next week.
-The rule must reference something specific from this week's data â€” a
+The rule must reference something specific from this week's data - a
 session, a symbol, a behaviour, or a pattern. Never write a generic
 rule like "stick to your plan" or "manage your risk." The rule must
 be something the trader can act on immediately.
@@ -307,7 +324,7 @@ Edge cases:
   on process rather than pattern since the sample is too thin to
   conclude anything about strategy.
 - If the week was all losses, the rule must be constructive and forward
-  looking â€” never punitive.
+  looking - never punitive.
 - If the week was all wins, find one subtle risk or weakness in the
   data and base the rule on that.
 

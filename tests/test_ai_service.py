@@ -41,12 +41,16 @@ def _create_user_and_account(*, username, email, account_name="Primary Account",
     return user, trade_account
 
 
-def test_format_payload_for_prompt_includes_trade_fields_and_signed_drawdown():
+def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     payload = {
         "generated_at": "2026-03-12 10:00:00 UTC",
         "period_start_utc": "2026-03-03 00:00:00 UTC",
         "period_end_utc": "2026-03-10 00:00:00 UTC",
         "notes_coverage": 1.0,
+        "notes_with_content": 1,
+        "notes_missing": 0,
+        "notes_confidence": "high",
+        "notes_basis": "Per weekly trade ticket; counts non-empty trade_note text only.",
         "account_age_days": 45,
         "summary": {
             "total_trades": 1,
@@ -56,20 +60,27 @@ def test_format_payload_for_prompt_includes_trade_fields_and_signed_drawdown():
             "net_pnl": 140.0,
             "weekly_pnl": 140.0,
             "monthly_pnl": 140.0,
+            "top_symbol_by_trade_count": "MES (MESM26)",
+            "top_symbol_trade_share_pct": 100.0,
+            "top_symbol_by_abs_pnl": "MES (MESM26)",
+            "top_symbol_abs_pnl_share_pct": 100.0,
+            "largest_trade_symbol": "MES (MESM26)",
+            "largest_trade_abs_pnl_share_pct": 100.0,
             "best_trade_pnl": 140.0,
             "worst_trade_pnl": 140.0,
-            "max_drawdown": -45.75,
+            "max_drawdown": 45.75,
         },
         "historical_context": {
+            "comparison_scope": "history_before_review_period_only",
             "window_start_utc": "2025-12-12 00:00:00 UTC",
-            "window_end_utc": "2026-03-10 00:00:00 UTC",
+            "window_end_utc": "2026-03-03 00:00:00 UTC",
             "window_days": 90,
             "summary": {
                 "total_trades": 8,
                 "closed_trades": 8,
                 "win_rate": 50.0,
                 "net_pnl": 320.5,
-                "max_drawdown": -88.2,
+                "max_drawdown": 88.2,
             },
             "top_pairs": [],
             "top_sessions": [],
@@ -120,15 +131,21 @@ def test_format_payload_for_prompt_includes_trade_fields_and_signed_drawdown():
 
     prompt_text = format_payload_for_prompt(payload)
 
-    assert "- max_drawdown: -45.75" in prompt_text
-    assert "- historical_max_drawdown: -88.20" in prompt_text
-    assert "- notes_coverage: 1.00" in prompt_text
+    assert "- max_drawdown_amount: 45.75" in prompt_text
+    assert "- historical_max_drawdown_amount: 88.20" in prompt_text
+    assert "- notes_coverage: 1.00 (1 of 1 weekly trade ticket has non-empty notes)" in prompt_text
+    assert "- notes_confidence: high" in prompt_text
+    assert "- notes_basis: Per weekly trade ticket; counts non-empty trade_note text only." in prompt_text
+    assert "- comparison_scope: history_before_review_period_only" in prompt_text
     assert "- account_age_days: 45" in prompt_text
+    assert "- top_symbol_trade_share_pct: 100.00%" in prompt_text
+    assert "- largest_trade_abs_pnl_share_pct: 100.00%" in prompt_text
     assert "contract_code: MESM26" in prompt_text
     assert "stop_loss: 4998.75000" in prompt_text
     assert "take_profit: 5004.00000" in prompt_text
     assert "entry_session: New York" in prompt_text
     assert "exit_session: New York" in prompt_text
+    assert "session: New York" in prompt_text
     assert "duration_minutes: 84.00" in prompt_text
     assert "trade_sequence_number: 2" in prompt_text
     assert "prev_trade_pnl: -80.00" in prompt_text
@@ -206,6 +223,10 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
             "period_start_utc": "2026-03-03 00:00:00 UTC",
             "period_end_utc": "2026-03-10 00:00:00 UTC",
             "notes_coverage": 0.0,
+            "notes_with_content": 0,
+            "notes_missing": 1,
+            "notes_confidence": "low",
+            "notes_basis": "Per weekly trade ticket; counts non-empty trade_note text only.",
             "account_age_days": None,
             "summary": {},
             "historical_context": {},
@@ -255,6 +276,7 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
 
     assert "entry_session: -" in prompt_text
     assert "exit_session: London" in prompt_text
+    assert "session: -" in prompt_text
     assert "outlier_size: true" in prompt_text
     assert "is_likely_corrective: true" in prompt_text
     assert "closed_before_tp: -" in prompt_text
@@ -402,7 +424,7 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "take_profit" in prompt_text
     assert "entry_session" in prompt_text
     assert "exit_session" in prompt_text
-    assert "entry_session, exit_session, duration_minutes" in prompt_text
+    assert "entry_session, exit_session, session, duration_minutes" in prompt_text
     assert "trade_sequence_number" in prompt_text
     assert "same_trade_idea_reentry" in prompt_text
     assert "is_potential_revenge" in prompt_text
@@ -435,8 +457,13 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Never reveal exact account metrics from the payload." in prompt_text
     assert "Keep the response between 100 and 150 words." not in prompt_text
     assert "notes_coverage" in prompt_text
+    assert "notes_with_content / notes_missing / notes_confidence" in prompt_text
+    assert "top_symbol_by_trade_count / top_symbol_trade_share_pct" in prompt_text
+    assert "top_symbol_abs_pnl_share_pct" in prompt_text
+    assert "largest_trade_abs_pnl_share_pct" in prompt_text
     assert "possible_split_order" in prompt_text
     assert "same_trade_idea_reentry alone does not mean revenge or impulsiveness." in prompt_text
+    assert "If notes_confidence is low and the relevant trade has no note" in prompt_text
     assert "Use only these optional plain-text section labels in the response:" not in prompt_text
 
 
@@ -523,7 +550,16 @@ def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, mon
 
     assert len(payload["trades"]) == 3
     assert payload["notes_coverage"] == 0.33
+    assert payload["notes_with_content"] == 1
+    assert payload["notes_missing"] == 2
+    assert payload["notes_confidence"] == "low"
     assert payload["account_age_days"] == 18
+    assert payload["summary"]["top_symbol_by_trade_count"] == "EURUSD"
+    assert payload["summary"]["top_symbol_trade_share_pct"] == 66.67
+    assert payload["summary"]["top_symbol_by_abs_pnl"] == "EURUSD"
+    assert payload["summary"]["top_symbol_abs_pnl_share_pct"] == 51.52
+    assert payload["summary"]["largest_trade_symbol"] == "GBPUSD"
+    assert payload["summary"]["largest_trade_abs_pnl_share_pct"] == 48.48
 
     eur_trades = [trade for trade in payload["trades"] if trade["symbol"] == "EURUSD"]
     gbp_trade = next(trade for trade in payload["trades"] if trade["symbol"] == "GBPUSD")
@@ -660,6 +696,56 @@ def test_build_trade_payload_assigns_cross_week_trade_to_close_week(app_ctx):
     )
 
     assert [trade["symbol"] for trade in payload["trades"]] == ["EURUSD"]
+
+
+def test_build_trade_payload_historical_context_excludes_review_period(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-history-user",
+        email="ai-history@example.com",
+    )
+
+    db.session.add_all(
+        [
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="EURUSD",
+                side="BUY",
+                entry_price=1.1000,
+                exit_price=1.1010,
+                lot_size=1.0,
+                pnl=100.0,
+                opened_at=datetime(2026, 3, 1, 8, 0, 0),
+                closed_at=datetime(2026, 3, 1, 9, 0, 0),
+            ),
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="GBPUSD",
+                side="SELL",
+                entry_price=1.2700,
+                exit_price=1.2690,
+                lot_size=1.0,
+                pnl=90.0,
+                opened_at=datetime(2026, 3, 10, 12, 0, 0),
+                closed_at=datetime(2026, 3, 10, 13, 0, 0),
+            ),
+        ]
+    )
+    db.session.commit()
+
+    payload = build_trade_payload(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        period_start_utc=datetime(2026, 3, 10, 0, 0, 0),
+        period_end_utc=datetime(2026, 3, 11, 0, 0, 0),
+        closed_trades_only=True,
+    )
+
+    assert payload["historical_context"]["comparison_scope"] == "history_before_review_period_only"
+    assert payload["historical_context"]["window_end_utc"] == "2026-03-10T00:00:00Z"
+    assert payload["historical_context"]["summary"]["total_trades"] == 1
+    assert payload["historical_context"]["summary"]["closed_trades"] == 1
 
 
 def test_maybe_generate_weekly_dashboard_advice_returns_skip_reason_for_no_trades(app_ctx, monkeypatch):
@@ -805,6 +891,7 @@ def test_maybe_generate_weekly_dashboard_advice_generates_when_three_closed_trad
     assert result["generated"] is True
     assert result["record"] is not None
     assert result["record"].trade_count_used == 3
+    assert result["record"].payload_json == ai_service.serialize_payload(result["payload"])
     assert result["record"].response_text.endswith("Rule: Keep risk fixed.")
 
 
@@ -926,6 +1013,8 @@ def test_force_weekly_generation_appends_new_response_for_same_period(app_ctx, m
     assert result["generated"] is True
     assert result["record"] is not None
     assert result["record"].response_text == "Fresh weekly advice"
+    assert result["record"].payload_json == '{"payload":"new"}'
     assert len(rows) == 2
     assert rows[0].response_text == "Existing weekly advice"
     assert rows[1].response_text == "Fresh weekly advice"
+    assert rows[1].payload_json == '{"payload":"new"}'

@@ -464,19 +464,21 @@ def _build_historical_context(
     *,
     user_id,
     trade_account_id=None,
+    period_start_utc=None,
     period_end_utc=None,
     lookback_days=DEFAULT_HISTORICAL_CONTEXT_DAYS,
     closed_trades_only=False,
 ):
-    if period_end_utc is None:
+    historical_end_utc = period_start_utc or period_end_utc
+    if historical_end_utc is None:
         return None
 
-    historical_start_utc = period_end_utc - timedelta(days=max(int(lookback_days), 1))
+    historical_start_utc = historical_end_utc - timedelta(days=max(int(lookback_days), 1))
     historical_trades = _query_trades_for_payload(
         user_id=user_id,
         trade_account_id=trade_account_id,
         period_start_utc=historical_start_utc,
-        period_end_utc=period_end_utc,
+        period_end_utc=historical_end_utc,
         closed_trades_only=closed_trades_only,
     )
     if not historical_trades:
@@ -528,8 +530,13 @@ def _build_historical_context(
 
     summary = analytics.get("summary", {})
     return {
+        "comparison_scope": (
+            "history_before_review_period_only"
+            if period_start_utc is not None
+            else "history_up_to_period_end"
+        ),
         "window_start_utc": format_utc_timestamp(historical_start_utc),
-        "window_end_utc": format_utc_timestamp(period_end_utc),
+        "window_end_utc": format_utc_timestamp(historical_end_utc),
         "window_days": max(int(lookback_days), 1),
         "summary": {
             "total_trades": summary.get("total_trades", 0),
@@ -882,6 +889,12 @@ def build_trade_payload(
     notes_with_content = 0
     lot_sizes = []
     durations = []
+    closed_trade_count = 0
+    total_absolute_trade_pnl = 0.0
+    largest_trade_symbol = None
+    largest_trade_abs_pnl = 0.0
+    symbol_trade_counts = {}
+    symbol_net_pnl = {}
     for trade in trades:
         note = (trade.trade_note or "").strip()
         if note:
@@ -892,9 +905,24 @@ def build_trade_payload(
         duration_minutes = _get_trade_duration_minutes(trade)
         if duration_minutes is not None and not is_extremely_long_duration_minutes(duration_minutes):
             durations.append(duration_minutes)
+        trade_pnl = resolve_net_pnl(trade)
+        if getattr(trade, "closed_at", None) is None or trade_pnl is None:
+            continue
+        closed_trade_count += 1
+        absolute_trade_pnl = abs(float(trade_pnl))
+        total_absolute_trade_pnl += absolute_trade_pnl
+        trade_symbol = format_trade_symbol(trade) or "-"
+        symbol_trade_counts[trade_symbol] = symbol_trade_counts.get(trade_symbol, 0) + 1
+        symbol_net_pnl[trade_symbol] = symbol_net_pnl.get(trade_symbol, 0.0) + float(trade_pnl)
+        if absolute_trade_pnl > largest_trade_abs_pnl:
+            largest_trade_abs_pnl = absolute_trade_pnl
+            largest_trade_symbol = trade_symbol
 
     median_lot_size = statistics.median(lot_sizes) if lot_sizes else None
     median_duration_minutes = statistics.median(durations) if durations else None
+    notes_coverage = round(notes_with_content / len(trades), 2) if trades else 0.0
+    notes_missing = max(len(trades) - notes_with_content, 0)
+    notes_confidence = _get_notes_confidence_label(notes_coverage, len(trades))
     first_trade_query = db.session.query(func.min(Trade.opened_at)).filter(Trade.user_id == user_id)
     if trade_account_id is not None:
         first_trade_query = first_trade_query.filter(Trade.trade_account_id == trade_account_id)
@@ -902,6 +930,34 @@ def build_trade_payload(
     account_age_days = None
     if first_trade_opened_at is not None:
         account_age_days = max((utcnow_naive() - first_trade_opened_at).days, 0)
+
+    top_symbol_by_trade_count = None
+    top_symbol_trade_count = 0
+    top_symbol_trade_share_pct = None
+    if symbol_trade_counts and closed_trade_count > 0:
+        top_symbol_by_trade_count, top_symbol_trade_count = max(
+            symbol_trade_counts.items(),
+            key=lambda item: (item[1], abs(symbol_net_pnl.get(item[0], 0.0)), item[0]),
+        )
+        top_symbol_trade_share_pct = _round_metric((top_symbol_trade_count / closed_trade_count) * 100.0)
+
+    top_symbol_by_abs_pnl = None
+    top_symbol_abs_pnl_share_pct = None
+    total_absolute_symbol_pnl = sum(abs(value) for value in symbol_net_pnl.values())
+    if symbol_net_pnl and total_absolute_symbol_pnl > 0:
+        top_symbol_by_abs_pnl, dominant_symbol_pnl = max(
+            symbol_net_pnl.items(),
+            key=lambda item: (abs(item[1]), symbol_trade_counts.get(item[0], 0), item[0]),
+        )
+        top_symbol_abs_pnl_share_pct = _round_metric(
+            (abs(dominant_symbol_pnl) / total_absolute_symbol_pnl) * 100.0
+        )
+
+    largest_trade_abs_pnl_share_pct = None
+    if total_absolute_trade_pnl > 0 and largest_trade_abs_pnl > 0:
+        largest_trade_abs_pnl_share_pct = _round_metric(
+            (largest_trade_abs_pnl / total_absolute_trade_pnl) * 100.0
+        )
 
     serialized_trades = []
     for trade in trades:
@@ -967,13 +1023,18 @@ def build_trade_payload(
         "generated_at": format_utc_timestamp(utcnow_naive()),
         "period_start_utc": format_utc_timestamp(period_start_utc),
         "period_end_utc": format_utc_timestamp(period_end_utc),
-        "notes_coverage": round(notes_with_content / len(trades), 2) if trades else 0.0,
+        "notes_coverage": notes_coverage,
+        "notes_with_content": notes_with_content,
+        "notes_missing": notes_missing,
+        "notes_confidence": notes_confidence,
+        "notes_basis": "Per weekly trade ticket; counts non-empty trade_note text only.",
         "account_age_days": account_age_days,
         "user_profile": _serialize_user_profile(user_profile),
         "weekly_checkin": _serialize_weekly_checkin(weekly_checkin),
         "historical_context": _build_historical_context(
             user_id=user_id,
             trade_account_id=trade_account_id,
+            period_start_utc=period_start_utc,
             period_end_utc=period_end_utc,
             closed_trades_only=closed_trades_only,
         ),
@@ -987,6 +1048,13 @@ def build_trade_payload(
             "monthly_pnl": analytics["summary"]["monthly_pnl"],
             "closed_before_tp_count": analytics["summary"].get("closed_before_tp_count", 0),
             "closed_before_sl_count": analytics["summary"].get("closed_before_sl_count", 0),
+            "top_symbol_by_trade_count": top_symbol_by_trade_count,
+            "top_symbol_trade_count": top_symbol_trade_count,
+            "top_symbol_trade_share_pct": top_symbol_trade_share_pct,
+            "top_symbol_by_abs_pnl": top_symbol_by_abs_pnl,
+            "top_symbol_abs_pnl_share_pct": top_symbol_abs_pnl_share_pct,
+            "largest_trade_symbol": largest_trade_symbol,
+            "largest_trade_abs_pnl_share_pct": largest_trade_abs_pnl_share_pct,
             "pair_sample_is_diverse": analytics["summary"].get("pair_sample_is_diverse", False),
             "equity_has_outlier_dominance": analytics["summary"].get("equity_has_outlier_dominance", False),
             "best_trade_pnl": (
@@ -1058,6 +1126,12 @@ def _format_signed_currency(value):
     return f"{amount:+.2f}"
 
 
+def _format_currency_magnitude(value):
+    if value is None:
+        return "-"
+    return f"{abs(float(value)):.2f}"
+
+
 def _format_percent(value):
     if value is None:
         return "-"
@@ -1066,6 +1140,31 @@ def _format_percent(value):
 
 def _payload_section_has_values(section):
     return any(value is not None for value in (section or {}).values())
+
+
+def _get_notes_confidence_label(notes_coverage, trade_count):
+    if trade_count <= 0:
+        return None
+    if notes_coverage < 0.5:
+        return "low"
+    if notes_coverage < 0.8:
+        return "medium"
+    return "high"
+
+
+def _format_notes_coverage(value, notes_with_content=None, notes_missing=None):
+    ratio_text = _format_number(value)
+    if notes_with_content is None or notes_missing is None:
+        return ratio_text
+    total = notes_with_content + notes_missing
+    if total <= 0:
+        return ratio_text
+    ticket_label = "trade ticket" if total == 1 else "trade tickets"
+    verb = "has" if notes_with_content == 1 else "have"
+    return (
+        f"{ratio_text} "
+        f"({notes_with_content} of {total} weekly {ticket_label} {verb} non-empty notes)"
+    )
 
 
 def format_payload_for_prompt(payload):
@@ -1080,7 +1179,9 @@ def format_payload_for_prompt(payload):
         f"- generated_at: {payload.get('generated_at') or '-'}",
         f"- period_start_utc: {payload.get('period_start_utc') or '-'}",
         f"- period_end_utc: {payload.get('period_end_utc') or '-'}",
-        f"- notes_coverage: {_format_number(payload.get('notes_coverage'))}",
+        f"- notes_coverage: {_format_notes_coverage(payload.get('notes_coverage'), payload.get('notes_with_content'), payload.get('notes_missing'))}",
+        f"- notes_confidence: {payload.get('notes_confidence') or '-'}",
+        f"- notes_basis: {payload.get('notes_basis') or '-'}",
         f"- account_age_days: {payload.get('account_age_days') if payload.get('account_age_days') is not None else '-'}",
     ]
 
@@ -1120,13 +1221,18 @@ def format_payload_for_prompt(payload):
             f"- monthly_pnl: {_format_signed_currency(summary.get('monthly_pnl'))}",
             f"- closed_before_tp_count: {summary.get('closed_before_tp_count', 0)}",
             f"- closed_before_sl_count: {summary.get('closed_before_sl_count', 0)}",
-            f"- pair_sample_is_diverse: {_format_bool(summary.get('pair_sample_is_diverse'))}",
-            f"- equity_has_outlier_dominance: {_format_bool(summary.get('equity_has_outlier_dominance'))}",
+            f"- top_symbol_by_trade_count: {summary.get('top_symbol_by_trade_count') or '-'}",
+            f"- top_symbol_trade_share_pct: {_format_percent(summary.get('top_symbol_trade_share_pct'))}",
+            f"- top_symbol_by_abs_pnl: {summary.get('top_symbol_by_abs_pnl') or '-'}",
+            f"- top_symbol_abs_pnl_share_pct: {_format_percent(summary.get('top_symbol_abs_pnl_share_pct'))}",
+            f"- largest_trade_symbol: {summary.get('largest_trade_symbol') or '-'}",
+            f"- largest_trade_abs_pnl_share_pct: {_format_percent(summary.get('largest_trade_abs_pnl_share_pct'))}",
             f"- best_trade_pnl: {_format_signed_currency(summary.get('best_trade_pnl'))}",
             f"- worst_trade_pnl: {_format_signed_currency(summary.get('worst_trade_pnl'))}",
-            f"- max_drawdown: {_format_signed_currency(summary.get('max_drawdown'))}",
+            f"- max_drawdown_amount: {_format_currency_magnitude(summary.get('max_drawdown'))}",
             "",
             "HISTORICAL_CONTEXT",
+            f"- comparison_scope: {historical_context.get('comparison_scope') or '-'}",
             f"- window_start_utc: {historical_context.get('window_start_utc') or '-'}",
             f"- window_end_utc: {historical_context.get('window_end_utc') or '-'}",
             f"- window_days: {historical_context.get('window_days') or '-'}",
@@ -1134,7 +1240,7 @@ def format_payload_for_prompt(payload):
             f"- historical_closed_trades: {(historical_context.get('summary') or {}).get('closed_trades', 0)}",
             f"- historical_win_rate: {_format_percent((historical_context.get('summary') or {}).get('win_rate'))}",
             f"- historical_net_pnl: {_format_signed_currency((historical_context.get('summary') or {}).get('net_pnl'))}",
-            f"- historical_max_drawdown: {_format_signed_currency((historical_context.get('summary') or {}).get('max_drawdown'))}",
+            f"- historical_max_drawdown_amount: {_format_currency_magnitude((historical_context.get('summary') or {}).get('max_drawdown'))}",
             "",
             "HISTORICAL_TOP_PAIRS",
         ]
@@ -1208,6 +1314,7 @@ def format_payload_for_prompt(payload):
                 f"   pnl: {_format_signed_currency(trade.get('pnl'))}",
                 f"   entry_session: {trade.get('entry_session') or '-'}",
                 f"   exit_session: {trade.get('exit_session') or '-'}",
+                f"   session: {trade.get('session') or '-'}",
                 f"   duration_minutes: {_format_number(trade.get('duration_minutes'))}",
                 f"   opened_at: {trade.get('opened_at') or '-'}",
                 f"   closed_at: {trade.get('closed_at') or '-'}",
@@ -1379,6 +1486,7 @@ def save_ai_response(
         kind=kind,
         model=model,
         response_text=response_text,
+        payload_json=payload_json,
         payload_hash=hash_text(payload_json),
         trade_count_used=trade_count_used,
         source_last_trade_id=source_last_trade_id,
