@@ -1,10 +1,12 @@
 import os
 
 import os
+from types import SimpleNamespace
 
 import pytest
 from cryptography.fernet import Fernet
 
+from celery_workers.mt5_sync import aggregate_deals_to_trades
 from celery_app import celery
 from helpers.core import delete_users_with_related_data
 from helpers.utils import decrypt_password, encrypt_password
@@ -63,6 +65,91 @@ def _create_mt5_account(*, user_id, trade_account_id, account_number="12345678")
     db.session.add(mt5_account)
     db.session.commit()
     return mt5_account
+
+
+def _deal(**overrides):
+    payload = {
+        "position_id": 1001,
+        "entry": 0,
+        "type": 0,
+        "symbol": "XAUUSD",
+        "price": 3000.0,
+        "volume": 1.0,
+        "time": 1_710_000_000,
+        "profit": 0.0,
+        "commission": 0.0,
+        "swap": 0.0,
+        "comment": "",
+    }
+    payload.update(overrides)
+    return SimpleNamespace(**payload)
+
+
+def test_aggregate_deals_to_trades_closes_position_with_multiple_exit_deals():
+    trades = aggregate_deals_to_trades(
+        [
+            _deal(price=3000.0, volume=1.0, time=1_710_000_000, comment="entry"),
+            _deal(
+                entry=1,
+                price=3010.0,
+                volume=0.4,
+                time=1_710_003_600,
+                profit=40.0,
+                commission=-1.0,
+                comment="tp1",
+            ),
+            _deal(
+                entry=1,
+                price=3020.0,
+                volume=0.6,
+                time=1_710_007_200,
+                profit=120.0,
+                commission=-1.5,
+                swap=-0.5,
+                comment="final",
+            ),
+        ]
+    )
+
+    assert len(trades) == 1
+    assert trades[0]["symbol"] == "XAUUSD"
+    assert trades[0]["entry_price"] == pytest.approx(3000.0)
+    assert trades[0]["exit_price"] == pytest.approx(3016.0)
+    assert trades[0]["lot_size"] == pytest.approx(1.0)
+    assert trades[0]["pnl"] == pytest.approx(160.0)
+    assert trades[0]["commission"] == pytest.approx(-2.5)
+    assert trades[0]["swap"] == pytest.approx(-0.5)
+    assert trades[0]["trade_note"] == "final"
+    assert trades[0]["closed_at"] == "2024-03-09T18:00:00+00:00"
+    assert trades[0]["is_open"] is False
+
+
+def test_aggregate_deals_to_trades_treats_extra_exit_entries_as_closes():
+    trades = aggregate_deals_to_trades(
+        [
+            _deal(position_id=2002, price=1.25, volume=0.5, time=1_710_000_000, symbol="EURUSD"),
+            _deal(
+                position_id=2002,
+                entry=3,
+                price=1.255,
+                volume=0.5,
+                time=1_710_003_600,
+                profit=25.0,
+                commission=-0.4,
+                symbol="EURUSD",
+                comment="close by",
+            ),
+        ],
+        extra_exit_entries=(3,),
+    )
+
+    assert len(trades) == 1
+    assert trades[0]["symbol"] == "EURUSD"
+    assert trades[0]["lot_size"] == pytest.approx(0.5)
+    assert trades[0]["exit_price"] == pytest.approx(1.255)
+    assert trades[0]["pnl"] == pytest.approx(25.0)
+    assert trades[0]["trade_note"] == "close by"
+    assert trades[0]["is_open"] is False
 
 
 def test_encrypt_password_round_trip_requires_key(monkeypatch):

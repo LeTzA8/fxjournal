@@ -16,9 +16,44 @@ def _to_utc_iso(timestamp_value):
     return datetime.fromtimestamp(timestamp_value, tz=timezone.utc).isoformat(timespec="seconds")
 
 
-def aggregate_deals_to_trades(deals, *, entry_in=0, entry_out=1, deal_type_buy=0):
+def _deal_float_value(deal, field_name, default=0.0):
+    try:
+        return float(getattr(deal, field_name, default) or default)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _deal_volume(deal):
+    return max(_deal_float_value(deal, "volume", 0.0), 0.0)
+
+
+def _weighted_average_price(deals):
+    weighted_total = 0.0
+    total_volume = 0.0
+    for deal in deals:
+        volume = _deal_volume(deal)
+        price = _deal_float_value(deal, "price", 0.0)
+        if volume <= 0 or price <= 0:
+            continue
+        weighted_total += price * volume
+        total_volume += volume
+    if total_volume <= 0:
+        return None
+    return weighted_total / total_volume
+
+
+def aggregate_deals_to_trades(
+    deals,
+    *,
+    entry_in=0,
+    entry_out=1,
+    extra_exit_entries=(),
+    deal_type_buy=0,
+):
     deals = [deal for deal in deals if getattr(deal, "type", 99) <= 1]
     positions = defaultdict(list)
+    exit_entries = {entry_out}
+    exit_entries.update(entry_value for entry_value in extra_exit_entries if entry_value is not None)
 
     for deal in deals:
         position_id = getattr(deal, "position_id", None)
@@ -28,52 +63,59 @@ def aggregate_deals_to_trades(deals, *, entry_in=0, entry_out=1, deal_type_buy=0
 
     trades = []
     for position_id, position_deals in positions.items():
+        position_deals = sorted(position_deals, key=lambda deal: getattr(deal, "time", 0) or 0)
         entry_deals = [deal for deal in position_deals if getattr(deal, "entry", None) == entry_in]
-        exit_deals = [deal for deal in position_deals if getattr(deal, "entry", None) == entry_out]
-        if len(entry_deals) > 1 or len(exit_deals) > 1:
+        exit_deals = [deal for deal in position_deals if getattr(deal, "entry", None) in exit_entries]
+
+        if not entry_deals:
             continue
 
-        entry_deal = entry_deals[0] if entry_deals else None
-        exit_deal = exit_deals[0] if exit_deals else None
-        if entry_deal is None:
+        entry_deal = entry_deals[0]
+        entry_price = _weighted_average_price(entry_deals)
+        entry_volume = sum(_deal_volume(deal) for deal in entry_deals)
+        if entry_price is None or entry_volume <= 0:
             continue
 
+        exit_price = _weighted_average_price(exit_deals)
+        exit_volume = sum(_deal_volume(deal) for deal in exit_deals)
+        latest_exit_deal = exit_deals[-1] if exit_deals else None
         side = "BUY" if getattr(entry_deal, "type", None) == deal_type_buy else "SELL"
         total_commission = sum(float(getattr(deal, "commission", 0.0) or 0.0) for deal in position_deals)
         total_swap = sum(float(getattr(deal, "swap", 0.0) or 0.0) for deal in position_deals)
         total_profit = sum(float(getattr(deal, "profit", 0.0) or 0.0) for deal in position_deals)
 
-        if exit_deal is not None:
+        # Keep the trade open until the full entry volume has been offset.
+        if exit_deals and exit_volume + 1e-9 >= entry_volume and exit_price is not None:
             trades.append(
                 {
-                    "symbol": getattr(exit_deal, "symbol", None) or getattr(entry_deal, "symbol", None),
+                    "symbol": getattr(latest_exit_deal, "symbol", None) or getattr(entry_deal, "symbol", None),
                     "side": side,
-                    "entry_price": float(getattr(entry_deal, "price", 0.0) or 0.0),
-                    "exit_price": float(getattr(exit_deal, "price", 0.0) or 0.0),
-                    "lot_size": float(getattr(entry_deal, "volume", 0.0) or 0.0),
+                    "entry_price": entry_price,
+                    "exit_price": exit_price,
+                    "lot_size": entry_volume,
                     "pnl": total_profit,
                     "commission": total_commission,
                     "swap": total_swap,
                     "stop_loss": None,
                     "take_profit": None,
                     "opened_at": _to_utc_iso(getattr(entry_deal, "time", None)),
-                    "closed_at": _to_utc_iso(getattr(exit_deal, "time", None)),
+                    "closed_at": _to_utc_iso(getattr(latest_exit_deal, "time", None)),
                     "mt5_position": str(position_id),
-                    "trade_note": str(getattr(exit_deal, "comment", "") or "").strip() or None,
+                    "trade_note": str(getattr(latest_exit_deal, "comment", "") or "").strip() or None,
                     "source_timezone": "UTC",
                     "is_open": False,
                 }
             )
-        else:
+        elif not exit_deals:
             trades.append(
                 {
                     "symbol": getattr(entry_deal, "symbol", None),
                     "side": side,
-                    "entry_price": float(getattr(entry_deal, "price", 0.0) or 0.0),
+                    "entry_price": entry_price,
                     "exit_price": None,
-                    "lot_size": float(getattr(entry_deal, "volume", 0.0) or 0.0),
+                    "lot_size": entry_volume,
                     "pnl": None,
-                    "commission": float(getattr(entry_deal, "commission", 0.0) or 0.0),
+                    "commission": total_commission,
                     "swap": 0.0,
                     "stop_loss": None,
                     "take_profit": None,
@@ -133,6 +175,10 @@ def sync_mt5_account(self, mt5_account_id):
             deals,
             entry_in=getattr(mt5, "DEAL_ENTRY_IN", 0),
             entry_out=getattr(mt5, "DEAL_ENTRY_OUT", 1),
+            extra_exit_entries=(
+                getattr(mt5, "DEAL_ENTRY_INOUT", None),
+                getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
+            ),
             deal_type_buy=getattr(mt5, "DEAL_TYPE_BUY", 0),
         )
 

@@ -207,7 +207,7 @@
                     </div>
                     <span class="soft">Manual Review</span>
                 </div>
-                <p class="mt5-panel-copy">Start with an access request for the CFD account you want linked. Once approved, submit your read-only MT5 details from the card on the other side.</p>
+                <p class="mt5-panel-copy">Start with an access request for the CFD account you want linked. Once approved, submit your read-only MT5 details from the card below.</p>
                 {% if requestable_mt5_accounts %}
                 <form action="{{ url_for('trade_accounts.request_mt5_access') }}" method="post" class="mt5-card-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -238,6 +238,7 @@
             </article>
             {% endif %}
 
+            <div class="hero-top-main">
             <article class="panel notes-panel notes-panel-hero">
                 <div class="ai-hero-head">
                     <div class="ai-hero-badges">
@@ -282,6 +283,108 @@
                     <p class="insight-note">NFA: For journaling and educational use only. This AI review is not financial or investment advice.</p>
                 </div>
             </article>
+            <section class="metric-grid dashboard-metric-grid">
+                <article class="metric">
+                    <p class="metric-label">
+                        <span class="help-label">
+                            <span class="help-label-text">Win Rate</span>
+                            <span class="help-tooltip">
+                                <button
+                                    type="button"
+                                    class="help-tooltip-button"
+                                    aria-label="Explain Win Rate"
+                                    aria-describedby="dashboard-win-rate-tooltip"
+                                >?</button>
+                                <span id="dashboard-win-rate-tooltip" class="help-tooltip-bubble" role="tooltip">The percentage of your closed trades that finished with a positive result.</span>
+                            </span>
+                        </span>
+                    </p>
+                    <p class="metric-value{% if not has_closed_trades %} muted-value{% endif %}">
+                        {% if has_closed_trades %}{{ '%.1f'|format(win_rate) }}%{% else %}-{% endif %}
+                    </p>
+                    <p class="metric-note">
+                        {% if has_closed_trades %}
+                        Based on {{ closed_trade_count }} closed trades
+                        {% elif has_any_trades %}
+                        Unlocks after your first closed trade with realized PnL.
+                        {% else %}
+                        Add or import trades to start tracking hit rate.
+                        {% endif %}
+                    </p>
+                </article>
+                <article class="metric">
+                    <p class="metric-label">Opened This Week</p>
+                    <p class="metric-value{% if not has_closed_trades %} muted-value{% endif %}">
+                        {% if has_closed_trades %}
+                            {% if net_pnl_week > 0 %}+{% endif %}${{ '%.2f'|format(net_pnl_week) }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </p>
+                    <p class="metric-note {% if has_closed_trades and net_pnl_week > 0 %}good{% elif has_closed_trades and net_pnl_week < 0 %}bad{% endif %}">
+                        {% if has_closed_trades %}
+                            {% if net_pnl_week > 0 %}Profitable week{% elif net_pnl_week < 0 %}Negative week{% else %}Flat week{% endif %}
+                        {% elif has_any_trades %}
+                        Weekly realized PnL appears after closed trades come in.
+                        {% else %}
+                        Weekly PnL appears once trades start flowing into the journal.
+                        {% endif %}
+                    </p>
+                </article>
+                <article class="metric">
+                    <p class="metric-label">Trades This Month</p>
+                    <p class="metric-value{% if not has_any_trades %} muted-value{% endif %}">
+                        {% if has_any_trades %}{{ trades_this_month }}{% else %}-{% endif %}
+                    </p>
+                    <p class="metric-note">
+                        {% if has_any_trades %}
+                        Based on opened date
+                        {% else %}
+                        Activity volume starts tracking after your first import or manual trade.
+                        {% endif %}
+                    </p>
+                </article>
+                <article class="metric">
+                    <p class="metric-label">
+                        <span class="help-label">
+                            <span class="help-label-text">Average Winner vs Loser</span>
+                            <span class="help-tooltip">
+                                <button
+                                    type="button"
+                                    class="help-tooltip-button"
+                                    aria-label="Explain Average Winner vs Loser"
+                                    aria-describedby="dashboard-avg-winner-loser-tooltip"
+                                >?</button>
+                                <span id="dashboard-avg-winner-loser-tooltip" class="help-tooltip-bubble" role="tooltip">Compares the average PnL of your winning trades against your losing trades.</span>
+                            </span>
+                        </span>
+                    </p>
+                    <div class="metric-split">
+                        <div class="metric-chip good">
+                            <span class="metric-chip-label">Winner</span>
+                            <span class="metric-chip-value">
+                                {% if has_closed_trades and avg_win is not none %}+${{ '%.2f'|format(avg_win) }}{% else %}-{% endif %}
+                            </span>
+                        </div>
+                        <div class="metric-chip bad">
+                            <span class="metric-chip-label">Loser</span>
+                            <span class="metric-chip-value">
+                                {% if has_closed_trades and avg_loss_abs is not none %}-${{ '%.2f'|format(avg_loss_abs) }}{% else %}-{% endif %}
+                            </span>
+                        </div>
+                    </div>
+                    <p class="metric-note">
+                        {% if has_closed_trades and avg_win is not none and avg_loss_abs is not none %}
+                        Average realized winner and loser across closed trades.
+                        {% elif has_any_trades %}
+                        Needs at least one closed winner and one closed loser to become useful.
+                        {% else %}
+                        Closed win/loss averages appear after you log completed winners and losers.
+                        {% endif %}
+                    </p>
+                </article>
+            </section>
+            </div>
 
             {% if mt5_cfd_accounts %}
             <article class="panel mt5-access-panel mt5-access-panel-side mt5-access-panel-details">
@@ -591,108 +694,6 @@
                 </article> #}
             </div>
             <div class="panel-column panel-column-side">
-                <section class="metric-grid metric-grid-side">
-                    <article class="metric">
-                        <p class="metric-label">
-                            <span class="help-label">
-                                <span class="help-label-text">Win Rate</span>
-                                <span class="help-tooltip">
-                                    <button
-                                        type="button"
-                                        class="help-tooltip-button"
-                                        aria-label="Explain Win Rate"
-                                        aria-describedby="dashboard-win-rate-tooltip"
-                                    >?</button>
-                                    <span id="dashboard-win-rate-tooltip" class="help-tooltip-bubble" role="tooltip">The percentage of your closed trades that finished with a positive result.</span>
-                                </span>
-                            </span>
-                        </p>
-                        <p class="metric-value{% if not has_closed_trades %} muted-value{% endif %}">
-                            {% if has_closed_trades %}{{ '%.1f'|format(win_rate) }}%{% else %}-{% endif %}
-                        </p>
-                        <p class="metric-note">
-                            {% if has_closed_trades %}
-                            Based on {{ closed_trade_count }} closed trades
-                            {% elif has_any_trades %}
-                            Unlocks after your first closed trade with realized PnL.
-                            {% else %}
-                            Add or import trades to start tracking hit rate.
-                            {% endif %}
-                        </p>
-                    </article>
-                    <article class="metric">
-                        <p class="metric-label">Opened This Week</p>
-                        <p class="metric-value{% if not has_closed_trades %} muted-value{% endif %}">
-                            {% if has_closed_trades %}
-                                {% if net_pnl_week > 0 %}+{% endif %}${{ '%.2f'|format(net_pnl_week) }}
-                            {% else %}
-                            -
-                            {% endif %}
-                        </p>
-                        <p class="metric-note {% if has_closed_trades and net_pnl_week > 0 %}good{% elif has_closed_trades and net_pnl_week < 0 %}bad{% endif %}">
-                            {% if has_closed_trades %}
-                                {% if net_pnl_week > 0 %}Profitable week{% elif net_pnl_week < 0 %}Negative week{% else %}Flat week{% endif %}
-                            {% elif has_any_trades %}
-                            Weekly realized PnL appears after closed trades come in.
-                            {% else %}
-                            Weekly PnL appears once trades start flowing into the journal.
-                            {% endif %}
-                        </p>
-                    </article>
-                    <article class="metric">
-                        <p class="metric-label">Trades This Month</p>
-                        <p class="metric-value{% if not has_any_trades %} muted-value{% endif %}">
-                            {% if has_any_trades %}{{ trades_this_month }}{% else %}-{% endif %}
-                        </p>
-                        <p class="metric-note">
-                            {% if has_any_trades %}
-                            Based on opened date
-                            {% else %}
-                            Activity volume starts tracking after your first import or manual trade.
-                            {% endif %}
-                        </p>
-                    </article>
-                    <article class="metric">
-                        <p class="metric-label">
-                            <span class="help-label">
-                                <span class="help-label-text">Average Winner vs Loser</span>
-                                <span class="help-tooltip">
-                                    <button
-                                        type="button"
-                                        class="help-tooltip-button"
-                                        aria-label="Explain Average Winner vs Loser"
-                                        aria-describedby="dashboard-avg-winner-loser-tooltip"
-                                    >?</button>
-                                    <span id="dashboard-avg-winner-loser-tooltip" class="help-tooltip-bubble" role="tooltip">Compares the average PnL of your winning trades against your losing trades.</span>
-                                </span>
-                            </span>
-                        </p>
-                        <div class="metric-split">
-                            <div class="metric-chip good">
-                                <span class="metric-chip-label">Winner</span>
-                                <span class="metric-chip-value">
-                                    {% if has_closed_trades and avg_win is not none %}+${{ '%.2f'|format(avg_win) }}{% else %}-{% endif %}
-                                </span>
-                            </div>
-                            <div class="metric-chip bad">
-                                <span class="metric-chip-label">Loser</span>
-                                <span class="metric-chip-value">
-                                    {% if has_closed_trades and avg_loss_abs is not none %}-${{ '%.2f'|format(avg_loss_abs) }}{% else %}-{% endif %}
-                                </span>
-                            </div>
-                        </div>
-                        <p class="metric-note">
-                            {% if has_closed_trades and avg_win is not none and avg_loss_abs is not none %}
-                            Average realized winner and loser across closed trades.
-                            {% elif has_any_trades %}
-                            Needs at least one closed winner and one closed loser to become useful.
-                            {% else %}
-                            Closed win/loss averages appear after you log completed winners and losers.
-                            {% endif %}
-                        </p>
-                    </article>
-                </section>
-
                 <article class="panel pnl-panel">
                     <div class="panel-head">
                         <h2>
@@ -920,19 +921,30 @@
         align-items: stretch; }
 
     .ai-hero-grid.no-mt5 {
-        grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.95fr);
-    }
-
-    .ai-hero-grid.has-mt5 {
-        grid-template-columns: minmax(260px, 0.92fr) minmax(0, 1.45fr) minmax(260px, 0.92fr);
-        grid-template-areas:
-            "mt5-request ai-review mt5-details"
-            "mt5-status mt5-status mt5-status";
+        grid-template-columns: minmax(250px, 0.88fr) minmax(0, 1.52fr);
+        grid-template-areas: "mt5-status main";
         align-items: start;
     }
 
-    .ai-hero-grid.has-mt5 .notes-panel-hero {
-        grid-area: ai-review;
+    .ai-hero-grid.has-mt5 {
+        grid-template-columns: minmax(250px, 0.88fr) minmax(0, 1.52fr);
+        grid-template-areas:
+            "mt5-request main"
+            "mt5-details main"
+            "mt5-status main";
+        align-items: start;
+    }
+
+    .hero-top-main {
+        grid-area: main;
+        display: grid;
+        gap: 0.8rem;
+        min-width: 0;
+        align-content: start;
+    }
+
+    .dashboard-metric-grid {
+        margin-bottom: 0;
     }
 
     .ai-hero-grid.has-mt5 .mt5-access-panel-request {
@@ -944,6 +956,10 @@
     }
 
     .ai-hero-grid.has-mt5 .mt5-overview-panel {
+        grid-area: mt5-status;
+    }
+
+    .ai-hero-grid.no-mt5 .mt5-overview-panel {
         grid-area: mt5-status;
     }
 
@@ -1262,6 +1278,14 @@
             inset 0 1px 0 rgba(255, 255, 255, 0.04),
             0 14px 28px rgba(2, 6, 23, 0.2); }
 
+    @media (min-width: 1081px) {
+        .ai-hero-card {
+            max-height: clamp(240px, 34vh, 360px);
+            overflow: auto;
+            scrollbar-gutter: stable;
+        }
+    }
+
     .ai-hero-card .insight-title {
         font-size: 0.78rem;
         letter-spacing: 0.08em;
@@ -1484,6 +1508,88 @@
 
     .mt5-card-consent a {
         font-weight: 700;
+    }
+
+    .ai-hero-grid .hero-top-main .metric {
+        padding: 0.8rem 0.85rem;
+    }
+
+    .ai-hero-grid .hero-top-main .metric-value {
+        font-size: clamp(1.12rem, 1.65vw, 1.45rem);
+    }
+
+    .ai-hero-grid .hero-top-main .metric-note {
+        font-size: 0.78rem;
+    }
+
+    .ai-hero-grid .mt5-access-panel {
+        gap: 0.72rem;
+        padding: 0.78rem 0.82rem;
+        border-radius: 16px;
+    }
+
+    .ai-hero-grid .mt5-access-panel .panel-head,
+    .ai-hero-grid .mt5-overview-panel .panel-head {
+        gap: 0.55rem;
+    }
+
+    .ai-hero-grid .mt5-access-panel h2,
+    .ai-hero-grid .mt5-overview-panel h2 {
+        font-size: 1rem;
+    }
+
+    .ai-hero-grid .mt5-panel-copy,
+    .ai-hero-grid .mt5-card-empty,
+    .ai-hero-grid .mt5-card-footnote {
+        font-size: 0.76rem;
+        line-height: 1.45;
+    }
+
+    .ai-hero-grid .mt5-card-form {
+        gap: 0.45rem;
+    }
+
+    .ai-hero-grid .mt5-card-form label {
+        font-size: 0.7rem;
+    }
+
+    .ai-hero-grid .mt5-card-form input,
+    .ai-hero-grid .mt5-card-form select,
+    .ai-hero-grid .mt5-card-form textarea {
+        padding: 0.5rem 0.6rem;
+    }
+
+    .ai-hero-grid .mt5-card-form textarea {
+        min-height: 3.75rem;
+    }
+
+    .ai-hero-grid .mt5-card-warning {
+        padding: 0.62rem 0.68rem;
+        font-size: 0.76rem;
+    }
+
+    .ai-hero-grid .mt5-status-list {
+        gap: 0.45rem;
+    }
+
+    .ai-hero-grid .mt5-status-item {
+        padding: 0.62rem 0.7rem;
+        gap: 0.55rem;
+    }
+
+    .ai-hero-grid .mt5-status-name {
+        font-size: 0.84rem;
+    }
+
+    .ai-hero-grid .mt5-status-note {
+        margin-top: 0.16rem;
+        font-size: 0.74rem;
+        line-height: 1.42;
+    }
+
+    .ai-hero-grid .mt5-status-pill {
+        padding: 0.26rem 0.54rem;
+        font-size: 0.63rem;
     }
 
     .panel-head { display: flex;
@@ -1943,21 +2049,23 @@
     @keyframes ai-spin { to { transform: rotate(360deg); } }
 
     @media (max-width: 1280px) {
-        .ai-hero-grid.has-mt5 {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            grid-template-areas:
-                "ai-review ai-review"
-                "mt5-request mt5-details"
-                "mt5-status mt5-status";
+        .ai-hero-grid.has-mt5,
+        .ai-hero-grid.no-mt5 {
+            grid-template-columns: minmax(225px, 0.86fr) minmax(0, 1.4fr);
         }
     }
 
     @media (max-width: 1080px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .ai-hero-grid.no-mt5 { grid-template-columns: 1fr; }
+        .ai-hero-grid.no-mt5 {
+            grid-template-columns: 1fr;
+            grid-template-areas:
+                "main"
+                "mt5-status";
+        }
         .ai-hero-grid.has-mt5 {
             grid-template-columns: 1fr;
             grid-template-areas:
-                "ai-review"
+                "main"
                 "mt5-request"
                 "mt5-details"
                 "mt5-status";
