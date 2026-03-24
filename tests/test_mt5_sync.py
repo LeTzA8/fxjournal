@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from cryptography.fernet import Fernet
 
-from celery_workers.mt5_sync import aggregate_deals_to_trades, sync_mt5_account
+from celery_workers.mt5_sync import aggregate_deals_to_trades, _positions_to_open_trades, sync_mt5_account
 from celery_app import celery
 from helpers.core import delete_users_with_related_data
 from helpers.utils import decrypt_password, encrypt_password
@@ -182,6 +182,103 @@ def test_aggregate_deals_to_trades_emits_close_only_row_when_entry_is_outside_wi
     assert trades[0]["is_open"] is False
 
 
+def test_aggregate_deals_to_trades_open_position_no_exits():
+    trades = aggregate_deals_to_trades(
+        [
+            _deal(
+                position_id=5005,
+                entry=0,
+                type=0,
+                price=1.085,
+                volume=0.5,
+                time=1_710_000_000,
+                commission=-0.25,
+                symbol="EURUSD",
+                comment="buy entry",
+            ),
+        ],
+    )
+
+    assert len(trades) == 1
+    assert trades[0]["symbol"] == "EURUSD"
+    assert trades[0]["side"] == "BUY"
+    assert trades[0]["entry_price"] == pytest.approx(1.085)
+    assert trades[0]["exit_price"] is None
+    assert trades[0]["closed_at"] is None
+    assert trades[0]["lot_size"] == pytest.approx(0.5)
+    assert trades[0]["pnl"] is None
+    assert trades[0]["is_open"] is True
+
+
+def test_aggregate_deals_to_trades_partially_closed_position_is_open():
+    trades = aggregate_deals_to_trades(
+        [
+            _deal(
+                position_id=6006,
+                entry=0,
+                type=0,
+                price=1.085,
+                volume=1.0,
+                time=1_710_000_000,
+                commission=-0.5,
+                symbol="EURUSD",
+            ),
+            _deal(
+                position_id=6006,
+                entry=1,
+                type=1,
+                price=1.09,
+                volume=0.4,
+                time=1_710_003_600,
+                profit=20.0,
+                commission=-0.2,
+                symbol="EURUSD",
+                comment="partial tp",
+            ),
+        ],
+    )
+
+    assert len(trades) == 1
+    assert trades[0]["is_open"] is True
+    assert trades[0]["exit_price"] is None
+    assert trades[0]["closed_at"] is None
+    assert trades[0]["lot_size"] == pytest.approx(1.0)
+
+
+def test_positions_to_open_trades_maps_fields():
+    pos = SimpleNamespace(
+        identifier=7007,
+        type=0,
+        symbol="XAUUSD",
+        price_open=2300.0,
+        volume=0.1,
+        commission=-1.5,
+        swap=-0.5,
+        sl=2280.0,
+        tp=2350.0,
+        time=1_710_000_000,
+        comment="gold long",
+    )
+
+    trades = _positions_to_open_trades([pos], position_type_buy=0)
+
+    assert len(trades) == 1
+    t = trades[0]
+    assert t["mt5_position"] == "7007"
+    assert t["symbol"] == "XAUUSD"
+    assert t["side"] == "BUY"
+    assert t["entry_price"] == pytest.approx(2300.0)
+    assert t["lot_size"] == pytest.approx(0.1)
+    assert t["commission"] == pytest.approx(-1.5)
+    assert t["swap"] == pytest.approx(-0.5)
+    assert t["stop_loss"] == pytest.approx(2280.0)
+    assert t["take_profit"] == pytest.approx(2350.0)
+    assert t["exit_price"] is None
+    assert t["closed_at"] is None
+    assert t["is_open"] is True
+    assert t["trade_note"] == "gold long"
+
+
 def test_sync_mt5_account_skips_when_same_account_is_already_locked(monkeypatch):
     monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: False)
 
@@ -229,6 +326,7 @@ def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
                 comment="close",
             ),
         ],
+        positions_get=lambda: [],
         shutdown=lambda: True,
         last_error=lambda: (0, "ok"),
     )
@@ -253,6 +351,80 @@ def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
     assert f"trade_account_id={trade_account.id}" in caplog.text
     assert "aggregated_trades=1" in caplog.text
     assert "closed_trades=1" in caplog.text
+
+
+def test_sync_mt5_account_picks_up_running_trade_from_positions_get(app_ctx, monkeypatch, caplog):
+    """positions_get() is called and running positions are included in the sync payload."""
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-positions-user",
+        email="mt5-positions@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="55556666",
+    )
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+
+    open_position = SimpleNamespace(
+        identifier=9001,
+        type=0,
+        symbol="EURUSD",
+        price_open=1.085,
+        volume=0.1,
+        commission=-0.5,
+        swap=0.0,
+        sl=0.0,
+        tp=0.0,
+        time=1_710_000_000,
+        comment="",
+    )
+
+    captured_payload = {}
+
+    fake_mt5 = SimpleNamespace(
+        DEAL_ENTRY_IN=0,
+        DEAL_ENTRY_OUT=1,
+        DEAL_ENTRY_INOUT=2,
+        DEAL_ENTRY_OUT_BY=3,
+        DEAL_TYPE_BUY=0,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        history_deals_get=lambda *args, **kwargs: [],
+        positions_get=lambda: [open_position],
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"saved": 1, "updated": 0, "skipped": 0, "errors": 0}
+
+    def capture_post(url, json=None, **kwargs):
+        captured_payload.update(json or {})
+        return DummyResponse()
+
+    monkeypatch.setattr("celery_workers.mt5_sync.requests.post", capture_post)
+
+    sync_mt5_account.run(mt5_account.id)
+
+    trades_sent = captured_payload.get("trades", [])
+    assert len(trades_sent) == 1
+    assert trades_sent[0]["mt5_position"] == "9001"
+    assert trades_sent[0]["is_open"] is True
+    assert trades_sent[0]["entry_price"] == pytest.approx(1.085)
+    assert trades_sent[0]["closed_at"] is None
 
 
 def test_encrypt_password_round_trip_requires_key(monkeypatch):
@@ -379,6 +551,63 @@ def test_internal_mt5_sync_saves_and_skips_duplicates(app_ctx, client, monkeypat
     assert second_trade.import_dedupe_key is None
     assert first_mt5_account.last_synced_at is not None
     assert second_mt5_account.last_synced_at is not None
+
+
+def test_internal_mt5_sync_inserts_new_running_trade(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-running-insert-user",
+        email="mt5-running-insert@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="77778888",
+    )
+
+    open_payload = {
+        "mt5_account_id": mt5_account.id,
+        "trades": [
+            {
+                "symbol": "EURUSD",
+                "side": "buy",
+                "entry_price": 1.085,
+                "exit_price": None,
+                "lot_size": 0.01,
+                "pnl": None,
+                "commission": -0.25,
+                "swap": 0.0,
+                "stop_loss": None,
+                "take_profit": None,
+                "opened_at": "2026-03-20T08:00:00+00:00",
+                "closed_at": None,
+                "mt5_position": 88880001,
+                "trade_note": "running",
+                "is_open": True,
+            }
+        ],
+    }
+
+    response = client.post(
+        "/api/internal/mt5/sync",
+        json=open_payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    trade = Trade.query.filter_by(
+        trade_account_id=trade_account.id,
+        mt5_position="88880001",
+    ).one()
+
+    assert response.status_code == 200
+    assert response.get_json() == {"saved": 1, "updated": 0, "skipped": 0, "errors": 0}
+    assert trade.entry_price == pytest.approx(1.085)
+    assert trade.exit_price is None
+    assert trade.closed_at is None
+    assert trade.pnl is None
 
 
 def test_internal_mt5_sync_updates_existing_open_trade_when_close_arrives(app_ctx, client, monkeypatch):

@@ -46,6 +46,42 @@ def _weighted_average_price(deals):
     return weighted_total / total_volume
 
 
+def _positions_to_open_trades(positions, *, position_type_buy=0):
+    """Convert MT5 position objects (from positions_get) into open trade row dicts."""
+    trades = []
+    for pos in positions:
+        pos_id = getattr(pos, "identifier", None) or getattr(pos, "ticket", None)
+        if not pos_id:
+            continue
+        pos_type = getattr(pos, "type", None)
+        side = "BUY" if pos_type == position_type_buy else "SELL"
+        entry_price = _deal_float_value(pos, "price_open") or None
+        lot_size = _deal_float_value(pos, "volume") or None
+        sl = _deal_float_value(pos, "sl") or None
+        tp = _deal_float_value(pos, "tp") or None
+        trades.append(
+            {
+                "symbol": getattr(pos, "symbol", None),
+                "side": side,
+                "entry_price": entry_price,
+                "exit_price": None,
+                "lot_size": lot_size,
+                "pnl": None,
+                "commission": _deal_float_value(pos, "commission"),
+                "swap": _deal_float_value(pos, "swap"),
+                "stop_loss": sl,
+                "take_profit": tp,
+                "opened_at": _to_utc_iso(getattr(pos, "time", None)),
+                "closed_at": None,
+                "mt5_position": str(pos_id),
+                "trade_note": str(getattr(pos, "comment", "") or "").strip() or None,
+                "source_timezone": "UTC",
+                "is_open": True,
+            }
+        )
+    return trades
+
+
 def aggregate_deals_to_trades(
     deals,
     *,
@@ -131,7 +167,8 @@ def aggregate_deals_to_trades(
                     "is_open": False,
                 }
             )
-        elif not exit_deals:
+        elif not exit_deals or exit_volume < entry_volume:
+            # No exits at all, or partially closed — position still running.
             trades.append(
                 {
                     "symbol": getattr(entry_deal, "symbol", None),
@@ -141,7 +178,7 @@ def aggregate_deals_to_trades(
                     "lot_size": entry_volume,
                     "pnl": None,
                     "commission": total_commission,
-                    "swap": 0.0,
+                    "swap": total_swap,
                     "stop_loss": None,
                     "take_profit": None,
                     "opened_at": _to_utc_iso(getattr(entry_deal, "time", None)),
@@ -278,6 +315,7 @@ def sync_mt5_account(self, mt5_account_id):
             deals = mt5.history_deals_get(from_date, to_date) or []
             raw_deal_count = len(deals)
 
+            deal_type_buy = getattr(mt5, "DEAL_TYPE_BUY", 0)
             trades = aggregate_deals_to_trades(
                 deals,
                 entry_in=getattr(mt5, "DEAL_ENTRY_IN", 0),
@@ -286,8 +324,18 @@ def sync_mt5_account(self, mt5_account_id):
                     getattr(mt5, "DEAL_ENTRY_INOUT", None),
                     getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
                 ),
-                deal_type_buy=getattr(mt5, "DEAL_TYPE_BUY", 0),
+                deal_type_buy=deal_type_buy,
             )
+
+            # Supplement with currently open positions directly from the broker.
+            # positions_get() is authoritative for running trades regardless of
+            # when they were opened, so it catches trades that fall outside the
+            # history_deals_get window or whose entry deals are filtered out.
+            open_positions = mt5.positions_get() or []
+            position_trades = _positions_to_open_trades(open_positions, position_type_buy=deal_type_buy)
+            deals_positions = {t["mt5_position"] for t in trades if t.get("mt5_position")}
+            trades = trades + [t for t in position_trades if t.get("mt5_position") not in deals_positions]
+
             aggregated_trade_count = len(trades)
             open_trade_count, closed_trade_count = _summarize_trade_states(trades)
             logger.info(
