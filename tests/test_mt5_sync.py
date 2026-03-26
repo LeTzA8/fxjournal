@@ -347,11 +347,14 @@ def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
     result = sync_mt5_account.run(mt5_account.id)
 
     assert result == {"saved": 0, "updated": 1, "skipped": 0, "errors": 0}
-    assert f"mt5_account_id={mt5_account.id}" in caplog.text
-    assert f"user_id={user.id}" in caplog.text
-    assert f"trade_account_id={trade_account.id}" in caplog.text
-    assert "aggregated_trades=1" in caplog.text
-    assert "closed_trades=1" in caplog.text
+    assert "MT5 Sync Context" in caplog.text
+    assert "MT5 Sync Result" in caplog.text
+    assert f"Main Account [ID: {trade_account.id}]" in caplog.text
+    assert f"DB {mt5_account.id} / Login {mt5_account.account_number}" in caplog.text
+    assert "Trigger" in caplog.text
+    assert "Trade Rows" in caplog.text
+    assert "Closed Rows" in caplog.text
+    assert "Duration" in caplog.text
 
 
 def test_sync_mt5_account_picks_up_running_trade_from_positions_get(app_ctx, monkeypatch, caplog):
@@ -1124,7 +1127,7 @@ def test_admin_mt5_manual_trigger_sync_queues_full_history_for_active_account(ap
     assert trigger_response.status_code == 302
     assert sync_captured["queue"] == "mt5_sync"
     assert sync_captured["args"] == [mt5_account.id]
-    assert sync_captured["kwargs"] == {"full_history": True}
+    assert sync_captured["kwargs"] == {"full_history": True, "trigger_source": "manual"}
 
 
 def test_admin_mt5_create_persists_inactive_account_when_setup_queue_fails(app_ctx, client, monkeypatch):

@@ -1774,7 +1774,7 @@ def register_public_auth_routes(
 
             sync_mt5_account.apply_async(
                 args=[mt5_account_id],
-                kwargs={"full_history": True},
+                kwargs={"full_history": True, "trigger_source": "manual"},
                 queue="mt5_sync",
             )
         except Exception as exc:

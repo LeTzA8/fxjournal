@@ -67,6 +67,13 @@ def _duration_ms(started_at, finished_at):
     return max(int((finished_at - started_at).total_seconds() * 1000), 0)
 
 
+def _duration_label(started_at, finished_at):
+    duration_ms = _duration_ms(started_at, finished_at)
+    if duration_ms is None:
+        return None
+    return f"{duration_ms / 1000:.2f}s ({duration_ms} ms)"
+
+
 def _to_utc_iso(timestamp_value):
     if timestamp_value is None:
         return None
@@ -271,7 +278,7 @@ def _summarize_trade_states(trades):
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def sync_mt5_account(self, mt5_account_id, full_history=False):
+def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="unknown"):
     from celery_workers.cache import CacheUnavailableError, claim_lock, release_lock
 
     task_id = getattr(getattr(self, "request", None), "id", None)
@@ -295,6 +302,7 @@ def sync_mt5_account(self, mt5_account_id, full_history=False):
     sync_started_at = None
     sync_finished_at = None
     sync_mode = "full_history" if full_history else "rolling_7d"
+    trigger_label = str(trigger_source or "unknown").strip() or "unknown"
     try:
         try:
             lock_acquired = claim_lock(_sync_lock_key(mt5_account_id), lock_token, ttl=600)
@@ -378,18 +386,6 @@ def sync_mt5_account(self, mt5_account_id, full_history=False):
                 else:
                     from_date = datetime.now(timezone.utc) - timedelta(days=7)
                 to_date = datetime.now(timezone.utc)
-                logger.info(
-                    "MT5 sync starting. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s sync_mode=%s first_sync=%s from_date=%s to_date=%s",
-                    task_id,
-                    mt5_account_id,
-                    user_id,
-                    trade_account_id,
-                    account_suffix,
-                    sync_mode,
-                    is_first_sync,
-                    from_date.isoformat(),
-                    to_date.isoformat(),
-                )
                 _log_ascii_table(
                     "MT5 Sync Context",
                     [
@@ -399,6 +395,7 @@ def sync_mt5_account(self, mt5_account_id, full_history=False):
                         ("Server", server),
                         ("Balance", mt5_balance),
                         ("Equity", mt5_equity),
+                        ("Trigger", trigger_label),
                         ("Mode", sync_mode),
                         ("Window", f"{from_date.isoformat()} -> {to_date.isoformat()}"),
                     ],
@@ -431,18 +428,6 @@ def sync_mt5_account(self, mt5_account_id, full_history=False):
 
         aggregated_trade_count = len(trades)
         open_trade_count, closed_trade_count = _summarize_trade_states(trades)
-        logger.info(
-            "MT5 sync prepared payload. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s open_trades=%s closed_trades=%s",
-            task_id,
-            mt5_account_id,
-            user_id,
-            trade_account_id,
-            account_suffix,
-            raw_deal_count,
-            aggregated_trade_count,
-            open_trade_count,
-            closed_trade_count,
-        )
 
         base_url = os.environ.get("FLASK_API_URL", "https://myfxjournal.com").strip() or "https://myfxjournal.com"
         sync_secret = os.environ.get("MT5_SYNC_SECRET", "").strip()
@@ -464,27 +449,12 @@ def sync_mt5_account(self, mt5_account_id, full_history=False):
         response.raise_for_status()
         result = response.json()
         sync_finished_at = datetime.now(timezone.utc)
-        logger.info(
-            "MT5 sync completed. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s open_trades=%s closed_trades=%s saved=%s updated=%s skipped=%s errors=%s",
-            task_id,
-            mt5_account_id,
-            user_id,
-            trade_account_id,
-            account_suffix,
-            raw_deal_count,
-            aggregated_trade_count,
-            open_trade_count,
-            closed_trade_count,
-            result.get("saved"),
-            result.get("updated"),
-            result.get("skipped"),
-            result.get("errors"),
-        )
         _log_ascii_table(
             "MT5 Sync Result",
             [
                 ("Finished", sync_finished_at),
-                ("Duration ms", _duration_ms(sync_started_at, sync_finished_at)),
+                ("Duration", _duration_label(sync_started_at, sync_finished_at)),
+                ("Trigger", trigger_label),
                 ("Mode", sync_mode),
                 ("Raw Deals", raw_deal_count),
                 ("Trade Rows", aggregated_trade_count),
@@ -498,6 +468,21 @@ def sync_mt5_account(self, mt5_account_id, full_history=False):
         )
         return result
     except Exception as exc:
+        sync_finished_at = sync_finished_at or datetime.now(timezone.utc)
+        _log_ascii_table(
+            "MT5 Sync Failed",
+            [
+                ("Finished", sync_finished_at),
+                ("Duration", _duration_label(sync_started_at, sync_finished_at)),
+                ("Trigger", trigger_label),
+                ("Mode", sync_mode),
+                ("Trade Account", f"{trade_account_name} [ID: {trade_account_id}]"),
+                ("MT5 Account", f"DB {mt5_account_id} / Login {mt5_login or account_suffix}"),
+                ("Raw Deals", raw_deal_count),
+                ("Trade Rows", aggregated_trade_count),
+                ("Error", exc),
+            ],
+        )
         logger.exception(
             "MT5 sync failed and will retry. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s",
             task_id,
@@ -533,5 +518,6 @@ def sync_all_active_mt5_accounts():
     for account in accounts:
         sync_mt5_account.apply_async(
             args=[account.id],
+            kwargs={"trigger_source": "beat"},
             queue="mt5_sync",
         )
