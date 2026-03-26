@@ -19,12 +19,6 @@
                 <p class="hero-help">New to journal metrics? Use the <strong>?</strong> icons on key cards for quick explanations of win rate, profit factor, expectancy, drawdown, and risk:reward.</p>
             </div>
             <div class="hero-meta">
-                {% if active_trade_account %}
-                <div class="meta-chip">
-                    <span>Account</span>
-                    <strong>{{ active_trade_account.name }}</strong>
-                </div>
-                {% endif %}
                 <div class="meta-chip">
                     <span>Timezone</span>
                     <strong>{{ analytics_timezone }}</strong>

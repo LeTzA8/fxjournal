@@ -170,9 +170,6 @@
         <p class="subtext">This only takes a moment and helps the weekly review weigh behaviour, execution, and tone against what actually happened during that completed trade week.</p>
 
         <div class="checkin-meta">
-            {% if active_trade_account %}
-            <span class="checkin-chip">Account: {{ active_trade_account.name }}</span>
-            {% endif %}
             {% if week_label %}
             <span class="checkin-chip">Week: {{ week_label }}</span>
             {% endif %}

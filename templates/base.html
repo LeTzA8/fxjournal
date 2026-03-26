@@ -656,6 +656,103 @@
             justify-content: flex-end;
         }
 
+        .site-account-bar {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.9rem;
+            padding: 0.72rem 0.82rem 0.3rem;
+            border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+            margin-top: -0.08rem;
+        }
+
+        .site-account-bar-copy {
+            display: grid;
+            gap: 0.12rem;
+            min-width: 0;
+        }
+
+        .site-account-bar-label {
+            font-size: 0.68rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            font-weight: 800;
+            color: color-mix(in srgb, var(--muted) 84%, var(--ink));
+        }
+
+        .site-account-bar-meta {
+            font-size: 0.82rem;
+            color: var(--muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .site-account-bar-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .site-account-switcher-form {
+            margin: 0;
+        }
+
+        .site-account-switcher,
+        .site-account-pill {
+            min-width: min(100%, 280px);
+            min-height: 42px;
+            padding: 0.68rem 0.88rem;
+            border-radius: 12px;
+            border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
+            background: color-mix(in srgb, var(--surface) 82%, var(--card));
+            color: var(--ink);
+            font: inherit;
+            font-weight: 700;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 22px rgba(2, 6, 23, 0.14);
+        }
+
+        .site-account-switcher {
+            cursor: pointer;
+            padding-right: 2.4rem;
+        }
+
+        .site-account-pill {
+            display: inline-flex;
+            align-items: center;
+            white-space: nowrap;
+        }
+
+        .site-account-manage-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 0 0.92rem;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+            color: var(--muted);
+            text-decoration: none;
+            font-size: 0.78rem;
+            font-weight: 700;
+            background: color-mix(in srgb, var(--surface) 72%, transparent);
+            transition:
+                border-color 160ms ease,
+                color 160ms ease,
+                background-color 160ms ease,
+                transform 160ms ease;
+        }
+
+        .site-account-manage-link:hover {
+            color: var(--accent);
+            border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+            background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+            transform: translateY(-1px);
+        }
+
         .site-header-actions form {
             margin: 0;
         }
@@ -923,7 +1020,8 @@
                 grid-template-columns: 1fr auto;
                 grid-template-areas:
                     "brand actions"
-                    "nav nav";
+                    "nav nav"
+                    "accountbar accountbar";
             }
 
             .site-brand { grid-area: brand; }
@@ -936,6 +1034,25 @@
             .site-header-actions {
                 grid-area: actions;
                 justify-self: end;
+            }
+
+            .site-account-bar {
+                grid-area: accountbar;
+                align-items: stretch;
+                flex-direction: column;
+                gap: 0.6rem;
+            }
+
+            .site-account-bar-controls {
+                width: 100%;
+                justify-content: stretch;
+            }
+
+            .site-account-switcher-form,
+            .site-account-switcher,
+            .site-account-pill,
+            .site-account-manage-link {
+                width: 100%;
             }
 
             .site-brand-logo {
@@ -1562,6 +1679,45 @@
                     <button type="submit" class="site-nav-link">Log Out</button>
                 </form>
             </div>
+            {% if active_trade_account and header_trade_accounts %}
+            <section class="site-account-bar" aria-label="Trade account controls">
+                <div class="site-account-bar-copy">
+                    <span class="site-account-bar-label">Trade Account</span>
+                    <span class="site-account-bar-meta">
+                        {{ "Default" if active_trade_account.is_default else "Secondary" }}
+                        •
+                        {{ "Futures" if active_trade_account.account_type == "FUTURES" else "CFD" }}
+                    </span>
+                </div>
+                <div class="site-account-bar-controls">
+                    {% if header_trade_accounts|length > 1 %}
+                    <form action="{{ url_for('trade_accounts.switch_trade_account') }}" method="post" class="site-account-switcher-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ current_page_path }}">
+                        <select
+                            id="globalTradeAccountSwitcher"
+                            name="trade_account_pubkey"
+                            class="site-account-switcher"
+                            aria-label="Select active trade account"
+                            onchange="this.form.submit()"
+                        >
+                            {% for trade_account in header_trade_accounts %}
+                            <option
+                                value="{{ trade_account.pubkey }}"
+                                {% if trade_account.id == active_trade_account.id %}selected{% endif %}
+                            >
+                                {{ trade_account.name }}{% if trade_account.is_default %} (Default){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </form>
+                    {% else %}
+                    <div class="site-account-pill">{{ active_trade_account.name }}</div>
+                    {% endif %}
+                    <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="site-account-manage-link">Manage Accounts</a>
+                </div>
+            </section>
+            {% endif %}
         </div>
     </header>
     {% endif %}

@@ -1,5 +1,8 @@
 from datetime import datetime
 
+from ai_service import WEEKLY_DASHBOARD_KIND
+from models import AIGeneratedResponse, AIPromptHistory
+
 import routes.dashboard as dashboard_routes
 from models import Trade, TradeAccount, User, UserProfile, db
 
@@ -187,6 +190,59 @@ def test_dashboard_home_normalizes_broken_rule_prefix_in_weekly_ai_review(app_ct
     assert response.status_code == 200
     assert "Rule: Keep risk fixed." in response_text
     assert "\u00e2\u2020'" not in response_text
+
+
+def test_weekly_ai_state_falls_back_to_latest_generated_review_for_account(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-ai-fallback-user",
+        email="dashboard-ai-fallback@example.com",
+    )
+
+    prompt_history = AIPromptHistory(
+        prompt_id="dashboard_advice",
+        prompt_sha256="weekly-fallback-sha",
+        prompt_text="Prompt text",
+        source_path="prompts/dashboard_advice.txt",
+    )
+    db.session.add(prompt_history)
+    db.session.flush()
+
+    old_period = {
+        "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
+        "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
+    }
+    latest_period = {
+        "period_start_utc": datetime(2026, 3, 14, 21, 30, 0),
+        "period_end_utc": datetime(2026, 3, 21, 21, 30, 0),
+    }
+    review = AIGeneratedResponse(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        prompt_history_id=prompt_history.id,
+        kind=WEEKLY_DASHBOARD_KIND,
+        model="gpt-5-mini",
+        response_text="Older but valid weekly review",
+        payload_hash="weekly-fallback-hash",
+        trade_count_used=4,
+        period_start_utc=old_period["period_start_utc"],
+        period_end_utc=old_period["period_end_utc"],
+        generated_at=datetime(2026, 3, 16, 12, 0, 0),
+    )
+    db.session.add(review)
+    db.session.commit()
+
+    monkeypatch.setattr(dashboard_routes, "get_latest_trade_week_period", lambda **kwargs: latest_period)
+    monkeypatch.setattr(dashboard_routes, "get_ai_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dashboard_routes, "should_generate_weekly_dashboard_advice", lambda **kwargs: False)
+
+    weekly_ai_state = dashboard_routes._get_weekly_ai_state(user.id, trade_account, "UTC")
+
+    assert weekly_ai_state["weekly_ai_review"] is not None
+    assert weekly_ai_state["weekly_ai_review"].id == review.id
+    assert weekly_ai_state["weekly_ai_review_text"] == "Older but valid weekly review"
+    assert weekly_ai_state["weekly_ai_period_label"] == "Sat 14 Mar 2026 21:30 UTC"
+    assert weekly_ai_state["weekly_ai_is_generating"] is False
 
 
 def test_dashboard_home_shows_onboarding_banner_when_profile_was_skipped(app_ctx, client, monkeypatch):

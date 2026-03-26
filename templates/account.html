@@ -54,10 +54,6 @@
                             <dt>Display Timezone</dt>
                             <dd>{{ display_timezone_name }}</dd>
                         </div>
-                        <div class="profile-row">
-                            <dt>Active Account</dt>
-                            <dd>{{ active_trade_account.name if active_trade_account else "No active trade account" }}</dd>
-                        </div>
                     </dl>
                     {% if not email_verified %}
                     <p class="helper-note">Email not verified yet. Verify your current email before requesting an email change.</p>

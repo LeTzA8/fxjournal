@@ -60,7 +60,6 @@
 
                 <form action="{{ form_action }}" method="post" class="trade-form" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <p class="field-help">Active trade account: <strong>{{ active_trade_account_name }}</strong></p>
                     <p class="field-help">Active account type: <strong>{{ "Futures" if account_type == "FUTURES" else "CFD" }}</strong></p>
 
                     <label for="symbol">Symbol</label>
@@ -213,10 +212,6 @@
                             <div>
                                 <dt>Detected Market</dt>
                                 <dd id="importMarketValue">-</dd>
-                            </div>
-                            <div>
-                                <dt>Active Account</dt>
-                                <dd>{{ active_trade_account_name }} ({{ "Futures" if account_type == "FUTURES" else "CFD" }})</dd>
                             </div>
                             <div>
                                 <dt>Validation</dt>

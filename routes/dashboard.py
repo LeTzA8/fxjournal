@@ -383,6 +383,7 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
     weekly_ai_period_label = ""
     weekly_ai_empty_message = DEFAULT_WEEKLY_AI_EMPTY_MESSAGE
     weekly_ai_is_generating = False
+    displayed_review_period = None
 
     latest_trade_period = get_latest_trade_week_period(
         user_id=user_id,
@@ -393,13 +394,28 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
     if latest_trade_period is None:
         weekly_ai_empty_message = WEEKLY_AI_NO_TRADES_MESSAGE
     else:
-        weekly_ai_review = get_latest_weekly_dashboard_advice(
+        current_period_review = get_latest_weekly_dashboard_advice(
             user_id=user_id,
             trade_account_id=account_id,
             period_start_utc=latest_trade_period["period_start_utc"],
         )
+        fallback_review = None
+        if current_period_review is None:
+            fallback_review = get_latest_weekly_dashboard_advice(
+                user_id=user_id,
+                trade_account_id=account_id,
+            )
+        weekly_ai_review = current_period_review or fallback_review
         if weekly_ai_review is not None:
             weekly_ai_review_text = normalize_dashboard_advice_text(weekly_ai_review.response_text)
+            if (
+                weekly_ai_review.period_start_utc is not None
+                or weekly_ai_review.period_end_utc is not None
+            ):
+                displayed_review_period = {
+                    "period_start_utc": weekly_ai_review.period_start_utc,
+                    "period_end_utc": weekly_ai_review.period_end_utc,
+                }
 
         ai_status = None
         try:
@@ -411,7 +427,7 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
         except CacheUnavailableError as exc:
             current_app.logger.warning("Weekly AI status unavailable: %s", exc)
 
-        if weekly_ai_review is None:
+        if current_period_review is None:
             if ai_status in {"queued", "running"}:
                 weekly_ai_is_generating = True
                 weekly_ai_empty_message = WEEKLY_AI_GENERATING_MESSAGE
@@ -495,8 +511,9 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
         if generated_local is not None:
             weekly_ai_generated_at_label = generated_local.strftime("%d %b %Y %H:%M")
 
+    period_source = displayed_review_period or weekly_period
     period_end_local = to_display_timezone(
-        weekly_period.get("period_end_utc") if weekly_period else None,
+        period_source.get("period_end_utc") if period_source else None,
         timezone_name,
     )
     if period_end_local is not None:

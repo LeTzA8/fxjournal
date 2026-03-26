@@ -32,33 +32,6 @@
                         {% endif %}
                     </div>
                 </div>
-                {% if header_trade_accounts %}
-                <section class="trade-account-switcher" aria-label="Trade account switcher">
-                    <div class="trade-account-switcher-group">
-                        <form action="{{ url_for('trade_accounts.switch_trade_account') }}" method="post" class="trade-account-switcher-form">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <input type="hidden" name="next" value="{{ current_page_path }}">
-                            <label for="tradeAccountSwitcher">Trade Account</label>
-                            <select
-                                id="tradeAccountSwitcher"
-                                name="trade_account_pubkey"
-                                aria-label="Select trade account"
-                                onchange="this.form.submit()"
-                            >
-                                {% for trade_account in header_trade_accounts %}
-                                <option
-                                    value="{{ trade_account.pubkey }}"
-                                    {% if active_trade_account and trade_account.id == active_trade_account.id %}selected{% endif %}
-                                >
-                                    {{ trade_account.name }}{% if trade_account.is_default %} (Default){% endif %}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </form>
-                        <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="new-trade-btn trade-account-manage-btn">Manage Accounts</a>
-                    </div>
-                </section>
-                {% endif %}
                 <div class="table-controls">
                     <div id="tradeFilters" class="filter-row">
                         <select id="filterField" aria-label="Filter by">
