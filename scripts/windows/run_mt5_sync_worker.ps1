@@ -1,7 +1,7 @@
 param(
     [string]$RepoRoot = "",
     [string]$PythonExe = "",
-    [int]$Concurrency = 10,
+    [int]$Concurrency = 1,
     [string]$LogLevel = "INFO",
     [int]$RestartDelaySeconds = 5
 )
@@ -58,14 +58,19 @@ if ($Concurrency -lt 1) {
     throw "Concurrency must be at least 1."
 }
 
+if ($Concurrency -ne 1) {
+    Write-Warning "MT5 sync uses process-global MetaTrader5 session state. Forcing concurrency=1."
+    $Concurrency = 1
+}
+
 Set-Location $RepoRoot
 
 while ($true) {
     $startedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Write-Host "[$startedAt] Starting FX Journal MT5 sync worker pool=threads concurrency=$Concurrency python=$pythonExe"
+    Write-Host "[$startedAt] Starting FX Journal MT5 sync worker pool=solo concurrency=$Concurrency python=$pythonExe"
 
     & $pythonExe -m celery -A celery_app.celery worker `
-        --pool=threads `
+        --pool=solo `
         --concurrency=$Concurrency `
         --loglevel=$LogLevel `
         --queues=mt5_sync `

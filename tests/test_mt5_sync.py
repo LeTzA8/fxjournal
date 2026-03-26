@@ -314,6 +314,7 @@ def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
         DEAL_TYPE_BUY=0,
         initialize=lambda **kwargs: True,
         login=lambda *args, **kwargs: True,
+        account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
         history_deals_get=lambda *args, **kwargs: [
             _deal(position_id=4004, price=1.25, time=1_710_000_000, symbol="EURUSD"),
             _deal(
@@ -397,6 +398,7 @@ def test_sync_mt5_account_picks_up_running_trade_from_positions_get(app_ctx, mon
         DEAL_TYPE_BUY=0,
         initialize=lambda **kwargs: True,
         login=lambda *args, **kwargs: True,
+        account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
         history_deals_get=lambda *args, **kwargs: [],
         positions_get=lambda: [open_position],
         shutdown=lambda: True,
@@ -425,6 +427,58 @@ def test_sync_mt5_account_picks_up_running_trade_from_positions_get(app_ctx, mon
     assert trades_sent[0]["is_open"] is True
     assert trades_sent[0]["entry_price"] == pytest.approx(1.085)
     assert trades_sent[0]["closed_at"] is None
+
+
+def test_sync_mt5_account_retries_when_mt5_session_is_on_wrong_login(app_ctx, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-wrong-login-user",
+        email="mt5-wrong-login@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="10101010",
+    )
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+
+    shutdown_calls = []
+    post_calls = []
+
+    fake_mt5 = SimpleNamespace(
+        DEAL_ENTRY_IN=0,
+        DEAL_ENTRY_OUT=1,
+        DEAL_ENTRY_INOUT=2,
+        DEAL_ENTRY_OUT_BY=3,
+        DEAL_TYPE_BUY=0,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        account_info=lambda: SimpleNamespace(login=20202020),
+        history_deals_get=lambda *args, **kwargs: [],
+        positions_get=lambda: [],
+        shutdown=lambda: shutdown_calls.append(True),
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    def _fake_post(*args, **kwargs):
+        post_calls.append((args, kwargs))
+        raise AssertionError("requests.post should not run when the MT5 login is wrong")
+
+    monkeypatch.setattr("celery_workers.mt5_sync.requests.post", _fake_post)
+    monkeypatch.setattr(sync_mt5_account, "retry", lambda exc=None, **kwargs: exc)
+
+    with pytest.raises(RuntimeError, match="Wrong MT5 account logged in during sync"):
+        sync_mt5_account.run(mt5_account.id)
+
+    assert post_calls == []
+    assert shutdown_calls == [True]
 
 
 def test_encrypt_password_round_trip_requires_key(monkeypatch):
@@ -857,6 +911,100 @@ def test_internal_mt5_sync_updates_existing_open_trade_from_close_only_row(app_c
     assert trade.commission == pytest.approx(-0.5)
     assert trade.swap == pytest.approx(-0.1)
     assert trade.closed_at is not None
+
+
+def test_internal_mt5_sync_prefers_open_trade_when_duplicate_mt5_positions_exist(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-duplicate-position-user",
+        email="mt5-duplicate-position@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="56565656",
+    )
+
+    open_trade = Trade(
+        pubkey="duplicatetrade001",
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.085,
+        exit_price=None,
+        lot_size=0.01,
+        pnl=None,
+        commission=-0.25,
+        swap=0.0,
+        opened_at=datetime(2026, 3, 21, 8, 0, 0),
+        closed_at=None,
+        mt5_position="66660000",
+    )
+    stale_closed_duplicate = Trade(
+        pubkey="duplicatetrade002",
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.085,
+        exit_price=1.089,
+        lot_size=0.01,
+        pnl=40.0,
+        commission=-0.4,
+        swap=-0.05,
+        opened_at=datetime(2026, 3, 20, 8, 0, 0),
+        closed_at=datetime(2026, 3, 20, 10, 0, 0),
+        mt5_position="66660000",
+    )
+    db.session.add_all([open_trade, stale_closed_duplicate])
+    db.session.commit()
+
+    closed_payload = {
+        "mt5_account_id": mt5_account.id,
+        "trades": [
+            {
+                "symbol": "EURUSD",
+                "side": "buy",
+                "entry_price": 1.085,
+                "exit_price": 1.09,
+                "lot_size": 0.01,
+                "pnl": 48.5,
+                "commission": -0.5,
+                "swap": -0.1,
+                "stop_loss": None,
+                "take_profit": None,
+                "opened_at": "2026-03-21T08:00:00+00:00",
+                "closed_at": "2026-03-21T10:00:00+00:00",
+                "mt5_position": 66660000,
+                "trade_note": "closed",
+                "is_open": False,
+            }
+        ],
+    }
+
+    close_response = client.post(
+        "/api/internal/mt5/sync",
+        json=closed_payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    db.session.expire_all()
+    refreshed_open_trade = db.session.get(Trade, open_trade.id)
+    refreshed_closed_duplicate = db.session.get(Trade, stale_closed_duplicate.id)
+
+    assert close_response.status_code == 200
+    assert close_response.get_json() == {"saved": 0, "updated": 1, "skipped": 0, "errors": 0}
+    assert refreshed_open_trade.exit_price == pytest.approx(1.09)
+    assert refreshed_open_trade.pnl == pytest.approx(48.5)
+    assert refreshed_open_trade.commission == pytest.approx(-0.5)
+    assert refreshed_open_trade.swap == pytest.approx(-0.1)
+    assert refreshed_open_trade.closed_at == datetime(2026, 3, 21, 10, 0, 0)
+    assert refreshed_closed_duplicate.exit_price == pytest.approx(1.089)
+    assert refreshed_closed_duplicate.closed_at == datetime(2026, 3, 20, 10, 0, 0)
 
 
 def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypatch):

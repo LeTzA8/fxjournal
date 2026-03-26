@@ -199,6 +199,7 @@ The MT5 sync/setup worker is Windows-only.
 - `celery_app.py` now loads environment from `FXJ_ENV_FILE` when set, then falls back to `.env`, `FXJournal Main.env`, and `fxjournal.env`.
 - If a Windows worker starts without `REDIS_URL`, Celery falls back to an in-memory broker, which will not consume tasks from your shared production queue.
 - For a VM-hosted MT5 worker, prefer running it under a supervisor instead of a one-off terminal session.
+- The MT5 Python API keeps session state at the process level, so the MT5 sync worker should run with `--pool=solo --concurrency=1`. Running threaded sync workers can mix account sessions and import one MT5 account's trades into the wrong trade account.
 
 Example restart-loop launchers:
 

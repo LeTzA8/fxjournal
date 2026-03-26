@@ -1531,8 +1531,10 @@ def _calculate_trade_risk_reward(target_price, entry_price, stop_loss, side=None
 
 
 def _get_rr_capture_advice(trades_with_data, rr_capture_ratio):
-    if trades_with_data < 3 or rr_capture_ratio is None:
+    if trades_with_data <= 0 or rr_capture_ratio is None:
         return "Set stop loss and take profit on your trades to unlock RR analysis."
+    if trades_with_data < 3:
+        return "Early RR read only. The numbers are live, but wait for at least 3 valid trades before trusting the pattern."
     if rr_capture_ratio < 0.30:
         return "You're closing well short of your planned target. Check if you're exiting on emotion before price reaches your level."
     if rr_capture_ratio < 0.60:

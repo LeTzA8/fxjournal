@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 import logging
+import threading
 import uuid
 
 import requests
@@ -12,6 +13,10 @@ import requests
 from celery_app import celery
 
 logger = logging.getLogger(__name__)
+
+# MetaTrader5 keeps process-global session state, so sync tasks must not
+# overlap MT5 API calls inside the same worker process.
+_MT5_API_SESSION_LOCK = threading.Lock()
 
 
 def _to_utc_iso(timestamp_value):
@@ -289,119 +294,131 @@ def sync_mt5_account(self, mt5_account_id):
         if terminal_path:
             init_kwargs["path"] = terminal_path
 
-        if not mt5.initialize(**init_kwargs):
-            raise RuntimeError(f"MT5 init failed: {mt5.last_error()}")
+        with _MT5_API_SESSION_LOCK:
+            if not mt5.initialize(**init_kwargs):
+                raise RuntimeError(f"MT5 init failed: {mt5.last_error()}")
 
-        try:
-            if not mt5.login(int(account_number), password=investor_password, server=server):
-                raise RuntimeError(f"MT5 login failed: {mt5.last_error()}")
+            try:
+                expected_login = int(account_number)
+                if not mt5.login(expected_login, password=investor_password, server=server):
+                    raise RuntimeError(f"MT5 login failed: {mt5.last_error()}")
 
-            if is_first_sync:
-                from_date = datetime(2000, 1, 1, tzinfo=timezone.utc)
-            else:
-                from_date = datetime.now(timezone.utc) - timedelta(days=7)
-            to_date = datetime.now(timezone.utc)
-            logger.info(
-                "MT5 sync starting. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s first_sync=%s from_date=%s to_date=%s",
-                task_id,
-                mt5_account_id,
-                user_id,
-                trade_account_id,
-                account_suffix,
-                is_first_sync,
-                from_date.isoformat(),
-                to_date.isoformat(),
-            )
-            deals = mt5.history_deals_get(from_date, to_date) or []
-            raw_deal_count = len(deals)
+                account_info = mt5.account_info()
+                if account_info is None:
+                    raise RuntimeError(f"MT5 account_info returned None: {mt5.last_error()}")
 
-            deal_type_buy = getattr(mt5, "DEAL_TYPE_BUY", 0)
-            trades = aggregate_deals_to_trades(
-                deals,
-                entry_in=getattr(mt5, "DEAL_ENTRY_IN", 0),
-                entry_out=getattr(mt5, "DEAL_ENTRY_OUT", 1),
-                extra_exit_entries=(
-                    getattr(mt5, "DEAL_ENTRY_INOUT", None),
-                    getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
-                ),
-                deal_type_buy=deal_type_buy,
-            )
+                actual_login = getattr(account_info, "login", None)
+                if actual_login != expected_login:
+                    raise RuntimeError(
+                        f"Wrong MT5 account logged in during sync: expected {expected_login}, got {actual_login}"
+                    )
 
-            # Supplement with currently open positions directly from the broker.
-            # positions_get() is authoritative for running trades regardless of
-            # when they were opened, so it catches trades that fall outside the
-            # history_deals_get window or whose entry deals are filtered out.
-            open_positions = mt5.positions_get() or []
-            position_trades = _positions_to_open_trades(open_positions, position_type_buy=deal_type_buy)
-            deals_positions = {t["mt5_position"] for t in trades if t.get("mt5_position")}
-            trades = trades + [t for t in position_trades if t.get("mt5_position") not in deals_positions]
+                if is_first_sync:
+                    from_date = datetime(2000, 1, 1, tzinfo=timezone.utc)
+                else:
+                    from_date = datetime.now(timezone.utc) - timedelta(days=7)
+                to_date = datetime.now(timezone.utc)
+                logger.info(
+                    "MT5 sync starting. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s first_sync=%s from_date=%s to_date=%s",
+                    task_id,
+                    mt5_account_id,
+                    user_id,
+                    trade_account_id,
+                    account_suffix,
+                    is_first_sync,
+                    from_date.isoformat(),
+                    to_date.isoformat(),
+                )
+                deals = mt5.history_deals_get(from_date, to_date) or []
+                raw_deal_count = len(deals)
 
-            aggregated_trade_count = len(trades)
-            open_trade_count, closed_trade_count = _summarize_trade_states(trades)
-            logger.info(
-                "MT5 sync prepared payload. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s open_trades=%s closed_trades=%s",
-                task_id,
-                mt5_account_id,
-                user_id,
-                trade_account_id,
-                account_suffix,
-                raw_deal_count,
-                aggregated_trade_count,
-                open_trade_count,
-                closed_trade_count,
-            )
+                deal_type_buy = getattr(mt5, "DEAL_TYPE_BUY", 0)
+                trades = aggregate_deals_to_trades(
+                    deals,
+                    entry_in=getattr(mt5, "DEAL_ENTRY_IN", 0),
+                    entry_out=getattr(mt5, "DEAL_ENTRY_OUT", 1),
+                    extra_exit_entries=(
+                        getattr(mt5, "DEAL_ENTRY_INOUT", None),
+                        getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
+                    ),
+                    deal_type_buy=deal_type_buy,
+                )
 
-            base_url = os.environ.get("FLASK_API_URL", "https://myfxjournal.com").strip() or "https://myfxjournal.com"
-            sync_secret = os.environ.get("MT5_SYNC_SECRET", "").strip()
-            if not sync_secret:
-                raise RuntimeError("MT5_SYNC_SECRET is required for MT5 sync.")
+                # Supplement with currently open positions directly from the broker.
+                # positions_get() is authoritative for running trades regardless of
+                # when they were opened, so it catches trades that fall outside the
+                # history_deals_get window or whose entry deals are filtered out.
+                open_positions = mt5.positions_get() or []
+                position_trades = _positions_to_open_trades(open_positions, position_type_buy=deal_type_buy)
+                deals_positions = {t["mt5_position"] for t in trades if t.get("mt5_position")}
+                trades = trades + [t for t in position_trades if t.get("mt5_position") not in deals_positions]
+            finally:
+                mt5.shutdown()
 
-            response = requests.post(
-                f"{base_url}/api/internal/mt5/sync",
-                json={
-                    "mt5_account_id": mt5_account_id,
-                    "trades": trades,
-                },
-                headers={
-                    "X-Sync-Secret": sync_secret,
-                    "Content-Type": "application/json",
-                },
-                timeout=30,
-            )
-            response.raise_for_status()
-            result = response.json()
-            logger.info(
-                "MT5 sync completed. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s open_trades=%s closed_trades=%s saved=%s updated=%s skipped=%s errors=%s",
-                task_id,
-                mt5_account_id,
-                user_id,
-                trade_account_id,
-                account_suffix,
-                raw_deal_count,
-                aggregated_trade_count,
-                open_trade_count,
-                closed_trade_count,
-                result.get("saved"),
-                result.get("updated"),
-                result.get("skipped"),
-                result.get("errors"),
-            )
-            return result
-        except Exception as exc:
-            logger.exception(
-                "MT5 sync failed and will retry. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s",
-                task_id,
-                mt5_account_id,
-                user_id,
-                trade_account_id,
-                account_suffix,
-                raw_deal_count,
-                aggregated_trade_count,
-                exc_info=exc,
-            )
-            raise self.retry(exc=exc)
-        finally:
-            mt5.shutdown()
+        aggregated_trade_count = len(trades)
+        open_trade_count, closed_trade_count = _summarize_trade_states(trades)
+        logger.info(
+            "MT5 sync prepared payload. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s open_trades=%s closed_trades=%s",
+            task_id,
+            mt5_account_id,
+            user_id,
+            trade_account_id,
+            account_suffix,
+            raw_deal_count,
+            aggregated_trade_count,
+            open_trade_count,
+            closed_trade_count,
+        )
+
+        base_url = os.environ.get("FLASK_API_URL", "https://myfxjournal.com").strip() or "https://myfxjournal.com"
+        sync_secret = os.environ.get("MT5_SYNC_SECRET", "").strip()
+        if not sync_secret:
+            raise RuntimeError("MT5_SYNC_SECRET is required for MT5 sync.")
+
+        response = requests.post(
+            f"{base_url}/api/internal/mt5/sync",
+            json={
+                "mt5_account_id": mt5_account_id,
+                "trades": trades,
+            },
+            headers={
+                "X-Sync-Secret": sync_secret,
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        result = response.json()
+        logger.info(
+            "MT5 sync completed. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s open_trades=%s closed_trades=%s saved=%s updated=%s skipped=%s errors=%s",
+            task_id,
+            mt5_account_id,
+            user_id,
+            trade_account_id,
+            account_suffix,
+            raw_deal_count,
+            aggregated_trade_count,
+            open_trade_count,
+            closed_trade_count,
+            result.get("saved"),
+            result.get("updated"),
+            result.get("skipped"),
+            result.get("errors"),
+        )
+        return result
+    except Exception as exc:
+        logger.exception(
+            "MT5 sync failed and will retry. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s",
+            task_id,
+            mt5_account_id,
+            user_id,
+            trade_account_id,
+            account_suffix,
+            raw_deal_count,
+            aggregated_trade_count,
+            exc_info=exc,
+        )
+        raise self.retry(exc=exc)
     finally:
         if lock_enabled and lock_acquired:
             try:

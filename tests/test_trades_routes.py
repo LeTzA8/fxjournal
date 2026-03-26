@@ -210,5 +210,9 @@ def test_analytics_page_shows_rr_empty_state_below_three_trades(app_ctx, client)
     response = client.get("/dashboard/analytics")
 
     assert response.status_code == 200
-    assert b"Set stop loss and take profit on your trades to unlock RR analysis." in response.data
-    assert b"2 trades so far - need 3 minimum." in response.data
+    assert b"Avg Planned RR" in response.data
+    assert b"2.50R" in response.data
+    assert b"1.40R" in response.data
+    assert b"56%" in response.data
+    assert b"Early RR read only. The numbers are live, but wait for at least 3 valid trades before trusting the pattern." in response.data
+    assert b"Need 3 minimum for a reliable read." in response.data

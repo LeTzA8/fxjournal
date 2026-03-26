@@ -563,7 +563,7 @@
                     </div>
                 </div>
 
-                {% if rr_summary.trades_with_data >= 3 %}
+                {% if rr_summary.trades_with_data > 0 %}
                 <div class="rr-stat-grid">
                     <article class="rr-stat-card rr-stat-card-planned">
                         <p class="rr-stat-label">
@@ -621,17 +621,14 @@
                         </p>
                     </article>
                 </div>
-                <p class="rr-advice">{{ rr_summary.advice }}</p>
-                <p class="context-note">Based on {{ rr_summary.trades_with_data }} trades with SL &amp; TP set.</p>
+                <p class="rr-advice{% if rr_summary.trades_with_data < 3 %} muted{% endif %}">{{ rr_summary.advice }}</p>
+                <p class="context-note">
+                    Based on {{ rr_summary.trades_with_data }} trade{% if rr_summary.trades_with_data != 1 %}s{% endif %} with SL &amp; TP set.
+                    {% if rr_summary.trades_with_data < 3 %}Need 3 minimum for a reliable read.{% endif %}
+                </p>
                 {% else %}
                 <div class="rr-empty-card">
-                    <p class="rr-advice muted">
-                        {% if rr_summary.trades_with_data > 0 %}
-                        {{ rr_summary.advice }} ({{ rr_summary.trades_with_data }} trade{% if rr_summary.trades_with_data != 1 %}s{% endif %} so far - need 3 minimum.)
-                        {% else %}
-                        {{ rr_summary.advice }}
-                        {% endif %}
-                    </p>
+                    <p class="rr-advice muted">{{ rr_summary.advice }}</p>
                 </div>
                 {% endif %}
             </article>

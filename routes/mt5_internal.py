@@ -1,5 +1,5 @@
 import os
-from datetime import timezone
+from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, request
 
@@ -10,6 +10,30 @@ from models import MT5Account, Trade, db
 from trading import parse_float_value, parse_mt5_position_value, parse_source_datetime_value
 
 bp = Blueprint("mt5_internal", __name__)
+
+
+def _normalize_mt5_position_key(value):
+    text_value = str(value or "").strip()
+    return text_value or None
+
+
+def _prefer_existing_mt5_trade(existing_trade, candidate_trade):
+    if existing_trade is None:
+        return candidate_trade
+    if candidate_trade is None:
+        return existing_trade
+
+    existing_is_open = existing_trade.closed_at is None
+    candidate_is_open = candidate_trade.closed_at is None
+    if candidate_is_open != existing_is_open:
+        return candidate_trade if candidate_is_open else existing_trade
+
+    existing_opened_at = existing_trade.opened_at or datetime.min
+    candidate_opened_at = candidate_trade.opened_at or datetime.min
+    if candidate_opened_at != existing_opened_at:
+        return candidate_trade if candidate_opened_at > existing_opened_at else existing_trade
+
+    return candidate_trade if (candidate_trade.id or 0) > (existing_trade.id or 0) else existing_trade
 
 
 def _normalize_sync_trade_rows(raw_rows):
@@ -94,21 +118,28 @@ def sync_mt5_trades():
 
     try:
         incoming_positions = {
-            str(row.get("mt5_position")).strip()
+            _normalize_mt5_position_key(row.get("mt5_position"))
             for row in normalized_rows
             if row.get("mt5_position") is not None
         }
+        incoming_positions.discard(None)
         existing_trades = {}
         if incoming_positions:
-            existing_trades = {
-                trade.mt5_position: trade
-                for trade in Trade.query.filter_by(
+            for trade in (
+                Trade.query.filter_by(
                     user_id=account.user_id,
                     trade_account_id=account.trade_account_id,
                 )
                 .filter(Trade.mt5_position.in_(incoming_positions))
                 .all()
-            }
+            ):
+                position_key = _normalize_mt5_position_key(trade.mt5_position)
+                if position_key is None:
+                    continue
+                existing_trades[position_key] = _prefer_existing_mt5_trade(
+                    existing_trades.get(position_key),
+                    trade,
+                )
 
         rows_to_insert = []
         updated_count = 0
@@ -116,7 +147,7 @@ def sync_mt5_trades():
         error_count = invalid_rows
 
         for row in normalized_rows:
-            mt5_position = row.get("mt5_position")
+            mt5_position = _normalize_mt5_position_key(row.get("mt5_position"))
             existing_trade = existing_trades.get(mt5_position) if mt5_position is not None else None
             is_close_only_row = (
                 row.get("closed_at") is not None

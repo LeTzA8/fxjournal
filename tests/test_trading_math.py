@@ -262,7 +262,7 @@ def test_build_rr_summary_returns_empty_state_until_three_valid_trades():
     assert summary["avg_planned_rr"] == 2.7
     assert summary["avg_actual_rr"] == 1.8
     assert summary["rr_capture_ratio"] == 0.67
-    assert summary["advice"] == "Set stop loss and take profit on your trades to unlock RR analysis."
+    assert summary["advice"] == "Early RR read only. The numbers are live, but wait for at least 3 valid trades before trusting the pattern."
 
 
 def test_build_rr_summary_returns_mid_tier_capture_advice():
