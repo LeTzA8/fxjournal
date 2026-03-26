@@ -335,7 +335,6 @@
                             {% for account in mt5_accounts %}
                             {% set trade_count = mt5_trade_counts_by_account.get(account.id, 0) %}
                             {% set is_orphaned = account.is_orphaned %}
-                            {% set delete_disabled = account.is_active and trade_count > 0 %}
                             <tr>
                                 <td>
                                     <div class="user-cell">
@@ -389,7 +388,6 @@
                                             <button
                                                 type="submit"
                                                 class="ghost-btn danger-btn"
-                                                {% if delete_disabled %}disabled aria-disabled="true" title="Deactivate the MT5 account or clear its imported trades before deleting it."{% endif %}
                                             >
                                                 Delete
                                             </button>

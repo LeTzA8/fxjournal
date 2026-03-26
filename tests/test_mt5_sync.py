@@ -1088,6 +1088,45 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
     assert sync_captured == {}
 
 
+def test_admin_mt5_manual_trigger_sync_queues_full_history_for_active_account(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    root_user, trade_account = _log_in_root_admin(
+        client,
+        email="root-admin-manual-sync@example.com",
+        username="root-admin-manual-sync",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=root_user.id,
+        trade_account_id=trade_account.id,
+        account_number="31313131",
+    )
+    mt5_account.is_active = True
+    db.session.commit()
+
+    sync_captured = {}
+
+    def _fake_sync_apply_async(*, args, kwargs=None, queue):
+        sync_captured["args"] = args
+        sync_captured["kwargs"] = kwargs
+        sync_captured["queue"] = queue
+
+    import celery_workers.mt5_sync as mt5_sync_module
+
+    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_sync_apply_async)
+
+    trigger_response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/sync",
+        data={},
+        follow_redirects=False,
+    )
+
+    assert trigger_response.status_code == 302
+    assert sync_captured["queue"] == "mt5_sync"
+    assert sync_captured["args"] == [mt5_account.id]
+    assert sync_captured["kwargs"] == {"full_history": True}
+
+
 def test_admin_mt5_create_persists_inactive_account_when_setup_queue_fails(app_ctx, client, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)

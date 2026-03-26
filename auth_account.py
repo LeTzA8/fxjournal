@@ -1774,6 +1774,7 @@ def register_public_auth_routes(
 
             sync_mt5_account.apply_async(
                 args=[mt5_account_id],
+                kwargs={"full_history": True},
                 queue="mt5_sync",
             )
         except Exception as exc:
@@ -1861,14 +1862,6 @@ def register_public_auth_routes(
     @root_admin_required
     def admin_mt5_delete_account(mt5_account_id):
         account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
-        trade_count = Trade.query.filter_by(trade_account_id=account.trade_account_id).count()
-        if account.is_active and trade_count > 0:
-            return build_admin_redirect(
-                "mt5",
-                "Active MT5 accounts with imported trades cannot be deleted from here.",
-                "error",
-            )
-
         cleanup_warning = ""
         if account.terminal_path and account.appdata_hash:
             try:

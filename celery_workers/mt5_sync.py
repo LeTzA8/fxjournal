@@ -19,6 +19,54 @@ logger = logging.getLogger(__name__)
 _MT5_API_SESSION_LOCK = threading.Lock()
 
 
+def _format_log_value(value, *, default="-", max_width=72):
+    if value is None:
+        text_value = default
+    elif isinstance(value, datetime):
+        text_value = value.isoformat(timespec="seconds")
+    elif isinstance(value, float):
+        text_value = f"{value:,.2f}"
+    else:
+        text_value = str(value).strip() or default
+    if len(text_value) <= max_width:
+        return text_value
+    return f"{text_value[: max_width - 3]}..."
+
+
+def _ascii_table(title, rows):
+    normalized_rows = [
+        (_format_log_value(label, default=""), _format_log_value(value))
+        for label, value in rows
+    ]
+    key_header = "Metric"
+    value_header = "Value"
+    key_width = max([len(key_header), *(len(label) for label, _value in normalized_rows)])
+    value_width = max([len(value_header), *(len(value) for _label, value in normalized_rows)])
+    border = f"+-{'-' * key_width}-+-{'-' * value_width}-+"
+    lines = [
+        title,
+        border,
+        f"| {key_header.ljust(key_width)} | {value_header.ljust(value_width)} |",
+        border,
+    ]
+    lines.extend(
+        f"| {label.ljust(key_width)} | {value.ljust(value_width)} |"
+        for label, value in normalized_rows
+    )
+    lines.append(border)
+    return "\n".join(lines)
+
+
+def _log_ascii_table(title, rows):
+    logger.info("\n%s", _ascii_table(title, rows))
+
+
+def _duration_ms(started_at, finished_at):
+    if started_at is None or finished_at is None:
+        return None
+    return max(int((finished_at - started_at).total_seconds() * 1000), 0)
+
+
 def _to_utc_iso(timestamp_value):
     if timestamp_value is None:
         return None
@@ -223,7 +271,7 @@ def _summarize_trade_states(trades):
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def sync_mt5_account(self, mt5_account_id):
+def sync_mt5_account(self, mt5_account_id, full_history=False):
     from celery_workers.cache import CacheUnavailableError, claim_lock, release_lock
 
     task_id = getattr(getattr(self, "request", None), "id", None)
@@ -233,6 +281,7 @@ def sync_mt5_account(self, mt5_account_id):
     user_id = None
     trade_account_id = None
     account_suffix = "unknown"
+    trade_account_name = None
     is_first_sync = None
     from_date = None
     to_date = None
@@ -240,6 +289,12 @@ def sync_mt5_account(self, mt5_account_id):
     aggregated_trade_count = 0
     open_trade_count = 0
     closed_trade_count = 0
+    mt5_login = None
+    mt5_balance = None
+    mt5_equity = None
+    sync_started_at = None
+    sync_finished_at = None
+    sync_mode = "full_history" if full_history else "rolling_7d"
     try:
         try:
             lock_acquired = claim_lock(_sync_lock_key(mt5_account_id), lock_token, ttl=600)
@@ -283,12 +338,14 @@ def sync_mt5_account(self, mt5_account_id):
 
         user_id = account.user_id
         trade_account_id = account.trade_account_id
+        trade_account_name = getattr(account.trade_account, "name", None)
         investor_password = decrypt_password(account.investor_password_encrypted)
         account_number = account.account_number
         account_suffix = _mask_account_number_for_log(account_number)
         server = account.server
         terminal_path = account.terminal_path
         is_first_sync = account.last_synced_at is None
+        sync_started_at = datetime.now(timezone.utc)
 
         init_kwargs = {}
         if terminal_path:
@@ -308,26 +365,43 @@ def sync_mt5_account(self, mt5_account_id):
                     raise RuntimeError(f"MT5 account_info returned None: {mt5.last_error()}")
 
                 actual_login = getattr(account_info, "login", None)
+                mt5_login = actual_login
+                mt5_balance = getattr(account_info, "balance", None)
+                mt5_equity = getattr(account_info, "equity", None)
                 if actual_login != expected_login:
                     raise RuntimeError(
                         f"Wrong MT5 account logged in during sync: expected {expected_login}, got {actual_login}"
                     )
 
-                if is_first_sync:
+                if full_history or is_first_sync:
                     from_date = datetime(2000, 1, 1, tzinfo=timezone.utc)
                 else:
                     from_date = datetime.now(timezone.utc) - timedelta(days=7)
                 to_date = datetime.now(timezone.utc)
                 logger.info(
-                    "MT5 sync starting. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s first_sync=%s from_date=%s to_date=%s",
+                    "MT5 sync starting. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s sync_mode=%s first_sync=%s from_date=%s to_date=%s",
                     task_id,
                     mt5_account_id,
                     user_id,
                     trade_account_id,
                     account_suffix,
+                    sync_mode,
                     is_first_sync,
                     from_date.isoformat(),
                     to_date.isoformat(),
+                )
+                _log_ascii_table(
+                    "MT5 Sync Context",
+                    [
+                        ("Started", sync_started_at),
+                        ("Trade Account", f"{trade_account_name} [ID: {trade_account_id}]"),
+                        ("MT5 Account", f"DB {mt5_account_id} / Login {mt5_login}"),
+                        ("Server", server),
+                        ("Balance", mt5_balance),
+                        ("Equity", mt5_equity),
+                        ("Mode", sync_mode),
+                        ("Window", f"{from_date.isoformat()} -> {to_date.isoformat()}"),
+                    ],
                 )
                 deals = mt5.history_deals_get(from_date, to_date) or []
                 raw_deal_count = len(deals)
@@ -389,6 +463,7 @@ def sync_mt5_account(self, mt5_account_id):
         )
         response.raise_for_status()
         result = response.json()
+        sync_finished_at = datetime.now(timezone.utc)
         logger.info(
             "MT5 sync completed. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s open_trades=%s closed_trades=%s saved=%s updated=%s skipped=%s errors=%s",
             task_id,
@@ -404,6 +479,22 @@ def sync_mt5_account(self, mt5_account_id):
             result.get("updated"),
             result.get("skipped"),
             result.get("errors"),
+        )
+        _log_ascii_table(
+            "MT5 Sync Result",
+            [
+                ("Finished", sync_finished_at),
+                ("Duration ms", _duration_ms(sync_started_at, sync_finished_at)),
+                ("Mode", sync_mode),
+                ("Raw Deals", raw_deal_count),
+                ("Trade Rows", aggregated_trade_count),
+                ("Open Rows", open_trade_count),
+                ("Closed Rows", closed_trade_count),
+                ("Saved New", result.get("saved")),
+                ("Updated", result.get("updated")),
+                ("Skipped", result.get("skipped")),
+                ("Errors", result.get("errors")),
+            ],
         )
         return result
     except Exception as exc:
