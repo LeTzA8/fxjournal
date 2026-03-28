@@ -234,19 +234,6 @@ def _classify_annotation(annotation):
     return "neutral"
 
 
-def _union(parent, left, right):
-    left_root = _find(parent, left)
-    right_root = _find(parent, right)
-    if left_root != right_root:
-        parent[right_root] = left_root
-
-
-def _find(parent, value):
-    if parent[value] != value:
-        parent[value] = _find(parent, parent[value])
-    return parent[value]
-
-
 def detect_outliers(trades):
     closed_trades = [
         trade
@@ -270,9 +257,6 @@ def detect_outliers(trades):
 
     eligible_trades = sorted(eligible_trades, key=get_trade_sort_key)
     eligible_ids = [get_trade_identity(trade) for trade in eligible_trades]
-    parent = {identity: identity for identity in eligible_ids}
-    group_reasons = {}
-
     split_groups = {}
     for trade in eligible_trades:
         identity = get_trade_identity(trade)
@@ -281,53 +265,66 @@ def detect_outliers(trades):
             continue
         split_groups.setdefault(group_key, []).append(identity)
 
-    for member_ids in split_groups.values():
-        if len(member_ids) < 2:
-            continue
-        lead_id = member_ids[0]
-        for member_id in member_ids[1:]:
-            _union(parent, lead_id, member_id)
-        group_reasons.setdefault(lead_id, set()).add("split_bucket")
-
-    for index, trade in enumerate(eligible_trades):
-        identity = eligible_ids[index]
-        current_symbol = (format_trade_symbol(trade) or "").strip().upper()
-        current_side = (getattr(trade, "side", "") or "").strip().upper()
-        opened_at = ensure_utc_aware(getattr(trade, "opened_at", None))
-        for offset in range(index + 1, len(eligible_trades)):
-            candidate = eligible_trades[offset]
-            candidate_identity = eligible_ids[offset]
-            if (format_trade_symbol(candidate) or "").strip().upper() != current_symbol:
-                continue
-            if (getattr(candidate, "side", "") or "").strip().upper() != current_side:
-                continue
-            candidate_opened_at = ensure_utc_aware(getattr(candidate, "opened_at", None))
-            if opened_at is None or candidate_opened_at is None:
-                continue
-            gap_minutes = minutes_between(opened_at, candidate_opened_at)
-            if gap_minutes is None or gap_minutes > CORRECTIVE_REENTRY_WINDOW_MINUTES:
-                if candidate_opened_at > opened_at:
-                    continue
-            same_tp = _prices_match(getattr(trade, "take_profit", None), getattr(candidate, "take_profit", None))
-            same_sl = _prices_match(getattr(trade, "stop_loss", None), getattr(candidate, "stop_loss", None))
-            if not same_tp and not same_sl:
-                continue
-            _union(parent, identity, candidate_identity)
-            reason_bucket = group_reasons.setdefault(identity, set())
-            if same_tp:
-                reason_bucket.add("same_tp")
-            if same_sl:
-                reason_bucket.add("same_sl")
-
-    grouped_ids = {}
-    for identity in eligible_ids:
-        grouped_ids.setdefault(_find(parent, identity), []).append(identity)
-
     bundle_candidates = []
     bundled_trade_ids = set()
-    for root_identity, member_ids in grouped_ids.items():
+    for index, trade in enumerate(eligible_trades):
+        identity = eligible_ids[index]
+        if identity in bundled_trade_ids:
+            continue
+        member_ids = [identity]
+        reason_keys = set()
+        group_key = annotations.get(identity, {}).get("possible_split_order") and get_split_group_key(trade)
+        if group_key is not None:
+            split_member_ids = split_groups.get(group_key, [])
+            if len(split_member_ids) >= 2:
+                member_ids = [member_id for member_id in split_member_ids if member_id not in bundled_trade_ids]
+                if len(member_ids) >= 2:
+                    reason_keys.add("split_bucket")
+
+        representative = identity_to_trade[member_ids[0]]
+        representative_symbol = (format_trade_symbol(representative) or "").strip().upper()
+        representative_side = (getattr(representative, "side", "") or "").strip().upper()
+        representative_opened_at = ensure_utc_aware(getattr(representative, "opened_at", None))
+
+        if representative_opened_at is not None:
+            for offset in range(index + 1, len(eligible_trades)):
+                candidate = eligible_trades[offset]
+                candidate_identity = eligible_ids[offset]
+                if candidate_identity in bundled_trade_ids or candidate_identity in member_ids:
+                    continue
+
+                candidate_opened_at = ensure_utc_aware(getattr(candidate, "opened_at", None))
+                if candidate_opened_at is None:
+                    continue
+                gap_minutes = minutes_between(representative_opened_at, candidate_opened_at)
+                if gap_minutes is None or gap_minutes > CORRECTIVE_REENTRY_WINDOW_MINUTES:
+                    break
+
+                if (format_trade_symbol(candidate) or "").strip().upper() != representative_symbol:
+                    continue
+                if (getattr(candidate, "side", "") or "").strip().upper() != representative_side:
+                    continue
+
+                same_tp = _prices_match(
+                    getattr(representative, "take_profit", None),
+                    getattr(candidate, "take_profit", None),
+                )
+                same_sl = _prices_match(
+                    getattr(representative, "stop_loss", None),
+                    getattr(candidate, "stop_loss", None),
+                )
+                if not same_tp and not same_sl:
+                    continue
+
+                member_ids.append(candidate_identity)
+                if same_tp:
+                    reason_keys.add("same_tp")
+                if same_sl:
+                    reason_keys.add("same_sl")
+
         if len(member_ids) < 2:
             continue
+
         member_trades = sorted(
             (identity_to_trade[member_id] for member_id in member_ids),
             key=get_trade_sort_key,
@@ -336,11 +333,6 @@ def detect_outliers(trades):
         representative_annotation = annotations.get(get_trade_identity(representative), {})
         sub_type = _classify_annotation(representative_annotation)
         trigger = identity_to_trade.get(representative_annotation.get("prev_trade_identity"))
-        reason_keys = set()
-        for member_id in member_ids:
-            member_root = _find(parent, member_id)
-            reason_keys.update(group_reasons.get(member_root, set()))
-            reason_keys.update(group_reasons.get(member_id, set()))
         if "split_bucket" in reason_keys:
             match_reason = "split_bucket"
         elif {"same_tp", "same_sl"}.issubset(reason_keys):

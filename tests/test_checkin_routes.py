@@ -438,3 +438,89 @@ def test_checkin_invalid_submission_does_not_mutate_trade_flags_or_bundles(app_c
     assert trades[2].bundle_pubkey is None
     assert trades[1].is_reactive is False
     assert trades[2].is_reactive is False
+
+
+def test_detect_outliers_does_not_chain_same_pair_bundle_candidates(app_ctx, client, monkeypatch):
+    fixed_now = datetime(2026, 3, 21, 12, 0, 0)
+    monkeypatch.setattr(checkin_routes, "utcnow_naive", lambda: fixed_now)
+
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="checkin-bundle-chain-user",
+        email="checkin-bundle-chain@example.com",
+    )
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.1010,
+            take_profit=1.1050,
+            stop_loss=1.0975,
+            lot_size=0.5,
+            pnl=20.0,
+            opened_at=datetime(2026, 3, 17, 9, 0, 0),
+            closed_at=datetime(2026, 3, 17, 9, 20, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1002,
+            exit_price=1.1012,
+            take_profit=1.1050,
+            stop_loss=1.0974,
+            lot_size=0.5,
+            pnl=18.0,
+            opened_at=datetime(2026, 3, 17, 9, 15, 0),
+            closed_at=datetime(2026, 3, 17, 9, 40, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1010,
+            exit_price=1.1020,
+            take_profit=1.1050,
+            stop_loss=1.0973,
+            lot_size=0.5,
+            pnl=24.0,
+            opened_at=datetime(2026, 3, 17, 13, 10, 0),
+            closed_at=datetime(2026, 3, 17, 13, 35, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1012,
+            exit_price=1.1022,
+            take_profit=1.1050,
+            stop_loss=1.0972,
+            lot_size=0.5,
+            pnl=21.0,
+            opened_at=datetime(2026, 3, 17, 13, 25, 0),
+            closed_at=datetime(2026, 3, 17, 13, 50, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    detected_outliers = checkin_routes.detect_outliers(trades)
+
+    bundle_candidates = detected_outliers["bundle_candidates"]
+    bundled_pubkey_groups = sorted(
+        sorted(trade.pubkey for trade in candidate["trades"])
+        for candidate in bundle_candidates
+    )
+
+    assert len(bundle_candidates) == 2
+    assert all(len(candidate["trades"]) == 2 for candidate in bundle_candidates)
+    assert bundled_pubkey_groups == [
+        sorted([trades[0].pubkey, trades[1].pubkey]),
+        sorted([trades[2].pubkey, trades[3].pubkey]),
+    ]
