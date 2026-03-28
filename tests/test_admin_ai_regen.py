@@ -4,7 +4,7 @@ from itertools import count
 import auth_account
 import celery_workers.tasks as celery_tasks
 from ai_service import AIConfigError, AIRequestError, WEEKLY_DASHBOARD_KIND
-from models import AIGeneratedResponse, AIPromptHistory, TradeAccount, User, db
+from models import AIGeneratedResponse, AIPromptHistory, Trade, TradeAccount, User, db
 
 
 _UNIQUE_COUNTER = count(1)
@@ -129,9 +129,11 @@ def test_root_admin_users_page_shows_regen_ai_with_account_options(app_ctx, clie
 
     assert response.status_code == 200
     assert b"Regen AI" in response.data
+    assert b"Backfill Bundles" in response.data
     assert b"Primary FX (CFD)" in response.data
     assert b"Index Futures (Futures)" in response.data
     assert f"/dashboard/admin/access/users/{target_user.id}/regenerate-ai-advice".encode() in response.data
+    assert f"/dashboard/admin/access/users/{target_user.id}/backfill-bundles".encode() in response.data
 
 
 def test_non_root_admin_users_page_hides_regen_ai(app_ctx, client, monkeypatch):
@@ -152,6 +154,7 @@ def test_non_root_admin_users_page_hides_regen_ai(app_ctx, client, monkeypatch):
 
     assert response.status_code == 200
     assert b"Regen AI" not in response.data
+    assert b"Backfill Bundles" not in response.data
 
 
 def test_non_root_admin_regenerate_ai_route_returns_404(app_ctx, client, monkeypatch):
@@ -175,6 +178,99 @@ def test_non_root_admin_regenerate_ai_route_returns_404(app_ctx, client, monkeyp
     )
 
     assert response.status_code == 404
+
+
+def test_non_root_admin_bundle_backfill_route_returns_404(app_ctx, client, monkeypatch):
+    suffix = _unique_suffix()
+    monkeypatch.setenv("ADMIN_USER_EMAILS", f"root{suffix}@example.com")
+    admin_user = _create_user(
+        username=f"dbadmin{suffix}",
+        email=f"dbadmin{suffix}@example.com",
+        is_admin=True,
+    )
+    target_user = _create_user(username=f"targetuser{suffix}", email=f"target{suffix}@example.com")
+    account = _create_trade_account(user_id=target_user.id, name="Primary FX", account_type="CFD", is_default=True)
+    db.session.commit()
+
+    _login_as(client, admin_user)
+
+    response = client.post(
+        f"/dashboard/admin/access/users/{target_user.id}/backfill-bundles",
+        data={"trade_account_id": str(account.id)},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404
+
+
+def test_admin_backfill_trade_bundles_applies_detected_historical_groups(app_ctx, client, monkeypatch):
+    suffix = _unique_suffix()
+    root_email = f"root{suffix}@example.com"
+    target_email = f"target{suffix}@example.com"
+    monkeypatch.setenv("ADMIN_USER_EMAILS", root_email)
+    root_admin = _create_user(username=f"rootadmin{suffix}", email=root_email)
+    target_user = _create_user(username=f"targetuser{suffix}", email=target_email)
+    account = _create_trade_account(user_id=target_user.id, name="Primary FX", account_type="CFD", is_default=True)
+    trades = [
+        Trade(
+            user_id=target_user.id,
+            trade_account_id=account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.0990,
+            take_profit=1.1040,
+            lot_size=1.0,
+            pnl=-45.0,
+            opened_at=datetime(2026, 3, 10, 9, 50, 0),
+            closed_at=datetime(2026, 3, 10, 10, 15, 0),
+        ),
+        Trade(
+            user_id=target_user.id,
+            trade_account_id=account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0995,
+            exit_price=1.1002,
+            take_profit=1.1030,
+            lot_size=0.5,
+            pnl=22.0,
+            opened_at=datetime(2026, 3, 10, 10, 20, 0),
+            closed_at=datetime(2026, 3, 10, 10, 40, 0),
+        ),
+        Trade(
+            user_id=target_user.id,
+            trade_account_id=account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0998,
+            exit_price=1.1004,
+            take_profit=1.1030,
+            lot_size=0.5,
+            pnl=18.0,
+            opened_at=datetime(2026, 3, 10, 10, 25, 0),
+            closed_at=datetime(2026, 3, 10, 10, 42, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    _login_as(client, root_admin)
+
+    response = client.post(
+        f"/dashboard/admin/access/users/{target_user.id}/backfill-bundles",
+        data={"trade_account_id": str(account.id)},
+        follow_redirects=False,
+    )
+
+    for trade in trades:
+        db.session.refresh(trade)
+
+    assert response.status_code == 302
+    assert trades[1].bundle_pubkey is not None
+    assert trades[1].bundle_pubkey == trades[2].bundle_pubkey
+    assert trades[1].is_reactive is True
+    assert trades[2].is_reactive is True
 
 
 def test_admin_regenerate_ai_advice_success_appends_new_row_and_keeps_history(app_ctx, client, monkeypatch):

@@ -1,41 +1,265 @@
 {% extends "base.html" %}
 
-{% block content %}
-<section class="dash-wrap">
-    <div class="dash-content">
-        <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a> / Trades / Bundle Review</div>
-            <div class="head-row">
-                <div>
-                    <h1>Historical Bundle Review</h1>
-                    <p class="welcome">Welcome, {{ username }}.</p>
-                    <p class="subtitle">Confirm older split entries so the journal counts them as one logical trade in your stats.</p>
-                </div>
-                <div class="head-actions">
-                    <a class="ghost-link" href="{{ url_for('trades.trades') }}">Back to Trades</a>
-                    <a class="ghost-link" href="{{ url_for('dashboard.home') }}">Dashboard</a>
-                </div>
-            </div>
-        </header>
+{% block head_extra %}
+<style>
+    .bundle-review-card {
+        width: min(100%, 760px);
+        border-color: color-mix(in srgb, var(--border) 72%, var(--accent) 28%);
+        background:
+            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 38%),
+            linear-gradient(180deg, color-mix(in srgb, var(--card) 96%, transparent) 0%, color-mix(in srgb, var(--surface) 94%, var(--card)) 100%);
+    }
 
-        <article class="panel bundle-review-panel">
-            <div class="panel-head">
-                <h2>Detected Bundle Candidates</h2>
-                <span class="soft">Review only</span>
-            </div>
-            {% if bundle_candidates %}
-            <form action="{{ url_for('trades.bundle_confirm') }}" method="post" class="bundle-review-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    .bundle-review-meta {
+        margin-top: 0.9rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+    }
+
+    .bundle-review-chip {
+        padding: 0.48rem 0.72rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface) 84%, var(--card));
+        color: var(--muted);
+        font-size: 0.88rem;
+    }
+
+    .bundle-review-form {
+        margin-top: 1.4rem;
+        display: grid;
+        gap: 1.1rem;
+    }
+
+    .bundle-review-intro {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.5;
+    }
+
+    .outlier-section {
+        display: grid;
+        gap: 0.8rem;
+    }
+
+    .outlier-section-title {
+        margin: 0;
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: var(--ink);
+        letter-spacing: 0.02em;
+    }
+
+    .outlier-card {
+        display: grid;
+        gap: 0.75rem;
+        padding: 0.95rem 1rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 16px;
+        background: color-mix(in srgb, var(--surface) 88%, var(--card));
+    }
+
+    .outlier-card-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.9rem;
+        flex-wrap: wrap;
+    }
+
+    .outlier-card-title {
+        margin: 0;
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .outlier-card-subtext {
+        margin: 0.25rem 0 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.45;
+    }
+
+    .outlier-warning {
+        margin: 0.45rem 0 0;
+        color: var(--bad);
+        font-size: 0.9rem;
+        line-height: 1.45;
+    }
+
+    .outlier-confirm {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.55rem 0.75rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--card) 92%, transparent);
+        color: var(--ink);
+        font-weight: 700;
+    }
+
+    .outlier-confirm input {
+        margin: 0;
+    }
+
+    .outlier-trade-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 0.55rem;
+    }
+
+    .outlier-trade-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+        padding-bottom: 0.55rem;
+        border-bottom: 1px dashed color-mix(in srgb, var(--border) 68%, transparent);
+    }
+
+    .outlier-trade-row:last-child {
+        padding-bottom: 0;
+        border-bottom: none;
+    }
+
+    .outlier-trade-copy {
+        display: grid;
+        gap: 0.16rem;
+    }
+
+    .outlier-trade-meta {
+        color: var(--muted);
+        font-size: 0.88rem;
+    }
+
+    .outlier-classification {
+        display: grid;
+        gap: 0.45rem;
+    }
+
+    .outlier-classification-label {
+        font-size: 0.84rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+    }
+
+    .outlier-classification-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+    }
+
+    .outlier-radio {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        color: var(--ink);
+        font-size: 0.92rem;
+    }
+
+    .bundle-review-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+    }
+
+    .bundle-review-actions button {
+        min-width: 180px;
+    }
+
+    .bundle-review-skip {
+        margin-top: 0.35rem;
+        display: flex;
+        justify-content: center;
+    }
+
+    .bundle-review-skip a {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 0.92rem;
+    }
+
+    .bundle-review-skip a:hover {
+        color: var(--ink);
+        text-decoration: underline;
+    }
+
+    .empty-bundle-state {
+        margin-top: 1.35rem;
+        display: grid;
+        gap: 0.85rem;
+    }
+
+    .empty-bundle-state p {
+        margin: 0;
+        color: var(--muted);
+    }
+
+    @media (max-width: 700px) {
+        .outlier-card-head,
+        .outlier-trade-row {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="auth-shell">
+    <div class="auth-topbar">
+        <a href="{{ url_for('dashboard.home') }}" class="auth-topbar-brand" aria-label="Go to dashboard">
+            <img
+                src="{{ url_for('static', filename='site-logo.png') }}"
+                alt="FX Journal Logo"
+                class="auth-topbar-logo"
+            >
+            <span>FX Journal</span>
+        </a>
+        <div class="auth-topbar-links">
+            <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Trades</a>
+            <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Dashboard</a>
+        </div>
+    </div>
+
+    <div class="login-card bundle-review-card">
+        <p class="eyebrow">Bundle Review</p>
+        <h1>Historical Bundle Review</h1>
+        <p class="subtext">Review older scale-ins on your active account and confirm the ones that should count as one logical trade in your stats and AI review.</p>
+
+        <div class="bundle-review-meta">
+            <span class="bundle-review-chip">Historical review</span>
+            <span class="bundle-review-chip">{{ bundle_candidates|length }} candidate{% if bundle_candidates|length != 1 %}s{% endif %}</span>
+        </div>
+
+        {% if bundle_candidates %}
+        <form action="{{ url_for('trades.bundle_confirm') }}" method="post" class="bundle-review-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <section class="outlier-section" aria-label="Historical bundle review">
+                <div>
+                    <h2 class="outlier-section-title">Detected Bundle Candidates</h2>
+                    <p class="bundle-review-intro">Only confirm the groups that were genuinely one trade idea with scaled entries. Leave anything ambiguous unchecked and it will stay as separate trades.</p>
+                </div>
+
                 {% for candidate in bundle_candidates %}
                 {% set lead_trade = candidate.trades[0] %}
                 {% set trade_count = candidate.trades|length %}
-                <article class="bundle-card">
-                    <div class="bundle-card-head">
+                <article class="outlier-card">
+                    <div class="outlier-card-head">
                         <div>
-                            <p class="bundle-card-title">
+                            <p class="outlier-card-title">
                                 {{ lead_trade.symbol }} {{ lead_trade.side }} - {{ trade_count }} split entr{% if trade_count == 1 %}y{% else %}ies{% endif %}
                             </p>
-                            <p class="bundle-card-copy">
+                            <p class="outlier-card-subtext">
                                 {% if candidate.match_reason == "split_bucket" %}
                                 Opened in the same short time bucket.
                                 {% elif candidate.match_reason == "same_tp_and_sl" %}
@@ -49,23 +273,23 @@
                                 {% endif %}
                             </p>
                             {% if candidate.sub_type != "neutral" and candidate.trigger %}
-                            <p class="bundle-card-warning">
+                            <p class="outlier-warning">
                                 Detected as {{ candidate.sub_type }} after a {{ "%.2f"|format(candidate.trigger.pnl or 0) }} {{ candidate.trigger.symbol }} loss.
                             </p>
                             {% endif %}
                         </div>
-                        <label class="bundle-confirm-chip">
+                        <label class="outlier-confirm">
                             <input type="checkbox" name="bundle_group" value="{{ candidate.group_value }}">
                             <span>Confirm as bundle</span>
                         </label>
                     </div>
 
-                    <ul class="bundle-trade-list">
+                    <ul class="outlier-trade-list">
                         {% for trade in candidate.trades %}
-                        <li class="bundle-trade-row">
-                            <div>
+                        <li class="outlier-trade-row">
+                            <div class="outlier-trade-copy">
                                 <strong>{{ "%.2f"|format(trade.lot_size or 0) }} lot</strong>
-                                <span class="bundle-trade-meta">
+                                <span class="outlier-trade-meta">
                                     Entry {{ "%.5f"|format(trade.entry_price or 0) }}
                                     {% if trade.opened_at %} | {{ trade.opened_at.strftime("%d %b %Y %H:%M") }}{% endif %}
                                 </span>
@@ -81,124 +305,44 @@
                         {% endfor %}
                     </ul>
 
-                    <div class="bundle-type-group">
-                        <span class="bundle-type-label">If bundling, classify as</span>
-                        <div class="bundle-type-options">
-                            <label><input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="neutral" {% if candidate.sub_type == "neutral" %}checked{% endif %}> Clean scale-in</label>
-                            <label><input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="reactive" {% if candidate.sub_type == "reactive" %}checked{% endif %}> Reactive</label>
-                            <label><input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="corrective" {% if candidate.sub_type == "corrective" %}checked{% endif %}> Corrective</label>
+                    <div class="outlier-classification">
+                        <span class="outlier-classification-label">If bundling, classify as</span>
+                        <div class="outlier-classification-options">
+                            <label class="outlier-radio">
+                                <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="neutral" {% if candidate.sub_type == "neutral" %}checked{% endif %}>
+                                <span>Clean scale-in</span>
+                            </label>
+                            <label class="outlier-radio">
+                                <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="reactive" {% if candidate.sub_type == "reactive" %}checked{% endif %}>
+                                <span>Reactive</span>
+                            </label>
+                            <label class="outlier-radio">
+                                <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="corrective" {% if candidate.sub_type == "corrective" %}checked{% endif %}>
+                                <span>Corrective</span>
+                            </label>
                         </div>
                     </div>
                 </article>
                 {% endfor %}
+            </section>
 
-                <div class="bundle-review-actions">
-                    <button type="submit" class="submit-btn">Save Bundles</button>
-                    <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Done</a>
-                </div>
-            </form>
-            {% else %}
-            <div class="empty-bundle-state">
-                <p>No bundle candidates are waiting on this account right now.</p>
+            <div class="bundle-review-actions">
+                <button type="submit" class="submit-btn">Save Bundles</button>
                 <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Back to Trades</a>
             </div>
-            {% endif %}
-        </article>
+        </form>
+        <div class="bundle-review-skip">
+            <a href="{{ url_for('dashboard.home') }}">Skip for now</a>
+        </div>
+        {% else %}
+        <div class="empty-bundle-state">
+            <p>No bundle candidates are waiting on this account right now.</p>
+            <div class="bundle-review-actions">
+                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Back to Trades</a>
+                <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Done</a>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </section>
-
-<style>
-    .bundle-review-panel { display: grid;
-        gap: 0.9rem; }
-
-    .bundle-review-form { display: grid;
-        gap: 0.85rem; }
-
-    .bundle-card { display: grid;
-        gap: 0.75rem;
-        padding: 0.95rem 1rem;
-        border: 1px solid var(--surface-border-strong);
-        border-radius: 16px;
-        background: color-mix(in srgb, var(--surface) 88%, var(--card)); }
-
-    .bundle-card-head { display: flex;
-        justify-content: space-between;
-        gap: 0.9rem;
-        align-items: flex-start;
-        flex-wrap: wrap; }
-
-    .bundle-card-title { margin: 0;
-        font-weight: 800; }
-
-    .bundle-card-copy { margin: 0.25rem 0 0;
-        color: var(--muted); }
-
-    .bundle-card-warning { margin: 0.4rem 0 0;
-        color: var(--bad); }
-
-    .bundle-confirm-chip { display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.55rem 0.75rem;
-        border: 1px solid var(--surface-border-strong);
-        border-radius: 999px; }
-
-    .bundle-confirm-chip input { margin: 0; }
-
-    .bundle-trade-list { margin: 0;
-        padding: 0;
-        list-style: none;
-        display: grid;
-        gap: 0.55rem; }
-
-    .bundle-trade-row { display: flex;
-        justify-content: space-between;
-        gap: 0.8rem;
-        align-items: center;
-        flex-wrap: wrap;
-        padding-bottom: 0.55rem;
-        border-bottom: 1px dashed color-mix(in srgb, var(--border) 68%, transparent); }
-
-    .bundle-trade-row:last-child { padding-bottom: 0;
-        border-bottom: none; }
-
-    .bundle-trade-meta { display: block;
-        color: var(--muted);
-        font-size: 0.88rem;
-        margin-top: 0.14rem; }
-
-    .bundle-type-group { display: grid;
-        gap: 0.45rem; }
-
-    .bundle-type-label { font-size: 0.82rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--muted); }
-
-    .bundle-type-options { display: flex;
-        flex-wrap: wrap;
-        gap: 0.8rem; }
-
-    .bundle-type-options label { display: inline-flex;
-        align-items: center;
-        gap: 0.45rem; }
-
-    .bundle-review-actions { display: flex;
-        gap: 0.8rem;
-        flex-wrap: wrap; }
-
-    .empty-bundle-state { display: grid;
-        gap: 0.8rem; }
-
-    .empty-bundle-state p { margin: 0; }
-
-    @media (max-width: 700px) {
-        .bundle-card-head,
-        .bundle-trade-row {
-            flex-direction: column;
-            align-items: flex-start;
-        }
-    }
-</style>
 {% endblock %}
