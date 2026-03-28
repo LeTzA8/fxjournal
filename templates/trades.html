@@ -207,7 +207,18 @@
                                 </td>
                                 {% endif %}
                                 <td>{{ trade.date_label }}</td>
-                                <td>{{ trade.symbol }}</td>
+                                <td>
+                                    {{ trade.symbol }}
+                                    {% if trade.is_reactive %}
+                                    <span class="flag-dot flag-reactive" title="Reactive Trade"></span>
+                                    {% endif %}
+                                    {% if trade.is_corrective %}
+                                    <span class="flag-dot flag-corrective" title="Corrective Trade"></span>
+                                    {% endif %}
+                                    {% if trade.bundle_pubkey %}
+                                    <span class="flag-dot flag-bundled" title="Bundled Entry"></span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ trade.trade_profile_label }}</td>
                                 <td>
                                     {% if trade.side == "SELL" %}
@@ -407,12 +418,6 @@
         flex-wrap: wrap;
         margin-bottom: 0.75rem; }
 
-    .batch-alert.success { border: 1px solid #b5dcc2; }
-
-    .batch-alert.info { border: 1px solid #bfd8e7; }
-
-    .batch-alert.error { border: 1px solid #e6c1bf; }
-
     .trade-account-switcher { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         border-radius: 12px;
         padding: 0.72rem;
@@ -443,7 +448,6 @@
         letter-spacing: 0.06em; }
 
     .trade-account-switcher-form select { min-height: 44px;
-        border: 1px solid #2d7f51;
         border-radius: 12px;
         padding: 0.6rem 0.82rem;
         font-size: 0.88rem;
@@ -515,7 +519,7 @@
         border-color: color-mix(in srgb, var(--border) 88%, transparent);
     }
 
-    .batch-delete-btn { border: 1px solid #d6b4b2;  border-radius: 8px;
+    .batch-delete-btn { border-radius: 8px;
         padding: 0.44rem 0.72rem;
         font-size: 0.71rem;
         font-weight: 800;
@@ -581,8 +585,7 @@
     .trade-select { width: 16px;
         height: 16px; }
 
-    .batch-delete-arm-btn { border: 1px solid #d6b4b2;
-        border-radius: 8px;
+    .batch-delete-arm-btn { border-radius: 8px;
         padding: 0.44rem 0.72rem;
         font-size: 0.72rem;
         font-weight: 800;
@@ -594,8 +597,8 @@
 
     .batch-delete-arm-btn.is-armed,
     .batch-delete-btn.is-armed {
-        border-color: #c35656;
-        box-shadow: 0 0 0 1px rgba(195, 86, 86, 0.14);
+        border-color: color-mix(in srgb, var(--bad) 66%, var(--border));
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--bad) 14%, transparent);
     }
 
     .batch-delete-btn:disabled {
@@ -621,8 +624,6 @@
         cursor: not-allowed;
     }
 
-    .danger-note { color: #a04545; }
-
     .delete-check { display: inline-flex;
         align-items: flex-start;
         gap: 0.45rem;
@@ -633,19 +634,12 @@
     .delete-check input { width: auto;
         margin-top: 0.18rem; }
 
-    .danger-btn { border-color: #d78989;
-        color: #a93c3c; }
-
-    .btn-link { display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 10px;
+    .btn-link { border-radius: 10px;
         padding: 0.46rem 0.72rem;
         font-size: 0.74rem;
         font-weight: 700;
         letter-spacing: 0.03em;
         text-transform: uppercase;
-        text-decoration: none;
         cursor: pointer; }
 
     .dialog-actions { justify-content: flex-end; }
@@ -685,17 +679,13 @@
     h2 { margin: 0;
         font-size: 1rem; }
 
-    .ghost-btn { display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 42px;
+    .ghost-btn { min-height: 42px;
         border-radius: 10px;
         padding: 0.55rem 0.9rem;
         font-weight: 800;
         font-size: 0.76rem;
         letter-spacing: 0.04em;
         text-transform: uppercase;
-        cursor: pointer;
         transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease, background 160ms ease, border-color 160ms ease; }
 
     #applyFilters { border: 1px solid color-mix(in srgb, var(--good) 62%, var(--border));
@@ -719,16 +709,12 @@
         align-items: center;
         gap: 0.5rem; }
 
-    .new-trade-btn { display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid #2d7f51;  border-radius: 8px;
+    .new-trade-btn { border-radius: 8px;
         padding: 0.35rem 0.65rem;
         font-weight: 700;
         font-size: 0.78rem;
         letter-spacing: 0.03em;
         text-transform: uppercase;
-        text-decoration: none;
         box-shadow: 0 4px 12px rgba(34, 107, 69, 0.2);
         transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease; }
 
@@ -736,20 +722,16 @@
         box-shadow: 0 7px 16px rgba(34, 107, 69, 0.28);
         filter: brightness(1.03); }
 
-    .manage-trades-btn { display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid #d6b4b2;  border-radius: 8px;
+    .manage-trades-btn { border-radius: 8px;
         padding: 0.35rem 0.65rem;
         font-weight: 800;
         font-size: 0.78rem;
         letter-spacing: 0.04em;
-        text-transform: uppercase;
-        text-decoration: none; }
+        text-transform: uppercase; }
 
     .manage-trades-btn.is-active {
-        border-color: #c35656;
-        box-shadow: 0 0 0 1px rgba(195, 86, 86, 0.14);
+        border-color: color-mix(in srgb, var(--bad) 66%, var(--border));
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--bad) 14%, transparent);
     }
 
     .bulk-delete-form .table-shell { flex: 1 1 auto;
@@ -772,7 +754,7 @@
     th,
     td { text-align: left;
         padding: 0.6rem 0.7rem;
-        border-bottom: 1px solid #e3ebe4;
+        border-bottom: 1px solid var(--surface-divider);
         font-size: 0.84rem; }
 
     tbody tr.running-trade td {
@@ -821,6 +803,19 @@
 
     .hidden-row { display: none; }
 .bad { }
+.flag-dot { display: inline-block;
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        margin-left: 4px;
+        vertical-align: middle; }
+
+    .flag-reactive { background: var(--bad); }
+
+    .flag-corrective { background: color-mix(in srgb, var(--warning-border) 82%, var(--ink) 18%); }
+
+    .flag-bundled { background: var(--muted); }
+
 .pip-note { display: block;
         margin-top: 0.12rem;
         font-size: 0.72rem;
@@ -887,20 +882,13 @@
         gap: 0.4rem; }
 
     .view-btn,
-    .edit-btn { display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 7px;
+    .edit-btn { border-radius: 7px;
         padding: 0.22rem 0.48rem;
         font-size: 0.72rem;
         font-weight: 700;
         letter-spacing: 0.02em;
         text-transform: uppercase;
-        text-decoration: none;
         cursor: pointer; }
-
-    .view-btn { border: 1px solid #c8d6de; }
-.edit-btn { border: 1px solid #c6d4ca; }
 .empty-row td { text-align: center; padding: 1rem 0.45rem;
         font-style: normal; }
 .empty-table-state { display: grid;

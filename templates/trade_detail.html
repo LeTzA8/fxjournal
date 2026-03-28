@@ -105,6 +105,20 @@
 
                     <label for="trade_note">Trade Note</label>
                     <textarea id="trade_note" rows="5" readonly>{{ trade.trade_note if trade and trade.trade_note else 'No note added for this trade yet.' }}</textarea>
+
+                    {% set flags = [] %}
+                    {% if trade and trade.is_corrective %}{% set _ = flags.append("Corrective") %}{% endif %}
+                    {% if trade and trade.is_reactive %}{% set _ = flags.append("Reactive") %}{% endif %}
+                    {% if trade and trade.bundle_pubkey %}{% set _ = flags.append("Bundled Entry") %}{% endif %}
+                    {% if flags %}
+                    <label for="trade_flags">Trade Flags</label>
+                    <input id="trade_flags" type="text" value="{{ flags | join(' · ') }}" readonly>
+                    {% endif %}
+
+                    {% if trade and trade.system_trade_note %}
+                    <label for="system_trade_note">Import Note</label>
+                    <textarea id="system_trade_note" rows="4" readonly>{{ trade.system_trade_note }}</textarea>
+                    {% endif %}
                 </form>
             </article>
 
@@ -150,7 +164,7 @@
 
     .trade-form input,
     .trade-form textarea { width: 100%;
-        border: 1px solid #ccd7cf; border-radius: 10px;
+        border-radius: 10px;
         padding: 0.68rem 0.75rem; font: inherit; }
 
     .trade-form input[readonly],
@@ -159,7 +173,7 @@
     .trade-form textarea { resize: vertical;
         min-height: 108px; }
 
-    .sim-panel .soon { border: 1px solid #f0d799;
+    .sim-panel .soon { border: 1px solid var(--warning-border);
         padding: 0.2rem 0.5rem;
         border-radius: 999px;
         font-size: 0.7rem;
@@ -170,26 +184,26 @@
     .sim-chart { position: relative;
         height: 260px;
         border-radius: 10px;
-        border: 1px solid #d8e3da; background-size: 22px 22px;
+        border: 1px solid var(--sim-chart-border); background-size: 22px 22px;
         overflow: hidden; }
 
     .sim-chart svg { width: 100%;
         height: 100%; }
 
     .sim-chart path { fill: none;
-        stroke: #1c8f4f;
+        stroke: var(--sim-chart-stroke);
         stroke-width: 4;
         stroke-linecap: round;
         stroke-linejoin: round; }
 
-    .sim-chart circle { fill: #ffffff;
-        stroke: #1c8f4f;
+    .sim-chart circle { fill: var(--sim-chart-fill);
+        stroke: var(--sim-chart-stroke);
         stroke-width: 3; }
 
     .scanline { position: absolute;
         top: 0;
         bottom: 0;
-        width: 2px; box-shadow: 0 0 20px #3fb476;
+        width: 2px; box-shadow: 0 0 20px var(--sim-scanline-glow);
         animation: sweep 2.8s linear infinite; }
 
     .block-note { margin: 0.7rem 0 0;
@@ -212,6 +226,3 @@
 </style>
 
 {% endblock %}
-
-
-

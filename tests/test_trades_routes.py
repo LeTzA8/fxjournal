@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import routes.trades as trades_routes
 from models import Trade, TradeAccount, User, db
 
 
@@ -106,6 +107,183 @@ def test_trade_detail_treats_closed_timestamp_trade_as_closed(app_ctx, client):
     assert detail_response.status_code == 200
     assert b'<input id="status" type="text" value="Closed" readonly>' in detail_response.data
     assert b'<input id="exit_price" type="text" value="-" readonly>' in detail_response.data
+
+
+def test_trade_detail_shows_import_note_separately(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-import-note-user",
+        email="trade-import-note@example.com",
+    )
+
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=1.10120,
+        lot_size=1.00,
+        pnl=120.0,
+        trade_note="User note stays here.",
+        system_trade_note="Imported from MT5 Positions",
+        opened_at=datetime(2026, 3, 10, 9, 0, 0),
+        closed_at=datetime(2026, 3, 10, 10, 24, 0),
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    detail_response = client.get(f"/dashboard/trades/{trade.pubkey}")
+
+    assert detail_response.status_code == 200
+    assert b'<label for="trade_note">Trade Note</label>' in detail_response.data
+    assert b"User note stays here." in detail_response.data
+    assert b'<label for="system_trade_note">Import Note</label>' in detail_response.data
+    assert b"Imported from MT5 Positions" in detail_response.data
+
+
+def test_trade_list_and_detail_show_trade_flags(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-flags-user",
+        email="trade-flags@example.com",
+    )
+
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=1.10120,
+        lot_size=1.00,
+        pnl=120.0,
+        is_corrective=True,
+        is_reactive=True,
+        bundle_pubkey="bundle-flag-test",
+        opened_at=datetime(2026, 3, 10, 9, 0, 0),
+        closed_at=datetime(2026, 3, 10, 10, 24, 0),
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    list_response = client.get("/dashboard/trades")
+    detail_response = client.get(f"/dashboard/trades/{trade.pubkey}")
+
+    assert list_response.status_code == 200
+    assert b'title="Reactive Trade"' in list_response.data
+    assert b'title="Corrective Trade"' in list_response.data
+    assert b'title="Bundled Entry"' in list_response.data
+    assert detail_response.status_code == 200
+    assert b'<label for="trade_flags">Trade Flags</label>' in detail_response.data
+    assert b"Corrective" in detail_response.data
+    assert b"Reactive" in detail_response.data
+    assert b"Bundled Entry" in detail_response.data
+
+
+def test_bundle_review_confirms_historical_bundle(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="bundle-review-user",
+        email="bundle-review@example.com",
+    )
+
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.1010,
+            take_profit=1.1040,
+            lot_size=0.5,
+            pnl=30.0,
+            opened_at=datetime(2026, 3, 10, 10, 0, 0),
+            closed_at=datetime(2026, 3, 10, 10, 20, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1002,
+            exit_price=1.1012,
+            take_profit=1.1040,
+            lot_size=0.5,
+            pnl=24.0,
+            opened_at=datetime(2026, 3, 10, 10, 8, 0),
+            closed_at=datetime(2026, 3, 10, 10, 26, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    group_value = ",".join(sorted([trades[0].pubkey, trades[1].pubkey]))
+    review_response = client.get("/dashboard/trades/bundle-review")
+    confirm_response = client.post(
+        "/dashboard/trades/bundle-confirm",
+        data={
+            "bundle_group": group_value,
+            f"bundle_type_{trades_routes._bundle_group_hash([trades[0].pubkey, trades[1].pubkey])}": "corrective",
+        },
+        follow_redirects=False,
+    )
+
+    db.session.refresh(trades[0])
+    db.session.refresh(trades[1])
+
+    assert review_response.status_code == 200
+    assert b"Historical Bundle Review" in review_response.data
+    assert b"Confirm as bundle" in review_response.data
+    assert confirm_response.status_code == 302
+    assert trades[0].bundle_pubkey is not None
+    assert trades[0].bundle_pubkey == trades[1].bundle_pubkey
+    assert trades[0].is_corrective is True
+    assert trades[1].is_corrective is True
+
+
+def test_user_cannot_view_edit_or_delete_another_users_trade(app_ctx, client):
+    owner, owner_account = _create_logged_in_user(
+        client,
+        username="trade-owner-user",
+        email="trade-owner@example.com",
+    )
+    intruder, intruder_account = _create_logged_in_user(
+        client,
+        username="trade-intruder-user",
+        email="trade-intruder@example.com",
+    )
+
+    trade = Trade(
+        user_id=owner.id,
+        trade_account_id=owner_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=1.10120,
+        lot_size=1.00,
+        pnl=120.0,
+        opened_at=datetime(2026, 3, 10, 9, 0, 0),
+        closed_at=datetime(2026, 3, 10, 10, 24, 0),
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    with client.session_transaction() as session_state:
+        session_state["user_id"] = intruder.id
+        session_state["username"] = intruder.username
+        session_state["display_timezone"] = "UTC"
+        session_state["active_trade_account_id"] = intruder_account.id
+
+    detail_response = client.get(f"/dashboard/trades/{trade.pubkey}")
+    edit_response = client.get(f"/dashboard/trades/{trade.pubkey}/edit")
+    delete_response = client.post(f"/dashboard/trades/{trade.pubkey}/delete")
+
+    assert detail_response.status_code == 404
+    assert edit_response.status_code == 404
+    assert delete_response.status_code == 404
+    assert db.session.get(Trade, trade.id) is not None
 
 
 def test_analytics_page_shows_planned_vs_real_rr_panel(app_ctx, client):

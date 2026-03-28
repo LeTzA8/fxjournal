@@ -1,4 +1,5 @@
 import os
+import secrets
 from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, request
@@ -76,7 +77,7 @@ def _normalize_sync_trade_rows(raw_rows):
                 "closed_at": closed_at,
                 "mt5_position": parse_mt5_position_value(row.get("mt5_position")),
                 "mt5_position_raw": row.get("mt5_position"),
-                "trade_note": str(row.get("trade_note") or "").strip() or None,
+                "system_trade_note": str(row.get("trade_note") or "").strip() or None,
                 "source_timezone": (
                     opened_source_timezone
                     or closed_source_timezone
@@ -93,7 +94,7 @@ def _normalize_sync_trade_rows(raw_rows):
 def sync_mt5_trades():
     sync_secret = os.getenv("MT5_SYNC_SECRET", "").strip()
     header_secret = request.headers.get("X-Sync-Secret", "").strip()
-    if not sync_secret or header_secret != sync_secret:
+    if not sync_secret or not secrets.compare_digest(header_secret, sync_secret):
         return jsonify({"error": "forbidden"}), 403
 
     payload = request.get_json(silent=True) or {}
@@ -188,6 +189,8 @@ def sync_mt5_trades():
                     if row.get("swap") is not None
                     else None
                 )
+                if row.get("system_trade_note"):
+                    existing_trade.system_trade_note = row.get("system_trade_note")
                 updated_count += 1
                 continue
 
@@ -200,7 +203,7 @@ def sync_mt5_trades():
             import_signature=None,
             use_import_dedupe_key=False,
             dedupe_by_mt5_position_only=True,
-            default_trade_note="Auto-imported via MT5 sync",
+            default_system_trade_note="Auto-imported via MT5 sync",
             fallback_source_timezone="UTC",
         )
         insert_batch = batch_result["insert_batch"]

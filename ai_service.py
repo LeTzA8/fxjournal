@@ -1,7 +1,6 @@
 import hashlib
 import json
 import logging
-import math
 import os
 import re
 import statistics
@@ -13,6 +12,13 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, func
 
+from helpers.scoring import compute_emotional_index
+from helpers.trade_analysis import (
+    build_trade_annotations as _build_trade_annotations,
+    coerce_float as _coerce_float,
+    get_trade_identity as _get_trade_identity,
+    get_trade_session as _get_trade_session,
+)
 from models import (
     AIGeneratedResponse,
     AIPromptHistory,
@@ -31,6 +37,7 @@ from trading import (
     get_trade_account_type,
     get_trade_level_validation_issues,
     is_extremely_long_duration_minutes,
+    merge_bundled_trades,
     resolve_net_pnl,
 )
 from helpers.utils import utcnow_naive
@@ -50,8 +57,6 @@ WEEKLY_CUTOFF_HOUR = 17
 WEEKLY_CUTOFF_MINUTE = 30
 WEEKLY_ACTIVITY_LOOKBACK_DAYS = 3
 MIN_CLOSED_TRADES_FOR_ADVICE = 3
-SAME_TRADE_IDEA_REENTRY_WINDOW_MINUTES = 60
-REVENGE_REENTRY_WINDOW_MINUTES = 30
 logger = logging.getLogger(__name__)
 
 _DASHBOARD_ADVICE_RULE_PREFIX_REPLACEMENTS = (
@@ -377,6 +382,8 @@ def build_profile_instructions(
     emotional_state,
     plan_adherence,
     execution_quality,
+    *,
+    emotional_index_label=None,
 ):
     trading_style = _normalize_optional_text(trading_style)
     experience_level = _normalize_optional_text(experience_level)
@@ -435,6 +442,13 @@ def build_profile_instructions(
     if execution_quality == "poor":
         instructions.append("Cross-reference poor execution with actual trade data.")
         instructions.append("Find specific examples of poor execution in the trades.")
+    if emotional_index_label in {"high", "very_high"}:
+        instructions.append("Objective emotional index is elevated - prioritise BEHAVIOUR section.")
+        instructions.append("Reference reactive/corrective trade counts in behavioural analysis.")
+    if emotional_index_label == "very_high":
+        instructions.append("Lead with behavioural observations before performance metrics.")
+    if emotional_index_label == "moderate" and emotional_state not in {"stressed"}:
+        instructions.append("Mild behavioural signals detected - note briefly, don't over-weight.")
 
     if not instructions:
         return ""
@@ -443,7 +457,7 @@ def build_profile_instructions(
     return f"\nTRADER PROFILE ADJUSTMENTS\nApply all of the following:\n{lines}"
 
 
-def _build_profile_adjustments_for_prompt(user_profile, weekly_checkin):
+def _build_profile_adjustments_for_prompt(user_profile, weekly_checkin, emotional_index=None):
     return build_profile_instructions(
         _get_record_value(user_profile, "trading_style"),
         _get_record_value(user_profile, "experience_level"),
@@ -451,6 +465,7 @@ def _build_profile_adjustments_for_prompt(user_profile, weekly_checkin):
         _get_record_value(weekly_checkin, "emotional_state"),
         _get_record_value(weekly_checkin, "plan_adherence"),
         _get_record_value(weekly_checkin, "execution_quality"),
+        emotional_index_label=_get_record_value(emotional_index, "label"),
     )
 
 
@@ -566,17 +581,6 @@ def _classify_trade_session(timestamp):
     return classify_trading_session(timestamp_utc)
 
 
-def _get_trade_session(trade):
-    return _classify_trade_session(trade.opened_at)
-
-
-def _floor_timestamp_to_five_minutes(timestamp):
-    timestamp_utc = ensure_utc_aware(timestamp)
-    if timestamp_utc is None:
-        return None
-    return timestamp_utc.replace(minute=(timestamp_utc.minute // 5) * 5, second=0, microsecond=0)
-
-
 def _format_bool(value):
     return "true" if bool(value) else "false"
 
@@ -585,37 +589,6 @@ def _format_optional_bool(value):
     if value is None:
         return "-"
     return _format_bool(value)
-
-
-def _coerce_float(value):
-    if value in {None, ""}:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _minutes_between(earlier, later):
-    earlier_utc = ensure_utc_aware(earlier)
-    later_utc = ensure_utc_aware(later)
-    if earlier_utc is None or later_utc is None or later_utc < earlier_utc:
-        return None
-    return _round_metric((later_utc - earlier_utc).total_seconds() / 60.0)
-
-
-def _lot_sizes_match(first_size, second_size):
-    if first_size is None or second_size is None:
-        return False
-    return math.isclose(first_size, second_size, rel_tol=0.05, abs_tol=0.01)
-
-
-def _describe_size_change(current_size, previous_size):
-    if current_size is None or previous_size is None:
-        return None
-    if _lot_sizes_match(current_size, previous_size):
-        return "same"
-    return "larger" if current_size > previous_size else "smaller"
 
 
 def _calculate_trade_rr(target_price, entry_price, stop_loss, side=None, *, signed=False):
@@ -638,28 +611,6 @@ def _calculate_trade_rr(target_price, entry_price, stop_loss, side=None, *, sign
     if move_amount <= 0:
         return None
     return _round_metric(move_amount / risk_amount)
-
-
-def _get_trade_identity(trade):
-    trade_id = getattr(trade, "id", None)
-    return f"id:{trade_id}" if trade_id is not None else f"obj:{id(trade)}"
-
-
-def _get_trade_sort_key(trade):
-    opened_at = ensure_utc_aware(getattr(trade, "opened_at", None)) or datetime.min.replace(tzinfo=timezone.utc)
-    closed_at = ensure_utc_aware(getattr(trade, "closed_at", None)) or datetime.min.replace(tzinfo=timezone.utc)
-    return (opened_at, closed_at, getattr(trade, "id", 0) or 0)
-
-
-def _get_split_group_key(trade):
-    split_bucket = _floor_timestamp_to_five_minutes(getattr(trade, "opened_at", None))
-    if split_bucket is None:
-        return None
-    return (
-        (format_trade_symbol(trade) or "").strip().upper(),
-        (getattr(trade, "side", "") or "").strip().upper(),
-        split_bucket,
-    )
 
 
 def _build_trade_exit_quality(trade, trade_pnl):
@@ -743,122 +694,6 @@ def _build_trade_exit_quality(trade, trade_pnl):
     return result
 
 
-def _build_trade_annotations(trades):
-    chronological_trades = sorted(trades, key=_get_trade_sort_key)
-    split_group_members = {}
-    for trade in chronological_trades:
-        group_key = _get_split_group_key(trade)
-        if group_key is None:
-            continue
-        split_group_members.setdefault(group_key, []).append(_get_trade_identity(trade))
-
-    split_group_lookup = {}
-    for trade in chronological_trades:
-        identity = _get_trade_identity(trade)
-        split_group_lookup[identity] = {
-            "split_group_size": 1,
-            "split_group_index": 1,
-            "split_group_role": "solo",
-            "possible_split_order": False,
-            "group_key": _get_split_group_key(trade),
-        }
-
-    for group_key, member_ids in split_group_members.items():
-        group_size = len(member_ids)
-        for index, member_id in enumerate(member_ids, start=1):
-            split_group_lookup[member_id] = {
-                "split_group_size": group_size,
-                "split_group_index": index,
-                "split_group_role": "solo" if group_size == 1 else ("lead" if index == 1 else "add_on"),
-                "possible_split_order": group_size >= 2,
-                "group_key": group_key,
-            }
-
-    annotations = {}
-    previous_trade = None
-    previous_trade_pnl = None
-    current_loss_streak = 0
-    session_counts = {}
-    last_same_idea_trade = {}
-
-    for sequence_number, trade in enumerate(chronological_trades, start=1):
-        identity = _get_trade_identity(trade)
-        current_symbol = (format_trade_symbol(trade) or "").strip().upper()
-        current_side = (getattr(trade, "side", "") or "").strip().upper()
-        current_session = _get_trade_session(trade)
-        session_key = current_session or "__unknown__"
-        session_counts[session_key] = session_counts.get(session_key, 0) + 1
-        current_group = split_group_lookup[identity]
-        trade_lot_size = _coerce_float(getattr(trade, "lot_size", None))
-
-        minutes_since_prev_close = None
-        size_vs_prev_trade = None
-        same_symbol_reentry = False
-        is_post_loss_trade = False
-        if previous_trade is not None:
-            minutes_since_prev_close = _minutes_between(getattr(previous_trade, "closed_at", None), getattr(trade, "opened_at", None))
-            previous_lot_size = _coerce_float(getattr(previous_trade, "lot_size", None))
-            size_vs_prev_trade = _describe_size_change(trade_lot_size, previous_lot_size)
-            previous_symbol = (format_trade_symbol(previous_trade) or "").strip().upper()
-            same_symbol_reentry = bool(minutes_since_prev_close is not None and previous_symbol == current_symbol)
-            is_post_loss_trade = previous_trade_pnl is not None and previous_trade_pnl < 0
-
-        same_trade_idea_reentry = False
-        same_idea_key = (current_symbol, current_side)
-        previous_same_idea = last_same_idea_trade.get(same_idea_key)
-        if previous_same_idea is not None and previous_same_idea["group_key"] != current_group["group_key"]:
-            same_idea_gap_minutes = _minutes_between(
-                getattr(previous_same_idea["trade"], "closed_at", None),
-                getattr(trade, "opened_at", None),
-            )
-            if (
-                same_idea_gap_minutes is not None
-                and same_idea_gap_minutes <= SAME_TRADE_IDEA_REENTRY_WINDOW_MINUTES
-            ):
-                same_trade_idea_reentry = True
-
-        is_potential_revenge = bool(
-            is_post_loss_trade
-            and same_trade_idea_reentry
-            and minutes_since_prev_close is not None
-            and minutes_since_prev_close <= REVENGE_REENTRY_WINDOW_MINUTES
-            and size_vs_prev_trade in {"same", "larger"}
-            and not current_group["possible_split_order"]
-        )
-
-        annotations[identity] = {
-            "trade_sequence_number": sequence_number,
-            "trade_number_in_session": session_counts[session_key],
-            "prev_trade_pnl": previous_trade_pnl,
-            "minutes_since_prev_close": minutes_since_prev_close,
-            "size_vs_prev_trade": size_vs_prev_trade,
-            "loss_streak_before_trade": current_loss_streak,
-            "is_post_loss_trade": is_post_loss_trade,
-            "same_symbol_reentry": same_symbol_reentry,
-            "same_trade_idea_reentry": same_trade_idea_reentry,
-            "is_potential_revenge": is_potential_revenge,
-            "split_group_size": current_group["split_group_size"],
-            "split_group_index": current_group["split_group_index"],
-            "split_group_role": current_group["split_group_role"],
-            "possible_split_order": current_group["possible_split_order"],
-        }
-
-        current_trade_pnl = resolve_net_pnl(trade)
-        if current_trade_pnl is not None and current_trade_pnl < 0:
-            current_loss_streak += 1
-        else:
-            current_loss_streak = 0
-
-        previous_trade = trade
-        previous_trade_pnl = current_trade_pnl
-        last_same_idea_trade[same_idea_key] = {
-            "trade": trade,
-            "group_key": current_group["group_key"],
-        }
-
-    return annotations
-
-
 def build_trade_payload(
     *,
     user_id,
@@ -870,13 +705,14 @@ def build_trade_payload(
     user_profile=None,
     weekly_checkin=None,
 ):
-    trades = _query_trades_for_payload(
+    raw_trades = _query_trades_for_payload(
         user_id=user_id,
         trade_account_id=trade_account_id,
         period_start_utc=period_start_utc,
         period_end_utc=period_end_utc,
         closed_trades_only=closed_trades_only,
     )
+    trades = merge_bundled_trades(raw_trades)
     if max_trades is not None and max_trades > 0:
         trades = trades[:max_trades]
 
@@ -885,6 +721,8 @@ def build_trade_payload(
         display_timezone_name=get_ai_timezone_name(),
     )
     trade_annotations = _build_trade_annotations(trades)
+    emotional_index = compute_emotional_index(trades=raw_trades, weekly_checkin=weekly_checkin)
+    signals = (emotional_index or {}).get("signals", {})
 
     notes_with_content = 0
     lot_sizes = []
@@ -895,10 +733,13 @@ def build_trade_payload(
     largest_trade_abs_pnl = 0.0
     symbol_trade_counts = {}
     symbol_net_pnl = {}
+    bundle_count = 0
     for trade in trades:
         note = (trade.trade_note or "").strip()
         if note:
             notes_with_content += 1
+        if bool(getattr(trade, "_is_bundle", False)):
+            bundle_count += 1
         trade_lot_size = _coerce_float(trade.lot_size)
         if trade_lot_size is not None:
             lot_sizes.append(trade_lot_size)
@@ -995,6 +836,11 @@ def build_trade_payload(
                 "same_trade_idea_reentry": bool(annotation.get("same_trade_idea_reentry")),
                 "is_potential_revenge": bool(annotation.get("is_potential_revenge")),
                 "trade_note": (trade.trade_note or "").strip() or None,
+                "is_reactive": bool(getattr(trade, "is_reactive", False)),
+                "is_corrective": bool(getattr(trade, "is_corrective", False)),
+                "bundle_pubkey": (getattr(trade, "bundle_pubkey", None) or None),
+                "is_bundle": bool(getattr(trade, "_is_bundle", False)),
+                "bundle_trade_count": int(getattr(trade, "_bundle_trade_count", 1) or 1),
                 "planned_rr": exit_quality["planned_rr"],
                 "realized_rr": exit_quality["realized_rr"],
                 "tp_capture_pct": exit_quality["tp_capture_pct"],
@@ -1027,10 +873,11 @@ def build_trade_payload(
         "notes_with_content": notes_with_content,
         "notes_missing": notes_missing,
         "notes_confidence": notes_confidence,
-        "notes_basis": "Per weekly trade ticket; counts non-empty trade_note text only.",
+        "notes_basis": "Per weekly trade idea after bundle merging; counts non-empty user-authored trade_note text only.",
         "account_age_days": account_age_days,
         "user_profile": _serialize_user_profile(user_profile),
         "weekly_checkin": _serialize_weekly_checkin(weekly_checkin),
+        "emotional_index": emotional_index,
         "historical_context": _build_historical_context(
             user_id=user_id,
             trade_account_id=trade_account_id,
@@ -1057,6 +904,10 @@ def build_trade_payload(
             "largest_trade_abs_pnl_share_pct": largest_trade_abs_pnl_share_pct,
             "pair_sample_is_diverse": analytics["summary"].get("pair_sample_is_diverse", False),
             "equity_has_outlier_dominance": analytics["summary"].get("equity_has_outlier_dominance", False),
+            "bundle_count": bundle_count,
+            "reactive_trade_count": signals.get("reactive_trade_count", 0),
+            "corrective_trade_count": signals.get("corrective_trade_count", 0),
+            "revenge_trade_count": signals.get("revenge_trade_count", 0),
             "best_trade_pnl": (
                 analytics["summary"]["best_trade"]["pnl"]
                 if analytics["summary"]["best_trade"]
@@ -1171,6 +1022,7 @@ def format_payload_for_prompt(payload):
     summary = payload.get("summary", {})
     user_profile = payload.get("user_profile") or {}
     weekly_checkin = payload.get("weekly_checkin") or {}
+    emotional_index = payload.get("emotional_index") or {}
     historical_context = payload.get("historical_context") or {}
     trades = payload.get("trades", [])
 
@@ -1208,6 +1060,20 @@ def format_payload_for_prompt(payload):
             ]
         )
 
+    if _payload_section_has_values(emotional_index):
+        signals = emotional_index.get("signals") or {}
+        lines.extend(
+            [
+                "",
+                "EMOTIONAL INDEX",
+                f"- score: {_format_number(emotional_index.get('score'))}",
+                f"- label: {emotional_index.get('label') or '-'}",
+                f"- reactive_trade_count: {signals.get('reactive_trade_count', 0)}",
+                f"- corrective_trade_count: {signals.get('corrective_trade_count', 0)}",
+                f"- revenge_trade_count: {signals.get('revenge_trade_count', 0)}",
+            ]
+        )
+
     lines.extend(
         [
             "",
@@ -1227,6 +1093,10 @@ def format_payload_for_prompt(payload):
             f"- top_symbol_abs_pnl_share_pct: {_format_percent(summary.get('top_symbol_abs_pnl_share_pct'))}",
             f"- largest_trade_symbol: {summary.get('largest_trade_symbol') or '-'}",
             f"- largest_trade_abs_pnl_share_pct: {_format_percent(summary.get('largest_trade_abs_pnl_share_pct'))}",
+            f"- bundle_count: {summary.get('bundle_count', 0)}",
+            f"- reactive_trade_count: {summary.get('reactive_trade_count', 0)}",
+            f"- corrective_trade_count: {summary.get('corrective_trade_count', 0)}",
+            f"- revenge_trade_count: {summary.get('revenge_trade_count', 0)}",
             f"- best_trade_pnl: {_format_signed_currency(summary.get('best_trade_pnl'))}",
             f"- worst_trade_pnl: {_format_signed_currency(summary.get('worst_trade_pnl'))}",
             f"- max_drawdown_amount: {_format_currency_magnitude(summary.get('max_drawdown'))}",
@@ -1328,6 +1198,10 @@ def format_payload_for_prompt(payload):
                 f"   same_symbol_reentry: {_format_bool(trade.get('same_symbol_reentry'))}",
                 f"   same_trade_idea_reentry: {_format_bool(trade.get('same_trade_idea_reentry'))}",
                 f"   is_potential_revenge: {_format_bool(trade.get('is_potential_revenge'))}",
+                f"   is_reactive: {_format_bool(trade.get('is_reactive'))}",
+                f"   is_corrective: {_format_bool(trade.get('is_corrective'))}",
+                f"   is_bundle: {_format_bool(trade.get('is_bundle'))}",
+                f"   bundle_trade_count: {trade.get('bundle_trade_count') if trade.get('bundle_trade_count') is not None else '-'}",
                 f"   planned_rr: {_format_number(trade.get('planned_rr'))}",
                 f"   realized_rr: {_format_number(trade.get('realized_rr'))}",
                 f"   tp_capture_pct: {_format_percent(trade.get('tp_capture_pct'))}",
@@ -1512,7 +1386,11 @@ def generate_dashboard_advice(*, user_id, trade_account_id=None, prompt_filename
             user_profile=user_profile,
             weekly_checkin=weekly_checkin,
         )
-        profile_adjustments = _build_profile_adjustments_for_prompt(user_profile, weekly_checkin)
+        profile_adjustments = _build_profile_adjustments_for_prompt(
+            user_profile,
+            weekly_checkin,
+            payload.get("emotional_index"),
+        )
         prompt_history, messages, payload_json = build_dashboard_advice_messages(
             payload,
             prompt_filename=prompt_filename,
@@ -1647,7 +1525,11 @@ def maybe_generate_weekly_dashboard_advice(
         if existing is not None and not force_regenerate and existing.payload_hash == payload_hash:
             return {"record": existing, "generated": False, "period": period}
 
-        profile_adjustments = _build_profile_adjustments_for_prompt(user_profile, weekly_checkin)
+        profile_adjustments = _build_profile_adjustments_for_prompt(
+            user_profile,
+            weekly_checkin,
+            payload.get("emotional_index"),
+        )
         prompt_history, messages, payload_json = build_dashboard_advice_messages(
             payload,
             prompt_filename=prompt_filename,

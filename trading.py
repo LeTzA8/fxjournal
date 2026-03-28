@@ -7,6 +7,7 @@ import logging
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import has_app_context
@@ -1634,12 +1635,126 @@ def build_rr_summary(trades):
     }
 
 
+def _merge_trade_text_values(trades, attribute_name):
+    seen_values = set()
+    merged_values = []
+    for trade in trades:
+        text_value = str(getattr(trade, attribute_name, "") or "").strip()
+        if not text_value or text_value in seen_values:
+            continue
+        seen_values.add(text_value)
+        merged_values.append(text_value)
+    return " | ".join(merged_values) or None
+
+
+def merge_bundled_trades(trades):
+    if not trades:
+        return []
+
+    bundle_groups = defaultdict(list)
+    ordered_rows = []
+    for trade in trades:
+        if bool(getattr(trade, "_is_bundle", False)):
+            ordered_rows.append(("trade", trade))
+            continue
+        bundle_pubkey = str(getattr(trade, "bundle_pubkey", "") or "").strip()
+        if not bundle_pubkey:
+            ordered_rows.append(("trade", trade))
+            continue
+        bundle_groups[bundle_pubkey].append(trade)
+        if not any(kind == "bundle" and value == bundle_pubkey for kind, value in ordered_rows):
+            ordered_rows.append(("bundle", bundle_pubkey))
+
+    merged_trades = []
+    for row_kind, row_value in ordered_rows:
+        if row_kind == "trade":
+            merged_trades.append(row_value)
+            continue
+
+        bundle_pubkey = row_value
+        group = sorted(
+            bundle_groups.get(bundle_pubkey, []),
+            key=lambda item: (
+                item.opened_at or datetime.min,
+                item.closed_at or datetime.min,
+                getattr(item, "id", 0) or 0,
+            ),
+        )
+        if not group:
+            continue
+
+        first_trade = group[0]
+        closed_members = [trade for trade in group if getattr(trade, "closed_at", None) is not None]
+        last_closed_trade = max(
+            closed_members,
+            key=lambda item: (
+                item.closed_at or datetime.min,
+                getattr(item, "id", 0) or 0,
+            ),
+        ) if closed_members else None
+        has_open_member = any(getattr(trade, "closed_at", None) is None for trade in group)
+        raw_pnl_total = sum(float(resolve_pnl(trade) or 0.0) for trade in closed_members)
+        commission_total = sum(float(getattr(trade, "commission", None) or 0.0) for trade in group)
+        swap_total = sum(float(getattr(trade, "swap", None) or 0.0) for trade in group)
+        lot_size_total = sum(float(getattr(trade, "lot_size", None) or 0.0) for trade in group)
+
+        merged_trades.append(
+            SimpleNamespace(
+                id=getattr(first_trade, "id", None),
+                pubkey=bundle_pubkey,
+                user_id=getattr(first_trade, "user_id", None),
+                trade_account_id=getattr(first_trade, "trade_account_id", None),
+                trade_account=getattr(first_trade, "trade_account", None),
+                symbol=getattr(first_trade, "symbol", None),
+                contract_code=getattr(first_trade, "contract_code", None),
+                side=getattr(first_trade, "side", None),
+                entry_price=getattr(first_trade, "entry_price", None),
+                exit_price=(getattr(last_closed_trade, "exit_price", None) if last_closed_trade is not None and not has_open_member else None),
+                lot_size=lot_size_total,
+                pnl=(raw_pnl_total if closed_members and not has_open_member else None),
+                commission=(commission_total if commission_total else None),
+                swap=(swap_total if swap_total else None),
+                stop_loss=getattr(first_trade, "stop_loss", None),
+                take_profit=getattr(first_trade, "take_profit", None),
+                mt5_position=None,
+                import_signature=getattr(first_trade, "import_signature", None),
+                import_dedupe_key=None,
+                source_timezone=getattr(first_trade, "source_timezone", None),
+                trade_note=_merge_trade_text_values(group, "trade_note"),
+                system_trade_note=_merge_trade_text_values(group, "system_trade_note"),
+                trade_profile_id=getattr(first_trade, "trade_profile_id", None),
+                trade_profile_version_id=getattr(first_trade, "trade_profile_version_id", None),
+                trade_profile=getattr(first_trade, "trade_profile", None),
+                trade_profile_version=getattr(first_trade, "trade_profile_version", None),
+                opened_at=getattr(first_trade, "opened_at", None),
+                closed_at=(
+                    max((trade.closed_at for trade in closed_members), default=None)
+                    if not has_open_member
+                    else None
+                ),
+                is_corrective=any(bool(getattr(trade, "is_corrective", False)) for trade in group),
+                is_reactive=any(bool(getattr(trade, "is_reactive", False)) for trade in group),
+                bundle_pubkey=bundle_pubkey,
+                _is_bundle=True,
+                _bundle_trade_count=len(group),
+                _bundle_member_pubkeys=[
+                    str(getattr(trade, "pubkey", "") or "").strip()
+                    for trade in group
+                    if str(getattr(trade, "pubkey", "") or "").strip()
+                ],
+            )
+        )
+
+    return merged_trades
+
+
 def build_trade_analytics(
     trades,
     display_timezone_name="UTC",
     now_utc=None,
     account_size=None,
 ):
+    trades = merge_bundled_trades(trades)
     display_timezone = get_timezone(display_timezone_name)
     now_utc = ensure_utc_aware(now_utc or utcnow_naive())
     sort_floor_utc = datetime.min.replace(tzinfo=timezone.utc)

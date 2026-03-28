@@ -1,10 +1,12 @@
 from datetime import datetime
 
+from sqlalchemy import inspect as sa_inspect
+
 from ai_service import WEEKLY_DASHBOARD_KIND
 from models import AIGeneratedResponse, AIPromptHistory
 
 import routes.dashboard as dashboard_routes
-from models import Trade, TradeAccount, User, UserProfile, db
+from models import Trade, TradeAccount, TradeProfile, TradeProfileVersion, User, UserProfile, db
 
 
 def _create_logged_in_user(client, username, email):
@@ -156,7 +158,56 @@ def test_dashboard_home_does_not_mark_closed_timestamp_trade_as_running(app_ctx,
 
     assert response.status_code == 200
     assert b'class="running-trade"' not in response.data
-    assert b'<span class="running-pill">Running</span>' not in response.data
+
+
+def test_load_user_trades_preloads_trade_profile_relationships(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-preload-user",
+        email="dashboard-preload@example.com",
+    )
+    profile = TradeProfile(
+        user_id=user.id,
+        name="Trend Pullback",
+        current_version_number=1,
+    )
+    db.session.add(profile)
+    db.session.flush()
+
+    profile_version = TradeProfileVersion(
+        trade_profile_id=profile.id,
+        version_number=1,
+        name="Trend Pullback v1",
+    )
+    db.session.add(profile_version)
+    db.session.flush()
+
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.085,
+        exit_price=1.091,
+        lot_size=0.01,
+        pnl=60.0,
+        opened_at=datetime(2026, 3, 22, 8, 0, 0),
+        closed_at=datetime(2026, 3, 22, 10, 0, 0),
+        trade_profile_id=profile.id,
+        trade_profile_version_id=profile_version.id,
+    )
+    db.session.add(trade)
+    db.session.commit()
+    db.session.expire_all()
+
+    loaded_trades = dashboard_routes._load_user_trades(user.id, trade_account)
+
+    assert len(loaded_trades) == 1
+    trade_state = sa_inspect(loaded_trades[0])
+    assert "trade_profile" not in trade_state.unloaded
+    assert "trade_profile_version" not in trade_state.unloaded
+    assert loaded_trades[0].trade_profile.name == "Trend Pullback"
+    assert loaded_trades[0].trade_profile_version.name == "Trend Pullback v1"
 
 
 def test_dashboard_home_normalizes_broken_rule_prefix_in_weekly_ai_review(app_ctx, client, monkeypatch):

@@ -17,6 +17,12 @@ from helpers.utils import utcnow_naive
 from models import WeeklyCheckin, db
 
 
+def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
+    retry_number = getattr(getattr(task, "request", None), "retries", 0)
+    countdown = min(base_delay * (2 ** retry_number), max_delay)
+    raise task.retry(exc=exc, countdown=countdown)
+
+
 def _send_weekly_review_email(user_id, result):
     try:
         import logging
@@ -149,7 +155,7 @@ def generate_weekly_ai_task(
                 AI_STATUS_FAILED_TTL,
             )
             raise
-        raise self.retry(exc=exc)
+        _retry_with_backoff(self, exc, base_delay=30, max_delay=300)
 
 
 @celery.task

@@ -26,6 +26,12 @@ APPDATA_TERMINAL_PATH = os.path.join(
 IGNORED_APPDATA_FOLDERS = {"Common", "Community"}
 
 
+def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
+    retry_number = getattr(getattr(task, "request", None), "retries", 0)
+    countdown = min(base_delay * (2 ** retry_number), max_delay)
+    raise task.retry(exc=exc, countdown=countdown)
+
+
 
 def _find_base_appdata(base_path: str):
     target = os.path.normcase(os.path.abspath(base_path))
@@ -225,7 +231,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         raise
     except Exception as exc:
         db.session.rollback()
-        raise self.retry(exc=exc)
+        _retry_with_backoff(self, exc, base_delay=30, max_delay=300)
 
 
 @celery.task(bind=True, max_retries=2, default_retry_delay=10, queue="mt5_setup")

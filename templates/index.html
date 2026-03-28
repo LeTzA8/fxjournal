@@ -3,7 +3,8 @@
 {% block head_extra %}
 <style>
     .onboarding-banner,
-    .checkin-banner {
+    .checkin-banner,
+    .bundle-banner {
         margin-bottom: 0.95rem;
         padding: 0.8rem 0.92rem;
         display: flex;
@@ -21,14 +22,22 @@
             linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--card)) 0%, color-mix(in srgb, var(--surface) 88%, var(--card)) 100%);
     }
 
+    .bundle-banner {
+        border-color: color-mix(in srgb, var(--warning-border) 48%, var(--border));
+        background:
+            linear-gradient(135deg, color-mix(in srgb, var(--warning-border) 12%, var(--card)) 0%, color-mix(in srgb, var(--surface) 88%, var(--card)) 100%);
+    }
+
     .onboarding-banner-copy,
-    .checkin-banner-copy {
+    .checkin-banner-copy,
+    .bundle-banner-copy {
         display: grid;
         gap: 0.14rem;
     }
 
     .onboarding-banner-kicker,
-    .checkin-banner-kicker {
+    .checkin-banner-kicker,
+    .bundle-banner-kicker {
         margin: 0;
         font-size: 0.66rem;
         font-weight: 800;
@@ -38,7 +47,8 @@
     }
 
     .onboarding-banner-title,
-    .checkin-banner-title {
+    .checkin-banner-title,
+    .bundle-banner-title {
         margin: 0;
         font-size: 0.94rem;
         font-weight: 700;
@@ -47,7 +57,8 @@
     }
 
     .onboarding-banner-note,
-    .checkin-banner-note {
+    .checkin-banner-note,
+    .bundle-banner-note {
         margin: 0;
         color: var(--muted);
         font-size: 0.84rem;
@@ -55,7 +66,8 @@
     }
 
     .onboarding-banner-actions,
-    .checkin-banner-actions {
+    .checkin-banner-actions,
+    .bundle-banner-actions {
         display: flex;
         align-items: center;
         gap: 0.5rem;
@@ -66,7 +78,9 @@
     .onboarding-banner .trades-btn,
     .onboarding-banner .ghost-btn,
     .checkin-banner .trades-btn,
-    .checkin-banner .ghost-btn {
+    .checkin-banner .ghost-btn,
+    .bundle-banner .trades-btn,
+    .bundle-banner .ghost-btn {
         padding: 0.28rem 0.54rem;
         font-size: 0.68rem;
     }
@@ -88,13 +102,15 @@
 
     @media (max-width: 760px) {
         .onboarding-banner,
-        .checkin-banner {
+        .checkin-banner,
+        .bundle-banner {
             align-items: flex-start;
             flex-direction: column;
         }
 
         .onboarding-banner-actions,
-        .checkin-banner-actions {
+        .checkin-banner-actions,
+        .bundle-banner-actions {
             width: 100%;
             justify-content: flex-start;
         }
@@ -224,6 +240,20 @@
             <div class="onboarding-banner-actions">
                 <a href="{{ url_for('onboarding') }}" class="trades-btn">Complete Onboarding</a>
                 <a href="{{ url_for('account.account') }}" class="ghost-btn">Open Account</a>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if has_bundle_candidates %}
+        <section class="panel bundle-banner">
+            <div class="bundle-banner-copy">
+                <p class="bundle-banner-kicker">Bundle Review</p>
+                <p class="bundle-banner-title">Split entries detected on your active account.</p>
+                <p class="bundle-banner-note">Review and confirm older scale-ins so your stats and AI analysis treat them as one logical trade instead of several separate entries.</p>
+            </div>
+            <div class="bundle-banner-actions">
+                <a href="{{ url_for('trades.bundle_review') }}" class="trades-btn">Review Bundles</a>
+                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Trades</a>
             </div>
         </section>
         {% endif %}

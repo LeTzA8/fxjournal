@@ -162,6 +162,96 @@ def test_mt5_access_request_is_kept_when_email_notification_is_unavailable(app_c
     )
 
 
+def test_user_cannot_switch_to_another_users_trade_account(app_ctx, client):
+    user, own_account = _create_user_with_account(
+        username="switch-own-user",
+        email="switch-own@example.com",
+        account_name="Own Account",
+    )
+    _other_user, other_account = _create_user_with_account(
+        username="switch-other-user",
+        email="switch-other@example.com",
+        account_name="Other Account",
+    )
+    _log_in_user(client, user, own_account)
+
+    response = client.post(
+        "/dashboard/trade-accounts/switch",
+        data={
+            "trade_account_pubkey": other_account.pubkey,
+            "next": "/dashboard/trades",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/dashboard/trades")
+
+    with client.session_transaction() as session_state:
+        assert session_state["active_trade_account_id"] == own_account.id
+
+    resolved_account = trade_accounts_module.get_active_trade_account_for_user(user.id)
+    assert resolved_account.id == own_account.id
+
+
+def test_user_cannot_set_another_users_trade_account_as_default(app_ctx, client):
+    user, own_account = _create_user_with_account(
+        username="default-own-user",
+        email="default-own@example.com",
+        account_name="Own Account",
+    )
+    _other_user, other_account = _create_user_with_account(
+        username="default-other-user",
+        email="default-other@example.com",
+        account_name="Other Account",
+    )
+    _log_in_user(client, user, own_account)
+
+    response = client.post(
+        f"/dashboard/trade-accounts/{other_account.pubkey}/default",
+        data={"next": "/dashboard/trade-accounts"},
+        follow_redirects=True,
+    )
+
+    db.session.refresh(own_account)
+    db.session.refresh(other_account)
+
+    assert response.status_code == 200
+    assert b"Trade account not found." in response.data
+    assert own_account.is_default is True
+    assert other_account.is_default is True
+
+    with client.session_transaction() as session_state:
+        assert session_state["active_trade_account_id"] == own_account.id
+
+
+def test_user_cannot_request_mt5_access_for_another_users_trade_account(app_ctx, client):
+    user, own_account = _create_user_with_account(
+        username="request-own-user",
+        email="request-own@example.com",
+        account_name="Own Account",
+    )
+    _other_user, other_account = _create_user_with_account(
+        username="request-other-user",
+        email="request-other@example.com",
+        account_name="Other Account",
+    )
+    _log_in_user(client, user, own_account)
+
+    response = client.post(
+        "/dashboard/mt5/request-access",
+        data={
+            "trade_account_pubkey": other_account.pubkey,
+            "request_note": "Please enable MT5 sync for this account.",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Trade account not found." in response.data
+    assert MT5AccessRequest.query.filter_by(trade_account_id=other_account.id).count() == 0
+
+
 def test_mt5_access_request_rejects_non_cfd_trade_accounts(app_ctx, client):
     user, trade_account = _create_user_with_account(
         username="mt5-request-futures",
@@ -326,7 +416,6 @@ def test_dashboard_home_shows_mt5_request_and_approval_states(app_ctx, client, m
     assert b"read-only credentials only" in response.data
     assert b"Terms and Conditions" in response.data
     assert b"Privacy Policy" in response.data
-    assert b"Futures Only" not in response.data
 
 
 def test_user_can_submit_mt5_details_after_approval(app_ctx, client, monkeypatch):

@@ -297,6 +297,13 @@ class Trade(db.Model):
             "trade_account_id",
             "import_signature",
         ),
+        db.Index(
+            "ix_trades_user_account_closed_at",
+            "user_id",
+            "trade_account_id",
+            "closed_at",
+        ),
+        db.Index("ix_trades_bundle_pubkey", "bundle_pubkey"),
         db.Index("ix_trades_user_trade_profile", "user_id", "trade_profile_id"),
     )
 
@@ -336,6 +343,10 @@ class Trade(db.Model):
     source_timezone = db.Column(db.String(64), nullable=True)
     contract_code = db.Column(db.String(24), nullable=True)
     trade_note = db.Column(db.Text, nullable=True)
+    system_trade_note = db.Column(db.Text, nullable=True)
+    is_corrective = db.Column(db.Boolean, nullable=False, default=False)
+    is_reactive = db.Column(db.Boolean, nullable=False, default=False)
+    bundle_pubkey = db.Column(db.String(24), nullable=True)
     trade_profile_id = db.Column(
         db.Integer,
         db.ForeignKey("trade_profiles.id", ondelete="SET NULL"),

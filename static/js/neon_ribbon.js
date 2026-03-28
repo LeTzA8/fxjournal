@@ -18,6 +18,21 @@
 
     const getTheme = () =>
         document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+    const getThemeValue = (name, fallback) => {
+        const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        return value || fallback;
+    };
+    const getRgbTriplet = (name, fallback) => {
+        const rawValue = getThemeValue(name, "");
+        if (!rawValue) {
+            return fallback;
+        }
+        const parsed = rawValue
+            .split(/[\s,]+/)
+            .map((part) => Number.parseFloat(part))
+            .filter((part) => Number.isFinite(part));
+        return parsed.length >= 3 ? parsed.slice(0, 3) : fallback;
+    };
 
     const resize = () => {
         dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -85,9 +100,9 @@
 
     const drawDarkNeonRibbon = (time) => {
         const bg = ctx.createLinearGradient(0, 0, 0, height);
-        bg.addColorStop(0, "#020304");
-        bg.addColorStop(0.55, "#05070B");
-        bg.addColorStop(1, "#090D15");
+        bg.addColorStop(0, getThemeValue("--ribbon-dark-bg-start", "#020304"));
+        bg.addColorStop(0.55, getThemeValue("--ribbon-dark-bg-mid", "#05070B"));
+        bg.addColorStop(1, getThemeValue("--ribbon-dark-bg-end", "#090D15"));
         ctx.fillStyle = bg;
         ctx.fillRect(0, 0, width, height);
 
@@ -99,14 +114,20 @@
             height * 0.72,
             Math.max(width, height) * 0.78
         );
-        wash.addColorStop(0, "rgba(69, 98, 255, 0.22)");
-        wash.addColorStop(0.5, "rgba(41, 58, 140, 0.12)");
-        wash.addColorStop(1, "rgba(0, 0, 0, 0)");
+        wash.addColorStop(0, getThemeValue("--ribbon-dark-wash-start", "rgba(69, 98, 255, 0.22)"));
+        wash.addColorStop(0.5, getThemeValue("--ribbon-dark-wash-mid", "rgba(41, 58, 140, 0.12)"));
+        wash.addColorStop(1, getThemeValue("--ribbon-dark-wash-end", "rgba(0, 0, 0, 0)"));
         ctx.fillStyle = wash;
         ctx.fillRect(0, 0, width, height);
 
-        const primaryPalette = { a: [110, 138, 255], b: [69, 98, 255] };
-        const secondaryPalette = { a: [98, 78, 226], b: [62, 84, 190] };
+        const primaryPalette = {
+            a: getRgbTriplet("--ribbon-dark-primary-a-rgb", [110, 138, 255]),
+            b: getRgbTriplet("--ribbon-dark-primary-b-rgb", [69, 98, 255]),
+        };
+        const secondaryPalette = {
+            a: getRgbTriplet("--ribbon-dark-secondary-a-rgb", [98, 78, 226]),
+            b: getRgbTriplet("--ribbon-dark-secondary-b-rgb", [62, 84, 190]),
+        };
 
         strokeRibbonFamily(time, primaryPalette, {
             lanes: 5,
@@ -155,9 +176,9 @@
 
     const drawLightNeonRibbon = (time) => {
         const bg = ctx.createLinearGradient(0, 0, 0, height);
-        bg.addColorStop(0, "#FFFFFF");
-        bg.addColorStop(0.62, "#FCFCFF");
-        bg.addColorStop(1, "#F4F0FF");
+        bg.addColorStop(0, getThemeValue("--ribbon-light-bg-start", "#FFFFFF"));
+        bg.addColorStop(0.62, getThemeValue("--ribbon-light-bg-mid", "#FCFCFF"));
+        bg.addColorStop(1, getThemeValue("--ribbon-light-bg-end", "#F4F0FF"));
         ctx.fillStyle = bg;
         ctx.fillRect(0, 0, width, height);
 
@@ -169,9 +190,9 @@
             height * 0.12,
             Math.max(width, height) * 0.92
         );
-        wash.addColorStop(0, "rgba(167, 139, 250, 0.16)");
-        wash.addColorStop(0.5, "rgba(129, 140, 248, 0.08)");
-        wash.addColorStop(1, "rgba(255, 255, 255, 0)");
+        wash.addColorStop(0, getThemeValue("--ribbon-light-wash-1-start", "rgba(167, 139, 250, 0.16)"));
+        wash.addColorStop(0.5, getThemeValue("--ribbon-light-wash-1-mid", "rgba(129, 140, 248, 0.08)"));
+        wash.addColorStop(1, getThemeValue("--ribbon-light-wash-1-end", "rgba(255, 255, 255, 0)"));
         ctx.fillStyle = wash;
         ctx.fillRect(0, 0, width, height);
 
@@ -183,14 +204,20 @@
             height * 0.84,
             Math.max(width, height) * 0.72
         );
-        wash2.addColorStop(0, "rgba(196, 181, 253, 0.17)");
-        wash2.addColorStop(0.56, "rgba(167, 139, 250, 0.08)");
-        wash2.addColorStop(1, "rgba(255, 255, 255, 0)");
+        wash2.addColorStop(0, getThemeValue("--ribbon-light-wash-2-start", "rgba(196, 181, 253, 0.17)"));
+        wash2.addColorStop(0.56, getThemeValue("--ribbon-light-wash-2-mid", "rgba(167, 139, 250, 0.08)"));
+        wash2.addColorStop(1, getThemeValue("--ribbon-light-wash-2-end", "rgba(255, 255, 255, 0)"));
         ctx.fillStyle = wash2;
         ctx.fillRect(0, 0, width, height);
 
-        const primaryPalette = { a: [167, 139, 250], b: [129, 140, 248] };
-        const secondaryPalette = { a: [196, 181, 253], b: [167, 139, 250] };
+        const primaryPalette = {
+            a: getRgbTriplet("--ribbon-light-primary-a-rgb", [167, 139, 250]),
+            b: getRgbTriplet("--ribbon-light-primary-b-rgb", [129, 140, 248]),
+        };
+        const secondaryPalette = {
+            a: getRgbTriplet("--ribbon-light-secondary-a-rgb", [196, 181, 253]),
+            b: getRgbTriplet("--ribbon-light-secondary-b-rgb", [167, 139, 250]),
+        };
 
         strokeRibbonFamily(time, primaryPalette, {
             lanes: 4,

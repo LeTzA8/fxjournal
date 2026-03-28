@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="dash-wrap">
+    <div class="dash-content">
+        <header class="dash-head">
+            <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a> / Trades / Bundle Review</div>
+            <div class="head-row">
+                <div>
+                    <h1>Historical Bundle Review</h1>
+                    <p class="welcome">Welcome, {{ username }}.</p>
+                    <p class="subtitle">Confirm older split entries so the journal counts them as one logical trade in your stats.</p>
+                </div>
+                <div class="head-actions">
+                    <a class="ghost-link" href="{{ url_for('trades.trades') }}">Back to Trades</a>
+                    <a class="ghost-link" href="{{ url_for('dashboard.home') }}">Dashboard</a>
+                </div>
+            </div>
+        </header>
+
+        <article class="panel bundle-review-panel">
+            <div class="panel-head">
+                <h2>Detected Bundle Candidates</h2>
+                <span class="soft">Review only</span>
+            </div>
+            {% if bundle_candidates %}
+            <form action="{{ url_for('trades.bundle_confirm') }}" method="post" class="bundle-review-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                {% for candidate in bundle_candidates %}
+                {% set lead_trade = candidate.trades[0] %}
+                {% set trade_count = candidate.trades|length %}
+                <article class="bundle-card">
+                    <div class="bundle-card-head">
+                        <div>
+                            <p class="bundle-card-title">
+                                {{ lead_trade.symbol }} {{ lead_trade.side }} - {{ trade_count }} split entr{% if trade_count == 1 %}y{% else %}ies{% endif %}
+                            </p>
+                            <p class="bundle-card-copy">
+                                {% if candidate.match_reason == "split_bucket" %}
+                                Opened in the same short time bucket.
+                                {% elif candidate.match_reason == "same_tp_and_sl" %}
+                                Matching take profit and stop loss.
+                                {% elif candidate.match_reason == "same_tp" %}
+                                Matching take profit.
+                                {% elif candidate.match_reason == "same_sl" %}
+                                Matching stop loss.
+                                {% else %}
+                                Similar scale-in pattern detected.
+                                {% endif %}
+                            </p>
+                            {% if candidate.sub_type != "neutral" and candidate.trigger %}
+                            <p class="bundle-card-warning">
+                                Detected as {{ candidate.sub_type }} after a {{ "%.2f"|format(candidate.trigger.pnl or 0) }} {{ candidate.trigger.symbol }} loss.
+                            </p>
+                            {% endif %}
+                        </div>
+                        <label class="bundle-confirm-chip">
+                            <input type="checkbox" name="bundle_group" value="{{ candidate.group_value }}">
+                            <span>Confirm as bundle</span>
+                        </label>
+                    </div>
+
+                    <ul class="bundle-trade-list">
+                        {% for trade in candidate.trades %}
+                        <li class="bundle-trade-row">
+                            <div>
+                                <strong>{{ "%.2f"|format(trade.lot_size or 0) }} lot</strong>
+                                <span class="bundle-trade-meta">
+                                    Entry {{ "%.5f"|format(trade.entry_price or 0) }}
+                                    {% if trade.opened_at %} | {{ trade.opened_at.strftime("%d %b %Y %H:%M") }}{% endif %}
+                                </span>
+                            </div>
+                            <span class="{% if (trade.pnl or 0) > 0 %}good{% elif (trade.pnl or 0) < 0 %}bad{% else %}muted{% endif %}">
+                                {% if trade.pnl is not none %}
+                                    {% if trade.pnl > 0 %}+{% endif %}{{ "%.2f"|format(trade.pnl) }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+
+                    <div class="bundle-type-group">
+                        <span class="bundle-type-label">If bundling, classify as</span>
+                        <div class="bundle-type-options">
+                            <label><input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="neutral" {% if candidate.sub_type == "neutral" %}checked{% endif %}> Clean scale-in</label>
+                            <label><input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="reactive" {% if candidate.sub_type == "reactive" %}checked{% endif %}> Reactive</label>
+                            <label><input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="corrective" {% if candidate.sub_type == "corrective" %}checked{% endif %}> Corrective</label>
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+
+                <div class="bundle-review-actions">
+                    <button type="submit" class="submit-btn">Save Bundles</button>
+                    <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Done</a>
+                </div>
+            </form>
+            {% else %}
+            <div class="empty-bundle-state">
+                <p>No bundle candidates are waiting on this account right now.</p>
+                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Back to Trades</a>
+            </div>
+            {% endif %}
+        </article>
+    </div>
+</section>
+
+<style>
+    .bundle-review-panel { display: grid;
+        gap: 0.9rem; }
+
+    .bundle-review-form { display: grid;
+        gap: 0.85rem; }
+
+    .bundle-card { display: grid;
+        gap: 0.75rem;
+        padding: 0.95rem 1rem;
+        border: 1px solid var(--surface-border-strong);
+        border-radius: 16px;
+        background: color-mix(in srgb, var(--surface) 88%, var(--card)); }
+
+    .bundle-card-head { display: flex;
+        justify-content: space-between;
+        gap: 0.9rem;
+        align-items: flex-start;
+        flex-wrap: wrap; }
+
+    .bundle-card-title { margin: 0;
+        font-weight: 800; }
+
+    .bundle-card-copy { margin: 0.25rem 0 0;
+        color: var(--muted); }
+
+    .bundle-card-warning { margin: 0.4rem 0 0;
+        color: var(--bad); }
+
+    .bundle-confirm-chip { display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.55rem 0.75rem;
+        border: 1px solid var(--surface-border-strong);
+        border-radius: 999px; }
+
+    .bundle-confirm-chip input { margin: 0; }
+
+    .bundle-trade-list { margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 0.55rem; }
+
+    .bundle-trade-row { display: flex;
+        justify-content: space-between;
+        gap: 0.8rem;
+        align-items: center;
+        flex-wrap: wrap;
+        padding-bottom: 0.55rem;
+        border-bottom: 1px dashed color-mix(in srgb, var(--border) 68%, transparent); }
+
+    .bundle-trade-row:last-child { padding-bottom: 0;
+        border-bottom: none; }
+
+    .bundle-trade-meta { display: block;
+        color: var(--muted);
+        font-size: 0.88rem;
+        margin-top: 0.14rem; }
+
+    .bundle-type-group { display: grid;
+        gap: 0.45rem; }
+
+    .bundle-type-label { font-size: 0.82rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted); }
+
+    .bundle-type-options { display: flex;
+        flex-wrap: wrap;
+        gap: 0.8rem; }
+
+    .bundle-type-options label { display: inline-flex;
+        align-items: center;
+        gap: 0.45rem; }
+
+    .bundle-review-actions { display: flex;
+        gap: 0.8rem;
+        flex-wrap: wrap; }
+
+    .empty-bundle-state { display: grid;
+        gap: 0.8rem; }
+
+    .empty-bundle-state p { margin: 0; }
+
+    @media (max-width: 700px) {
+        .bundle-card-head,
+        .bundle-trade-row {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
+</style>
+{% endblock %}

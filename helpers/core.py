@@ -212,7 +212,7 @@ def build_normalized_trade_insert_batch(
     import_signature=None,
     use_import_dedupe_key=True,
     dedupe_by_mt5_position_only=False,
-    default_trade_note=None,
+    default_system_trade_note=None,
     fallback_source_timezone=None,
 ):
     account_type = normalize_account_type(getattr(trade_account, "account_type", "CFD"))
@@ -378,8 +378,12 @@ def build_normalized_trade_insert_batch(
                 continue
             import_positions.add(mt5_position)
 
-        trade_note = row.get("trade_note")
-        trade_note_text = str(trade_note).strip() if trade_note is not None else ""
+        system_trade_note = row.get("system_trade_note")
+        if system_trade_note is None:
+            system_trade_note = row.get("trade_note")
+        system_trade_note_text = (
+            str(system_trade_note).strip() if system_trade_note is not None else ""
+        )
         source_timezone = str(
             row.get("source_timezone") or fallback_source_timezone or ""
         ).strip() or None
@@ -421,7 +425,8 @@ def build_normalized_trade_insert_batch(
                 swap=float(row.get("swap")) if row.get("swap") is not None else None,
                 opened_at=opened_at,
                 closed_at=closed_at,
-                trade_note=trade_note_text or default_trade_note,
+                trade_note=None,
+                system_trade_note=system_trade_note_text or default_system_trade_note,
             )
         )
 

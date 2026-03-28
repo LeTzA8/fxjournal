@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 _MT5_API_SESSION_LOCK = threading.Lock()
 
 
+def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
+    retry_number = getattr(getattr(task, "request", None), "retries", 0)
+    countdown = min(base_delay * (2 ** retry_number), max_delay)
+    raise task.retry(exc=exc, countdown=countdown)
+
+
 def _format_log_value(value, *, default="-", max_width=72):
     if value is None:
         text_value = default
@@ -494,7 +500,7 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
             aggregated_trade_count,
             exc_info=exc,
         )
-        raise self.retry(exc=exc)
+        _retry_with_backoff(self, exc, base_delay=30, max_delay=300)
     finally:
         if lock_enabled and lock_acquired:
             try:

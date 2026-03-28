@@ -40,6 +40,150 @@
         gap: 0.8rem;
     }
 
+    .outlier-review {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .outlier-review-intro {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.5;
+    }
+
+    .outlier-section {
+        display: grid;
+        gap: 0.8rem;
+    }
+
+    .outlier-section-title {
+        margin: 0;
+        font-size: 0.95rem;
+        font-weight: 800;
+        color: var(--ink);
+        letter-spacing: 0.02em;
+    }
+
+    .outlier-card {
+        display: grid;
+        gap: 0.75rem;
+        padding: 0.95rem 1rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 16px;
+        background: color-mix(in srgb, var(--surface) 88%, var(--card));
+    }
+
+    .outlier-card-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.9rem;
+        flex-wrap: wrap;
+    }
+
+    .outlier-card-title {
+        margin: 0;
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .outlier-card-subtext {
+        margin: 0.25rem 0 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.45;
+    }
+
+    .outlier-warning {
+        margin: 0.45rem 0 0;
+        color: var(--bad);
+        font-size: 0.9rem;
+        line-height: 1.45;
+    }
+
+    .outlier-confirm {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        padding: 0.55rem 0.75rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--card) 92%, transparent);
+        color: var(--ink);
+        font-weight: 700;
+    }
+
+    .outlier-confirm input {
+        margin: 0;
+    }
+
+    .outlier-trade-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 0.55rem;
+    }
+
+    .outlier-trade-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.8rem;
+        flex-wrap: wrap;
+        padding-bottom: 0.55rem;
+        border-bottom: 1px dashed color-mix(in srgb, var(--border) 68%, transparent);
+    }
+
+    .outlier-trade-row:last-child {
+        padding-bottom: 0;
+        border-bottom: none;
+    }
+
+    .outlier-trade-copy {
+        display: grid;
+        gap: 0.16rem;
+    }
+
+    .outlier-trade-meta {
+        color: var(--muted);
+        font-size: 0.88rem;
+    }
+
+    .outlier-classification {
+        display: grid;
+        gap: 0.45rem;
+    }
+
+    .outlier-classification-label {
+        font-size: 0.84rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+    }
+
+    .outlier-classification-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+    }
+
+    .outlier-radio {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        color: var(--ink);
+        font-size: 0.92rem;
+    }
+
+    .outlier-divider {
+        height: 1px;
+        border: none;
+        background: color-mix(in srgb, var(--border) 84%, transparent);
+        margin: 0.2rem 0 0.1rem;
+    }
+
     .checkin-legend {
         font-size: 1rem;
         font-weight: 700;
@@ -146,6 +290,14 @@
         color: var(--ink);
         text-decoration: underline;
     }
+
+    @media (max-width: 700px) {
+        .outlier-card-head,
+        .outlier-trade-row {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -181,6 +333,132 @@
 
         <form action="{{ url_for('checkin.checkin') }}" method="post" class="checkin-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            {% if outliers %}
+            <section class="outlier-review" aria-label="Trade outlier review">
+                <div>
+                    <h2 class="checkin-legend">Outlier Review</h2>
+                    <p class="outlier-review-intro">We spotted a few split entries or post-loss re-entries from the latest completed trade week. Confirm the ones that match what really happened, then finish the weekly questions below.</p>
+                </div>
+
+                {% if outliers.bundle_candidates %}
+                <section class="outlier-section">
+                    <h3 class="outlier-section-title">Bundle Candidates</h3>
+                    {% for candidate in outliers.bundle_candidates %}
+                    {% set lead_trade = candidate.trades[0] %}
+                    {% set trade_count = candidate.trades|length %}
+                    <article class="outlier-card">
+                        <div class="outlier-card-head">
+                            <div>
+                                <p class="outlier-card-title">
+                                    {{ lead_trade.symbol }} {{ lead_trade.side }} - {{ trade_count }} split entr{% if trade_count == 1 %}y{% else %}ies{% endif %}
+                                </p>
+                                <p class="outlier-card-subtext">
+                                    {% if candidate.match_reason == "split_bucket" %}
+                                    Opened in the same short time bucket.
+                                    {% elif candidate.match_reason == "same_tp_and_sl" %}
+                                    Matching take profit and stop loss.
+                                    {% elif candidate.match_reason == "same_tp" %}
+                                    Matching take profit.
+                                    {% elif candidate.match_reason == "same_sl" %}
+                                    Matching stop loss.
+                                    {% else %}
+                                    Similar scale-in pattern detected.
+                                    {% endif %}
+                                </p>
+                                {% if candidate.sub_type != "neutral" and candidate.trigger %}
+                                <p class="outlier-warning">
+                                    Detected as {{ candidate.sub_type }} after a {{ "%.2f"|format(candidate.trigger.pnl or 0) }} {{ candidate.trigger.symbol }} loss.
+                                </p>
+                                {% endif %}
+                            </div>
+                            <label class="outlier-confirm">
+                                <input type="checkbox" name="bundle_group" value="{{ candidate.group_value }}" {% if candidate.selected %}checked{% endif %}>
+                                <span>Confirm as bundle</span>
+                            </label>
+                        </div>
+
+                        <ul class="outlier-trade-list">
+                            {% for trade in candidate.trades %}
+                            <li class="outlier-trade-row">
+                                <div class="outlier-trade-copy">
+                                    <strong>{{ "%.2f"|format(trade.lot_size or 0) }} lot</strong>
+                                    <span class="outlier-trade-meta">
+                                        Entry {{ "%.5f"|format(trade.entry_price or 0) }}
+                                        {% if trade.opened_at %} | {{ trade.opened_at.strftime("%a %H:%M") }}{% endif %}
+                                    </span>
+                                </div>
+                                <span class="{% if (trade.pnl or 0) > 0 %}good{% elif (trade.pnl or 0) < 0 %}bad{% else %}muted{% endif %}">
+                                    {% if trade.pnl is not none %}
+                                        {% if trade.pnl > 0 %}+{% endif %}{{ "%.2f"|format(trade.pnl) }}
+                                    {% else %}
+                                    -
+                                    {% endif %}
+                                </span>
+                            </li>
+                            {% endfor %}
+                        </ul>
+
+                        <div class="outlier-classification">
+                            <span class="outlier-classification-label">If bundling, classify as</span>
+                            <div class="outlier-classification-options">
+                                <label class="outlier-radio">
+                                    <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="neutral" {% if candidate.selected_type == "neutral" %}checked{% endif %}>
+                                    <span>Clean scale-in</span>
+                                </label>
+                                <label class="outlier-radio">
+                                    <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="reactive" {% if candidate.selected_type == "reactive" %}checked{% endif %}>
+                                    <span>Reactive</span>
+                                </label>
+                                <label class="outlier-radio">
+                                    <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="corrective" {% if candidate.selected_type == "corrective" %}checked{% endif %}>
+                                    <span>Corrective</span>
+                                </label>
+                            </div>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </section>
+                {% endif %}
+
+                {% if outliers.standalone_candidates %}
+                <section class="outlier-section">
+                    <h3 class="outlier-section-title">Standalone Re-Entries</h3>
+                    {% for candidate in outliers.standalone_candidates %}
+                    {% set trade = candidate.trade %}
+                    <article class="outlier-card">
+                        <div class="outlier-card-head">
+                            <div>
+                                <p class="outlier-card-title">{{ trade.symbol }} {{ trade.side }} - {{ candidate.sub_type|replace("_", " ")|title }}</p>
+                                {% if candidate.trigger %}
+                                <p class="outlier-card-subtext">
+                                    After {{ "%.2f"|format(candidate.trigger.pnl or 0) }} on {{ candidate.trigger.symbol }}
+                                    {% if candidate.trigger.closed_at %} | {{ candidate.trigger.closed_at.strftime("%a %H:%M") }}{% endif %}
+                                </p>
+                                {% endif %}
+                                <p class="outlier-card-subtext">
+                                    {{ "%.2f"|format(trade.lot_size or 0) }} lot
+                                    {% if trade.opened_at %} | Opened {{ trade.opened_at.strftime("%a %H:%M") }}{% endif %}
+                                </p>
+                            </div>
+                            <label class="outlier-confirm">
+                                {% if candidate.sub_type == "reactive" %}
+                                <input type="checkbox" name="confirm_reactive" value="{{ candidate.trade_pubkey }}" {% if candidate.selected %}checked{% endif %}>
+                                <span>Mark as Reactive</span>
+                                {% else %}
+                                <input type="checkbox" name="confirm_corrective" value="{{ candidate.trade_pubkey }}" {% if candidate.selected %}checked{% endif %}>
+                                <span>Mark as Corrective</span>
+                                {% endif %}
+                            </label>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </section>
+                {% endif %}
+
+                <hr class="outlier-divider">
+            </section>
+            {% endif %}
 
             <fieldset class="checkin-fieldset">
                 <legend class="checkin-legend">Q1. How was your emotional state during that week?</legend>

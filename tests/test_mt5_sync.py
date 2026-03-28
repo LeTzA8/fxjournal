@@ -475,13 +475,20 @@ def test_sync_mt5_account_retries_when_mt5_session_is_on_wrong_login(app_ctx, mo
         raise AssertionError("requests.post should not run when the MT5 login is wrong")
 
     monkeypatch.setattr("celery_workers.mt5_sync.requests.post", _fake_post)
-    monkeypatch.setattr(sync_mt5_account, "retry", lambda exc=None, **kwargs: exc)
+    retry_calls = []
+
+    def _fake_retry(exc=None, **kwargs):
+        retry_calls.append({"exc": exc, **kwargs})
+        return exc
+
+    monkeypatch.setattr(sync_mt5_account, "retry", _fake_retry)
 
     with pytest.raises(RuntimeError, match="Wrong MT5 account logged in during sync"):
         sync_mt5_account.run(mt5_account.id)
 
     assert post_calls == []
     assert shutdown_calls == [True]
+    assert retry_calls[0]["countdown"] == 30
 
 
 def test_encrypt_password_round_trip_requires_key(monkeypatch):
@@ -604,8 +611,12 @@ def test_internal_mt5_sync_saves_and_skips_duplicates(app_ctx, client, monkeypat
     assert first_trade.import_signature is None
     assert first_trade.import_dedupe_key is None
     assert first_trade.source_timezone == "UTC"
+    assert first_trade.trade_note is None
+    assert first_trade.system_trade_note == "Auto-imported via MT5 sync"
     assert second_trade.import_signature is None
     assert second_trade.import_dedupe_key is None
+    assert second_trade.trade_note is None
+    assert second_trade.system_trade_note == "Auto-imported via MT5 sync"
     assert first_mt5_account.last_synced_at is not None
     assert second_mt5_account.last_synced_at is not None
 
@@ -665,6 +676,8 @@ def test_internal_mt5_sync_inserts_new_running_trade(app_ctx, client, monkeypatc
     assert trade.exit_price is None
     assert trade.closed_at is None
     assert trade.pnl is None
+    assert trade.trade_note is None
+    assert trade.system_trade_note == "running"
 
 
 def test_internal_mt5_sync_updates_existing_open_trade_when_close_arrives(app_ctx, client, monkeypatch):
@@ -752,6 +765,8 @@ def test_internal_mt5_sync_updates_existing_open_trade_when_close_arrives(app_ct
     assert trade.commission == pytest.approx(-0.5)
     assert trade.swap == pytest.approx(-0.1)
     assert trade.closed_at is not None
+    assert trade.trade_note is None
+    assert trade.system_trade_note == "closed"
 
 
 def test_internal_mt5_sync_invalidates_dashboard_caches_when_trade_changes(app_ctx, client, monkeypatch):

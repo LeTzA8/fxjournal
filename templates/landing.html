@@ -380,6 +380,17 @@
         --landing-font-body: var(--font-ui);
         --landing-font-display: var(--font-display);
         --landing-font-mono: var(--font-mono);
+        --landing-hero-word-accent: color-mix(in srgb, var(--accent) 84%, var(--card));
+        --landing-hero-word-default: color-mix(in srgb, var(--ink) 96%, var(--accent) 4%);
+        --landing-hero-underline-highlight: color-mix(in srgb, var(--accent) 86%, var(--card) 14%);
+        --landing-hero-enter-color: color-mix(in srgb, var(--card) 98%, transparent);
+        --landing-hero-enter-shadow: 0 0 24px color-mix(in srgb, var(--card) 12%, transparent);
+        --landing-lead-ink: color-mix(in srgb, var(--ink) 94%, var(--card));
+        --landing-candle-up-start: color-mix(in srgb, var(--good) 78%, var(--card));
+        --landing-candle-up-end: color-mix(in srgb, var(--good) 50%, var(--bg));
+        --landing-candle-down-start: color-mix(in srgb, var(--bad) 84%, var(--card));
+        --landing-candle-down-end: color-mix(in srgb, var(--bad) 54%, var(--bg));
+        --landing-chip-ink: color-mix(in srgb, var(--good) 75%, var(--card));
         font-family: var(--landing-font-body);
     }
 
@@ -796,7 +807,7 @@
 
     .hero-title .hero-word:nth-child(2),
     .hero-title .hero-word:nth-child(3) {
-        --hero-word-final-color: color-mix(in srgb, var(--accent) 84%, #ffffff);
+        --hero-word-final-color: var(--landing-hero-word-accent);
         --hero-word-final-shadow: 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent);
     }
 
@@ -810,7 +821,7 @@
         display: inline-block;
         white-space: nowrap;
         position: relative;
-        color: var(--hero-word-final-color, color-mix(in srgb, var(--ink) 96%, #c7d2fe));
+        color: var(--hero-word-final-color, var(--landing-hero-word-default));
         text-shadow: var(--hero-word-final-shadow, 0 0 0 transparent);
     }
 
@@ -825,7 +836,7 @@
         border-radius: 999px;
         background: linear-gradient(
             90deg,
-            color-mix(in srgb, var(--hero-underline-color, var(--accent)) 84%, #ffffff 16%),
+            color-mix(in srgb, var(--hero-underline-color, var(--accent)) 84%, var(--landing-hero-underline-highlight) 16%),
             var(--hero-underline-color, var(--accent))
         );
         transform: scaleX(0.05);
@@ -839,8 +850,8 @@
         transform: translateY(0.85em) rotateX(16deg);
         transform-origin: 50% 100%;
         filter: blur(9px);
-        color: rgba(255, 255, 255, 0.98);
-        text-shadow: 0 0 24px rgba(255, 255, 255, 0.12);
+        color: var(--landing-hero-enter-color);
+        text-shadow: var(--landing-hero-enter-shadow);
         transition:
             opacity 920ms cubic-bezier(.22, .61, .36, 1),
             transform 920ms cubic-bezier(.22, .61, .36, 1),
@@ -859,7 +870,7 @@
         opacity: 1;
         transform: translateY(0) rotateX(0deg);
         filter: blur(0);
-        color: var(--hero-word-final-color, color-mix(in srgb, var(--ink) 96%, #c7d2fe));
+        color: var(--hero-word-final-color, var(--landing-hero-word-default));
         text-shadow: var(--hero-word-final-shadow, 0 0 0 transparent);
     }
 
@@ -886,7 +897,7 @@
         background: color-mix(in srgb, var(--surface) 82%, transparent);
         backdrop-filter: blur(8px) brightness(1.04);
         -webkit-backdrop-filter: blur(8px) brightness(1.04);
-        color: color-mix(in srgb, var(--ink) 94%, #ffffff);
+        color: var(--landing-lead-ink);
         text-shadow: 0 1px 2px rgba(2, 6, 23, 0.24);
         box-shadow: 0 10px 24px rgba(2, 6, 23, 0.2);
     }
@@ -1099,11 +1110,11 @@
     }
 
     .candle.up {
-        background: linear-gradient(180deg, color-mix(in srgb, var(--good) 78%, #ffffff), color-mix(in srgb, var(--good) 50%, #000000));
+        background: linear-gradient(180deg, var(--landing-candle-up-start), var(--landing-candle-up-end));
     }
 
     .candle.down {
-        background: linear-gradient(180deg, color-mix(in srgb, var(--bad) 84%, #ffffff), color-mix(in srgb, var(--bad) 54%, #000000));
+        background: linear-gradient(180deg, var(--landing-candle-down-start), var(--landing-candle-down-end));
     }
 
     .hook-candles .candle:nth-child(1) { height: 30%; animation-delay: -0.1s; }
@@ -1190,7 +1201,7 @@
         font-size: 0.75rem;
         font-weight: 800;
         letter-spacing: 0.03em;
-        color: color-mix(in srgb, var(--good) 75%, #ffffff);
+        color: var(--landing-chip-ink);
         border: 1px solid color-mix(in srgb, var(--good) 52%, var(--border));
         background: color-mix(in srgb, var(--good) 18%, var(--surface));
         box-shadow: 0 12px 22px rgba(2, 6, 23, 0.18);

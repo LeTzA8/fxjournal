@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 from flask import Blueprint, current_app, jsonify, render_template, session
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import selectinload
 
 from ai_service import (
     MIN_CLOSED_TRADES_FOR_ADVICE,
@@ -30,6 +31,7 @@ from helpers.core import (
     is_weekly_checkin_complete,
     is_trade_running,
 )
+from helpers.trade_analysis import detect_outliers
 from helpers.utils import login_required, utcnow_naive
 from models import Trade, UserProfile, WeeklyCheckin, db
 from trading import (
@@ -87,6 +89,10 @@ def _load_user_trades(user_id, active_trade_account):
             Trade.query.filter_by(
                 user_id=user_id,
                 trade_account_id=active_trade_account.id,
+            )
+            .options(
+                selectinload(Trade.trade_profile),
+                selectinload(Trade.trade_profile_version),
             )
             .order_by(Trade.opened_at.desc())
             .all()
@@ -166,6 +172,32 @@ def _get_onboarding_banner_state(user_id):
         "show_onboarding_banner": not is_complete,
         "onboarding_was_skipped": was_skipped,
     }
+
+
+def _has_bundle_candidates(user_id, active_trade_account):
+    account_id = getattr(active_trade_account, "id", None)
+    if account_id is None:
+        return False
+    ninety_days_ago = utcnow_naive() - timedelta(days=90)
+    try:
+        recent_closed = (
+            Trade.query.filter_by(
+                user_id=user_id,
+                trade_account_id=account_id,
+            )
+            .filter(
+                Trade.bundle_pubkey.is_(None),
+                Trade.closed_at.isnot(None),
+                Trade.closed_at >= ninety_days_ago,
+            )
+            .order_by(Trade.closed_at.desc(), Trade.id.desc())
+            .limit(80)
+            .all()
+        )
+    except OperationalError:
+        db.session.rollback()
+        return False
+    return bool(detect_outliers(recent_closed)["bundle_candidates"])
 
 
 def _serialize_dashboard_cache_payload(analytics):
@@ -616,6 +648,7 @@ def home():
         )
     weekly_checkin_banner_state = _get_weekly_checkin_banner_state(user_id, active_trade_account)
     onboarding_banner_state = _get_onboarding_banner_state(user_id)
+    has_bundle_candidates = _has_bundle_candidates(user_id, active_trade_account)
     has_any_trades = bool(user_trades)
     has_closed_trades = closed_trade_count > 0
     has_ai_review = weekly_ai_state["weekly_ai_review"] is not None
@@ -650,6 +683,7 @@ def home():
         show_weekly_checkin_banner=weekly_checkin_banner_state["show_weekly_checkin_banner"],
         weekly_checkin_was_skipped=weekly_checkin_banner_state["weekly_checkin_was_skipped"],
         weekly_checkin_closed_trade_count=weekly_checkin_banner_state["weekly_checkin_closed_trade_count"],
+        has_bundle_candidates=has_bundle_candidates,
         has_any_trades=has_any_trades,
         has_closed_trades=has_closed_trades,
         has_ai_review=has_ai_review,

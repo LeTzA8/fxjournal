@@ -264,3 +264,177 @@ def test_dashboard_does_not_show_checkin_before_friday_close(app_ctx, client, mo
     assert b"Open Check-In" not in dashboard_response.data
     assert b"Finish Check-In" not in dashboard_response.data
     assert checkin_response.status_code == 302
+
+
+def test_checkin_shows_outlier_review_and_saves_bundle_confirmations(app_ctx, client, monkeypatch):
+    fixed_now = datetime(2026, 3, 21, 12, 0, 0)
+    monkeypatch.setattr(checkin_routes, "utcnow_naive", lambda: fixed_now)
+
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="checkin-outlier-user",
+        email="checkin-outlier@example.com",
+    )
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.0990,
+            take_profit=1.1040,
+            lot_size=1.0,
+            pnl=-45.0,
+            opened_at=datetime(2026, 3, 17, 9, 50, 0),
+            closed_at=datetime(2026, 3, 17, 10, 15, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0995,
+            exit_price=1.1002,
+            take_profit=1.1030,
+            lot_size=0.5,
+            pnl=22.0,
+            opened_at=datetime(2026, 3, 17, 10, 20, 0),
+            closed_at=datetime(2026, 3, 17, 10, 40, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0998,
+            exit_price=1.1004,
+            take_profit=1.1030,
+            lot_size=0.5,
+            pnl=18.0,
+            opened_at=datetime(2026, 3, 17, 10, 25, 0),
+            closed_at=datetime(2026, 3, 17, 10, 42, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    detected_outliers = checkin_routes.detect_outliers(trades)
+    detected_candidate = detected_outliers["bundle_candidates"][0]
+    candidate_pubkeys = [trade.pubkey for trade in detected_candidate["trades"]]
+    group_value = checkin_routes._build_bundle_group_value(candidate_pubkeys)
+    group_hash = checkin_routes._pubkey_group_hash(candidate_pubkeys)
+
+    get_response = client.get("/checkin")
+    post_response = client.post(
+        "/checkin",
+        data={
+            "bundle_group": group_value,
+            f"bundle_type_{group_hash}": "reactive",
+            "emotional_state": "slightly_off",
+            "plan_adherence": "some_deviations",
+            "execution_quality": "average",
+            "additional_context": "Scaled in after the first loss.",
+        },
+        follow_redirects=False,
+    )
+
+    db.session.refresh(trades[1])
+    db.session.refresh(trades[2])
+    record = WeeklyCheckin.query.filter_by(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+    ).first()
+
+    assert get_response.status_code == 200
+    assert b"Outlier Review" in get_response.data
+    assert b"Confirm as bundle" in get_response.data
+    assert post_response.status_code == 302
+    assert trades[1].bundle_pubkey is not None
+    assert trades[1].bundle_pubkey == trades[2].bundle_pubkey
+    assert trades[1].is_reactive is True
+    assert trades[2].is_reactive is True
+    assert record is not None
+    assert record.additional_context == "Scaled in after the first loss."
+
+
+def test_checkin_invalid_submission_does_not_mutate_trade_flags_or_bundles(app_ctx, client, monkeypatch):
+    fixed_now = datetime(2026, 3, 21, 12, 0, 0)
+    monkeypatch.setattr(checkin_routes, "utcnow_naive", lambda: fixed_now)
+
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="checkin-invalid-outlier-user",
+        email="checkin-invalid-outlier@example.com",
+    )
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.0990,
+            take_profit=1.1040,
+            lot_size=1.0,
+            pnl=-45.0,
+            opened_at=datetime(2026, 3, 17, 9, 50, 0),
+            closed_at=datetime(2026, 3, 17, 10, 15, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0995,
+            exit_price=1.1002,
+            take_profit=1.1030,
+            lot_size=0.5,
+            pnl=22.0,
+            opened_at=datetime(2026, 3, 17, 10, 20, 0),
+            closed_at=datetime(2026, 3, 17, 10, 40, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0998,
+            exit_price=1.1004,
+            take_profit=1.1030,
+            lot_size=0.5,
+            pnl=18.0,
+            opened_at=datetime(2026, 3, 17, 10, 25, 0),
+            closed_at=datetime(2026, 3, 17, 10, 42, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    detected_outliers = checkin_routes.detect_outliers(trades)
+    detected_candidate = detected_outliers["bundle_candidates"][0]
+    candidate_pubkeys = [trade.pubkey for trade in detected_candidate["trades"]]
+    group_value = checkin_routes._build_bundle_group_value(candidate_pubkeys)
+    group_hash = checkin_routes._pubkey_group_hash(candidate_pubkeys)
+
+    response = client.post(
+        "/checkin",
+        data={
+            "bundle_group": group_value,
+            f"bundle_type_{group_hash}": "reactive",
+            "emotional_state": "stressed",
+            "plan_adherence": "",
+            "execution_quality": "poor",
+        },
+        follow_redirects=False,
+    )
+
+    db.session.refresh(trades[1])
+    db.session.refresh(trades[2])
+
+    assert response.status_code == 200
+    assert b"Please answer the three multiple-choice questions before saving." in response.data
+    assert trades[1].bundle_pubkey is None
+    assert trades[2].bundle_pubkey is None
+    assert trades[1].is_reactive is False
+    assert trades[2].is_reactive is False

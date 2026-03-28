@@ -371,9 +371,6 @@
         padding: 0.68rem 0.78rem;
         font-size: 0.82rem;
         font-weight: 700; }
-    .account-alert.success { border: 1px solid #b5dcc2; }
-    .account-alert.info { border: 1px solid #bfd8e7; }
-    .account-alert.error { border: 1px solid #e6c1bf; }
     .action-dialog .confirm-dialog-shell { border-color: color-mix(in srgb, var(--accent) 24%, var(--border)); }
 
     .panel-grid { display: grid;
@@ -406,7 +403,7 @@
         background: color-mix(in srgb, var(--good) 12%, var(--card));
         box-shadow: 0 0 0 2px color-mix(in srgb, var(--good) 18%, transparent); }
 
-    .account-card.active .account-name { color: #2e8a5b; }
+    .account-card.active .account-name { color: color-mix(in srgb, var(--good) 72%, var(--ink)); }
 
     .account-card-head { display: flex;
         align-items: flex-start;
@@ -426,19 +423,19 @@
         gap: 0.35rem;
         flex-wrap: wrap; }
 
-    .chip { border: 1px solid #8bc8a5;
+    .chip { border: 1px solid color-mix(in srgb, var(--good) 44%, var(--border));
         border-radius: 999px;
         padding: 0.24rem 0.52rem;
         font-size: 0.68rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.03em;
-        background: color-mix(in srgb, #3f9a69 16%, transparent);
-        color: #1f6b46; }
+        background: color-mix(in srgb, var(--good) 16%, transparent);
+        color: color-mix(in srgb, var(--good) 74%, var(--ink)); }
 
-    .chip.default { border-color: #d49e2f;
-        background: color-mix(in srgb, #f3b84a 24%, transparent);
-        color: #8a5a00; }
+    .chip.default { border-color: var(--warning-border);
+        background: var(--warning-bg);
+        color: var(--warning-ink); }
 
     .inline-actions { display: inline-flex;
         align-items: center;
@@ -462,8 +459,7 @@
         text-transform: uppercase;
         letter-spacing: 0.04em; }
 
-    .mt5-request-form textarea { border: 1px solid #c7d5cb;
-        border-radius: 10px;
+    .mt5-request-form textarea { border-radius: 10px;
         padding: 0.58rem 0.66rem;
         font: inherit;
         resize: vertical;
@@ -479,8 +475,7 @@
 
     .create-form input[type="text"],
     .create-form input[type="number"],
-    .create-form select { border: 1px solid #c7d5cb;
-        border-radius: 10px;
+    .create-form select { border-radius: 10px;
         padding: 0.58rem 0.66rem;
         font: inherit; }
 
@@ -493,53 +488,28 @@
 
     .toggle-row input { width: auto; }
 
-    .submit-btn { border: 1px solid #2d7f51;
-        border-radius: 10px;
-        padding: 0.5rem 0.8rem;
+    .submit-btn { padding: 0.5rem 0.8rem;
         font-weight: 700;
         font-size: 0.78rem;
         letter-spacing: 0.03em;
-        text-transform: uppercase;
-        cursor: pointer;
-        box-shadow: 0 5px 14px rgba(34, 107, 69, 0.22); }
+        text-transform: uppercase; }
 
-    .ghost-btn { border: 1px solid #c6d4ca;
-        border-radius: 10px;
+    .ghost-btn {
         padding: 0.46rem 0.72rem;
         font-weight: 700;
         font-size: 0.74rem;
         letter-spacing: 0.03em;
-        text-transform: uppercase;
-        cursor: pointer; }
-
-    .danger-btn { border-color: #d78989;
-        color: #a93c3c; }
+        text-transform: uppercase; }
 
     .danger-zone { display: grid;
         gap: 0.62rem; }
 
-    .delete-check { display: inline-flex;
-        align-items: flex-start;
-        gap: 0.45rem;
-        font-size: 0.8rem;
-        text-transform: none !important;
-        letter-spacing: 0 !important; }
-
-    .delete-check input { width: auto;
-        margin-top: 0.18rem; }
-
-    .danger-note { color: #9f4747; }
-
-    .btn-link { display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 10px;
+    .btn-link { border-radius: 10px;
         padding: 0.46rem 0.72rem;
         font-size: 0.74rem;
         font-weight: 700;
         letter-spacing: 0.03em;
-        text-transform: uppercase;
-        text-decoration: none; }
+        text-transform: uppercase; }
 
     .dialog-actions { justify-content: flex-end; }
 

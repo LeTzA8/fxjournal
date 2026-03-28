@@ -9,6 +9,7 @@ from auth_account import (
     verify_email_change_token,
     verify_password_reset_token,
 )
+from extensions import limiter
 from models import User, db
 
 
@@ -69,6 +70,21 @@ def test_new_password_reset_token_invalidates_previous_link(app_ctx, client):
     assert b"token_valid" not in fresh_response.data
     assert b"invalid or has expired" not in fresh_response.data
     assert b"Reset Password" in fresh_response.data
+
+
+def test_register_post_is_rate_limited(app_ctx, client):
+    limiter.reset()
+    try:
+        for _ in range(5):
+            response = client.post("/register", data={})
+            assert response.status_code == 200
+
+        blocked_response = client.post("/register", data={})
+
+        assert blocked_response.status_code == 429
+        assert b"Too many requests" in blocked_response.data
+    finally:
+        limiter.reset()
 
 
 def test_generate_and_verify_email_change_token(app_ctx):

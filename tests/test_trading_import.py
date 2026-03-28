@@ -1,9 +1,11 @@
 from datetime import datetime
+from datetime import datetime
 from io import BytesIO
 
 from openpyxl import Workbook
 
-from helpers.core import build_trade_import_dedupe_key
+from helpers.core import build_normalized_trade_insert_batch, build_trade_import_dedupe_key
+from models import TradeAccount, User, db
 from trading import parse_mt5_xlsx_stream, parse_tradovate_csv_stream
 
 
@@ -190,3 +192,93 @@ def test_trade_import_dedupe_keys_are_stable_and_sensitive():
 
     assert key_a == key_b
     assert key_a != key_c
+
+
+def test_build_normalized_trade_insert_batch_stores_import_notes_as_system_notes(app_ctx):
+    user = User(
+        username="import-system-note-user",
+        email="import-system-note@example.com",
+        password="hashed-password",
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    trade_account = TradeAccount(
+        user_id=user.id,
+        name="Imported CFD",
+        account_type="CFD",
+        is_default=True,
+    )
+    db.session.add(trade_account)
+    db.session.commit()
+
+    batch_result = build_normalized_trade_insert_batch(
+        user_id=user.id,
+        trade_account=trade_account,
+        rows=[
+            {
+                "symbol": "EURUSD",
+                "side": "BUY",
+                "entry_price": 1.1000,
+                "exit_price": 1.1010,
+                "lot_size": 1.0,
+                "pnl": 100.0,
+                "opened_at": datetime(2026, 3, 10, 9, 0, 0),
+                "closed_at": datetime(2026, 3, 10, 10, 0, 0),
+                "mt5_position": "123456",
+                "trade_note": "Broker export comment",
+            }
+        ],
+        import_signature="mt5_20260310_100000_abcd1234",
+        default_system_trade_note="Imported from MT5 Positions",
+    )
+
+    trade = batch_result["insert_batch"][0]
+
+    assert trade.trade_note is None
+    assert trade.system_trade_note == "Broker export comment"
+
+
+def test_build_normalized_trade_insert_batch_uses_default_system_note_when_import_note_missing(app_ctx):
+    user = User(
+        username="import-default-note-user",
+        email="import-default-note@example.com",
+        password="hashed-password",
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    trade_account = TradeAccount(
+        user_id=user.id,
+        name="Imported CFD",
+        account_type="CFD",
+        is_default=True,
+    )
+    db.session.add(trade_account)
+    db.session.commit()
+
+    batch_result = build_normalized_trade_insert_batch(
+        user_id=user.id,
+        trade_account=trade_account,
+        rows=[
+            {
+                "symbol": "EURUSD",
+                "side": "BUY",
+                "entry_price": 1.1000,
+                "exit_price": 1.1010,
+                "lot_size": 1.0,
+                "pnl": 100.0,
+                "opened_at": datetime(2026, 3, 10, 9, 0, 0),
+                "closed_at": datetime(2026, 3, 10, 10, 0, 0),
+                "mt5_position": "123456",
+                "trade_note": "",
+            }
+        ],
+        import_signature="mt5_20260310_100000_abcd1234",
+        default_system_trade_note="Imported from MT5 Positions",
+    )
+
+    trade = batch_result["insert_batch"][0]
+
+    assert trade.trade_note is None
+    assert trade.system_trade_note == "Imported from MT5 Positions"

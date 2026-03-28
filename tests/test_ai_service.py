@@ -50,7 +50,16 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
         "notes_with_content": 1,
         "notes_missing": 0,
         "notes_confidence": "high",
-        "notes_basis": "Per weekly trade ticket; counts non-empty trade_note text only.",
+        "notes_basis": "Per weekly trade idea after bundle merging; counts non-empty user-authored trade_note text only.",
+        "emotional_index": {
+            "score": 3.15,
+            "label": "moderate",
+            "signals": {
+                "reactive_trade_count": 1,
+                "corrective_trade_count": 0,
+                "revenge_trade_count": 1,
+            },
+        },
         "account_age_days": 45,
         "summary": {
             "total_trades": 1,
@@ -66,6 +75,10 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
             "top_symbol_abs_pnl_share_pct": 100.0,
             "largest_trade_symbol": "MES (MESM26)",
             "largest_trade_abs_pnl_share_pct": 100.0,
+            "bundle_count": 0,
+            "reactive_trade_count": 1,
+            "corrective_trade_count": 0,
+            "revenge_trade_count": 1,
             "best_trade_pnl": 140.0,
             "worst_trade_pnl": 140.0,
             "max_drawdown": 45.75,
@@ -113,6 +126,10 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
                 "same_symbol_reentry": True,
                 "same_trade_idea_reentry": True,
                 "is_potential_revenge": True,
+                "is_reactive": True,
+                "is_corrective": False,
+                "is_bundle": False,
+                "bundle_trade_count": 1,
                 "planned_rr": 3.2,
                 "realized_rr": 1.12,
                 "tp_capture_pct": 35.0,
@@ -135,7 +152,11 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- historical_max_drawdown_amount: 88.20" in prompt_text
     assert "- notes_coverage: 1.00 (1 of 1 weekly trade ticket has non-empty notes)" in prompt_text
     assert "- notes_confidence: high" in prompt_text
-    assert "- notes_basis: Per weekly trade ticket; counts non-empty trade_note text only." in prompt_text
+    assert "- notes_basis: Per weekly trade idea after bundle merging; counts non-empty user-authored trade_note text only." in prompt_text
+    assert "EMOTIONAL INDEX" in prompt_text
+    assert "- label: moderate" in prompt_text
+    assert "- reactive_trade_count: 1" in prompt_text
+    assert "- bundle_count: 0" in prompt_text
     assert "- comparison_scope: history_before_review_period_only" in prompt_text
     assert "- account_age_days: 45" in prompt_text
     assert "- top_symbol_trade_share_pct: 100.00%" in prompt_text
@@ -153,6 +174,8 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "size_vs_prev_trade: larger" in prompt_text
     assert "same_trade_idea_reentry: true" in prompt_text
     assert "is_potential_revenge: true" in prompt_text
+    assert "is_reactive: true" in prompt_text
+    assert "is_bundle: false" in prompt_text
     assert "planned_rr: 3.20" in prompt_text
     assert "realized_rr: 1.12" in prompt_text
     assert "tp_capture_pct: 35.00%" in prompt_text
@@ -216,6 +239,64 @@ def test_build_trade_payload_serializes_trade_risk_fields_and_session(app_ctx):
     assert payload["trades"][0]["split_group_role"] == "solo"
 
 
+def test_build_trade_payload_excludes_system_trade_notes_from_notes_coverage(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-system-note-user",
+        email="ai-system-note@example.com",
+    )
+
+    db.session.add_all(
+        [
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="EURUSD",
+                side="BUY",
+                entry_price=1.1000,
+                exit_price=1.1010,
+                lot_size=1.0,
+                pnl=100.0,
+                opened_at=datetime(2026, 3, 10, 8, 0, 0),
+                closed_at=datetime(2026, 3, 10, 9, 0, 0),
+                system_trade_note="Auto-imported via MT5 sync",
+            ),
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="GBPUSD",
+                side="SELL",
+                entry_price=1.2700,
+                exit_price=1.2690,
+                lot_size=1.0,
+                pnl=100.0,
+                opened_at=datetime(2026, 3, 10, 10, 0, 0),
+                closed_at=datetime(2026, 3, 10, 11, 0, 0),
+                trade_note="Faded the first spike and stuck to plan.",
+                system_trade_note="Broker close comment",
+            ),
+        ]
+    )
+    db.session.commit()
+
+    payload = build_trade_payload(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        period_start_utc=datetime(2026, 3, 10, 0, 0, 0),
+        period_end_utc=datetime(2026, 3, 11, 0, 0, 0),
+        closed_trades_only=True,
+    )
+
+    assert payload["notes_coverage"] == 0.5
+    assert payload["notes_with_content"] == 1
+    assert payload["notes_missing"] == 1
+    assert payload["notes_basis"] == (
+        "Per weekly trade idea after bundle merging; counts non-empty user-authored trade_note text only."
+    )
+    trades_by_symbol = {trade["symbol"]: trade for trade in payload["trades"]}
+    assert trades_by_symbol["EURUSD"]["trade_note"] is None
+    assert trades_by_symbol["GBPUSD"]["trade_note"] == "Faded the first spike and stuck to plan."
+
+
 def test_format_payload_for_prompt_handles_missing_trade_session():
     prompt_text = format_payload_for_prompt(
         {
@@ -226,7 +307,7 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
             "notes_with_content": 0,
             "notes_missing": 1,
             "notes_confidence": "low",
-            "notes_basis": "Per weekly trade ticket; counts non-empty trade_note text only.",
+            "notes_basis": "Per weekly trade idea after bundle merging; counts non-empty user-authored trade_note text only.",
             "account_age_days": None,
             "summary": {},
             "historical_context": {},
@@ -458,10 +539,13 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Keep the response between 100 and 150 words." not in prompt_text
     assert "notes_coverage" in prompt_text
     assert "notes_with_content / notes_missing / notes_confidence" in prompt_text
+    assert "EMOTIONAL INDEX" in prompt_text
     assert "top_symbol_by_trade_count / top_symbol_trade_share_pct" in prompt_text
     assert "top_symbol_abs_pnl_share_pct" in prompt_text
     assert "largest_trade_abs_pnl_share_pct" in prompt_text
+    assert "bundle_count / reactive_trade_count / corrective_trade_count /" in prompt_text
     assert "possible_split_order" in prompt_text
+    assert "is_reactive / is_corrective: User-confirmed behaviour flags." in prompt_text
     assert "same_trade_idea_reentry alone does not mean revenge or impulsiveness." in prompt_text
     assert "If notes_confidence is low and the relevant trade has no note" in prompt_text
     assert "Use only these optional plain-text section labels in the response:" not in prompt_text
@@ -570,6 +654,95 @@ def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, mon
     assert {trade["split_group_role"] for trade in eur_trades} == {"lead", "add_on"}
     assert gbp_trade["outlier_size"] is True
     assert gbp_trade["is_likely_corrective"] is True
+
+
+def test_build_trade_payload_uses_bundled_view_for_summary_and_emotional_index(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-bundle-user",
+        email="ai-bundle@example.com",
+    )
+
+    bundle_key = "bundle123456789012345678"
+    db.session.add_all(
+        [
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="EURUSD",
+                side="BUY",
+                entry_price=1.1000,
+                exit_price=1.1010,
+                lot_size=0.5,
+                pnl=30.0,
+                commission=-1.0,
+                swap=0.0,
+                trade_note="Planned scale entry.",
+                is_reactive=True,
+                bundle_pubkey=bundle_key,
+                opened_at=datetime(2026, 3, 10, 10, 0, 0),
+                closed_at=datetime(2026, 3, 10, 10, 30, 0),
+            ),
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="EURUSD",
+                side="BUY",
+                entry_price=1.1005,
+                exit_price=1.1015,
+                lot_size=0.5,
+                pnl=20.0,
+                commission=-1.0,
+                swap=0.0,
+                trade_note="Added on confirmation.",
+                is_reactive=True,
+                bundle_pubkey=bundle_key,
+                opened_at=datetime(2026, 3, 10, 10, 5, 0),
+                closed_at=datetime(2026, 3, 10, 10, 35, 0),
+            ),
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="GBPUSD",
+                side="SELL",
+                entry_price=1.2700,
+                exit_price=1.2690,
+                lot_size=1.0,
+                pnl=100.0,
+                trade_note="Standalone winner.",
+                opened_at=datetime(2026, 3, 10, 12, 0, 0),
+                closed_at=datetime(2026, 3, 10, 12, 40, 0),
+            ),
+        ]
+    )
+    db.session.commit()
+
+    payload = build_trade_payload(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        period_start_utc=datetime(2026, 3, 10, 0, 0, 0),
+        period_end_utc=datetime(2026, 3, 11, 0, 0, 0),
+        closed_trades_only=True,
+        weekly_checkin={
+            "emotional_state": "slightly_off",
+            "plan_adherence": "some_deviations",
+            "execution_quality": "average",
+        },
+    )
+
+    assert payload["summary"]["total_trades"] == 2
+    assert payload["summary"]["closed_trades"] == 2
+    assert payload["summary"]["bundle_count"] == 1
+    assert payload["summary"]["reactive_trade_count"] == 1
+    assert len(payload["trades"]) == 2
+
+    bundled_trade = next(trade for trade in payload["trades"] if trade["is_bundle"] is True)
+    assert bundled_trade["bundle_trade_count"] == 2
+    assert bundled_trade["is_reactive"] is True
+    assert bundled_trade["trade_note"] == "Planned scale entry. | Added on confirmation."
+
+    emotional_index = payload["emotional_index"]
+    assert emotional_index["signals"]["reactive_trade_count"] == 1
+    assert emotional_index["signals"]["total_closed_trades"] == 2
 
 
 def test_build_trade_payload_adds_sequence_and_revenge_context(app_ctx):

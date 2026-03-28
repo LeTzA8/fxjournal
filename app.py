@@ -123,6 +123,12 @@ elif database_url.startswith("postgresql://") and "+psycopg" not in database_url
 
 app.config["SQLALCHEMY_DATABASE_URI"] = database_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+engine_options = {
+    "pool_pre_ping": True,
+}
+if not database_url.startswith("sqlite"):
+    engine_options["pool_recycle"] = 1800
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_options
 db.init_app(app)
 migrate = Migrate(app, db, directory="migrations", compare_type=True)
 csrf = CSRFProtect(app)

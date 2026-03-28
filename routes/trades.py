@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
@@ -21,6 +22,7 @@ from helpers.core import (
     parse_local_datetime_input,
     resolve_trade_profile_form_state,
 )
+from helpers.trade_analysis import detect_outliers
 from models import Trade, db
 from trading import (
     calculate_trade_net_pnl,
@@ -176,6 +178,49 @@ def _invalidate_trade_caches(user_id, trade_account_id):
         return
 
 
+def _bundle_group_hash(pubkeys):
+    normalized_pubkeys = sorted(
+        {
+            str(pubkey or "").strip()
+            for pubkey in pubkeys
+            if str(pubkey or "").strip()
+        }
+    )
+    if not normalized_pubkeys:
+        return ""
+    return hashlib.md5(",".join(normalized_pubkeys).encode("utf-8")).hexdigest()[:8]
+
+
+def _bundle_group_value(pubkeys):
+    normalized_pubkeys = sorted(
+        {
+            str(pubkey or "").strip()
+            for pubkey in pubkeys
+            if str(pubkey or "").strip()
+        }
+    )
+    return ",".join(normalized_pubkeys)
+
+
+def _build_bundle_review_candidates(bundle_candidates):
+    review_rows = []
+    for candidate in bundle_candidates:
+        trades = candidate.get("trades") or []
+        trade_pubkeys = [
+            str(getattr(trade, "pubkey", "") or "").strip()
+            for trade in trades
+            if str(getattr(trade, "pubkey", "") or "").strip()
+        ]
+        review_rows.append(
+            {
+                **candidate,
+                "group_hash": _bundle_group_hash(trade_pubkeys),
+                "group_value": _bundle_group_value(trade_pubkeys),
+            }
+        )
+    return review_rows
+
+
 def render_trades_page(*, manage_mode=False):
     username = session.get("username", "User")
     user_id = session["user_id"]
@@ -258,6 +303,9 @@ def render_trades_page(*, manage_mode=False):
                 else "-",
                 "duration_label": format_duration_minutes(duration_minutes),
                 "is_running": trade_is_running,
+                "is_reactive": bool(getattr(trade, "is_reactive", False)),
+                "is_corrective": bool(getattr(trade, "is_corrective", False)),
+                "bundle_pubkey": getattr(trade, "bundle_pubkey", None),
             }
         )
 
@@ -445,6 +493,8 @@ def new_trade():
         exit_price = float(exit_price) if exit_price else None
         lot_size = float(request.form.get("lot_size", 0.01))
         trade_note = request.form.get("trade_note", "").strip()
+        is_corrective = request.form.get("is_corrective") == "on"
+        is_reactive = request.form.get("is_reactive") == "on"
         pnl = request.form.get("pnl", "").strip()
         pnl = float(pnl) if pnl else None
         stop_loss = request.form.get("stop_loss", "").strip()
@@ -532,6 +582,8 @@ def new_trade():
             entry_price=entry_price,
             lot_size=lot_size,
             trade_note=trade_note,
+            is_corrective=is_corrective,
+            is_reactive=is_reactive,
             pnl=pnl,
             stop_loss=stop_loss,
             take_profit=take_profit,
@@ -667,7 +719,7 @@ def import_trade_file():
             import_signature=import_signature,
             use_import_dedupe_key=True,
             dedupe_by_mt5_position_only=False,
-            default_trade_note=(
+            default_system_trade_note=(
                 "Imported from Tradovate Performance CSV"
                 if account_type == "FUTURES"
                 else "Imported from MT5 Positions"
@@ -934,6 +986,8 @@ def edit_trade(trade_pubkey):
         exit_price = float(exit_price) if exit_price else None
         lot_size = float(request.form.get("lot_size", 0.01))
         trade_note = request.form.get("trade_note", "").strip()
+        is_corrective = request.form.get("is_corrective") == "on"
+        is_reactive = request.form.get("is_reactive") == "on"
         pnl = request.form.get("pnl", "").strip()
         pnl = float(pnl) if pnl else None
         stop_loss = request.form.get("stop_loss", "").strip()
@@ -1021,6 +1075,8 @@ def edit_trade(trade_pubkey):
         trade.exit_price = exit_price
         trade.lot_size = lot_size
         trade.trade_note = trade_note
+        trade.is_corrective = is_corrective
+        trade.is_reactive = is_reactive
         trade.pnl = pnl
         trade.stop_loss = stop_loss
         trade.take_profit = take_profit
@@ -1064,6 +1120,96 @@ def edit_trade(trade_pubkey):
             "selected_trade_profile_pubkey"
         ],
     )
+
+
+@bp.route("/dashboard/trades/bundle-review")
+@login_required
+def bundle_review():
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    if active_trade_account is None:
+        return redirect(url_for("dashboard.home"))
+
+    closed_trades = (
+        Trade.query.filter_by(
+            user_id=user_id,
+            trade_account_id=active_trade_account.id,
+        )
+        .filter(Trade.closed_at.isnot(None))
+        .order_by(Trade.closed_at.desc(), Trade.id.desc())
+        .all()
+    )
+    outliers = detect_outliers(closed_trades)
+    bundle_candidates = _build_bundle_review_candidates(outliers["bundle_candidates"])
+
+    return render_template(
+        "bundle_review.html",
+        title="Bundle Review | FX Journal",
+        username=session.get("username", "User"),
+        bundle_candidates=bundle_candidates,
+    )
+
+
+@bp.route("/dashboard/trades/bundle-confirm", methods=["POST"])
+@login_required
+def bundle_confirm():
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    if active_trade_account is None:
+        return redirect(url_for("dashboard.home"))
+
+    selected_groups = [
+        value.strip()
+        for value in request.form.getlist("bundle_group")
+        if value and value.strip()
+    ]
+    if not selected_groups:
+        flash("No bundle candidates were selected.", "info")
+        return redirect(url_for("trades.bundle_review"))
+
+    updated_group_count = 0
+    for group_value in selected_groups:
+        trade_pubkeys = [
+            value.strip()
+            for value in group_value.split(",")
+            if value and value.strip()
+        ]
+        if len(trade_pubkeys) < 2:
+            continue
+        trades = (
+            Trade.query.filter(
+                Trade.user_id == user_id,
+                Trade.trade_account_id == active_trade_account.id,
+                Trade.pubkey.in_(trade_pubkeys),
+                Trade.closed_at.isnot(None),
+            )
+            .all()
+        )
+        if len(trades) < 2:
+            continue
+        bundle_type = (
+            request.form.get(f"bundle_type_{_bundle_group_hash(trade_pubkeys)}", "neutral")
+            .strip()
+            .lower()
+        )
+        bundle_pubkey = build_unique_trade_pubkey()
+        for trade in trades:
+            if not trade.bundle_pubkey:
+                trade.bundle_pubkey = bundle_pubkey
+            if bundle_type == "reactive" and not trade.is_reactive:
+                trade.is_reactive = True
+            elif bundle_type == "corrective" and not trade.is_corrective:
+                trade.is_corrective = True
+        updated_group_count += 1
+
+    db.session.commit()
+    _invalidate_trade_caches(user_id, active_trade_account.id)
+    flash(
+        f"Saved {updated_group_count} confirmed bundle"
+        f"{'s' if updated_group_count != 1 else ''}.",
+        "success" if updated_group_count else "info",
+    )
+    return redirect(url_for("trades.bundle_review"))
 
 
 @bp.route("/dashboard/trades/<string:trade_pubkey>/delete", methods=["POST"])

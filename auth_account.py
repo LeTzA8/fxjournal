@@ -850,6 +850,11 @@ def register_public_auth_routes(
         return redirect(url_for("dashboard.home"))
 
     @app.route("/register", methods=["GET", "POST"])
+    @limiter.limit(
+        "5 per minute;20 per hour",
+        methods=["POST"],
+        error_message="Too many registration attempts. Please wait and try again.",
+    )
     def register():
         if session.get("user_id"):
             return redirect(url_for("dashboard.home"))

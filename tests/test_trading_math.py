@@ -366,3 +366,68 @@ def test_build_trade_analytics_uses_close_time_for_realized_curves_and_weekly_pn
         0,
         tzinfo=timezone.utc,
     )
+
+
+def test_build_trade_analytics_merges_bundled_trades_without_losing_fee_math():
+    trade_account = SimpleNamespace(account_type="CFD", account_size=None)
+    bundled_trades = [
+        SimpleNamespace(
+            id=1,
+            pubkey="trade-1",
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.1010,
+            stop_loss=None,
+            take_profit=None,
+            lot_size=0.5,
+            contract_code=None,
+            trade_account=trade_account,
+            pnl=30.0,
+            commission=-1.0,
+            swap=0.0,
+            bundle_pubkey="bundle-1",
+            opened_at=datetime(2026, 3, 10, 10, 0, 0),
+            closed_at=datetime(2026, 3, 10, 10, 20, 0),
+            is_corrective=False,
+            is_reactive=True,
+            trade_note="First leg.",
+            system_trade_note=None,
+        ),
+        SimpleNamespace(
+            id=2,
+            pubkey="trade-2",
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1005,
+            exit_price=1.1015,
+            stop_loss=None,
+            take_profit=None,
+            lot_size=0.5,
+            contract_code=None,
+            trade_account=trade_account,
+            pnl=20.0,
+            commission=-2.0,
+            swap=1.0,
+            bundle_pubkey="bundle-1",
+            opened_at=datetime(2026, 3, 10, 10, 5, 0),
+            closed_at=datetime(2026, 3, 10, 10, 25, 0),
+            is_corrective=False,
+            is_reactive=True,
+            trade_note="Second leg.",
+            system_trade_note=None,
+        ),
+    ]
+
+    analytics = build_trade_analytics(
+        bundled_trades,
+        display_timezone_name="UTC",
+        now_utc=datetime(2026, 3, 10, 12, 0, 0, tzinfo=timezone.utc),
+    )
+
+    assert analytics["summary"]["total_trades"] == 1
+    assert analytics["summary"]["closed_trades"] == 1
+    assert analytics["summary"]["gross_profit"] == pytest.approx(50.0)
+    assert analytics["summary"]["net_pnl"] == pytest.approx(48.0)
+    assert analytics["closed_records"][0]["raw_pnl"] == pytest.approx(50.0)
+    assert analytics["closed_records"][0]["pnl"] == pytest.approx(48.0)
