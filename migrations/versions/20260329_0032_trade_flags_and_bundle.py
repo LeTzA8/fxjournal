@@ -25,13 +25,23 @@ INDEX_NAME = "ix_trades_bundle_pubkey"
 def upgrade() -> None:
     with op.batch_alter_table(TABLE_NAME) as batch_op:
         batch_op.add_column(
-            sa.Column("is_corrective", sa.Boolean(), nullable=False, server_default=sa.text("0"))
+            sa.Column("is_corrective", sa.Boolean(), nullable=False, server_default=sa.false())
         )
         batch_op.add_column(
-            sa.Column("is_reactive", sa.Boolean(), nullable=False, server_default=sa.text("0"))
+            sa.Column("is_reactive", sa.Boolean(), nullable=False, server_default=sa.false())
         )
         batch_op.add_column(sa.Column("bundle_pubkey", sa.String(length=24), nullable=True))
         batch_op.create_index(INDEX_NAME, ["bundle_pubkey"], unique=False)
+        batch_op.alter_column(
+            "is_corrective",
+            existing_type=sa.Boolean(),
+            server_default=None,
+        )
+        batch_op.alter_column(
+            "is_reactive",
+            existing_type=sa.Boolean(),
+            server_default=None,
+        )
 
 
 def downgrade() -> None:
