@@ -31,7 +31,7 @@ from helpers.core import (
 )
 from helpers.legal import LEGAL_LAST_UPDATED
 
-from extensions import limiter
+from extensions import limiter, oauth
 from routes import all_blueprints, mt5_internal_bp
 from helpers.utils import env_bool, env_int, utcnow_naive
 
@@ -109,6 +109,8 @@ else:
     session_cookie_secure = env_bool("SESSION_COOKIE_SECURE", False)
 app.config["SESSION_COOKIE_SECURE"] = session_cookie_secure
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+app.config["GOOGLE_CLIENT_ID"] = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+app.config["GOOGLE_CLIENT_SECRET"] = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
 max_upload_mb = int(os.getenv("MAX_UPLOAD_MB", "4"))
 app.config["MAX_CONTENT_LENGTH"] = max_upload_mb * 1024 * 1024
 
@@ -136,6 +138,14 @@ csrf.exempt(mt5_internal_bp)
 # For production, set RATELIMIT_STORAGE_URI to Redis for shared counters.
 app.config.setdefault("RATELIMIT_STORAGE_URI", os.getenv("RATELIMIT_STORAGE_URI", "memory://"))
 limiter.init_app(app)
+if oauth is not None:
+    oauth.init_app(app)
+    if app.config["GOOGLE_CLIENT_ID"] and app.config["GOOGLE_CLIENT_SECRET"]:
+        oauth.register(
+            "google",
+            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+            client_kwargs={"scope": "openid email profile"},
+        )
 
 TOKEN_PURPOSE_VERIFY_EMAIL = "verify_email"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"

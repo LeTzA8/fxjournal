@@ -928,6 +928,8 @@ def trade_detail(trade_pubkey):
         trade_net_pnl=trade_net_pnl,
         trade_pips=trade_pips,
         trade_ticks=trade_ticks,
+        show_trade_pips=trade_account_type != "FUTURES",
+        show_trade_ticks=trade_account_type == "FUTURES",
         planned_rr=planned_rr,
         actual_rr=actual_rr,
         trade_is_running=trade_is_running,
@@ -940,22 +942,28 @@ def trade_detail(trade_pubkey):
         if closed_at_local
         else "-",
         trade_source_timezone=trade.source_timezone or "Unknown",
+        has_trade_source_timezone=bool(trade.source_timezone),
         analytics_timezone=timezone_name,
         trade_profile_name=(
             trade_profile_version.name
             if trade_profile_version is not None
             else (trade_profile.name if trade_profile is not None else "-")
         ),
+        has_trade_profile=trade_profile_version is not None or trade_profile is not None,
         trade_profile_version_label=(
             f"v{trade_profile_version.version_number}"
             if trade_profile_version is not None
             else "-"
         ),
+        has_trade_profile_version=trade_profile_version is not None,
         trade_profile_description=(
             trade_profile_version.short_description
             if trade_profile_version is not None
             and trade_profile_version.short_description
             else "No strategy attached to this trade."
+        ),
+        has_trade_profile_description=bool(
+            trade_profile_version is not None and trade_profile_version.short_description
         ),
     )
 

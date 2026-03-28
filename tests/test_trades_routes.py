@@ -142,6 +142,61 @@ def test_trade_detail_shows_import_note_separately(app_ctx, client):
     assert b"Imported from MT5 Positions" in detail_response.data
 
 
+def test_trade_detail_shows_only_relevant_movement_metric_by_account_type(app_ctx, client):
+    user, cfd_account = _create_logged_in_user(
+        client,
+        username="trade-detail-metric-user",
+        email="trade-detail-metric@example.com",
+    )
+    futures_account = TradeAccount(
+        user_id=user.id,
+        name="Futures Account",
+        account_type="FUTURES",
+        is_default=False,
+    )
+    db.session.add(futures_account)
+    db.session.flush()
+
+    cfd_trade = Trade(
+        user_id=user.id,
+        trade_account_id=cfd_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=1.10120,
+        lot_size=1.00,
+        pnl=120.0,
+        opened_at=datetime(2026, 3, 10, 9, 0, 0),
+        closed_at=datetime(2026, 3, 10, 10, 24, 0),
+    )
+    futures_trade = Trade(
+        user_id=user.id,
+        trade_account_id=futures_account.id,
+        symbol="ES",
+        contract_code="ESM26",
+        side="BUY",
+        entry_price=5200.00,
+        exit_price=5201.00,
+        lot_size=1.00,
+        pnl=50.0,
+        opened_at=datetime(2026, 3, 10, 11, 0, 0),
+        closed_at=datetime(2026, 3, 10, 11, 20, 0),
+    )
+    db.session.add_all([cfd_trade, futures_trade])
+    db.session.commit()
+
+    cfd_response = client.get(f"/dashboard/trades/{cfd_trade.pubkey}")
+    futures_response = client.get(f"/dashboard/trades/{futures_trade.pubkey}")
+
+    assert cfd_response.status_code == 200
+    assert b'<label for="pips">Pips</label>' in cfd_response.data
+    assert b'<label for="ticks">Ticks</label>' not in cfd_response.data
+
+    assert futures_response.status_code == 200
+    assert b'<label for="ticks">Ticks</label>' in futures_response.data
+    assert b'<label for="pips">Pips</label>' not in futures_response.data
+
+
 def test_trade_list_and_detail_show_trade_flags(app_ctx, client):
     user, trade_account = _create_logged_in_user(
         client,

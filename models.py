@@ -38,6 +38,7 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
+    google_sub = db.Column(db.String(255), unique=True, nullable=True)
     password = db.Column(db.String(255), nullable=False)
     email_verified = db.Column(db.Boolean, nullable=False, default=False)
     is_admin = db.Column(db.Boolean, nullable=False, default=False, index=True)

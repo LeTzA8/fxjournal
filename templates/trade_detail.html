@@ -73,11 +73,13 @@
                     <label for="net_pnl">Net PnL</label>
                     <input id="net_pnl" type="text" value="{% if trade_net_pnl is not none %}{{ '%.2f'|format(trade_net_pnl) }}{% else %}-{% endif %}" readonly>
 
-                    <label for="pips">Pips (FX only)</label>
+                    {% if show_trade_pips %}
+                    <label for="pips">Pips</label>
                     <input id="pips" type="text" value="{% if trade_pips is not none %}{{ '%+.1f'|format(trade_pips) }} pips{% else %}-{% endif %}" readonly>
-
-                    <label for="ticks">Ticks (Futures only)</label>
+                    {% elif show_trade_ticks %}
+                    <label for="ticks">Ticks</label>
                     <input id="ticks" type="text" value="{% if trade_ticks is not none %}{{ '%+.1f'|format(trade_ticks) }} ticks{% else %}-{% endif %}" readonly>
+                    {% endif %}
 
                     <label for="status">Status</label>
                     <input id="status" type="text" value="{% if trade_is_running %}Running{% else %}Closed{% endif %}" readonly>
@@ -88,20 +90,25 @@
                     <label for="closed_at_display">Closed At ({{ analytics_timezone }})</label>
                     <input id="closed_at_display" type="text" value="{{ trade_closed_at_label }}" readonly>
 
-                    <label for="stored_timezone">Stored Time Convention</label>
-                    <input id="stored_timezone" type="text" value="UTC" readonly>
-
+                    {% if has_trade_source_timezone %}
                     <label for="source_timezone">Source Timezone</label>
                     <input id="source_timezone" type="text" value="{{ trade_source_timezone }}" readonly>
+                    {% endif %}
 
+                    {% if has_trade_profile %}
                     <label for="trade_profile_name">Strategy</label>
                     <input id="trade_profile_name" type="text" value="{{ trade_profile_name }}" readonly>
+                    {% endif %}
 
+                    {% if has_trade_profile_version %}
                     <label for="trade_profile_version">Version</label>
                     <input id="trade_profile_version" type="text" value="{{ trade_profile_version_label }}" readonly>
+                    {% endif %}
 
+                    {% if has_trade_profile_description %}
                     <label for="trade_profile_description">Strategy Description</label>
                     <textarea id="trade_profile_description" rows="4" readonly>{{ trade_profile_description }}</textarea>
+                    {% endif %}
 
                     <label for="trade_note">Trade Note</label>
                     <textarea id="trade_note" rows="5" readonly>{{ trade.trade_note if trade and trade.trade_note else 'No note added for this trade yet.' }}</textarea>

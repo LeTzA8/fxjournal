@@ -29,10 +29,15 @@ from helpers.utils import (
     login_required,
     utcnow_naive,
 )
+from extensions import oauth
 
 TOKEN_PURPOSE_PENDING_REGISTRATION = "pending_registration"
 TOKEN_PURPOSE_EMAIL_CHANGE = "email_change"
 TOKEN_PURPOSE_PASSWORD_RESET = "password_reset"
+GOOGLE_AUTH_INTENT_LOGIN = "login"
+GOOGLE_AUTH_INTENT_REGISTER = "register"
+GOOGLE_AUTH_SESSION_INTENT_KEY = "google_auth_intent"
+GOOGLE_AUTH_SESSION_SIGNUP_CODE_KEY = "google_auth_signup_code"
 PENDING_REGISTRATIONS = {}
 SIGNUP_STATUS_PENDING = "pending"
 SIGNUP_STATUS_APPROVED = "approved"
@@ -172,6 +177,49 @@ def is_signup_code_usable(code_row):
 
 def get_initial_signup_status():
     return SIGNUP_STATUS_APPROVED if get_auto_approve_new_users() else SIGNUP_STATUS_PENDING
+
+
+def get_google_auth_enabled():
+    if oauth is None:
+        return False
+    return bool(
+        str(current_app.config.get("GOOGLE_CLIENT_ID", "") or "").strip()
+        and str(current_app.config.get("GOOGLE_CLIENT_SECRET", "") or "").strip()
+    )
+
+
+def build_unique_google_username(*, email, profile_name=""):
+    candidates = []
+    profile_text = str(profile_name or "").strip().lower()
+    if profile_text:
+        profile_seed = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in profile_text)
+        candidates.append(profile_seed)
+
+    local_part = str(email or "").strip().lower().split("@", 1)[0]
+    if local_part:
+        local_seed = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in local_part)
+        candidates.append(local_seed)
+    candidates.append("trader")
+
+    base = next(
+        (
+            candidate.strip("._")
+            for candidate in candidates
+            if candidate and candidate.strip("._")
+        ),
+        "trader",
+    )
+    base = "_".join(part for part in base.split("_") if part) or "trader"
+    base = base[:72] or "trader"
+
+    attempt = 0
+    while True:
+        suffix = "" if attempt == 0 else str(attempt + 1)
+        candidate = f"{base[:80 - len(suffix)]}{suffix}".strip("._") or "trader"
+        exists = User.query.filter(func.lower(User.username) == candidate.lower()).first()
+        if exists is None:
+            return candidate
+        attempt += 1
 
 
 def user_has_admin_access(user):
@@ -602,6 +650,7 @@ def register_public_auth_routes(
             success=success,
             info=info,
             email_value=email,
+            google_auth_enabled=get_google_auth_enabled(),
         )
 
     def render_register_page(
@@ -630,7 +679,75 @@ def register_public_auth_routes(
             signup_code_query_param=signup_code_query_param,
             show_signup_code_input=show_signup_code_input,
             registrations_paused=get_registration_paused(),
+            google_auth_enabled=get_google_auth_enabled(),
         )
+
+    def clear_google_auth_session():
+        session.pop(GOOGLE_AUTH_SESSION_INTENT_KEY, None)
+        session.pop(GOOGLE_AUTH_SESSION_SIGNUP_CODE_KEY, None)
+
+    def get_google_client():
+        if not get_google_auth_enabled():
+            return None
+        if oauth is None:
+            return None
+        try:
+            client = oauth.create_client("google")
+        except Exception:
+            client = None
+
+        if client is not None:
+            return client
+
+        try:
+            oauth.register(
+                "google",
+                server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+                client_kwargs={"scope": "openid email profile"},
+            )
+            return oauth.create_client("google")
+        except Exception as exc:
+            current_app.logger.warning("Google OAuth client unavailable: %s", exc)
+            return None
+
+    def complete_successful_login(user):
+        user.last_login_at = utcnow_naive()
+        session["user_id"] = user.id
+        session.permanent = True
+        session["username"] = user.username
+        active_account, _accounts = resolve_active_trade_account(user.id)
+        session["active_trade_account_id"] = active_account.id
+        db.session.commit()
+        profile = get_user_profile(user.id)
+        if not user_profile_is_done(profile):
+            return redirect(url_for("onboarding"))
+        return redirect(url_for("dashboard.home"))
+
+    def finalize_google_authenticated_user(user, *, newly_created=False):
+        if session.get("pending_verify_email", "").strip().lower() == (user.email or "").strip().lower():
+            session.pop("pending_verify_email", None)
+
+        signup_status = normalize_signup_status(user.signup_status)
+        if signup_status == SIGNUP_STATUS_PENDING:
+            flash("Your Google email is verified. Your account is now waiting for approval.", "info")
+            return redirect(url_for("login"))
+        if signup_status == SIGNUP_STATUS_REJECTED:
+            return render_login_page(
+                error="Your registration was not approved. Contact support if you believe this is a mistake.",
+                email=user.email,
+            )
+        if signup_status == SIGNUP_STATUS_SUSPENDED:
+            return render_login_page(
+                error="This account is currently suspended. Contact support if you need help.",
+                email=user.email,
+            )
+
+        if newly_created:
+            try:
+                _send_welcome_email(user)
+            except Exception as exc:
+                current_app.logger.warning("Welcome email failed: %s", exc)
+        return complete_successful_login(user)
 
     def get_user_profile(user_id):
         if not user_id:
@@ -774,23 +891,235 @@ def register_public_auth_routes(
                         error="This account is currently suspended. Contact support if you need help.",
                         email=email,
                     )
-                user.last_login_at = utcnow_naive()
-                session["user_id"] = user.id
-                session.permanent = True
-                session["username"] = user.username
-                active_account, _accounts = resolve_active_trade_account(user.id)
-                session["active_trade_account_id"] = active_account.id
-                db.session.commit()
-                profile = get_user_profile(user.id)
-                if not user_profile_is_done(profile):
-                    return redirect(url_for("onboarding"))
-                return redirect(url_for("dashboard.home"))
+                return complete_successful_login(user)
 
             return render_login_page(
                 error="Invalid email or password.",
                 email=email,
             )
         return render_login_page()
+
+    @app.route("/auth/google", methods=["GET"])
+    def google_login_start():
+        if session.get("user_id"):
+            return redirect(url_for("dashboard.home"))
+
+        google_client = get_google_client()
+        if google_client is None:
+            return render_login_page(error="Google sign-in is not available right now.")
+
+        clear_google_auth_session()
+        session[GOOGLE_AUTH_SESSION_INTENT_KEY] = GOOGLE_AUTH_INTENT_LOGIN
+        redirect_uri = build_external_url(url_for("google_auth_callback"))
+        return google_client.authorize_redirect(redirect_uri, prompt="select_account")
+
+    @app.route("/auth/google/register", methods=["POST"])
+    def google_register_start():
+        if session.get("user_id"):
+            return redirect(url_for("dashboard.home"))
+
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        signup_code_value = normalize_signup_code(
+            request.form.get("signup_code") or request.args.get(get_signup_code_query_param(), "")
+        )
+
+        google_client = get_google_client()
+        if google_client is None:
+            return render_register_page(
+                error="Google sign-in is not available right now.",
+                username=username,
+                email=email,
+                signup_code=signup_code_value,
+            )
+
+        if get_registration_paused():
+            return render_register_page(
+                info="New registrations are temporarily paused.",
+                username=username,
+                email=email,
+                signup_code=signup_code_value,
+            )
+
+        accepted_legal = request.form.get("accept_legal") == "on"
+        if not accepted_legal:
+            return render_register_page(
+                error="You must accept the Terms and Conditions and Privacy Policy.",
+                username=username,
+                email=email,
+                signup_code=signup_code_value,
+            )
+
+        signup_code_mode = get_signup_code_mode()
+        signup_code_row = None
+        if signup_code_mode != SIGNUP_CODE_MODE_OFF and signup_code_value:
+            signup_code_row = find_signup_code(signup_code_value)
+            if not is_signup_code_usable(signup_code_row):
+                return render_register_page(
+                    error=get_signup_code_validation_message(signup_code_mode),
+                    username=username,
+                    email=email,
+                    signup_code=signup_code_value,
+                )
+        elif signup_code_mode == SIGNUP_CODE_MODE_REQUIRED:
+            return render_register_page(
+                error="A valid referral code is required to create an account right now.",
+                username=username,
+                email=email,
+                signup_code=signup_code_value,
+            )
+
+        clear_google_auth_session()
+        session[GOOGLE_AUTH_SESSION_INTENT_KEY] = GOOGLE_AUTH_INTENT_REGISTER
+        session[GOOGLE_AUTH_SESSION_SIGNUP_CODE_KEY] = signup_code_value
+        redirect_uri = build_external_url(url_for("google_auth_callback"))
+        return google_client.authorize_redirect(redirect_uri, prompt="select_account")
+
+    @app.route("/auth/google/callback", methods=["GET"])
+    def google_auth_callback():
+        intent = session.get(GOOGLE_AUTH_SESSION_INTENT_KEY, GOOGLE_AUTH_INTENT_LOGIN)
+        signup_code_value = normalize_signup_code(session.get(GOOGLE_AUTH_SESSION_SIGNUP_CODE_KEY, ""))
+        google_client = get_google_client()
+        if google_client is None:
+            clear_google_auth_session()
+            return render_login_page(error="Google sign-in is not available right now.")
+
+        try:
+            token = google_client.authorize_access_token()
+        except Exception as exc:
+            current_app.logger.warning("Google OAuth callback failed: %s", exc)
+            clear_google_auth_session()
+            if intent == GOOGLE_AUTH_INTENT_REGISTER:
+                return render_register_page(
+                    error="Google sign-in could not be completed. Please try again.",
+                    signup_code=signup_code_value,
+                )
+            return render_login_page(error="Google sign-in could not be completed. Please try again.")
+
+        userinfo = token.get("userinfo") or {}
+        google_sub = str(userinfo.get("sub") or "").strip()
+        email = str(userinfo.get("email") or "").strip().lower()
+        email_verified = bool(userinfo.get("email_verified"))
+        display_name = str(userinfo.get("name") or "").strip()
+
+        if not google_sub or not email or not email_verified:
+            clear_google_auth_session()
+            message = "Google did not return a verified email address for this account."
+            if intent == GOOGLE_AUTH_INTENT_REGISTER:
+                return render_register_page(error=message, signup_code=signup_code_value)
+            return render_login_page(error=message)
+
+        linked_user = User.query.filter_by(google_sub=google_sub).first()
+        if linked_user is not None:
+            clear_google_auth_session()
+            return finalize_google_authenticated_user(linked_user)
+
+        existing_user = User.query.filter_by(email=email).first()
+        if existing_user is not None:
+            existing_status = normalize_signup_status(existing_user.signup_status)
+            if existing_status == SIGNUP_STATUS_REJECTED:
+                clear_google_auth_session()
+                return render_login_page(
+                    error="Your registration was not approved. Contact support if you believe this is a mistake.",
+                    email=email,
+                )
+            if existing_status == SIGNUP_STATUS_SUSPENDED:
+                clear_google_auth_session()
+                return render_login_page(
+                    error="This account is currently suspended. Contact support if you need help.",
+                    email=email,
+                )
+            if existing_user.google_sub and existing_user.google_sub != google_sub:
+                clear_google_auth_session()
+                return render_login_page(
+                    error=(
+                        "This email is already linked to a different Google account. "
+                        "Use your existing sign-in method or contact support."
+                    ),
+                    email=email,
+                )
+            existing_user.google_sub = google_sub
+            existing_user.email_verified = True
+            db.session.commit()
+            clear_google_auth_session()
+            return finalize_google_authenticated_user(existing_user)
+
+        if intent != GOOGLE_AUTH_INTENT_REGISTER:
+            clear_google_auth_session()
+            return render_login_page(
+                error=(
+                    "No FX Journal account was found for this Google email. "
+                    "Use the Google button on the registration page to create one."
+                ),
+                email=email,
+            )
+
+        if get_registration_paused():
+            clear_google_auth_session()
+            return render_register_page(
+                info="New registrations are temporarily paused.",
+                email=email,
+                signup_code=signup_code_value,
+            )
+
+        signup_code_mode = get_signup_code_mode()
+        signup_code_row = None
+        if signup_code_mode != SIGNUP_CODE_MODE_OFF and signup_code_value:
+            signup_code_row = find_signup_code(signup_code_value)
+            if not is_signup_code_usable(signup_code_row):
+                clear_google_auth_session()
+                return render_register_page(
+                    error=get_signup_code_validation_message(signup_code_mode),
+                    email=email,
+                    signup_code=signup_code_value,
+                )
+        elif signup_code_mode == SIGNUP_CODE_MODE_REQUIRED:
+            clear_google_auth_session()
+            return render_register_page(
+                error="A valid referral code is required to create an account right now.",
+                email=email,
+                signup_code=signup_code_value,
+            )
+
+        if not is_allowed_signup_email_domain(email):
+            clear_google_auth_session()
+            return render_register_page(
+                error=(
+                    "Please use a common email provider "
+                    "(for example Gmail, Outlook, Yahoo, iCloud, or Proton)."
+                ),
+                email=email,
+                signup_code=signup_code_value,
+            )
+
+        generated_password = generate_password_hash(secrets.token_urlsafe(32))
+        initial_signup_status = get_initial_signup_status()
+        user = User(
+            username=build_unique_google_username(email=email, profile_name=display_name),
+            email=email,
+            google_sub=google_sub,
+            password=generated_password,
+            email_verified=True,
+            signup_status=initial_signup_status,
+            signup_code_used=signup_code_row.code if signup_code_row else None,
+            approved_at=utcnow_naive() if initial_signup_status == SIGNUP_STATUS_APPROVED else None,
+        )
+        db.session.add(user)
+        if signup_code_row and is_signup_code_usable(signup_code_row):
+            signup_code_row.used_count += 1
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            clear_google_auth_session()
+            return render_register_page(
+                error="Account setup could not be completed. Please try again.",
+                email=email,
+                signup_code=signup_code_value,
+            )
+
+        clear_google_auth_session()
+        return finalize_google_authenticated_user(user, newly_created=True)
 
     @app.route("/onboarding", methods=["GET", "POST"])
     @login_required

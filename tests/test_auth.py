@@ -1,3 +1,4 @@
+import auth_account
 from werkzeug.security import generate_password_hash
 
 from auth_account import (
@@ -11,6 +12,17 @@ from auth_account import (
 )
 from extensions import limiter
 from models import User, db
+
+
+class _FakeGoogleClient:
+    def __init__(self, *, token=None):
+        self._token = token or {}
+
+    def authorize_redirect(self, redirect_uri, **kwargs):
+        raise AssertionError("authorize_redirect should not run in this test")
+
+    def authorize_access_token(self):
+        return self._token
 
 
 def test_generate_and_verify_auth_token(app_ctx):
@@ -113,3 +125,111 @@ def test_generate_and_verify_email_change_token(app_ctx):
         "new_email": "new@example.com",
         "channel": "current",
     }
+
+
+def test_login_page_shows_google_button_when_enabled(app_ctx, client):
+    app_ctx.config["GOOGLE_CLIENT_ID"] = "google-client-id"
+    app_ctx.config["GOOGLE_CLIENT_SECRET"] = "google-client-secret"
+
+    response = client.get("/login")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Continue with Google" in response_text
+    assert "/auth/google" in response_text
+
+
+def test_google_callback_links_existing_user_and_logs_in(app_ctx, client, monkeypatch):
+    app_ctx.config["GOOGLE_CLIENT_ID"] = "google-client-id"
+    app_ctx.config["GOOGLE_CLIENT_SECRET"] = "google-client-secret"
+
+    user = User(
+        username="google-existing-user",
+        email="google-existing@example.com",
+        password=generate_password_hash("password123"),
+        email_verified=False,
+        signup_status="approved",
+    )
+    db.session.add(user)
+    db.session.commit()
+
+    fake_client = _FakeGoogleClient(
+        token={
+            "userinfo": {
+                "sub": "google-sub-123",
+                "email": "google-existing@example.com",
+                "email_verified": True,
+                "name": "Google Existing",
+            }
+        }
+    )
+    monkeypatch.setattr(auth_account.oauth, "create_client", lambda name: fake_client)
+
+    with client.session_transaction() as session_state:
+        session_state["google_auth_intent"] = "login"
+
+    response = client.get("/auth/google/callback", follow_redirects=False)
+
+    db.session.refresh(user)
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/onboarding")
+    assert user.google_sub == "google-sub-123"
+    assert user.email_verified is True
+    assert user.last_login_at is not None
+
+    with client.session_transaction() as session_state:
+        assert session_state["user_id"] == user.id
+        assert session_state["username"] == user.username
+        assert session_state["active_trade_account_id"]
+
+
+def test_google_register_start_requires_legal_consent(app_ctx, client):
+    app_ctx.config["GOOGLE_CLIENT_ID"] = "google-client-id"
+    app_ctx.config["GOOGLE_CLIENT_SECRET"] = "google-client-secret"
+
+    response = client.post(
+        "/auth/google/register",
+        data={"signup_code": "", "username": "", "email": ""},
+    )
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "You must accept the Terms and Conditions and Privacy Policy." in response_text
+
+
+def test_google_callback_creates_new_user_from_register_flow(app_ctx, client, monkeypatch):
+    app_ctx.config["GOOGLE_CLIENT_ID"] = "google-client-id"
+    app_ctx.config["GOOGLE_CLIENT_SECRET"] = "google-client-secret"
+    monkeypatch.setenv("ALLOWED_SIGNUP_EMAIL_DOMAINS", "example.com")
+    monkeypatch.setenv("REGISTRATION_PAUSED", "0")
+    monkeypatch.setenv("AUTO_APPROVE_NEW_USERS", "1")
+
+    fake_client = _FakeGoogleClient(
+        token={
+            "userinfo": {
+                "sub": "google-sub-new-456",
+                "email": "brandnew@example.com",
+                "email_verified": True,
+                "name": "Brand New Trader",
+            }
+        }
+    )
+    monkeypatch.setattr(auth_account.oauth, "create_client", lambda name: fake_client)
+
+    with client.session_transaction() as session_state:
+        session_state["google_auth_intent"] = "register"
+        session_state["google_auth_signup_code"] = ""
+
+    response = client.get("/auth/google/callback", follow_redirects=False)
+    user = User.query.filter_by(email="brandnew@example.com").first()
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/onboarding")
+    assert user is not None
+    assert user.google_sub == "google-sub-new-456"
+    assert user.email_verified is True
+    assert user.signup_status == "approved"
+
+    with client.session_transaction() as session_state:
+        assert session_state["user_id"] == user.id
