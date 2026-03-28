@@ -229,6 +229,8 @@ def test_trade_list_and_detail_show_trade_flags(app_ctx, client):
     assert b'title="Reactive Trade"' in list_response.data
     assert b'title="Corrective Trade"' in list_response.data
     assert b'title="Bundled Entry"' in list_response.data
+    assert b'data-bundle="bundle-flag-test"' in list_response.data
+    assert b">Bundled</span>" in list_response.data
     assert detail_response.status_code == 200
     assert b'<label for="trade_flags">Trade Flags</label>' in detail_response.data
     assert b"Corrective" in detail_response.data

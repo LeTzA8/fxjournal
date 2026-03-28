@@ -1796,6 +1796,52 @@ def register_public_auth_routes(
             "success",
         )
 
+    @app.route("/dashboard/admin/access/users/<int:user_id>/unbundle-trades", methods=["POST"])
+    @root_admin_required
+    def admin_unbundle_trade_account(user_id):
+        target_user = User.query.filter_by(id=user_id).first_or_404()
+        trade_account_id = request.form.get("trade_account_id", type=int)
+        if not trade_account_id:
+            return build_admin_redirect("users", "No trade account selected for unbundling.", "info")
+
+        account = TradeAccount.query.filter_by(id=trade_account_id, user_id=user_id).first_or_404()
+        bundled_trades = (
+            Trade.query.filter_by(user_id=user_id, trade_account_id=account.id)
+            .filter(Trade.bundle_pubkey.isnot(None))
+            .all()
+        )
+        had_review_state = bool(account.bundle_review_requested_at or account.bundle_review_completed_at)
+
+        if not bundled_trades and not had_review_state:
+            return build_admin_redirect(
+                "users",
+                f"No bundled trades found for {target_user.email} / {account.name}.",
+                "info",
+            )
+
+        for trade in bundled_trades:
+            trade.bundle_pubkey = None
+        account.bundle_review_requested_at = None
+        account.bundle_review_completed_at = None
+        db.session.commit()
+
+        bundle_count = len(bundled_trades)
+        if bundle_count:
+            return build_admin_redirect(
+                "users",
+                (
+                    f"Removed {bundle_count} bundled trade link"
+                    f"{'s' if bundle_count != 1 else ''} for {target_user.email} / {account.name}. "
+                    "Reactive and corrective flags were left untouched."
+                ),
+                "success",
+            )
+        return build_admin_redirect(
+            "users",
+            f"Cleared pending bundle review state for {target_user.email} / {account.name}.",
+            "success",
+        )
+
     @app.route("/dashboard/admin/access/users/<int:user_id>/approve", methods=["POST"])
     @root_admin_required
     def admin_signup_approve_user(user_id):

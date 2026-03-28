@@ -129,10 +129,12 @@ def test_root_admin_users_page_shows_regen_ai_with_account_options(app_ctx, clie
 
     assert response.status_code == 200
     assert b"Regen AI" in response.data
+    assert b"Unbundle All" in response.data
     assert b"Review Bundles" in response.data
     assert b"Primary FX (CFD)" in response.data
     assert b"Index Futures (Futures)" in response.data
     assert f"/dashboard/admin/access/users/{target_user.id}/regenerate-ai-advice".encode() in response.data
+    assert f"/dashboard/admin/access/users/{target_user.id}/unbundle-trades".encode() in response.data
     assert f"/dashboard/admin/access/users/{target_user.id}/backfill-bundles".encode() in response.data
 
 
@@ -154,6 +156,7 @@ def test_non_root_admin_users_page_hides_regen_ai(app_ctx, client, monkeypatch):
 
     assert response.status_code == 200
     assert b"Regen AI" not in response.data
+    assert b"Unbundle All" not in response.data
     assert b"Review Bundles" not in response.data
 
 
@@ -196,6 +199,29 @@ def test_non_root_admin_bundle_backfill_route_returns_404(app_ctx, client, monke
 
     response = client.post(
         f"/dashboard/admin/access/users/{target_user.id}/backfill-bundles",
+        data={"trade_account_id": str(account.id)},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404
+
+
+def test_non_root_admin_unbundle_route_returns_404(app_ctx, client, monkeypatch):
+    suffix = _unique_suffix()
+    monkeypatch.setenv("ADMIN_USER_EMAILS", f"root{suffix}@example.com")
+    admin_user = _create_user(
+        username=f"dbadmin{suffix}",
+        email=f"dbadmin{suffix}@example.com",
+        is_admin=True,
+    )
+    target_user = _create_user(username=f"targetuser{suffix}", email=f"target{suffix}@example.com")
+    account = _create_trade_account(user_id=target_user.id, name="Primary FX", account_type="CFD", is_default=True)
+    db.session.commit()
+
+    _login_as(client, admin_user)
+
+    response = client.post(
+        f"/dashboard/admin/access/users/{target_user.id}/unbundle-trades",
         data={"trade_account_id": str(account.id)},
         follow_redirects=False,
     )
@@ -275,6 +301,71 @@ def test_admin_backfill_trade_bundles_marks_account_pending_review_without_apply
     assert trades[2].bundle_pubkey is None
     assert trades[1].is_reactive is False
     assert trades[2].is_reactive is False
+
+
+def test_admin_unbundle_trade_account_clears_bundle_links_but_keeps_flags(app_ctx, client, monkeypatch):
+    suffix = _unique_suffix()
+    root_email = f"root{suffix}@example.com"
+    target_email = f"target{suffix}@example.com"
+    monkeypatch.setenv("ADMIN_USER_EMAILS", root_email)
+    root_admin = _create_user(username=f"rootadmin{suffix}", email=root_email)
+    target_user = _create_user(username=f"targetuser{suffix}", email=target_email)
+    account = _create_trade_account(user_id=target_user.id, name="Primary FX", account_type="CFD", is_default=True)
+    trades = [
+        Trade(
+            user_id=target_user.id,
+            trade_account_id=account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.0990,
+            lot_size=1.0,
+            pnl=-45.0,
+            opened_at=datetime(2026, 3, 10, 9, 50, 0),
+            closed_at=datetime(2026, 3, 10, 10, 15, 0),
+            bundle_pubkey="bundle-123",
+            is_reactive=True,
+        ),
+        Trade(
+            user_id=target_user.id,
+            trade_account_id=account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0995,
+            exit_price=1.1002,
+            lot_size=0.5,
+            pnl=22.0,
+            opened_at=datetime(2026, 3, 10, 10, 20, 0),
+            closed_at=datetime(2026, 3, 10, 10, 40, 0),
+            bundle_pubkey="bundle-123",
+            is_corrective=True,
+        ),
+    ]
+    db.session.add_all(trades)
+    account.bundle_review_requested_at = datetime(2026, 3, 10, 11, 0, 0)
+    account.bundle_review_completed_at = datetime(2026, 3, 10, 11, 30, 0)
+    db.session.commit()
+
+    _login_as(client, root_admin)
+
+    response = client.post(
+        f"/dashboard/admin/access/users/{target_user.id}/unbundle-trades",
+        data={"trade_account_id": str(account.id)},
+        follow_redirects=False,
+    )
+
+    db.session.refresh(account)
+    for trade in trades:
+        db.session.refresh(trade)
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/dashboard/admin/access/users")
+    assert trades[0].bundle_pubkey is None
+    assert trades[1].bundle_pubkey is None
+    assert trades[0].is_reactive is True
+    assert trades[1].is_corrective is True
+    assert account.bundle_review_requested_at is None
+    assert account.bundle_review_completed_at is None
 
 
 

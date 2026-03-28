@@ -214,6 +214,7 @@
                                         {% set user_accounts = accounts_by_user.get(user.id, []) %}
                                         {% if user_accounts %}
                                         <button type="button" class="ghost-btn" onclick="openRegenAiDialog({{ user.id }})">Regen AI</button>
+                                        <button type="button" class="ghost-btn danger-btn" onclick="openUnbundleDialog({{ user.id }})">Unbundle All</button>
                                         <button type="button" class="ghost-btn" onclick="openBundleBackfillDialog({{ user.id }})">Review Bundles</button>
                                         {% else %}
                                         <button type="button" class="ghost-btn" disabled aria-disabled="true" title="No trade accounts available">No Accounts</button>
@@ -557,6 +558,28 @@
                 </form>
             </div>
         </dialog>
+        <dialog id="unbundleDialog{{ user.id }}" class="confirm-dialog" aria-labelledby="unbundleDialogTitle{{ user.id }}">
+            <div class="confirm-dialog-shell">
+                <div>
+                    <h2 id="unbundleDialogTitle{{ user.id }}">Remove Existing Bundles</h2>
+                    <p class="helper-note regen-ai-note">Choose one trade account for {{ user.email }}. This removes all current bundle links for that account and clears any pending bundle-review prompt. Reactive and corrective flags stay as they are.</p>
+                </div>
+                <form action="{{ url_for('admin_unbundle_trade_account', user_id=user.id) }}" method="post" class="regen-ai-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label for="unbundle_trade_account_id_{{ user.id }}">Trade Account</label>
+                    <select id="unbundle_trade_account_id_{{ user.id }}" name="trade_account_id" required>
+                        <option value="" disabled selected>Select account...</option>
+                        {% for acct in user_accounts %}
+                        <option value="{{ acct.id }}">{{ acct.name }} ({{ "Futures" if acct.account_type == "FUTURES" else "CFD" }})</option>
+                        {% endfor %}
+                    </select>
+                    <div class="inline-actions dialog-actions">
+                        <button type="button" class="ghost-btn" onclick="this.closest('dialog').close()">Cancel</button>
+                        <button type="submit" class="ghost-btn danger-btn">Unbundle All</button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
         {% endif %}
     {% endfor %}
 {% endif %}
@@ -885,6 +908,13 @@
 
     function openBundleBackfillDialog(userId) {
         const dialog = document.getElementById(`bundleBackfillDialog${userId}`);
+        if (dialog && typeof dialog.showModal === "function") {
+            dialog.showModal();
+        }
+    }
+
+    function openUnbundleDialog(userId) {
+        const dialog = document.getElementById(`unbundleDialog${userId}`);
         if (dialog && typeof dialog.showModal === "function") {
             dialog.showModal();
         }

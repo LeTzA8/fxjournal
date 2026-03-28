@@ -184,8 +184,11 @@
                         <tbody>
                             {% if trades %}
                             {% for trade in trades %}
+                            {% set row_classes = [] %}
+                            {% if trade.is_running %}{% set _ = row_classes.append("running-trade") %}{% endif %}
+                            {% if trade.bundle_pubkey %}{% set _ = row_classes.append("bundle-row") %}{% endif %}
                             <tr
-                                {% if trade.is_running %}class="running-trade"{% endif %}
+                                {% if row_classes %}class="{{ row_classes|join(' ') }}"{% endif %}
                                 data-pair="{{ trade.symbol }}"
                                 data-strategy="{{ trade.trade_profile_label }}"
                                 data-side="{{ trade.side }}"
@@ -194,6 +197,7 @@
                                 data-session="{{ trade.session_label }}"
                                 data-pnl="{{ trade.pnl if trade.pnl is not none else '' }}"
                                 data-lot="{{ trade.lot_size }}"
+                                data-bundle="{{ trade.bundle_pubkey or '' }}"
                             >
                                 {% if manage_mode %}
                                 <td>
@@ -216,7 +220,7 @@
                                     <span class="flag-dot flag-corrective" title="Corrective Trade"></span>
                                     {% endif %}
                                     {% if trade.bundle_pubkey %}
-                                    <span class="flag-dot flag-bundled" title="Bundled Entry"></span>
+                                    <span class="bundle-pill" title="Bundled Entry">Bundled</span>
                                     {% endif %}
                                 </td>
                                 <td>{{ trade.trade_profile_label }}</td>
@@ -815,6 +819,55 @@
     .flag-corrective { background: color-mix(in srgb, var(--warning-border) 82%, var(--ink) 18%); }
 
     .flag-bundled { background: var(--muted); }
+
+    tbody tr.bundle-row td {
+        background: color-mix(in srgb, var(--bundle-accent, var(--accent)) 8%, var(--surface));
+        transition: background-color 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+    }
+
+    tbody tr.bundle-row td:first-child {
+        box-shadow: inset 3px 0 0 color-mix(in srgb, var(--bundle-accent, var(--accent)) 72%, transparent);
+    }
+
+    tbody tr.bundle-row.bundle-hover td,
+    tbody tr.bundle-row:hover td {
+        background: color-mix(in srgb, var(--bundle-accent, var(--accent)) 14%, var(--surface));
+    }
+
+    tbody tr.running-trade.bundle-row td {
+        background: color-mix(
+            in srgb,
+            var(--bundle-accent, var(--accent)) 8%,
+            color-mix(in srgb, var(--good) 10%, var(--surface))
+        );
+    }
+
+    tbody tr.running-trade.bundle-row.bundle-hover td,
+    tbody tr.running-trade.bundle-row:hover td {
+        background: color-mix(
+            in srgb,
+            var(--bundle-accent, var(--accent)) 14%,
+            color-mix(in srgb, var(--good) 10%, var(--surface))
+        );
+    }
+
+    .bundle-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-left: 0.45rem;
+        padding: 0.16rem 0.44rem;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--bundle-accent, var(--muted)) 46%, var(--border));
+        background: color-mix(in srgb, var(--bundle-accent, var(--muted)) 12%, var(--card));
+        color: color-mix(in srgb, var(--bundle-accent, var(--ink)) 72%, var(--ink));
+        font-size: 0.64rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
 
 .pip-note { display: block;
         margin-top: 0.12rem;
