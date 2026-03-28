@@ -340,20 +340,18 @@
 
         <form action="{{ url_for('checkin.checkin') }}" method="post" class="checkin-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-            {% if outliers %}
-            {% if outliers.bundle_candidates %}
-            <section class="outlier-review" aria-label="Trade outlier review">
+            {% if workflow_stage == "bundle_review" %}
+            <input type="hidden" name="stage" value="bundle_review">
+            <section class="outlier-review" aria-label="Trade bundle review">
                 <div>
-                    <h2 class="checkin-legend">Bundle Review</h2>
-                    <p class="outlier-review-intro">We spotted a few split entries from the latest completed trade week. Confirm the groups that were genuinely one trade idea, then classify the behaviour and finish the weekly questions below.</p>
+                    <h2 class="checkin-legend">Step 1. Bundle Review</h2>
+                    <p class="outlier-review-intro">We spotted a few split entries from the latest completed trade week. Confirm only the groups that were genuinely one trade idea with multiple entries.</p>
                 </div>
 
-                {% if outliers.bundle_candidates %}
                 <section class="outlier-section">
                     <h3 class="outlier-section-title">Bundle Candidates</h3>
-                    <p class="outlier-section-note">Only confirm the groups that were one planned position with multiple entries. Leave anything ambiguous unchecked and it will stay as separate trades.</p>
-                    {% for candidate in outliers.bundle_candidates %}
+                    <p class="outlier-section-note">Leave anything ambiguous unchecked and it will stay as separate trades.</p>
+                    {% for candidate in bundle_review_candidates %}
                     {% set lead_trade = candidate.trades[0] %}
                     {% set trade_count = candidate.trades|length %}
                     <article class="outlier-card">
@@ -375,11 +373,6 @@
                                     Similar scale-in pattern detected.
                                     {% endif %}
                                 </p>
-                                {% if candidate.sub_type != "neutral" and candidate.trigger %}
-                                <p class="outlier-warning">
-                                    Detected as {{ candidate.sub_type }} after a {{ "%.2f"|format(candidate.trigger.pnl or 0) }} {{ candidate.trigger.symbol }} loss.
-                                </p>
-                                {% endif %}
                             </div>
                             <label class="outlier-confirm">
                                 <input type="checkbox" name="bundle_group" value="{{ candidate.group_value }}" {% if candidate.selected %}checked{% endif %}>
@@ -410,40 +403,52 @@
                     </article>
                     {% endfor %}
                 </section>
-                {% endif %}
-
-                <hr class="outlier-divider">
             </section>
-            {% endif %}
 
-            {% if outliers.bundle_candidates or outliers.standalone_candidates %}
+            <div class="checkin-actions">
+                <button type="submit" class="submit-btn">
+                    {% if bundle_classification_candidates or standalone_classification_candidates %}
+                    Continue to Classification
+                    {% else %}
+                    Continue to Weekly Check-In
+                    {% endif %}
+                </button>
+                <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Back to Dashboard</a>
+            </div>
+
+            {% elif workflow_stage == "classification" %}
+            <input type="hidden" name="stage" value="classification">
+            {% for candidate in bundle_review_candidates if candidate.selected %}
+            <input type="hidden" name="bundle_group" value="{{ candidate.group_value }}">
+            {% endfor %}
+
             <section class="outlier-review" aria-label="Trade classification">
                 <div>
-                    <h2 class="checkin-legend">Classification</h2>
-                    <p class="outlier-review-intro">This helps the AI separate clean scale-ins from emotional re-entries. If you are not sure, pick <strong>Not sure</strong> and the trade will stay unflagged.</p>
+                    <h2 class="checkin-legend">Step 2. Classification</h2>
+                    <p class="outlier-review-intro">Only the trades or bundles that look possibly reactive or corrective need a label. If you genuinely do not remember, choose <strong>Not sure</strong> and the trade will stay unflagged.</p>
                 </div>
 
-                {% if outliers.bundle_candidates %}
+                {% if bundle_classification_candidates %}
                 <section class="outlier-section">
-                    <h3 class="outlier-section-title">Bundle Classification</h3>
-                    <p class="outlier-section-note">These choices only apply when you confirm the bundle above.</p>
-                    {% for candidate in outliers.bundle_candidates %}
+                    <h3 class="outlier-section-title">Bundled Re-Entries</h3>
+                    <p class="outlier-section-note">These only matter for bundle groups you already confirmed in Step 1.</p>
+                    {% for candidate in bundle_classification_candidates %}
                     {% set lead_trade = candidate.trades[0] %}
                     <article class="outlier-card">
                         <div class="outlier-card-head">
                             <div>
                                 <p class="outlier-card-title">{{ lead_trade.symbol }} {{ lead_trade.side }} - {{ candidate.trades|length }} entries</p>
-                                <p class="outlier-card-subtext">Classify the confirmed group as a clean scale-in, a reactive trade, a corrective trade, or leave it undecided.</p>
+                                {% if candidate.trigger %}
+                                <p class="outlier-card-subtext">
+                                    Detected as a possible {{ candidate.sub_type }} bundle after {{ "%.2f"|format(candidate.trigger.pnl or 0) }} on {{ candidate.trigger.symbol }}.
+                                </p>
+                                {% endif %}
                             </div>
                         </div>
 
                         <div class="outlier-classification">
                             <span class="outlier-classification-label">Bundle classification</span>
                             <div class="outlier-classification-options">
-                                <label class="outlier-radio">
-                                    <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="neutral" {% if candidate.selected_type == "neutral" %}checked{% endif %}>
-                                    <span>Clean scale-in</span>
-                                </label>
                                 <label class="outlier-radio">
                                     <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="reactive" {% if candidate.selected_type == "reactive" %}checked{% endif %}>
                                     <span>Reactive</span>
@@ -463,11 +468,11 @@
                 </section>
                 {% endif %}
 
-                {% if outliers.standalone_candidates %}
+                {% if standalone_classification_candidates %}
                 <section class="outlier-section">
                     <h3 class="outlier-section-title">Standalone Re-Entries</h3>
-                    <p class="outlier-section-note">Choose the best fit for each trade. If you are not sure, leave it undecided so it does not get behaviour-flagged.</p>
-                    {% for candidate in outliers.standalone_candidates %}
+                    <p class="outlier-section-note">Choose the best fit for each trade below.</p>
+                    {% for candidate in standalone_classification_candidates %}
                     {% set trade = candidate.trade %}
                     <article class="outlier-card">
                         <div class="outlier-card-head">
@@ -507,14 +512,27 @@
                     {% endfor %}
                 </section>
                 {% endif %}
-
-                <hr class="outlier-divider">
             </section>
-            {% endif %}
-            {% endif %}
+
+            <div class="checkin-actions">
+                <button type="submit" class="submit-btn">Continue to Weekly Check-In</button>
+                <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Back to Dashboard</a>
+            </div>
+
+            {% else %}
+            <input type="hidden" name="stage" value="checkin">
+            {% for candidate in bundle_review_candidates if candidate.selected %}
+            <input type="hidden" name="bundle_group" value="{{ candidate.group_value }}">
+            {% endfor %}
+            {% for candidate in bundle_classification_candidates %}
+            <input type="hidden" name="bundle_type_{{ candidate.group_hash }}" value="{{ candidate.selected_type }}">
+            {% endfor %}
+            {% for candidate in standalone_classification_candidates %}
+            <input type="hidden" name="trade_type_{{ candidate.trade_pubkey }}" value="{{ candidate.selected_type }}">
+            {% endfor %}
 
             <fieldset class="checkin-fieldset">
-                <legend class="checkin-legend">Weekly Check-In</legend>
+                <legend class="checkin-legend">Step 3. Weekly Check-In</legend>
                 <div class="outlier-section-note">Q1. How was your emotional state during that week?</div>
                 <div class="checkin-options">
                     {% for option in emotional_state_options %}
@@ -570,6 +588,7 @@
                 <button type="submit" class="submit-btn">Save Check-In</button>
                 <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Back to Dashboard</a>
             </div>
+            {% endif %}
         </form>
 
         <form action="{{ url_for('checkin.skip_checkin') }}" method="post" class="checkin-skip-form">

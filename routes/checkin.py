@@ -62,6 +62,9 @@ VALID_EMOTIONAL_STATES = {option["value"] for option in EMOTIONAL_STATE_OPTIONS}
 VALID_PLAN_ADHERENCE = {option["value"] for option in PLAN_ADHERENCE_OPTIONS}
 VALID_EXECUTION_QUALITY = {option["value"] for option in EXECUTION_QUALITY_OPTIONS}
 VALID_OUTLIER_CLASSIFICATIONS = {"neutral", "reactive", "corrective", "unsure"}
+WORKFLOW_STAGE_BUNDLE_REVIEW = "bundle_review"
+WORKFLOW_STAGE_CLASSIFICATION = "classification"
+WORKFLOW_STAGE_CHECKIN = "checkin"
 
 
 def _count_closed_trades_for_period(*, user_id, trade_account_id, period):
@@ -181,6 +184,49 @@ def _build_outlier_selection_state(outliers, form_data):
     }
 
 
+def _build_checkin_workflow_state(outliers, form_data=None):
+    selection_state = _build_outlier_selection_state(outliers, form_data) if outliers else {
+        "bundle_candidates": [],
+        "standalone_candidates": [],
+    }
+    bundle_review_candidates = selection_state["bundle_candidates"]
+    bundle_classification_candidates = [
+        candidate
+        for candidate in bundle_review_candidates
+        if candidate.get("selected") and candidate.get("sub_type") in {"reactive", "corrective"}
+    ]
+    standalone_classification_candidates = [
+        candidate
+        for candidate in selection_state["standalone_candidates"]
+        if candidate.get("sub_type") in {"reactive", "corrective"}
+    ]
+    return {
+        "bundle_review_candidates": bundle_review_candidates,
+        "bundle_classification_candidates": bundle_classification_candidates,
+        "standalone_classification_candidates": standalone_classification_candidates,
+    }
+
+
+def _determine_initial_workflow_stage(workflow_state):
+    if workflow_state["bundle_review_candidates"]:
+        return WORKFLOW_STAGE_BUNDLE_REVIEW
+    if (
+        workflow_state["bundle_classification_candidates"]
+        or workflow_state["standalone_classification_candidates"]
+    ):
+        return WORKFLOW_STAGE_CLASSIFICATION
+    return WORKFLOW_STAGE_CHECKIN
+
+
+def _next_stage_after_bundle_review(workflow_state):
+    if (
+        workflow_state["bundle_classification_candidates"]
+        or workflow_state["standalone_classification_candidates"]
+    ):
+        return WORKFLOW_STAGE_CLASSIFICATION
+    return WORKFLOW_STAGE_CHECKIN
+
+
 def _render_checkin_page(
     *,
     error=None,
@@ -188,6 +234,7 @@ def _render_checkin_page(
     active_trade_account=None,
     period=None,
     outliers=None,
+    workflow_stage=WORKFLOW_STAGE_CHECKIN,
 ):
     form_data = form_data or {}
     period = period or get_weekly_dashboard_period()
@@ -199,6 +246,7 @@ def _render_checkin_page(
             f"{week_start_utc.strftime('%d %b %Y')} to "
             f"{(week_end_utc - timedelta(days=1)).strftime('%d %b %Y')}"
         )
+    workflow_state = _build_checkin_workflow_state(outliers, form_data)
     return render_template(
         "checkin.html",
         title="Weekly Check-In | FX Journal",
@@ -214,7 +262,10 @@ def _render_checkin_page(
         plan_adherence_value=form_data.get("plan_adherence", ""),
         execution_quality_value=form_data.get("execution_quality", ""),
         additional_context_value=form_data.get("additional_context", ""),
-        outliers=_build_outlier_selection_state(outliers, form_data) if outliers else None,
+        workflow_stage=workflow_stage,
+        bundle_review_candidates=workflow_state["bundle_review_candidates"],
+        bundle_classification_candidates=workflow_state["bundle_classification_candidates"],
+        standalone_classification_candidates=workflow_state["standalone_classification_candidates"],
     )
 
 
@@ -250,6 +301,7 @@ def checkin():
         return redirect(url_for("dashboard.home"))
 
     if request.method == "POST":
+        workflow_stage = (request.form.get("stage") or "").strip().lower()
         emotional_state = (request.form.get("emotional_state") or "").strip().lower()
         plan_adherence = (request.form.get("plan_adherence") or "").strip().lower()
         execution_quality = (request.form.get("execution_quality") or "").strip().lower()
@@ -300,6 +352,26 @@ def checkin():
             "bundle_types": selected_bundle_types,
             "trade_types": selected_trade_types,
         }
+        workflow_state = _build_checkin_workflow_state(outliers, form_data)
+
+        if workflow_stage == WORKFLOW_STAGE_BUNDLE_REVIEW:
+            return _render_checkin_page(
+                form_data=form_data,
+                active_trade_account=active_trade_account,
+                period=period,
+                outliers=outliers if has_outliers else None,
+                workflow_stage=_next_stage_after_bundle_review(workflow_state),
+            )
+
+        if workflow_stage == WORKFLOW_STAGE_CLASSIFICATION:
+            return _render_checkin_page(
+                form_data=form_data,
+                active_trade_account=active_trade_account,
+                period=period,
+                outliers=outliers if has_outliers else None,
+                workflow_stage=WORKFLOW_STAGE_CHECKIN,
+            )
+
         if (
             emotional_state not in VALID_EMOTIONAL_STATES
             or plan_adherence not in VALID_PLAN_ADHERENCE
@@ -311,6 +383,7 @@ def checkin():
                 active_trade_account=active_trade_account,
                 period=period,
                 outliers=outliers if has_outliers else None,
+                workflow_stage=WORKFLOW_STAGE_CHECKIN,
             )
 
         for candidate in outliers["bundle_candidates"]:
@@ -388,6 +461,9 @@ def checkin():
         active_trade_account=active_trade_account,
         period=period,
         outliers=outliers if has_outliers else None,
+        workflow_stage=_determine_initial_workflow_stage(
+            _build_checkin_workflow_state(outliers if has_outliers else None)
+        ),
     )
 
 

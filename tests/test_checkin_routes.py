@@ -325,10 +325,28 @@ def test_checkin_shows_outlier_review_and_saves_bundle_confirmations(app_ctx, cl
     group_value = checkin_routes._build_bundle_group_value(candidate_pubkeys)
     group_hash = checkin_routes._pubkey_group_hash(candidate_pubkeys)
 
-    get_response = client.get("/checkin")
+    bundle_step_response = client.get("/checkin")
+    classification_response = client.post(
+        "/checkin",
+        data={
+            "stage": "bundle_review",
+            "bundle_group": group_value,
+        },
+        follow_redirects=False,
+    )
+    weekly_step_response = client.post(
+        "/checkin",
+        data={
+            "stage": "classification",
+            "bundle_group": group_value,
+            f"bundle_type_{group_hash}": "reactive",
+        },
+        follow_redirects=False,
+    )
     post_response = client.post(
         "/checkin",
         data={
+            "stage": "checkin",
             "bundle_group": group_value,
             f"bundle_type_{group_hash}": "reactive",
             "emotional_state": "slightly_off",
@@ -346,11 +364,16 @@ def test_checkin_shows_outlier_review_and_saves_bundle_confirmations(app_ctx, cl
         trade_account_id=trade_account.id,
     ).first()
 
-    assert get_response.status_code == 200
-    assert b"Bundle Review" in get_response.data
-    assert b"Classification" in get_response.data
-    assert b"Not sure" in get_response.data
-    assert b"Confirm as bundle" in get_response.data
+    assert bundle_step_response.status_code == 200
+    assert b"Step 1. Bundle Review" in bundle_step_response.data
+    assert b"Confirm as bundle" in bundle_step_response.data
+    assert b"Step 3. Weekly Check-In" not in bundle_step_response.data
+    assert classification_response.status_code == 200
+    assert b"Step 2. Classification" in classification_response.data
+    assert b"Not sure" in classification_response.data
+    assert b"Step 3. Weekly Check-In" not in classification_response.data
+    assert weekly_step_response.status_code == 200
+    assert b"Step 3. Weekly Check-In" in weekly_step_response.data
     assert post_response.status_code == 302
     assert trades[1].bundle_pubkey is not None
     assert trades[1].bundle_pubkey == trades[2].bundle_pubkey
@@ -422,6 +445,7 @@ def test_checkin_invalid_submission_does_not_mutate_trade_flags_or_bundles(app_c
     response = client.post(
         "/checkin",
         data={
+            "stage": "checkin",
             "bundle_group": group_value,
             f"bundle_type_{group_hash}": "reactive",
             "emotional_state": "stressed",
@@ -436,6 +460,7 @@ def test_checkin_invalid_submission_does_not_mutate_trade_flags_or_bundles(app_c
 
     assert response.status_code == 200
     assert b"Please answer the three multiple-choice questions before saving." in response.data
+    assert b"Step 3. Weekly Check-In" in response.data
     assert trades[1].bundle_pubkey is None
     assert trades[2].bundle_pubkey is None
     assert trades[1].is_reactive is False
@@ -482,9 +507,19 @@ def test_checkin_unsure_classification_keeps_standalone_trade_unflagged(app_ctx,
 
     reactive_trade_pubkey = trades[1].pubkey
 
+    classification_step = client.get("/checkin")
+    weekly_step = client.post(
+        "/checkin",
+        data={
+            "stage": "classification",
+            f"trade_type_{reactive_trade_pubkey}": "unsure",
+        },
+        follow_redirects=False,
+    )
     response = client.post(
         "/checkin",
         data={
+            "stage": "checkin",
             f"trade_type_{reactive_trade_pubkey}": "unsure",
             "emotional_state": "slightly_off",
             "plan_adherence": "some_deviations",
@@ -499,6 +534,11 @@ def test_checkin_unsure_classification_keeps_standalone_trade_unflagged(app_ctx,
         trade_account_id=trade_account.id,
     ).first()
 
+    assert classification_step.status_code == 200
+    assert b"Step 2. Classification" in classification_step.data
+    assert b"Not sure" in classification_step.data
+    assert weekly_step.status_code == 200
+    assert b"Step 3. Weekly Check-In" in weekly_step.data
     assert response.status_code == 302
     assert trades[1].is_reactive is False
     assert trades[1].is_corrective is False
