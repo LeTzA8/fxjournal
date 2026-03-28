@@ -129,7 +129,7 @@ def test_root_admin_users_page_shows_regen_ai_with_account_options(app_ctx, clie
 
     assert response.status_code == 200
     assert b"Regen AI" in response.data
-    assert b"Backfill Bundles" in response.data
+    assert b"Review Bundles" in response.data
     assert b"Primary FX (CFD)" in response.data
     assert b"Index Futures (Futures)" in response.data
     assert f"/dashboard/admin/access/users/{target_user.id}/regenerate-ai-advice".encode() in response.data
@@ -154,7 +154,7 @@ def test_non_root_admin_users_page_hides_regen_ai(app_ctx, client, monkeypatch):
 
     assert response.status_code == 200
     assert b"Regen AI" not in response.data
-    assert b"Backfill Bundles" not in response.data
+    assert b"Review Bundles" not in response.data
 
 
 def test_non_root_admin_regenerate_ai_route_returns_404(app_ctx, client, monkeypatch):
@@ -203,7 +203,7 @@ def test_non_root_admin_bundle_backfill_route_returns_404(app_ctx, client, monke
     assert response.status_code == 404
 
 
-def test_admin_backfill_trade_bundles_applies_detected_historical_groups(app_ctx, client, monkeypatch):
+def test_admin_backfill_trade_bundles_marks_account_pending_review_without_applying(app_ctx, client, monkeypatch):
     suffix = _unique_suffix()
     root_email = f"root{suffix}@example.com"
     target_email = f"target{suffix}@example.com"
@@ -263,14 +263,20 @@ def test_admin_backfill_trade_bundles_applies_detected_historical_groups(app_ctx
         follow_redirects=False,
     )
 
+    db.session.refresh(account)
     for trade in trades:
         db.session.refresh(trade)
 
     assert response.status_code == 302
-    assert trades[1].bundle_pubkey is not None
-    assert trades[1].bundle_pubkey == trades[2].bundle_pubkey
-    assert trades[1].is_reactive is True
-    assert trades[2].is_reactive is True
+    assert response.headers["Location"].endswith("/dashboard/admin/access/users")
+    assert account.bundle_review_requested_at is not None
+    assert account.bundle_review_completed_at is None
+    assert trades[1].bundle_pubkey is None
+    assert trades[2].bundle_pubkey is None
+    assert trades[1].is_reactive is False
+    assert trades[2].is_reactive is False
+
+
 
 
 def test_admin_regenerate_ai_advice_success_appends_new_row_and_keeps_history(app_ctx, client, monkeypatch):

@@ -160,6 +160,42 @@ def test_dashboard_home_does_not_mark_closed_timestamp_trade_as_running(app_ctx,
     assert b'class="running-trade"' not in response.data
 
 
+def test_dashboard_home_shows_bundle_review_banner_only_when_pending(app_ctx, client, monkeypatch):
+    _user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-bundle-banner-user",
+        email="dashboard-bundle-banner@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    initial_response = client.get("/dashboard")
+
+    trade_account.bundle_review_requested_at = datetime(2026, 3, 29, 9, 0, 0)
+    db.session.commit()
+    pending_response = client.get("/dashboard")
+
+    trade_account.bundle_review_completed_at = datetime(2026, 3, 29, 10, 0, 0)
+    db.session.commit()
+    completed_response = client.get("/dashboard")
+
+    assert initial_response.status_code == 200
+    assert b"Review Bundles" not in initial_response.data
+    assert pending_response.status_code == 200
+    assert b"Review Bundles" in pending_response.data
+    assert completed_response.status_code == 200
+    assert b"Review Bundles" not in completed_response.data
+
+
 def test_load_user_trades_preloads_trade_profile_relationships(app_ctx, client):
     user, trade_account = _create_logged_in_user(
         client,

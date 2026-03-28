@@ -178,6 +178,14 @@ def _invalidate_trade_caches(user_id, trade_account_id):
         return
 
 
+def _is_bundle_review_pending(trade_account):
+    if trade_account is None:
+        return False
+    requested_at = getattr(trade_account, "bundle_review_requested_at", None)
+    completed_at = getattr(trade_account, "bundle_review_completed_at", None)
+    return requested_at is not None and (completed_at is None or completed_at < requested_at)
+
+
 def _bundle_group_hash(pubkeys):
     normalized_pubkeys = sorted(
         {
@@ -1141,12 +1149,20 @@ def bundle_review():
     )
     outliers = detect_outliers(closed_trades)
     bundle_candidates = _build_bundle_review_candidates(outliers["bundle_candidates"])
+    review_pending = _is_bundle_review_pending(active_trade_account)
+    if review_pending and not bundle_candidates:
+        active_trade_account.bundle_review_completed_at = utcnow_naive()
+        db.session.commit()
+        flash("Bundle review is already up to date for this account.", "info")
+        return redirect(url_for("dashboard.home"))
 
     return render_template(
         "bundle_review.html",
         title="Bundle Review | FX Journal",
         username=session.get("username", "User"),
         bundle_candidates=bundle_candidates,
+        complete_action=url_for("trades.bundle_review_complete") if review_pending else None,
+        complete_label="Done Reviewing",
     )
 
 
@@ -1164,7 +1180,7 @@ def bundle_confirm():
         if value and value.strip()
     ]
     if not selected_groups:
-        flash("No bundle candidates were selected.", "info")
+        flash("No bundle candidates were selected. Click Done Reviewing if you want to clear this prompt.", "info")
         return redirect(url_for("trades.bundle_review"))
 
     updated_group_count = 0
@@ -1202,6 +1218,7 @@ def bundle_confirm():
                 trade.is_corrective = True
         updated_group_count += 1
 
+    active_trade_account.bundle_review_completed_at = utcnow_naive()
     db.session.commit()
     _invalidate_trade_caches(user_id, active_trade_account.id)
     flash(
@@ -1209,7 +1226,21 @@ def bundle_confirm():
         f"{'s' if updated_group_count != 1 else ''}.",
         "success" if updated_group_count else "info",
     )
-    return redirect(url_for("trades.bundle_review"))
+    return redirect(url_for("dashboard.home"))
+
+
+@bp.route("/dashboard/trades/bundle-review/complete", methods=["POST"])
+@login_required
+def bundle_review_complete():
+    user_id = session["user_id"]
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    if active_trade_account is None:
+        return redirect(url_for("dashboard.home"))
+
+    active_trade_account.bundle_review_completed_at = utcnow_naive()
+    db.session.commit()
+    flash("Bundle review marked as complete.", "info")
+    return redirect(url_for("dashboard.home"))
 
 
 @bp.route("/dashboard/trades/<string:trade_pubkey>/delete", methods=["POST"])

@@ -234,6 +234,8 @@ class TradeAccount(db.Model):
     account_size = db.Column(db.Float, nullable=True)
     account_type = db.Column(db.String(16), nullable=False, default="CFD")
     is_default = db.Column(db.Boolean, nullable=False, default=False)
+    bundle_review_requested_at = db.Column(db.DateTime, nullable=True)
+    bundle_review_completed_at = db.Column(db.DateTime, nullable=True)
     trades = db.relationship(
         "Trade",
         backref="trade_account",

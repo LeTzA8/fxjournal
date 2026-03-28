@@ -31,7 +31,6 @@ from helpers.core import (
     is_weekly_checkin_complete,
     is_trade_running,
 )
-from helpers.trade_analysis import detect_outliers
 from helpers.utils import login_required, utcnow_naive
 from models import Trade, UserProfile, WeeklyCheckin, db
 from trading import (
@@ -178,26 +177,9 @@ def _has_bundle_candidates(user_id, active_trade_account):
     account_id = getattr(active_trade_account, "id", None)
     if account_id is None:
         return False
-    ninety_days_ago = utcnow_naive() - timedelta(days=90)
-    try:
-        recent_closed = (
-            Trade.query.filter_by(
-                user_id=user_id,
-                trade_account_id=account_id,
-            )
-            .filter(
-                Trade.bundle_pubkey.is_(None),
-                Trade.closed_at.isnot(None),
-                Trade.closed_at >= ninety_days_ago,
-            )
-            .order_by(Trade.closed_at.desc(), Trade.id.desc())
-            .limit(80)
-            .all()
-        )
-    except OperationalError:
-        db.session.rollback()
-        return False
-    return bool(detect_outliers(recent_closed)["bundle_candidates"])
+    requested_at = getattr(active_trade_account, "bundle_review_requested_at", None)
+    completed_at = getattr(active_trade_account, "bundle_review_completed_at", None)
+    return requested_at is not None and (completed_at is None or completed_at < requested_at)
 
 
 def _serialize_dashboard_cache_payload(analytics):

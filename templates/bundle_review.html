@@ -187,7 +187,26 @@
         font-size: 0.92rem;
     }
 
+    .bundle-review-skip-form {
+        margin: 0;
+    }
+
+    .bundle-review-skip-form button {
+        border: none;
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.92rem;
+        cursor: pointer;
+        padding: 0;
+    }
+
     .bundle-review-skip a:hover {
+        color: var(--ink);
+        text-decoration: underline;
+    }
+
+    .bundle-review-skip-form button:hover {
         color: var(--ink);
         text-decoration: underline;
     }
@@ -225,23 +244,29 @@
             <span>FX Journal</span>
         </a>
         <div class="auth-topbar-links">
-            <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Trades</a>
-            <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Dashboard</a>
+            <a href="{{ secondary_url or url_for('trades.trades') }}" class="ghost-btn">{{ secondary_label or "Trades" }}</a>
+            <a href="{{ skip_url or url_for('dashboard.home') }}" class="ghost-btn">{{ skip_top_label or "Dashboard" }}</a>
         </div>
     </div>
 
     <div class="login-card bundle-review-card">
-        <p class="eyebrow">Bundle Review</p>
-        <h1>Historical Bundle Review</h1>
-        <p class="subtext">Review older scale-ins on your active account and confirm the ones that should count as one logical trade in your stats and AI review.</p>
+        <p class="eyebrow">{{ eyebrow or "Bundle Review" }}</p>
+        <h1>{{ heading or "Historical Bundle Review" }}</h1>
+        <p class="subtext">{{ subtext or "Review older scale-ins on your active account and confirm the ones that should count as one logical trade in your stats and AI review." }}</p>
 
         <div class="bundle-review-meta">
+            {% if meta_labels %}
+                {% for label in meta_labels %}
+                <span class="bundle-review-chip">{{ label }}</span>
+                {% endfor %}
+            {% else %}
             <span class="bundle-review-chip">Historical review</span>
             <span class="bundle-review-chip">{{ bundle_candidates|length }} candidate{% if bundle_candidates|length != 1 %}s{% endif %}</span>
+            {% endif %}
         </div>
 
         {% if bundle_candidates %}
-        <form action="{{ url_for('trades.bundle_confirm') }}" method="post" class="bundle-review-form">
+        <form action="{{ form_action or url_for('trades.bundle_confirm') }}" method="post" class="bundle-review-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             <section class="outlier-section" aria-label="Historical bundle review">
@@ -328,18 +353,32 @@
 
             <div class="bundle-review-actions">
                 <button type="submit" class="submit-btn">Save Bundles</button>
-                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Back to Trades</a>
+                <a href="{{ secondary_url or url_for('trades.trades') }}" class="ghost-btn">{{ secondary_label or "Back to Trades" }}</a>
             </div>
         </form>
         <div class="bundle-review-skip">
-            <a href="{{ url_for('dashboard.home') }}">Skip for now</a>
+            {% if complete_action %}
+            <form action="{{ complete_action }}" method="post" class="bundle-review-skip-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit">{{ complete_label or "Done Reviewing" }}</button>
+            </form>
+            {% else %}
+            <a href="{{ skip_url or url_for('dashboard.home') }}">{{ skip_label or "Skip for now" }}</a>
+            {% endif %}
         </div>
         {% else %}
         <div class="empty-bundle-state">
             <p>No bundle candidates are waiting on this account right now.</p>
             <div class="bundle-review-actions">
-                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Back to Trades</a>
-                <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Done</a>
+                <a href="{{ secondary_url or url_for('trades.trades') }}" class="ghost-btn">{{ secondary_label or "Back to Trades" }}</a>
+                {% if complete_action %}
+                <form action="{{ complete_action }}" method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="submit-btn">{{ done_label or complete_label or "Done" }}</button>
+                </form>
+                {% else %}
+                <a href="{{ skip_url or url_for('dashboard.home') }}" class="submit-btn">{{ done_label or "Done" }}</a>
+                {% endif %}
             </div>
         </div>
         {% endif %}

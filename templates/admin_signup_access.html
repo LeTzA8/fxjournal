@@ -214,7 +214,7 @@
                                         {% set user_accounts = accounts_by_user.get(user.id, []) %}
                                         {% if user_accounts %}
                                         <button type="button" class="ghost-btn" onclick="openRegenAiDialog({{ user.id }})">Regen AI</button>
-                                        <button type="button" class="ghost-btn" onclick="openBundleBackfillDialog({{ user.id }})">Backfill Bundles</button>
+                                        <button type="button" class="ghost-btn" onclick="openBundleBackfillDialog({{ user.id }})">Review Bundles</button>
                                         {% else %}
                                         <button type="button" class="ghost-btn" disabled aria-disabled="true" title="No trade accounts available">No Accounts</button>
                                         {% endif %}
@@ -538,8 +538,8 @@
         <dialog id="bundleBackfillDialog{{ user.id }}" class="confirm-dialog" aria-labelledby="bundleBackfillDialogTitle{{ user.id }}">
             <div class="confirm-dialog-shell">
                 <div>
-                    <h2 id="bundleBackfillDialogTitle{{ user.id }}">Backfill Historical Bundles</h2>
-                    <p class="helper-note regen-ai-note">Choose one trade account for {{ user.email }}. This applies the current bundle detector to all closed trades on that account and writes confirmed bundle links automatically.</p>
+                    <h2 id="bundleBackfillDialogTitle{{ user.id }}">Review Historical Bundles</h2>
+                    <p class="helper-note regen-ai-note">Choose one trade account for {{ user.email }}. This scans all closed trades with the current bundle detector, then opens a review page so you can confirm the suspected bundles manually.</p>
                 </div>
                 <form action="{{ url_for('admin_backfill_trade_bundles', user_id=user.id) }}" method="post" class="regen-ai-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -552,7 +552,7 @@
                     </select>
                     <div class="inline-actions dialog-actions">
                         <button type="button" class="ghost-btn" onclick="this.closest('dialog').close()">Cancel</button>
-                        <button type="submit" class="submit-btn">Backfill</button>
+                        <button type="submit" class="submit-btn">Scan & Review</button>
                     </div>
                 </form>
             </div>

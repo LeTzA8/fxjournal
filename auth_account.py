@@ -20,7 +20,7 @@ from models import (
     UserProfile,
     db,
 )
-from helpers.core import build_unique_trade_pubkey, sanitize_error_message
+from helpers.core import sanitize_error_message
 from helpers.trade_analysis import detect_outliers
 from helpers.utils import (
     encrypt_password,
@@ -1455,64 +1455,14 @@ def register_public_auth_routes(
                 f"No historical bundle candidates found for {target_user.email} / {account.name}.",
                 "info",
             )
-
-        updated_group_count = 0
-        updated_trade_count = 0
-        try:
-            for candidate in bundle_candidates:
-                candidate_trades = list(candidate.get("trades") or [])
-                if len(candidate_trades) < 2:
-                    continue
-
-                bundle_pubkey = build_unique_trade_pubkey()
-                bundle_type = str(candidate.get("sub_type") or "neutral").strip().lower()
-                applied_to_group = 0
-                for trade in candidate_trades:
-                    if not trade.bundle_pubkey:
-                        trade.bundle_pubkey = bundle_pubkey
-                    if bundle_type == "reactive" and not trade.is_reactive:
-                        trade.is_reactive = True
-                    elif bundle_type == "corrective" and not trade.is_corrective:
-                        trade.is_corrective = True
-                    applied_to_group += 1
-
-                if applied_to_group >= 2:
-                    updated_group_count += 1
-                    updated_trade_count += applied_to_group
-
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            raise
-
-        try:
-            from celery_workers.cache import CacheUnavailableError, invalidate
-
-            try:
-                invalidate(user_id=user_id, trade_account_id=account.id)
-            except CacheUnavailableError:
-                pass
-        except Exception:
-            current_app.logger.warning(
-                "Bundle backfill cache invalidation unavailable: user_id=%s trade_account_id=%s",
-                user_id,
-                account.id,
-            )
-
-        if not updated_group_count:
-            return build_admin_redirect(
-                "users",
-                f"No new bundles were applied for {target_user.email} / {account.name}.",
-                "info",
-            )
-
+        account.bundle_review_requested_at = utcnow_naive()
+        db.session.commit()
         return build_admin_redirect(
             "users",
             (
-                f"Backfilled {updated_group_count} historical bundle"
-                f"{'s' if updated_group_count != 1 else ''} "
-                f"across {updated_trade_count} trade"
-                f"{'s' if updated_trade_count != 1 else ''} for {target_user.email} / {account.name}."
+                f"Queued bundle review for {target_user.email} / {account.name}. "
+                f"The user will be prompted to review {len(bundle_candidates)} historical bundle"
+                f"{'s' if len(bundle_candidates) != 1 else ''} on their dashboard."
             ),
             "success",
         )

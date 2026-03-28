@@ -218,6 +218,8 @@ def test_bundle_review_confirms_historical_bundle(app_ctx, client):
     ]
     db.session.add_all(trades)
     db.session.commit()
+    trade_account.bundle_review_requested_at = datetime(2026, 3, 11, 9, 0, 0)
+    db.session.commit()
 
     group_value = ",".join(sorted([trades[0].pubkey, trades[1].pubkey]))
     review_response = client.get("/dashboard/trades/bundle-review")
@@ -232,6 +234,7 @@ def test_bundle_review_confirms_historical_bundle(app_ctx, client):
 
     db.session.refresh(trades[0])
     db.session.refresh(trades[1])
+    db.session.refresh(trade_account)
 
     assert review_response.status_code == 200
     assert b"Historical Bundle Review" in review_response.data
@@ -241,6 +244,59 @@ def test_bundle_review_confirms_historical_bundle(app_ctx, client):
     assert trades[0].bundle_pubkey == trades[1].bundle_pubkey
     assert trades[0].is_corrective is True
     assert trades[1].is_corrective is True
+    assert trade_account.bundle_review_completed_at is not None
+
+
+def test_bundle_review_complete_clears_pending_prompt_without_confirming_bundles(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="bundle-review-complete-user",
+        email="bundle-review-complete@example.com",
+    )
+
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.1010,
+            take_profit=1.1040,
+            lot_size=0.5,
+            pnl=30.0,
+            opened_at=datetime(2026, 3, 10, 10, 0, 0),
+            closed_at=datetime(2026, 3, 10, 10, 20, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1002,
+            exit_price=1.1012,
+            take_profit=1.1040,
+            lot_size=0.5,
+            pnl=24.0,
+            opened_at=datetime(2026, 3, 10, 10, 8, 0),
+            closed_at=datetime(2026, 3, 10, 10, 26, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+    trade_account.bundle_review_requested_at = datetime(2026, 3, 11, 9, 0, 0)
+    db.session.commit()
+
+    response = client.post("/dashboard/trades/bundle-review/complete", follow_redirects=False)
+
+    db.session.refresh(trade_account)
+    db.session.refresh(trades[0])
+    db.session.refresh(trades[1])
+
+    assert response.status_code == 302
+    assert trade_account.bundle_review_completed_at is not None
+    assert trades[0].bundle_pubkey is None
+    assert trades[1].bundle_pubkey is None
 
 
 def test_user_cannot_view_edit_or_delete_another_users_trade(app_ctx, client):
