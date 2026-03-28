@@ -213,6 +213,7 @@ def test_trade_list_and_detail_show_trade_flags(app_ctx, client):
         exit_price=1.10120,
         lot_size=1.00,
         pnl=120.0,
+        is_revenge=True,
         is_corrective=True,
         is_reactive=True,
         bundle_pubkey="bundle-flag-test",
@@ -226,6 +227,7 @@ def test_trade_list_and_detail_show_trade_flags(app_ctx, client):
     detail_response = client.get(f"/dashboard/trades/{trade.pubkey}")
 
     assert list_response.status_code == 200
+    assert b'title="Revenge Trade"' in list_response.data
     assert b'title="Reactive Trade"' in list_response.data
     assert b'title="Corrective Trade"' in list_response.data
     assert b'title="Bundled Entry"' in list_response.data
@@ -233,6 +235,7 @@ def test_trade_list_and_detail_show_trade_flags(app_ctx, client):
     assert b">Bundled</span>" in list_response.data
     assert detail_response.status_code == 200
     assert b'<label for="trade_flags">Trade Flags</label>' in detail_response.data
+    assert b"Revenge" in detail_response.data
     assert b"Corrective" in detail_response.data
     assert b"Reactive" in detail_response.data
     assert b"Bundled Entry" in detail_response.data

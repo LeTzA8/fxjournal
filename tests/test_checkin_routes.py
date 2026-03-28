@@ -339,7 +339,7 @@ def test_checkin_shows_outlier_review_and_saves_bundle_confirmations(app_ctx, cl
         data={
             "stage": "classification",
             "bundle_group": group_value,
-            f"bundle_type_{group_hash}": "reactive",
+            f"bundle_type_{group_hash}": "revenge",
         },
         follow_redirects=False,
     )
@@ -348,7 +348,7 @@ def test_checkin_shows_outlier_review_and_saves_bundle_confirmations(app_ctx, cl
         data={
             "stage": "checkin",
             "bundle_group": group_value,
-            f"bundle_type_{group_hash}": "reactive",
+            f"bundle_type_{group_hash}": "revenge",
             "emotional_state": "slightly_off",
             "plan_adherence": "some_deviations",
             "execution_quality": "average",
@@ -369,7 +369,9 @@ def test_checkin_shows_outlier_review_and_saves_bundle_confirmations(app_ctx, cl
     assert b"Confirm as bundle" in bundle_step_response.data
     assert b"Step 3. Weekly Check-In" not in bundle_step_response.data
     assert classification_response.status_code == 200
-    assert b"Step 2. Classification" in classification_response.data
+    assert b"Step 2. Behaviour Review" in classification_response.data
+    assert b"Revenge" in classification_response.data
+    assert b"Clean" in classification_response.data
     assert b"Not sure" in classification_response.data
     assert b"Step 3. Weekly Check-In" not in classification_response.data
     assert weekly_step_response.status_code == 200
@@ -377,8 +379,8 @@ def test_checkin_shows_outlier_review_and_saves_bundle_confirmations(app_ctx, cl
     assert post_response.status_code == 302
     assert trades[1].bundle_pubkey is not None
     assert trades[1].bundle_pubkey == trades[2].bundle_pubkey
-    assert trades[1].is_reactive is True
-    assert trades[2].is_reactive is True
+    assert trades[1].is_revenge is True
+    assert trades[2].is_revenge is True
     assert record is not None
     assert record.additional_context == "Scaled in after the first loss."
 
@@ -447,7 +449,7 @@ def test_checkin_invalid_submission_does_not_mutate_trade_flags_or_bundles(app_c
         data={
             "stage": "checkin",
             "bundle_group": group_value,
-            f"bundle_type_{group_hash}": "reactive",
+            f"bundle_type_{group_hash}": "revenge",
             "emotional_state": "stressed",
             "plan_adherence": "",
             "execution_quality": "poor",
@@ -463,6 +465,8 @@ def test_checkin_invalid_submission_does_not_mutate_trade_flags_or_bundles(app_c
     assert b"Step 3. Weekly Check-In" in response.data
     assert trades[1].bundle_pubkey is None
     assert trades[2].bundle_pubkey is None
+    assert trades[1].is_revenge is False
+    assert trades[2].is_revenge is False
     assert trades[1].is_reactive is False
     assert trades[2].is_reactive is False
 
@@ -535,11 +539,12 @@ def test_checkin_unsure_classification_keeps_standalone_trade_unflagged(app_ctx,
     ).first()
 
     assert classification_step.status_code == 200
-    assert b"Step 2. Classification" in classification_step.data
+    assert b"Step 2. Behaviour Review" in classification_step.data
     assert b"Not sure" in classification_step.data
     assert weekly_step.status_code == 200
     assert b"Step 3. Weekly Check-In" in weekly_step.data
     assert response.status_code == 302
+    assert trades[1].is_revenge is False
     assert trades[1].is_reactive is False
     assert trades[1].is_corrective is False
     assert record is not None
@@ -625,10 +630,10 @@ def test_detect_outliers_does_not_chain_same_pair_bundle_candidates(app_ctx, cli
 
     assert len(bundle_candidates) == 2
     assert all(len(candidate["trades"]) == 2 for candidate in bundle_candidates)
-    assert bundled_pubkey_groups == [
+    assert bundled_pubkey_groups == sorted([
         sorted([trades[0].pubkey, trades[1].pubkey]),
         sorted([trades[2].pubkey, trades[3].pubkey]),
-    ]
+    ])
 
 
 def test_detect_outliers_does_not_bundle_same_pair_across_multiple_days(app_ctx, client, monkeypatch):

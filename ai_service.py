@@ -384,6 +384,7 @@ def build_profile_instructions(
     execution_quality,
     *,
     emotional_index_label=None,
+    emotional_index_mismatch=False,
 ):
     trading_style = _normalize_optional_text(trading_style)
     experience_level = _normalize_optional_text(experience_level)
@@ -444,9 +445,11 @@ def build_profile_instructions(
         instructions.append("Find specific examples of poor execution in the trades.")
     if emotional_index_label in {"high", "very_high"}:
         instructions.append("Objective emotional index is elevated - prioritise BEHAVIOUR section.")
-        instructions.append("Reference reactive/corrective trade counts in behavioural analysis.")
+        instructions.append("Treat revenge sequences as the strongest behaviour signal, and use reactive/corrective counts as supporting context only when user-confirmed.")
     if emotional_index_label == "very_high":
         instructions.append("Lead with behavioural observations before performance metrics.")
+    if emotional_index_mismatch:
+        instructions.append("Self-report sounded calm or controlled, but observed behaviour signals were elevated - note that mismatch gently and ground it in trade evidence.")
     if emotional_index_label == "moderate" and emotional_state not in {"stressed"}:
         instructions.append("Mild behavioural signals detected - note briefly, don't over-weight.")
 
@@ -466,6 +469,7 @@ def _build_profile_adjustments_for_prompt(user_profile, weekly_checkin, emotiona
         _get_record_value(weekly_checkin, "plan_adherence"),
         _get_record_value(weekly_checkin, "execution_quality"),
         emotional_index_label=_get_record_value(emotional_index, "label"),
+        emotional_index_mismatch=bool(_get_record_value(emotional_index, "self_report_mismatch")),
     )
 
 
@@ -830,12 +834,17 @@ def build_trade_payload(
                 "prev_trade_pnl": annotation.get("prev_trade_pnl"),
                 "minutes_since_prev_close": annotation.get("minutes_since_prev_close"),
                 "size_vs_prev_trade": annotation.get("size_vs_prev_trade"),
+                "prev_symbol_trade_pnl": annotation.get("prev_symbol_trade_pnl"),
+                "minutes_since_prev_symbol_close": annotation.get("minutes_since_prev_symbol_close"),
+                "size_vs_prev_symbol_trade": annotation.get("size_vs_prev_symbol_trade"),
                 "loss_streak_before_trade": annotation.get("loss_streak_before_trade"),
                 "is_post_loss_trade": bool(annotation.get("is_post_loss_trade")),
                 "same_symbol_reentry": bool(annotation.get("same_symbol_reentry")),
+                "is_post_loss_same_symbol_trade": bool(annotation.get("is_post_loss_same_symbol_trade")),
                 "same_trade_idea_reentry": bool(annotation.get("same_trade_idea_reentry")),
                 "is_potential_revenge": bool(annotation.get("is_potential_revenge")),
                 "trade_note": (trade.trade_note or "").strip() or None,
+                "is_revenge": bool(getattr(trade, "is_revenge", False)),
                 "is_reactive": bool(getattr(trade, "is_reactive", False)),
                 "is_corrective": bool(getattr(trade, "is_corrective", False)),
                 "bundle_pubkey": (getattr(trade, "bundle_pubkey", None) or None),
@@ -905,6 +914,8 @@ def build_trade_payload(
             "pair_sample_is_diverse": analytics["summary"].get("pair_sample_is_diverse", False),
             "equity_has_outlier_dominance": analytics["summary"].get("equity_has_outlier_dominance", False),
             "bundle_count": bundle_count,
+            "confirmed_revenge_trade_count": signals.get("confirmed_revenge_trade_count", 0),
+            "heuristic_revenge_trade_count": signals.get("heuristic_revenge_trade_count", 0),
             "reactive_trade_count": signals.get("reactive_trade_count", 0),
             "corrective_trade_count": signals.get("corrective_trade_count", 0),
             "revenge_trade_count": signals.get("revenge_trade_count", 0),
@@ -1062,12 +1073,23 @@ def format_payload_for_prompt(payload):
 
     if _payload_section_has_values(emotional_index):
         signals = emotional_index.get("signals") or {}
+        components = emotional_index.get("components") or {}
         lines.extend(
             [
                 "",
                 "EMOTIONAL INDEX",
                 f"- score: {_format_number(emotional_index.get('score'))}",
                 f"- label: {emotional_index.get('label') or '-'}",
+                f"- self_report_mismatch: {_format_bool(emotional_index.get('self_report_mismatch'))}",
+                f"- subjective_points: {_format_number(components.get('subjective_points'))}",
+                f"- confirmed_reactive_points: {_format_number(components.get('confirmed_reactive_points'))}",
+                f"- confirmed_corrective_points: {_format_number(components.get('confirmed_corrective_points'))}",
+                f"- revenge_points: {_format_number(components.get('revenge_points'))}",
+                f"- bundle_count: {signals.get('bundle_count', 0)}",
+                f"- total_closed_trades: {signals.get('total_closed_trades', 0)}",
+                f"- confirmed_behavior_trade_count: {signals.get('confirmed_behavior_trade_count', 0)}",
+                f"- confirmed_revenge_trade_count: {signals.get('confirmed_revenge_trade_count', 0)}",
+                f"- heuristic_revenge_trade_count: {signals.get('heuristic_revenge_trade_count', 0)}",
                 f"- reactive_trade_count: {signals.get('reactive_trade_count', 0)}",
                 f"- corrective_trade_count: {signals.get('corrective_trade_count', 0)}",
                 f"- revenge_trade_count: {signals.get('revenge_trade_count', 0)}",
@@ -1094,6 +1116,8 @@ def format_payload_for_prompt(payload):
             f"- largest_trade_symbol: {summary.get('largest_trade_symbol') or '-'}",
             f"- largest_trade_abs_pnl_share_pct: {_format_percent(summary.get('largest_trade_abs_pnl_share_pct'))}",
             f"- bundle_count: {summary.get('bundle_count', 0)}",
+            f"- confirmed_revenge_trade_count: {summary.get('confirmed_revenge_trade_count', 0)}",
+            f"- heuristic_revenge_trade_count: {summary.get('heuristic_revenge_trade_count', 0)}",
             f"- reactive_trade_count: {summary.get('reactive_trade_count', 0)}",
             f"- corrective_trade_count: {summary.get('corrective_trade_count', 0)}",
             f"- revenge_trade_count: {summary.get('revenge_trade_count', 0)}",
@@ -1193,11 +1217,16 @@ def format_payload_for_prompt(payload):
                 f"   prev_trade_pnl: {_format_signed_currency(trade.get('prev_trade_pnl'))}",
                 f"   minutes_since_prev_close: {_format_number(trade.get('minutes_since_prev_close'))}",
                 f"   size_vs_prev_trade: {trade.get('size_vs_prev_trade') or '-'}",
+                f"   prev_symbol_trade_pnl: {_format_signed_currency(trade.get('prev_symbol_trade_pnl'))}",
+                f"   minutes_since_prev_symbol_close: {_format_number(trade.get('minutes_since_prev_symbol_close'))}",
+                f"   size_vs_prev_symbol_trade: {trade.get('size_vs_prev_symbol_trade') or '-'}",
                 f"   loss_streak_before_trade: {trade.get('loss_streak_before_trade') if trade.get('loss_streak_before_trade') is not None else '-'}",
                 f"   is_post_loss_trade: {_format_bool(trade.get('is_post_loss_trade'))}",
                 f"   same_symbol_reentry: {_format_bool(trade.get('same_symbol_reentry'))}",
+                f"   is_post_loss_same_symbol_trade: {_format_bool(trade.get('is_post_loss_same_symbol_trade'))}",
                 f"   same_trade_idea_reentry: {_format_bool(trade.get('same_trade_idea_reentry'))}",
                 f"   is_potential_revenge: {_format_bool(trade.get('is_potential_revenge'))}",
+                f"   is_revenge: {_format_bool(trade.get('is_revenge'))}",
                 f"   is_reactive: {_format_bool(trade.get('is_reactive'))}",
                 f"   is_corrective: {_format_bool(trade.get('is_corrective'))}",
                 f"   is_bundle: {_format_bool(trade.get('is_bundle'))}",

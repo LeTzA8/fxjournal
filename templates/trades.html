@@ -213,6 +213,9 @@
                                 <td>{{ trade.date_label }}</td>
                                 <td>
                                     {{ trade.symbol }}
+                                    {% if trade.is_revenge %}
+                                    <span class="flag-dot flag-revenge" title="Revenge Trade"></span>
+                                    {% endif %}
                                     {% if trade.is_reactive %}
                                     <span class="flag-dot flag-reactive" title="Reactive Trade"></span>
                                     {% endif %}
@@ -814,7 +817,8 @@
         margin-left: 4px;
         vertical-align: middle; }
 
-    .flag-reactive { background: var(--bad); }
+    .flag-revenge { background: #ef4444; }
+    .flag-reactive { background: #f59e0b; }
 
     .flag-corrective { background: color-mix(in srgb, var(--warning-border) 82%, var(--ink) 18%); }
 

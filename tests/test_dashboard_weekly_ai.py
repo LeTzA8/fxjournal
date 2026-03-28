@@ -237,6 +237,109 @@ def test_dashboard_home_shows_bundle_review_banner_only_when_pending(app_ctx, cl
     assert b"Review Bundles" not in completed_response.data
 
 
+def test_dashboard_home_prioritizes_bundle_review_over_weekly_checkin(app_ctx, client, monkeypatch):
+    fixed_now = datetime(2026, 3, 21, 12, 0, 0)
+    monkeypatch.setattr(dashboard_routes, "utcnow_naive", lambda: fixed_now)
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-bundle-priority-user",
+        email="dashboard-bundle-priority@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.085,
+            exit_price=1.091,
+            lot_size=0.01,
+            pnl=60.0,
+            opened_at=datetime(2026, 3, 17, 8, 0, 0),
+            closed_at=datetime(2026, 3, 17, 10, 0, 0),
+        )
+    )
+    trade_account.bundle_review_requested_at = datetime(2026, 3, 21, 12, 5, 0)
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b"Review Bundles" in response.data
+    assert b"Open Check-In" not in response.data
+    assert b"Review Behaviour" not in response.data
+
+
+def test_dashboard_home_shows_classification_banner_before_weekly_checkin(app_ctx, client, monkeypatch):
+    fixed_now = datetime(2026, 3, 21, 12, 0, 0)
+    monkeypatch.setattr(dashboard_routes, "utcnow_naive", lambda: fixed_now)
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-classification-user",
+        email="dashboard-classification@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.0990,
+            lot_size=1.0,
+            pnl=-45.0,
+            opened_at=datetime(2026, 3, 17, 9, 50, 0),
+            closed_at=datetime(2026, 3, 17, 10, 15, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0995,
+            exit_price=1.1002,
+            lot_size=0.5,
+            pnl=22.0,
+            opened_at=datetime(2026, 3, 17, 10, 20, 0),
+            closed_at=datetime(2026, 3, 17, 10, 40, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b"Review Behaviour" in response.data
+    assert b"Review possible revenge sequences next." in response.data
+    assert b"Open Check-In" not in response.data
+    assert b"Review Bundles" not in response.data
+
+
 def test_load_user_trades_preloads_trade_profile_relationships(app_ctx, client):
     user, trade_account = _create_logged_in_user(
         client,

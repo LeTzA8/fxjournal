@@ -114,6 +114,7 @@
                     <textarea id="trade_note" rows="5" readonly>{{ trade.trade_note if trade and trade.trade_note else 'No note added for this trade yet.' }}</textarea>
 
                     {% set flags = [] %}
+                    {% if trade and trade.is_revenge %}{% set _ = flags.append("Revenge") %}{% endif %}
                     {% if trade and trade.is_corrective %}{% set _ = flags.append("Corrective") %}{% endif %}
                     {% if trade and trade.is_reactive %}{% set _ = flags.append("Reactive") %}{% endif %}
                     {% if trade and trade.bundle_pubkey %}{% set _ = flags.append("Bundled Entry") %}{% endif %}

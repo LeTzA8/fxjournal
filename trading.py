@@ -1732,6 +1732,7 @@ def merge_bundled_trades(trades):
                     if not has_open_member
                     else None
                 ),
+                is_revenge=any(bool(getattr(trade, "is_revenge", False)) for trade in group),
                 is_corrective=any(bool(getattr(trade, "is_corrective", False)) for trade in group),
                 is_reactive=any(bool(getattr(trade, "is_reactive", False)) for trade in group),
                 bundle_pubkey=bundle_pubkey,

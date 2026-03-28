@@ -149,6 +149,7 @@ def build_trade_annotations(trades):
     previous_trade_pnl = None
     current_loss_streak = 0
     session_counts = {}
+    last_symbol_trade = {}
     last_same_idea_trade = {}
 
     for sequence_number, trade in enumerate(chronological_trades, start=1):
@@ -179,6 +180,32 @@ def build_trade_annotations(trades):
             )
             is_post_loss_trade = previous_trade_pnl is not None and previous_trade_pnl < 0
 
+        previous_symbol_trade_identity = None
+        previous_symbol_trade_pnl = None
+        minutes_since_prev_symbol_close = None
+        size_vs_prev_symbol_trade = None
+        is_post_loss_same_symbol_trade = False
+        previous_same_symbol_trade = last_symbol_trade.get(current_symbol)
+        if (
+            previous_same_symbol_trade is not None
+            and previous_same_symbol_trade["group_key"] != current_group["group_key"]
+        ):
+            previous_symbol_trade_identity = get_trade_identity(previous_same_symbol_trade["trade"])
+            previous_symbol_trade_pnl = previous_same_symbol_trade["pnl"]
+            minutes_since_prev_symbol_close = minutes_between(
+                getattr(previous_same_symbol_trade["trade"], "closed_at", None),
+                getattr(trade, "opened_at", None),
+            )
+            size_vs_prev_symbol_trade = _describe_size_change(
+                trade_lot_size,
+                previous_same_symbol_trade["lot_size"],
+            )
+            is_post_loss_same_symbol_trade = bool(
+                minutes_since_prev_symbol_close is not None
+                and previous_symbol_trade_pnl is not None
+                and previous_symbol_trade_pnl < 0
+            )
+
         same_trade_idea_reentry = False
         same_idea_key = (current_symbol, current_side)
         previous_same_idea = last_same_idea_trade.get(same_idea_key)
@@ -194,11 +221,9 @@ def build_trade_annotations(trades):
                 same_trade_idea_reentry = True
 
         is_potential_revenge = bool(
-            is_post_loss_trade
-            and same_trade_idea_reentry
-            and minutes_since_prev_close is not None
-            and minutes_since_prev_close <= REVENGE_REENTRY_WINDOW_MINUTES
-            and size_vs_prev_trade in {"same", "larger"}
+            is_post_loss_same_symbol_trade
+            and minutes_since_prev_symbol_close is not None
+            and minutes_since_prev_symbol_close <= REVENGE_REENTRY_WINDOW_MINUTES
             and not current_group["possible_split_order"]
         )
 
@@ -209,9 +234,14 @@ def build_trade_annotations(trades):
             "prev_trade_pnl": previous_trade_pnl,
             "minutes_since_prev_close": minutes_since_prev_close,
             "size_vs_prev_trade": size_vs_prev_trade,
+            "prev_symbol_trade_identity": previous_symbol_trade_identity,
+            "prev_symbol_trade_pnl": previous_symbol_trade_pnl,
+            "minutes_since_prev_symbol_close": minutes_since_prev_symbol_close,
+            "size_vs_prev_symbol_trade": size_vs_prev_symbol_trade,
             "loss_streak_before_trade": current_loss_streak,
             "is_post_loss_trade": is_post_loss_trade,
             "same_symbol_reentry": same_symbol_reentry,
+            "is_post_loss_same_symbol_trade": is_post_loss_same_symbol_trade,
             "same_trade_idea_reentry": same_trade_idea_reentry,
             "is_potential_revenge": is_potential_revenge,
             "split_group_size": current_group["split_group_size"],
@@ -228,6 +258,12 @@ def build_trade_annotations(trades):
 
         previous_trade = trade
         previous_trade_pnl = current_trade_pnl
+        last_symbol_trade[current_symbol] = {
+            "trade": trade,
+            "group_key": current_group["group_key"],
+            "pnl": current_trade_pnl,
+            "lot_size": trade_lot_size,
+        }
         last_same_idea_trade[same_idea_key] = {
             "trade": trade,
             "group_key": current_group["group_key"],
@@ -236,22 +272,9 @@ def build_trade_annotations(trades):
     return annotations
 
 
-def _classify_annotation(annotation):
-    minutes_since_prev_close = annotation.get("minutes_since_prev_close")
-    if (
-        annotation.get("is_post_loss_trade")
-        and annotation.get("same_symbol_reentry")
-        and minutes_since_prev_close is not None
-        and minutes_since_prev_close <= REVENGE_REENTRY_WINDOW_MINUTES
-    ):
-        return "reactive"
-    if (
-        annotation.get("is_post_loss_trade")
-        and annotation.get("same_symbol_reentry")
-        and minutes_since_prev_close is not None
-        and minutes_since_prev_close <= CORRECTIVE_REENTRY_WINDOW_MINUTES
-    ):
-        return "corrective"
+def _detect_behaviour_candidate(annotation):
+    if bool(annotation.get("is_potential_revenge")):
+        return "revenge"
     return "neutral"
 
 
@@ -270,6 +293,7 @@ def detect_outliers(trades):
         trade
         for trade in closed_trades
         if not getattr(trade, "bundle_pubkey", None)
+        and not bool(getattr(trade, "is_revenge", False))
         and not bool(getattr(trade, "is_reactive", False))
         and not bool(getattr(trade, "is_corrective", False))
     ]
@@ -290,6 +314,7 @@ def detect_outliers(trades):
         representative = identity_to_trade[member_ids[0]]
         representative_symbol, representative_side = _trade_symbol_side(representative)
         representative_opened_at = ensure_utc_aware(getattr(representative, "opened_at", None))
+        representative_closed_at = ensure_utc_aware(getattr(representative, "closed_at", None))
 
         if representative_opened_at is not None:
             for offset in range(index + 1, len(eligible_trades)):
@@ -301,6 +326,11 @@ def detect_outliers(trades):
                 candidate_opened_at = ensure_utc_aware(getattr(candidate, "opened_at", None))
                 if candidate_opened_at is None:
                     continue
+                if (
+                    representative_closed_at is not None
+                    and candidate_opened_at > representative_closed_at
+                ):
+                    break
                 gap_minutes = minutes_between(representative_opened_at, candidate_opened_at)
                 if gap_minutes is None or gap_minutes > CORRECTIVE_REENTRY_WINDOW_MINUTES:
                     break
@@ -338,8 +368,8 @@ def detect_outliers(trades):
         )
         representative = member_trades[0]
         representative_annotation = annotations.get(get_trade_identity(representative), {})
-        sub_type = _classify_annotation(representative_annotation)
-        trigger = identity_to_trade.get(representative_annotation.get("prev_trade_identity"))
+        sub_type = _detect_behaviour_candidate(representative_annotation)
+        trigger = identity_to_trade.get(representative_annotation.get("prev_symbol_trade_identity"))
         if "split_bucket" in reason_keys:
             match_reason = "split_bucket"
         elif {"same_tp", "same_sl"}.issubset(reason_keys):
@@ -366,14 +396,14 @@ def detect_outliers(trades):
         if identity in bundled_trade_ids:
             continue
         annotation = annotations.get(identity, {})
-        sub_type = _classify_annotation(annotation)
+        sub_type = _detect_behaviour_candidate(annotation)
         if sub_type == "neutral":
             continue
         standalone_candidates.append(
             {
                 "trade": trade,
                 "sub_type": sub_type,
-                "trigger": identity_to_trade.get(annotation.get("prev_trade_identity")),
+                "trigger": identity_to_trade.get(annotation.get("prev_symbol_trade_identity")),
             }
         )
 

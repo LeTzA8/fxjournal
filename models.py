@@ -347,6 +347,7 @@ class Trade(db.Model):
     contract_code = db.Column(db.String(24), nullable=True)
     trade_note = db.Column(db.Text, nullable=True)
     system_trade_note = db.Column(db.Text, nullable=True)
+    is_revenge = db.Column(db.Boolean, nullable=False, default=False)
     is_corrective = db.Column(db.Boolean, nullable=False, default=False)
     is_reactive = db.Column(db.Boolean, nullable=False, default=False)
     bundle_pubkey = db.Column(db.String(24), nullable=True)

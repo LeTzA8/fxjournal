@@ -136,14 +136,19 @@
                     <fieldset class="trade-flags-group">
                         <legend>Trade Flags <span class="muted">(optional)</span></legend>
                         <label class="trade-flag-option">
+                            <input type="checkbox" name="is_revenge" {% if trade and trade.is_revenge %}checked{% endif %}>
+                            <span>Revenge Trade</span>
+                            <small>Re-entered after a loss mainly to make the money back.</small>
+                        </label>
+                        <label class="trade-flag-option">
                             <input type="checkbox" name="is_corrective" {% if trade and trade.is_corrective %}checked{% endif %}>
                             <span>Corrective Trade</span>
-                            <small>Re-entry or recovery after a prior loss.</small>
+                            <small>Realised the trade was poor or emotional and closed it out.</small>
                         </label>
                         <label class="trade-flag-option">
                             <input type="checkbox" name="is_reactive" {% if trade and trade.is_reactive %}checked{% endif %}>
                             <span>Reactive Trade</span>
-                            <small>Impulsive entry, not part of a pre-planned setup.</small>
+                            <small>Closed or adjusted quickly after reacting to structure.</small>
                         </label>
                     </fieldset>
 

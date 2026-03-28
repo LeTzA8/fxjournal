@@ -54,10 +54,23 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
         "emotional_index": {
             "score": 3.15,
             "label": "moderate",
+            "self_report_mismatch": True,
+            "components": {
+                "subjective_points": 0.0,
+                "combined_revenge_points": 1.25,
+                "confirmed_reactive_points": 1.5,
+                "confirmed_corrective_points": 0.0,
+                "revenge_points": 1.25,
+            },
             "signals": {
+                "bundle_count": 0,
+                "confirmed_revenge_trade_count": 1,
+                "confirmed_behavior_trade_count": 1,
+                "heuristic_revenge_trade_count": 1,
                 "reactive_trade_count": 1,
                 "corrective_trade_count": 0,
                 "revenge_trade_count": 1,
+                "total_closed_trades": 1,
             },
         },
         "account_age_days": 45,
@@ -76,6 +89,8 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
             "largest_trade_symbol": "MES (MESM26)",
             "largest_trade_abs_pnl_share_pct": 100.0,
             "bundle_count": 0,
+            "confirmed_revenge_trade_count": 1,
+            "heuristic_revenge_trade_count": 1,
             "reactive_trade_count": 1,
             "corrective_trade_count": 0,
             "revenge_trade_count": 1,
@@ -121,11 +136,16 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
                 "prev_trade_pnl": -80.0,
                 "minutes_since_prev_close": 12.0,
                 "size_vs_prev_trade": "larger",
+                "prev_symbol_trade_pnl": -80.0,
+                "minutes_since_prev_symbol_close": 12.0,
+                "size_vs_prev_symbol_trade": "larger",
                 "loss_streak_before_trade": 1,
                 "is_post_loss_trade": True,
                 "same_symbol_reentry": True,
+                "is_post_loss_same_symbol_trade": True,
                 "same_trade_idea_reentry": True,
                 "is_potential_revenge": True,
+                "is_revenge": True,
                 "is_reactive": True,
                 "is_corrective": False,
                 "is_bundle": False,
@@ -155,8 +175,16 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- notes_basis: Per weekly trade idea after bundle merging; counts non-empty user-authored trade_note text only." in prompt_text
     assert "EMOTIONAL INDEX" in prompt_text
     assert "- label: moderate" in prompt_text
+    assert "- self_report_mismatch: true" in prompt_text
+    assert "- subjective_points: 0.00" in prompt_text
+    assert "- confirmed_reactive_points: 1.50" in prompt_text
+    assert "- revenge_points: 1.25" in prompt_text
+    assert "- confirmed_revenge_trade_count: 1" in prompt_text
+    assert "- heuristic_revenge_trade_count: 1" in prompt_text
     assert "- reactive_trade_count: 1" in prompt_text
     assert "- bundle_count: 0" in prompt_text
+    assert "- total_closed_trades: 1" in prompt_text
+    assert "- confirmed_behavior_trade_count: 1" in prompt_text
     assert "- comparison_scope: history_before_review_period_only" in prompt_text
     assert "- account_age_days: 45" in prompt_text
     assert "- top_symbol_trade_share_pct: 100.00%" in prompt_text
@@ -172,8 +200,13 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "prev_trade_pnl: -80.00" in prompt_text
     assert "minutes_since_prev_close: 12.00" in prompt_text
     assert "size_vs_prev_trade: larger" in prompt_text
+    assert "prev_symbol_trade_pnl: -80.00" in prompt_text
+    assert "minutes_since_prev_symbol_close: 12.00" in prompt_text
+    assert "size_vs_prev_symbol_trade: larger" in prompt_text
+    assert "is_post_loss_same_symbol_trade: true" in prompt_text
     assert "same_trade_idea_reentry: true" in prompt_text
     assert "is_potential_revenge: true" in prompt_text
+    assert "is_revenge: true" in prompt_text
     assert "is_reactive: true" in prompt_text
     assert "is_bundle: false" in prompt_text
     assert "planned_rr: 3.20" in prompt_text
@@ -333,11 +366,16 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
                     "prev_trade_pnl": None,
                     "minutes_since_prev_close": None,
                     "size_vs_prev_trade": None,
+                    "prev_symbol_trade_pnl": None,
+                    "minutes_since_prev_symbol_close": None,
+                    "size_vs_prev_symbol_trade": None,
                     "loss_streak_before_trade": 0,
                     "is_post_loss_trade": False,
                     "same_symbol_reentry": False,
+                    "is_post_loss_same_symbol_trade": False,
                     "same_trade_idea_reentry": False,
                     "is_potential_revenge": False,
+                    "is_revenge": False,
                     "planned_rr": None,
                     "realized_rr": None,
                     "tp_capture_pct": None,
@@ -360,6 +398,7 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
     assert "session: -" in prompt_text
     assert "outlier_size: true" in prompt_text
     assert "is_likely_corrective: true" in prompt_text
+    assert "is_revenge: false" in prompt_text
     assert "closed_before_tp: -" in prompt_text
     assert "closed_before_sl: -" in prompt_text
 
@@ -444,6 +483,22 @@ def test_build_profile_instructions_returns_expected_adjustments():
     assert "Find specific examples of poor execution in the trades." in instructions
 
 
+def test_build_profile_instructions_handles_calm_self_report_mismatch():
+    instructions = build_profile_instructions(
+        "intraday",
+        "experienced",
+        "forex",
+        "calm",
+        "consistent",
+        "sharp",
+        emotional_index_label="moderate",
+        emotional_index_mismatch=True,
+    )
+
+    assert "Self-report sounded calm or controlled, but observed behaviour signals were elevated" in instructions
+    assert "Mild behavioural signals detected - note briefly, don't over-weight." in instructions
+
+
 def test_build_trade_payload_serializes_user_profile_and_weekly_checkin(app_ctx):
     user, trade_account = _create_user_and_account(
         username="ai-context-user",
@@ -509,6 +564,8 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "trade_sequence_number" in prompt_text
     assert "same_trade_idea_reentry" in prompt_text
     assert "is_potential_revenge" in prompt_text
+    assert "prev_symbol_trade_pnl" in prompt_text
+    assert "is_revenge" in prompt_text
     assert "planned_rr, realized_rr, tp_capture_pct" in prompt_text
     assert "closed_before_tp" in prompt_text
     assert "split_group_size" in prompt_text
@@ -543,9 +600,13 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "top_symbol_by_trade_count / top_symbol_trade_share_pct" in prompt_text
     assert "top_symbol_abs_pnl_share_pct" in prompt_text
     assert "largest_trade_abs_pnl_share_pct" in prompt_text
-    assert "bundle_count / reactive_trade_count / corrective_trade_count /" in prompt_text
+    assert "bundle_count: Structural context only." in prompt_text
+    assert "confirmed_revenge_trade_count: User-confirmed revenge labels." in prompt_text
+    assert "revenge_trade_count: Combined revenge count" in prompt_text
     assert "possible_split_order" in prompt_text
+    assert "is_revenge: User-confirmed revenge flag." in prompt_text
     assert "is_reactive / is_corrective: User-confirmed behaviour flags." in prompt_text
+    assert "self_report_mismatch: If true, the user reported calm/controlled" in prompt_text
     assert "same_trade_idea_reentry alone does not mean revenge or impulsiveness." in prompt_text
     assert "If notes_confidence is low and the relevant trade has no note" in prompt_text
     assert "Use only these optional plain-text section labels in the response:" not in prompt_text
@@ -741,7 +802,10 @@ def test_build_trade_payload_uses_bundled_view_for_summary_and_emotional_index(a
     assert bundled_trade["trade_note"] == "Planned scale entry. | Added on confirmation."
 
     emotional_index = payload["emotional_index"]
+    assert emotional_index["signals"]["bundle_count"] == 1
+    assert emotional_index["signals"]["confirmed_revenge_trade_count"] == 0
     assert emotional_index["signals"]["reactive_trade_count"] == 1
+    assert emotional_index["components"]["confirmed_reactive_points"] == 1.25
     assert emotional_index["signals"]["total_closed_trades"] == 2
 
 
@@ -817,11 +881,80 @@ def test_build_trade_payload_adds_sequence_and_revenge_context(app_ctx):
     assert second_trade["prev_trade_pnl"] == -100.0
     assert second_trade["minutes_since_prev_close"] == 5.0
     assert second_trade["size_vs_prev_trade"] == "larger"
+    assert second_trade["prev_symbol_trade_pnl"] == -100.0
+    assert second_trade["minutes_since_prev_symbol_close"] == 5.0
+    assert second_trade["size_vs_prev_symbol_trade"] == "larger"
     assert second_trade["loss_streak_before_trade"] == 1
     assert second_trade["is_post_loss_trade"] is True
     assert second_trade["same_symbol_reentry"] is True
+    assert second_trade["is_post_loss_same_symbol_trade"] is True
     assert second_trade["same_trade_idea_reentry"] is True
     assert second_trade["is_potential_revenge"] is True
+
+
+def test_build_trade_payload_flags_calm_self_report_mismatch_when_behaviour_is_elevated(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-mismatch-user",
+        email="ai-mismatch@example.com",
+    )
+
+    db.session.add_all(
+        [
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="EURUSD",
+                side="BUY",
+                entry_price=1.1000,
+                exit_price=1.0990,
+                stop_loss=1.0980,
+                take_profit=1.1040,
+                lot_size=1.0,
+                pnl=-100.0,
+                opened_at=datetime(2026, 3, 10, 10, 0, 0),
+                closed_at=datetime(2026, 3, 10, 10, 15, 0),
+            ),
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="EURUSD",
+                side="BUY",
+                entry_price=1.0995,
+                exit_price=1.1010,
+                stop_loss=1.0975,
+                take_profit=1.1035,
+                lot_size=1.5,
+                pnl=150.0,
+                is_reactive=True,
+                opened_at=datetime(2026, 3, 10, 10, 20, 0),
+                closed_at=datetime(2026, 3, 10, 10, 40, 0),
+            ),
+        ]
+    )
+    db.session.commit()
+
+    payload = build_trade_payload(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        period_start_utc=datetime(2026, 3, 10, 0, 0, 0),
+        period_end_utc=datetime(2026, 3, 11, 0, 0, 0),
+        closed_trades_only=True,
+        weekly_checkin={
+            "emotional_state": "calm",
+            "plan_adherence": "consistent",
+            "execution_quality": "sharp",
+        },
+    )
+
+    emotional_index = payload["emotional_index"]
+    assert emotional_index["score"] == 2.5
+    assert emotional_index["label"] == "moderate"
+    assert emotional_index["self_report_mismatch"] is True
+    assert emotional_index["signals"]["confirmed_revenge_trade_count"] == 0
+    assert emotional_index["signals"]["heuristic_revenge_trade_count"] == 1
+    assert emotional_index["signals"]["revenge_trade_count"] == 1
+    assert emotional_index["components"]["confirmed_reactive_points"] == 1.25
+    assert emotional_index["components"]["revenge_points"] == 1.25
 
 
 def test_build_trade_payload_assigns_cross_week_trade_to_close_week(app_ctx):

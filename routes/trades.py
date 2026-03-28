@@ -311,6 +311,7 @@ def render_trades_page(*, manage_mode=False):
                 else "-",
                 "duration_label": format_duration_minutes(duration_minutes),
                 "is_running": trade_is_running,
+                "is_revenge": bool(getattr(trade, "is_revenge", False)),
                 "is_reactive": bool(getattr(trade, "is_reactive", False)),
                 "is_corrective": bool(getattr(trade, "is_corrective", False)),
                 "bundle_pubkey": getattr(trade, "bundle_pubkey", None),
@@ -501,6 +502,7 @@ def new_trade():
         exit_price = float(exit_price) if exit_price else None
         lot_size = float(request.form.get("lot_size", 0.01))
         trade_note = request.form.get("trade_note", "").strip()
+        is_revenge = request.form.get("is_revenge") == "on"
         is_corrective = request.form.get("is_corrective") == "on"
         is_reactive = request.form.get("is_reactive") == "on"
         pnl = request.form.get("pnl", "").strip()
@@ -590,6 +592,7 @@ def new_trade():
             entry_price=entry_price,
             lot_size=lot_size,
             trade_note=trade_note,
+            is_revenge=is_revenge,
             is_corrective=is_corrective,
             is_reactive=is_reactive,
             pnl=pnl,
@@ -1002,6 +1005,7 @@ def edit_trade(trade_pubkey):
         exit_price = float(exit_price) if exit_price else None
         lot_size = float(request.form.get("lot_size", 0.01))
         trade_note = request.form.get("trade_note", "").strip()
+        is_revenge = request.form.get("is_revenge") == "on"
         is_corrective = request.form.get("is_corrective") == "on"
         is_reactive = request.form.get("is_reactive") == "on"
         pnl = request.form.get("pnl", "").strip()
@@ -1091,6 +1095,7 @@ def edit_trade(trade_pubkey):
         trade.exit_price = exit_price
         trade.lot_size = lot_size
         trade.trade_note = trade_note
+        trade.is_revenge = is_revenge
         trade.is_corrective = is_corrective
         trade.is_reactive = is_reactive
         trade.pnl = pnl

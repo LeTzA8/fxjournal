@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from flask import Blueprint, current_app, jsonify, render_template, session
+from flask import Blueprint, current_app, jsonify, render_template, session, url_for
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import selectinload
 
@@ -31,6 +31,7 @@ from helpers.core import (
     is_weekly_checkin_complete,
     is_trade_running,
 )
+from helpers.trade_analysis import detect_outliers
 from helpers.utils import login_required, utcnow_naive
 from models import Trade, UserProfile, WeeklyCheckin, db
 from trading import (
@@ -155,6 +156,124 @@ def _get_weekly_checkin_banner_state(user_id, active_trade_account):
         "show_weekly_checkin_banner": not checkin_is_complete and closed_trade_count > 0,
         "weekly_checkin_was_skipped": existing_checkin is not None and not checkin_is_complete,
         "weekly_checkin_closed_trade_count": closed_trade_count,
+    }
+
+
+def _get_review_workflow_banner_state(user_id, active_trade_account, user_trades):
+    account_id = getattr(active_trade_account, "id", None)
+    if account_id is None:
+        return {
+            "show_workflow_banner": False,
+            "workflow_stage": None,
+            "title": "",
+            "note": "",
+            "button_label": "",
+            "button_href": None,
+            "show_skip": False,
+            "closed_trade_count": 0,
+        }
+
+    if _has_bundle_candidates(user_id, active_trade_account):
+        return {
+            "show_workflow_banner": True,
+            "workflow_stage": "bundle_review",
+            "title": "Review bundle candidates before anything else.",
+            "note": "A bundle review is waiting on your active account. Confirm the older split entries first so the rest of the review flow builds on the correct trade structure.",
+            "button_label": "Review Bundles",
+            "button_href": url_for("trades.bundle_review"),
+            "show_skip": False,
+            "closed_trade_count": 0,
+        }
+
+    period = get_weekly_dashboard_period(now_utc=utcnow_naive())
+    closed_trades = [
+        trade
+        for trade in user_trades
+        if getattr(trade, "closed_at", None) is not None
+        and getattr(trade, "trade_account_id", None) == account_id
+        and getattr(trade, "closed_at", None) >= period["period_start_utc"]
+        and getattr(trade, "closed_at", None) < period["period_end_utc"]
+    ]
+    closed_trade_count = len(closed_trades)
+    if closed_trade_count <= 0:
+        return {
+            "show_workflow_banner": False,
+            "workflow_stage": None,
+            "title": "",
+            "note": "",
+            "button_label": "",
+            "button_href": None,
+            "show_skip": False,
+            "closed_trade_count": 0,
+        }
+
+    try:
+        existing_checkin = WeeklyCheckin.query.filter_by(
+            user_id=user_id,
+            trade_account_id=account_id,
+            week_start_utc=period["period_start_utc"],
+        ).first()
+    except OperationalError:
+        db.session.rollback()
+        existing_checkin = None
+
+    if is_weekly_checkin_complete(existing_checkin):
+        return {
+            "show_workflow_banner": False,
+            "workflow_stage": None,
+            "title": "",
+            "note": "",
+            "button_label": "",
+            "button_href": None,
+            "show_skip": False,
+            "closed_trade_count": closed_trade_count,
+        }
+
+    outliers = detect_outliers(closed_trades)
+    if outliers["bundle_candidates"]:
+        return {
+            "show_workflow_banner": True,
+            "workflow_stage": "bundle_review",
+            "title": "Start with the bundle review for this trade week.",
+            "note": f"{closed_trade_count} closed trade{'s' if closed_trade_count != 1 else ''} landed in the latest completed trade week. Confirm any split entries first, then the flow will move into behaviour classification and the weekly check-in.",
+            "button_label": "Review Bundles",
+            "button_href": url_for("checkin.checkin"),
+            "show_skip": False,
+            "closed_trade_count": closed_trade_count,
+        }
+
+    if outliers["standalone_candidates"]:
+        return {
+            "show_workflow_banner": True,
+            "workflow_stage": "classification",
+            "title": "Review possible revenge sequences next.",
+            "note": "The detector found post-loss sequences that may have been revenge-driven. Label them as Revenge, Reactive, Corrective, Clean, or Not sure before the weekly check-in.",
+            "button_label": "Review Behaviour",
+            "button_href": url_for("checkin.checkin"),
+            "show_skip": False,
+            "closed_trade_count": closed_trade_count,
+        }
+
+    weekly_checkin_was_skipped = existing_checkin is not None and not is_weekly_checkin_complete(existing_checkin)
+    return {
+        "show_workflow_banner": True,
+        "workflow_stage": "weekly_checkin",
+        "title": (
+            "You can still add trader context for the latest completed trade week."
+            if weekly_checkin_was_skipped
+            else "Add a quick trader context check for the latest completed trade week."
+        ),
+        "note": (
+            "You skipped it earlier, but the door is still open. Adding a short check-in gives the AI better behavior and execution context than trade data alone."
+            if weekly_checkin_was_skipped
+            else (
+                f"{closed_trade_count} closed trade{'s' if closed_trade_count != 1 else ''} landed on your active account in the latest completed trade week. A short check-in helps the AI weight behaviour and execution more accurately."
+            )
+        ),
+        "button_label": "Finish Check-In" if weekly_checkin_was_skipped else "Open Check-In",
+        "button_href": url_for("checkin.checkin"),
+        "show_skip": not weekly_checkin_was_skipped,
+        "closed_trade_count": closed_trade_count,
     }
 
 
@@ -629,9 +748,12 @@ def home():
         weekly_ai_review_text = normalize_dashboard_advice_text(
             weekly_ai_state["weekly_ai_review"].response_text
         )
-    weekly_checkin_banner_state = _get_weekly_checkin_banner_state(user_id, active_trade_account)
+    review_workflow_banner_state = _get_review_workflow_banner_state(
+        user_id,
+        active_trade_account,
+        user_trades,
+    )
     onboarding_banner_state = _get_onboarding_banner_state(user_id)
-    has_bundle_candidates = _has_bundle_candidates(user_id, active_trade_account)
     has_any_trades = bool(user_trades)
     has_closed_trades = closed_trade_count > 0
     has_ai_review = weekly_ai_state["weekly_ai_review"] is not None
@@ -663,10 +785,13 @@ def home():
         weekly_ai_is_generating=weekly_ai_state["weekly_ai_is_generating"],
         show_onboarding_banner=onboarding_banner_state["show_onboarding_banner"],
         onboarding_was_skipped=onboarding_banner_state["onboarding_was_skipped"],
-        show_weekly_checkin_banner=weekly_checkin_banner_state["show_weekly_checkin_banner"],
-        weekly_checkin_was_skipped=weekly_checkin_banner_state["weekly_checkin_was_skipped"],
-        weekly_checkin_closed_trade_count=weekly_checkin_banner_state["weekly_checkin_closed_trade_count"],
-        has_bundle_candidates=has_bundle_candidates,
+        show_review_workflow_banner=review_workflow_banner_state["show_workflow_banner"],
+        review_workflow_stage=review_workflow_banner_state["workflow_stage"],
+        review_workflow_title=review_workflow_banner_state["title"],
+        review_workflow_note=review_workflow_banner_state["note"],
+        review_workflow_button_label=review_workflow_banner_state["button_label"],
+        review_workflow_button_href=review_workflow_banner_state["button_href"],
+        review_workflow_show_skip=review_workflow_banner_state["show_skip"],
         has_any_trades=has_any_trades,
         has_closed_trades=has_closed_trades,
         has_ai_review=has_ai_review,

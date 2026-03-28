@@ -3,8 +3,7 @@
 {% block head_extra %}
 <style>
     .onboarding-banner,
-    .checkin-banner,
-    .bundle-banner {
+    .workflow-banner {
         margin-bottom: 0.95rem;
         padding: 0.8rem 0.92rem;
         display: flex;
@@ -22,22 +21,26 @@
             linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--card)) 0%, color-mix(in srgb, var(--surface) 88%, var(--card)) 100%);
     }
 
-    .bundle-banner {
+    .workflow-banner.is-bundle {
         border-color: color-mix(in srgb, var(--warning-border) 48%, var(--border));
         background:
             linear-gradient(135deg, color-mix(in srgb, var(--warning-border) 12%, var(--card)) 0%, color-mix(in srgb, var(--surface) 88%, var(--card)) 100%);
     }
 
+    .workflow-banner.is-classification {
+        border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+        background:
+            linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, var(--card)) 0%, color-mix(in srgb, var(--surface) 88%, var(--card)) 100%);
+    }
+
     .onboarding-banner-copy,
-    .checkin-banner-copy,
-    .bundle-banner-copy {
+    .workflow-banner-copy {
         display: grid;
         gap: 0.14rem;
     }
 
     .onboarding-banner-kicker,
-    .checkin-banner-kicker,
-    .bundle-banner-kicker {
+    .workflow-banner-kicker {
         margin: 0;
         font-size: 0.66rem;
         font-weight: 800;
@@ -47,8 +50,7 @@
     }
 
     .onboarding-banner-title,
-    .checkin-banner-title,
-    .bundle-banner-title {
+    .workflow-banner-title {
         margin: 0;
         font-size: 0.94rem;
         font-weight: 700;
@@ -57,8 +59,7 @@
     }
 
     .onboarding-banner-note,
-    .checkin-banner-note,
-    .bundle-banner-note {
+    .workflow-banner-note {
         margin: 0;
         color: var(--muted);
         font-size: 0.84rem;
@@ -66,8 +67,7 @@
     }
 
     .onboarding-banner-actions,
-    .checkin-banner-actions,
-    .bundle-banner-actions {
+    .workflow-banner-actions {
         display: flex;
         align-items: center;
         gap: 0.5rem;
@@ -77,15 +77,13 @@
 
     .onboarding-banner .trades-btn,
     .onboarding-banner .ghost-btn,
-    .checkin-banner .trades-btn,
-    .checkin-banner .ghost-btn,
-    .bundle-banner .trades-btn,
-    .bundle-banner .ghost-btn {
+    .workflow-banner .trades-btn,
+    .workflow-banner .ghost-btn {
         padding: 0.28rem 0.54rem;
         font-size: 0.68rem;
     }
 
-    .checkin-banner-skip {
+    .workflow-banner-skip {
         border: none;
         background: transparent;
         color: var(--muted);
@@ -95,22 +93,20 @@
         cursor: pointer;
     }
 
-    .checkin-banner-skip:hover {
+    .workflow-banner-skip:hover {
         color: var(--ink);
         text-decoration: underline;
     }
 
     @media (max-width: 760px) {
         .onboarding-banner,
-        .checkin-banner,
-        .bundle-banner {
+        .workflow-banner {
             align-items: flex-start;
             flex-direction: column;
         }
 
         .onboarding-banner-actions,
-        .checkin-banner-actions,
-        .bundle-banner-actions {
+        .workflow-banner-actions {
             width: 100%;
             justify-content: flex-start;
         }
@@ -244,47 +240,34 @@
         </section>
         {% endif %}
 
-        {% if has_bundle_candidates %}
-        <section class="panel bundle-banner">
-            <div class="bundle-banner-copy">
-                <p class="bundle-banner-kicker">Bundle Review</p>
-                <p class="bundle-banner-title">Split entries detected on your active account.</p>
-                <p class="bundle-banner-note">Review and confirm older scale-ins so your stats and AI analysis treat them as one logical trade instead of several separate entries.</p>
+        {% if show_review_workflow_banner %}
+        <section class="panel workflow-banner{% if review_workflow_stage %} is-{{ review_workflow_stage|replace('_', '-') }}{% endif %}">
+            <div class="workflow-banner-copy">
+                <p class="workflow-banner-kicker">
+                    {% if review_workflow_stage == "bundle_review" %}
+                    Bundle Review
+                    {% elif review_workflow_stage == "classification" %}
+                    Trade Classification
+                    {% else %}
+                    Weekly Check-In
+                    {% endif %}
+                </p>
+                <p class="workflow-banner-title">{{ review_workflow_title }}</p>
+                <p class="workflow-banner-note">{{ review_workflow_note }}</p>
             </div>
-            <div class="bundle-banner-actions">
-                <a href="{{ url_for('trades.bundle_review') }}" class="trades-btn">Review Bundles</a>
+            <div class="workflow-banner-actions">
+                <a href="{{ review_workflow_button_href }}" class="trades-btn">{{ review_workflow_button_label }}</a>
+                {% if review_workflow_stage == "bundle_review" %}
                 <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Trades</a>
-            </div>
-        </section>
-        {% endif %}
-
-        {% if show_weekly_checkin_banner %}
-        <section class="panel checkin-banner">
-            <div class="checkin-banner-copy">
-                <p class="checkin-banner-kicker">Weekly Check-In</p>
-                <p class="checkin-banner-title">
-                    {% if weekly_checkin_was_skipped %}
-                    You can still add trader context for the latest completed trade week.
-                    {% else %}
-                    Add a quick trader context check for the latest completed trade week.
-                    {% endif %}
-                </p>
-                <p class="checkin-banner-note">
-                    {% if weekly_checkin_was_skipped %}
-                    You skipped it earlier, but the door is still open. Adding a short check-in gives the AI better behavior and execution context than trade data alone.
-                    {% else %}
-                    {{ weekly_checkin_closed_trade_count }} closed trade{% if weekly_checkin_closed_trade_count != 1 %}s{% endif %} landed on your active account in the latest completed trade week. A short check-in helps the AI weight behaviour and execution more accurately.
-                    {% endif %}
-                </p>
-            </div>
-            <div class="checkin-banner-actions">
-                <a href="{{ url_for('checkin.checkin') }}" class="trades-btn">
-                    {% if weekly_checkin_was_skipped %}Finish Check-In{% else %}Open Check-In{% endif %}
-                </a>
-                {% if not weekly_checkin_was_skipped %}
+                {% elif review_workflow_stage == "classification" %}
+                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
+                {% else %}
+                <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Stay on Dashboard</a>
+                {% endif %}
+                {% if review_workflow_show_skip %}
                 <form action="{{ url_for('checkin.skip_checkin') }}" method="post">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="checkin-banner-skip">Skip for now</button>
+                    <button type="submit" class="workflow-banner-skip">Skip for now</button>
                 </form>
                 {% endif %}
             </div>
