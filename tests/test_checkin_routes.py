@@ -347,7 +347,9 @@ def test_checkin_shows_outlier_review_and_saves_bundle_confirmations(app_ctx, cl
     ).first()
 
     assert get_response.status_code == 200
-    assert b"Outlier Review" in get_response.data
+    assert b"Bundle Review" in get_response.data
+    assert b"Classification" in get_response.data
+    assert b"Not sure" in get_response.data
     assert b"Confirm as bundle" in get_response.data
     assert post_response.status_code == 302
     assert trades[1].bundle_pubkey is not None
@@ -440,6 +442,69 @@ def test_checkin_invalid_submission_does_not_mutate_trade_flags_or_bundles(app_c
     assert trades[2].is_reactive is False
 
 
+def test_checkin_unsure_classification_keeps_standalone_trade_unflagged(app_ctx, client, monkeypatch):
+    fixed_now = datetime(2026, 3, 21, 12, 0, 0)
+    monkeypatch.setattr(checkin_routes, "utcnow_naive", lambda: fixed_now)
+
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="checkin-unsure-classification-user",
+        email="checkin-unsure-classification@example.com",
+    )
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.0990,
+            lot_size=1.0,
+            pnl=-45.0,
+            opened_at=datetime(2026, 3, 17, 9, 50, 0),
+            closed_at=datetime(2026, 3, 17, 10, 15, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0995,
+            exit_price=1.1002,
+            lot_size=0.5,
+            pnl=22.0,
+            opened_at=datetime(2026, 3, 17, 10, 20, 0),
+            closed_at=datetime(2026, 3, 17, 10, 40, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    reactive_trade_pubkey = trades[1].pubkey
+
+    response = client.post(
+        "/checkin",
+        data={
+            f"trade_type_{reactive_trade_pubkey}": "unsure",
+            "emotional_state": "slightly_off",
+            "plan_adherence": "some_deviations",
+            "execution_quality": "average",
+        },
+        follow_redirects=False,
+    )
+
+    db.session.refresh(trades[1])
+    record = WeeklyCheckin.query.filter_by(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+    ).first()
+
+    assert response.status_code == 302
+    assert trades[1].is_reactive is False
+    assert trades[1].is_corrective is False
+    assert record is not None
+
+
 def test_detect_outliers_does_not_chain_same_pair_bundle_candidates(app_ctx, client, monkeypatch):
     fixed_now = datetime(2026, 3, 21, 12, 0, 0)
     monkeypatch.setattr(checkin_routes, "utcnow_naive", lambda: fixed_now)
@@ -524,3 +589,78 @@ def test_detect_outliers_does_not_chain_same_pair_bundle_candidates(app_ctx, cli
         sorted([trades[0].pubkey, trades[1].pubkey]),
         sorted([trades[2].pubkey, trades[3].pubkey]),
     ]
+
+
+def test_detect_outliers_does_not_bundle_same_pair_across_multiple_days(app_ctx, client, monkeypatch):
+    fixed_now = datetime(2026, 3, 21, 12, 0, 0)
+    monkeypatch.setattr(checkin_routes, "utcnow_naive", lambda: fixed_now)
+
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="checkin-bundle-multiday-user",
+        email="checkin-bundle-multiday@example.com",
+    )
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="GBPUSD",
+            side="SELL",
+            entry_price=1.3400,
+            exit_price=1.3390,
+            take_profit=1.3360,
+            stop_loss=1.3420,
+            lot_size=0.2,
+            pnl=8.0,
+            opened_at=datetime(2026, 3, 2, 12, 55, 0),
+            closed_at=datetime(2026, 3, 2, 13, 15, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="GBPUSD",
+            side="SELL",
+            entry_price=1.3410,
+            exit_price=1.3398,
+            take_profit=1.3360,
+            stop_loss=1.3420,
+            lot_size=0.1,
+            pnl=-12.0,
+            opened_at=datetime(2026, 3, 3, 13, 38, 0),
+            closed_at=datetime(2026, 3, 3, 14, 5, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="GBPUSD",
+            side="SELL",
+            entry_price=1.3420,
+            exit_price=1.3405,
+            take_profit=1.3360,
+            stop_loss=1.3420,
+            lot_size=0.13,
+            pnl=-11.0,
+            opened_at=datetime(2026, 3, 4, 4, 9, 0),
+            closed_at=datetime(2026, 3, 4, 4, 30, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="GBPUSD",
+            side="SELL",
+            entry_price=1.3430,
+            exit_price=1.3415,
+            take_profit=1.3360,
+            stop_loss=1.3420,
+            lot_size=0.03,
+            pnl=6.0,
+            opened_at=datetime(2026, 3, 6, 10, 20, 0),
+            closed_at=datetime(2026, 3, 6, 10, 50, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    detected_outliers = checkin_routes.detect_outliers(trades)
+
+    assert detected_outliers["bundle_candidates"] == []

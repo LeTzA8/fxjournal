@@ -425,6 +425,42 @@
         return;
     }
 
+    const bundlePalette = [
+        "#5A8DEE",
+        "#2E9E6F",
+        "#D79A2B",
+        "#D46B6B",
+        "#7D7AE6",
+        "#3FA7B4",
+    ];
+    const bundleRowsByKey = new Map();
+    rows.forEach((row) => {
+        const bundleKey = (row.dataset.bundle || "").trim();
+        if (!bundleKey) {
+            return;
+        }
+        if (!bundleRowsByKey.has(bundleKey)) {
+            bundleRowsByKey.set(bundleKey, []);
+        }
+        bundleRowsByKey.get(bundleKey).push(row);
+    });
+
+    const toggleBundleHover = (bundleKey, isActive) => {
+        const bundleRows = bundleRowsByKey.get(bundleKey) || [];
+        bundleRows.forEach((bundleRow) => {
+            bundleRow.classList.toggle("bundle-hover", isActive);
+        });
+    };
+
+    Array.from(bundleRowsByKey.entries()).forEach(([bundleKey, bundleRows], index) => {
+        const accent = bundlePalette[index % bundlePalette.length];
+        bundleRows.forEach((row) => {
+            row.style.setProperty("--bundle-accent", accent);
+            row.addEventListener("mouseenter", () => toggleBundleHover(bundleKey, true));
+            row.addEventListener("mouseleave", () => toggleBundleHover(bundleKey, false));
+        });
+    });
+
     const filterField = document.getElementById("filterField");
     const symbolFilter = document.getElementById("symbolFilter");
     const strategyFilter = document.getElementById("strategyFilter");

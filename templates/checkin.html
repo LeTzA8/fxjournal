@@ -64,6 +64,13 @@
         letter-spacing: 0.02em;
     }
 
+    .outlier-section-note {
+        margin: 0.18rem 0 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+        line-height: 1.45;
+    }
+
     .outlier-card {
         display: grid;
         gap: 0.75rem;
@@ -335,15 +342,17 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             {% if outliers %}
+            {% if outliers.bundle_candidates %}
             <section class="outlier-review" aria-label="Trade outlier review">
                 <div>
-                    <h2 class="checkin-legend">Outlier Review</h2>
-                    <p class="outlier-review-intro">We spotted a few split entries or post-loss re-entries from the latest completed trade week. Confirm the ones that match what really happened, then finish the weekly questions below.</p>
+                    <h2 class="checkin-legend">Bundle Review</h2>
+                    <p class="outlier-review-intro">We spotted a few split entries from the latest completed trade week. Confirm the groups that were genuinely one trade idea, then classify the behaviour and finish the weekly questions below.</p>
                 </div>
 
                 {% if outliers.bundle_candidates %}
                 <section class="outlier-section">
                     <h3 class="outlier-section-title">Bundle Candidates</h3>
+                    <p class="outlier-section-note">Only confirm the groups that were one planned position with multiple entries. Leave anything ambiguous unchecked and it will stay as separate trades.</p>
                     {% for candidate in outliers.bundle_candidates %}
                     {% set lead_trade = candidate.trades[0] %}
                     {% set trade_count = candidate.trades|length %}
@@ -398,9 +407,38 @@
                             </li>
                             {% endfor %}
                         </ul>
+                    </article>
+                    {% endfor %}
+                </section>
+                {% endif %}
+
+                <hr class="outlier-divider">
+            </section>
+            {% endif %}
+
+            {% if outliers.bundle_candidates or outliers.standalone_candidates %}
+            <section class="outlier-review" aria-label="Trade classification">
+                <div>
+                    <h2 class="checkin-legend">Classification</h2>
+                    <p class="outlier-review-intro">This helps the AI separate clean scale-ins from emotional re-entries. If you are not sure, pick <strong>Not sure</strong> and the trade will stay unflagged.</p>
+                </div>
+
+                {% if outliers.bundle_candidates %}
+                <section class="outlier-section">
+                    <h3 class="outlier-section-title">Bundle Classification</h3>
+                    <p class="outlier-section-note">These choices only apply when you confirm the bundle above.</p>
+                    {% for candidate in outliers.bundle_candidates %}
+                    {% set lead_trade = candidate.trades[0] %}
+                    <article class="outlier-card">
+                        <div class="outlier-card-head">
+                            <div>
+                                <p class="outlier-card-title">{{ lead_trade.symbol }} {{ lead_trade.side }} - {{ candidate.trades|length }} entries</p>
+                                <p class="outlier-card-subtext">Classify the confirmed group as a clean scale-in, a reactive trade, a corrective trade, or leave it undecided.</p>
+                            </div>
+                        </div>
 
                         <div class="outlier-classification">
-                            <span class="outlier-classification-label">If bundling, classify as</span>
+                            <span class="outlier-classification-label">Bundle classification</span>
                             <div class="outlier-classification-options">
                                 <label class="outlier-radio">
                                     <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="neutral" {% if candidate.selected_type == "neutral" %}checked{% endif %}>
@@ -414,6 +452,10 @@
                                     <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="corrective" {% if candidate.selected_type == "corrective" %}checked{% endif %}>
                                     <span>Corrective</span>
                                 </label>
+                                <label class="outlier-radio">
+                                    <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="unsure" {% if candidate.selected_type == "unsure" %}checked{% endif %}>
+                                    <span>Not sure</span>
+                                </label>
                             </div>
                         </div>
                     </article>
@@ -424,6 +466,7 @@
                 {% if outliers.standalone_candidates %}
                 <section class="outlier-section">
                     <h3 class="outlier-section-title">Standalone Re-Entries</h3>
+                    <p class="outlier-section-note">Choose the best fit for each trade. If you are not sure, leave it undecided so it does not get behaviour-flagged.</p>
                     {% for candidate in outliers.standalone_candidates %}
                     {% set trade = candidate.trade %}
                     <article class="outlier-card">
@@ -441,15 +484,24 @@
                                     {% if trade.opened_at %} | Opened {{ trade.opened_at.strftime("%a %H:%M") }}{% endif %}
                                 </p>
                             </div>
-                            <label class="outlier-confirm">
-                                {% if candidate.sub_type == "reactive" %}
-                                <input type="checkbox" name="confirm_reactive" value="{{ candidate.trade_pubkey }}" {% if candidate.selected %}checked{% endif %}>
-                                <span>Mark as Reactive</span>
-                                {% else %}
-                                <input type="checkbox" name="confirm_corrective" value="{{ candidate.trade_pubkey }}" {% if candidate.selected %}checked{% endif %}>
-                                <span>Mark as Corrective</span>
-                                {% endif %}
-                            </label>
+                        </div>
+
+                        <div class="outlier-classification">
+                            <span class="outlier-classification-label">Trade classification</span>
+                            <div class="outlier-classification-options">
+                                <label class="outlier-radio">
+                                    <input type="radio" name="trade_type_{{ candidate.trade_pubkey }}" value="reactive" {% if candidate.selected_type == "reactive" %}checked{% endif %}>
+                                    <span>Reactive</span>
+                                </label>
+                                <label class="outlier-radio">
+                                    <input type="radio" name="trade_type_{{ candidate.trade_pubkey }}" value="corrective" {% if candidate.selected_type == "corrective" %}checked{% endif %}>
+                                    <span>Corrective</span>
+                                </label>
+                                <label class="outlier-radio">
+                                    <input type="radio" name="trade_type_{{ candidate.trade_pubkey }}" value="unsure" {% if candidate.selected_type == "unsure" %}checked{% endif %}>
+                                    <span>Not sure</span>
+                                </label>
+                            </div>
                         </div>
                     </article>
                     {% endfor %}
@@ -459,9 +511,11 @@
                 <hr class="outlier-divider">
             </section>
             {% endif %}
+            {% endif %}
 
             <fieldset class="checkin-fieldset">
-                <legend class="checkin-legend">Q1. How was your emotional state during that week?</legend>
+                <legend class="checkin-legend">Weekly Check-In</legend>
+                <div class="outlier-section-note">Q1. How was your emotional state during that week?</div>
                 <div class="checkin-options">
                     {% for option in emotional_state_options %}
                     <label class="checkin-option">

@@ -61,6 +61,7 @@ EXECUTION_QUALITY_OPTIONS = (
 VALID_EMOTIONAL_STATES = {option["value"] for option in EMOTIONAL_STATE_OPTIONS}
 VALID_PLAN_ADHERENCE = {option["value"] for option in PLAN_ADHERENCE_OPTIONS}
 VALID_EXECUTION_QUALITY = {option["value"] for option in EXECUTION_QUALITY_OPTIONS}
+VALID_OUTLIER_CLASSIFICATIONS = {"neutral", "reactive", "corrective", "unsure"}
 
 
 def _count_closed_trades_for_period(*, user_id, trade_account_id, period):
@@ -130,19 +131,14 @@ def _build_outlier_selection_state(outliers, form_data):
         if value
     }
     selected_bundle_types = {
-        key: value
+        key: value if value in VALID_OUTLIER_CLASSIFICATIONS else "neutral"
         for key, value in (form_data.get("bundle_types", {}) or {}).items()
         if key
     }
-    selected_reactive_pubkeys = {
-        value
-        for value in form_data.get("confirm_reactive", [])
-        if value
-    }
-    selected_corrective_pubkeys = {
-        value
-        for value in form_data.get("confirm_corrective", [])
-        if value
+    selected_trade_types = {
+        key: value if value in VALID_OUTLIER_CLASSIFICATIONS else "unsure"
+        for key, value in (form_data.get("trade_types", {}) or {}).items()
+        if key
     }
 
     bundle_rows = []
@@ -175,13 +171,7 @@ def _build_outlier_selection_state(outliers, form_data):
             {
                 **candidate,
                 "trade_pubkey": trade_pubkey,
-                "selected": (
-                    trade_pubkey in selected_reactive_pubkeys
-                    if sub_type == "reactive"
-                    else trade_pubkey in selected_corrective_pubkeys
-                )
-                if form_data
-                else sub_type in {"reactive", "corrective"},
+                "selected_type": selected_trade_types.get(trade_pubkey, sub_type or "unsure"),
             }
         )
 
@@ -282,16 +272,25 @@ def checkin():
                 .strip()
                 .lower()
             )
-        selected_reactive_pubkeys = [
-            value.strip()
-            for value in request.form.getlist("confirm_reactive")
-            if value and value.strip()
-        ]
-        selected_corrective_pubkeys = [
-            value.strip()
-            for value in request.form.getlist("confirm_corrective")
-            if value and value.strip()
-        ]
+        selected_trade_types = {}
+        for candidate in outliers["standalone_candidates"]:
+            trade = candidate.get("trade")
+            trade_pubkey = str(getattr(trade, "pubkey", "") or "").strip()
+            if not trade_pubkey:
+                continue
+            selected_trade_types[trade_pubkey] = (
+                request.form.get(f"trade_type_{trade_pubkey}", candidate.get("sub_type") or "unsure")
+                .strip()
+                .lower()
+            )
+        selected_bundle_types = {
+            key: value if value in VALID_OUTLIER_CLASSIFICATIONS else "neutral"
+            for key, value in selected_bundle_types.items()
+        }
+        selected_trade_types = {
+            key: value if value in VALID_OUTLIER_CLASSIFICATIONS else "unsure"
+            for key, value in selected_trade_types.items()
+        }
         form_data = {
             "emotional_state": emotional_state,
             "plan_adherence": plan_adherence,
@@ -299,8 +298,7 @@ def checkin():
             "additional_context": additional_context,
             "bundle_groups": selected_bundle_groups,
             "bundle_types": selected_bundle_types,
-            "confirm_reactive": selected_reactive_pubkeys,
-            "confirm_corrective": selected_corrective_pubkeys,
+            "trade_types": selected_trade_types,
         }
         if (
             emotional_state not in VALID_EMOTIONAL_STATES
@@ -348,7 +346,7 @@ def checkin():
                 elif bundle_type == "corrective" and not trade.is_corrective:
                     trade.is_corrective = True
 
-        for trade_pubkey in selected_reactive_pubkeys:
+        for trade_pubkey, selected_type in selected_trade_types.items():
             trade = (
                 Trade.query.filter(
                     Trade.user_id == user_id,
@@ -359,21 +357,11 @@ def checkin():
                 )
                 .first()
             )
-            if trade is not None and not trade.is_reactive:
+            if trade is None:
+                continue
+            if selected_type == "reactive" and not trade.is_reactive:
                 trade.is_reactive = True
-
-        for trade_pubkey in selected_corrective_pubkeys:
-            trade = (
-                Trade.query.filter(
-                    Trade.user_id == user_id,
-                    Trade.trade_account_id == active_trade_account.id,
-                    Trade.pubkey == trade_pubkey,
-                    Trade.closed_at >= period["period_start_utc"],
-                    Trade.closed_at < period["period_end_utc"],
-                )
-                .first()
-            )
-            if trade is not None and not trade.is_corrective:
+            elif selected_type == "corrective" and not trade.is_corrective:
                 trade.is_corrective = True
 
         weekly_checkin = existing_checkin or WeeklyCheckin(

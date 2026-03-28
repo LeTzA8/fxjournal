@@ -660,17 +660,26 @@
                             <tbody>
                                 {% if recent_trades %}
                                 {% for trade in recent_trades %}
+                                {% set row_classes = [] %}
+                                {% if trade.is_running %}{% set _ = row_classes.append("running-trade") %}{% endif %}
+                                {% if trade.bundle_pubkey %}{% set _ = row_classes.append("bundle-row") %}{% endif %}
                                 <tr
-                                    {% if trade.is_running %}class="running-trade"{% endif %}
+                                    {% if row_classes %}class="{{ row_classes|join(' ') }}"{% endif %}
                                     data-symbol="{{ trade.symbol }}"
                                     data-strategy="{{ trade.trade_profile_label }}"
                                     data-side="{{ trade.side }}"
                                     data-date="{{ trade.date_value }}"
                                     data-pnl="{{ trade.pnl if trade.pnl is not none else '' }}"
                                     data-session="{{ trade.session_label }}"
+                                    data-bundle="{{ trade.bundle_pubkey or '' }}"
                                 >
                                     <td>{{ trade.date }}</td>
-                                    <td>{{ trade.symbol }}</td>
+                                    <td>
+                                        {{ trade.symbol }}
+                                        {% if trade.bundle_pubkey %}
+                                        <span class="bundle-pill" title="Bundled Entry">Bundled</span>
+                                        {% endif %}
+                                    </td>
                                     <td>{{ trade.trade_profile_label }}</td>
                                     <td>
                                         {% if trade.side == "SELL" %}
@@ -1798,6 +1807,36 @@
         border-right: none;
     }
 
+    .trade-log tbody tr.bundle-row td {
+        background: color-mix(in srgb, var(--bundle-accent, var(--accent)) 8%, var(--surface));
+    }
+
+    .trade-log tbody tr.bundle-row td:first-child {
+        box-shadow: inset 3px 0 0 color-mix(in srgb, var(--bundle-accent, var(--accent)) 72%, transparent);
+    }
+
+    .trade-log tbody tr.bundle-row.bundle-hover td,
+    .trade-log tbody tr.bundle-row:hover td {
+        background: color-mix(in srgb, var(--bundle-accent, var(--accent)) 14%, var(--surface));
+    }
+
+    .trade-log tbody tr.running-trade.bundle-row td {
+        background: color-mix(
+            in srgb,
+            var(--bundle-accent, var(--accent)) 8%,
+            color-mix(in srgb, var(--good) 10%, var(--surface))
+        );
+    }
+
+    .trade-log tbody tr.running-trade.bundle-row.bundle-hover td,
+    .trade-log tbody tr.running-trade.bundle-row:hover td {
+        background: color-mix(
+            in srgb,
+            var(--bundle-accent, var(--accent)) 14%,
+            color-mix(in srgb, var(--good) 10%, var(--surface))
+        );
+    }
+
     th { font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.04em;
@@ -1848,6 +1887,23 @@
         animation: running-pill-sheen 3.2s ease-in-out infinite;
         pointer-events: none;
         z-index: -1;
+    }
+
+    .bundle-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-left: 0.42rem;
+        padding: 0.12rem 0.46rem;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--bundle-accent, var(--muted)) 46%, var(--border));
+        background: color-mix(in srgb, var(--bundle-accent, var(--muted)) 12%, var(--card));
+        color: color-mix(in srgb, var(--bundle-accent, var(--ink)) 72%, var(--ink));
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+        vertical-align: middle;
     }
 
     @keyframes running-pill-sheen {

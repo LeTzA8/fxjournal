@@ -92,6 +92,27 @@ def _prices_match(first_price, second_price):
     return abs(first_value - second_value) <= baseline * BUNDLE_TP_SL_TOLERANCE_PCT
 
 
+def _trade_symbol_side(trade):
+    return (
+        (format_trade_symbol(trade) or "").strip().upper(),
+        (getattr(trade, "side", "") or "").strip().upper(),
+    )
+
+
+def _shares_split_bucket(anchor_trade, candidate_trade):
+    anchor_group_key = get_split_group_key(anchor_trade)
+    candidate_group_key = get_split_group_key(candidate_trade)
+    if anchor_group_key is None or candidate_group_key is None:
+        return False
+    if anchor_group_key != candidate_group_key:
+        return False
+    gap_minutes = minutes_between(
+        getattr(anchor_trade, "opened_at", None),
+        getattr(candidate_trade, "opened_at", None),
+    )
+    return gap_minutes is not None and gap_minutes <= SPLIT_BUCKET_MINUTES
+
+
 def build_trade_annotations(trades):
     chronological_trades = sorted(trades, key=get_trade_sort_key)
     split_group_members = {}
@@ -257,13 +278,6 @@ def detect_outliers(trades):
 
     eligible_trades = sorted(eligible_trades, key=get_trade_sort_key)
     eligible_ids = [get_trade_identity(trade) for trade in eligible_trades]
-    split_groups = {}
-    for trade in eligible_trades:
-        identity = get_trade_identity(trade)
-        group_key = annotations.get(identity, {}).get("possible_split_order") and get_split_group_key(trade)
-        if group_key is None:
-            continue
-        split_groups.setdefault(group_key, []).append(identity)
 
     bundle_candidates = []
     bundled_trade_ids = set()
@@ -273,17 +287,8 @@ def detect_outliers(trades):
             continue
         member_ids = [identity]
         reason_keys = set()
-        group_key = annotations.get(identity, {}).get("possible_split_order") and get_split_group_key(trade)
-        if group_key is not None:
-            split_member_ids = split_groups.get(group_key, [])
-            if len(split_member_ids) >= 2:
-                member_ids = [member_id for member_id in split_member_ids if member_id not in bundled_trade_ids]
-                if len(member_ids) >= 2:
-                    reason_keys.add("split_bucket")
-
         representative = identity_to_trade[member_ids[0]]
-        representative_symbol = (format_trade_symbol(representative) or "").strip().upper()
-        representative_side = (getattr(representative, "side", "") or "").strip().upper()
+        representative_symbol, representative_side = _trade_symbol_side(representative)
         representative_opened_at = ensure_utc_aware(getattr(representative, "opened_at", None))
 
         if representative_opened_at is not None:
@@ -300,11 +305,11 @@ def detect_outliers(trades):
                 if gap_minutes is None or gap_minutes > CORRECTIVE_REENTRY_WINDOW_MINUTES:
                     break
 
-                if (format_trade_symbol(candidate) or "").strip().upper() != representative_symbol:
-                    continue
-                if (getattr(candidate, "side", "") or "").strip().upper() != representative_side:
+                candidate_symbol, candidate_side = _trade_symbol_side(candidate)
+                if candidate_symbol != representative_symbol or candidate_side != representative_side:
                     continue
 
+                same_split_bucket = _shares_split_bucket(representative, candidate)
                 same_tp = _prices_match(
                     getattr(representative, "take_profit", None),
                     getattr(candidate, "take_profit", None),
@@ -313,10 +318,12 @@ def detect_outliers(trades):
                     getattr(representative, "stop_loss", None),
                     getattr(candidate, "stop_loss", None),
                 )
-                if not same_tp and not same_sl:
+                if not same_split_bucket and not same_tp and not same_sl:
                     continue
 
                 member_ids.append(candidate_identity)
+                if same_split_bucket:
+                    reason_keys.add("split_bucket")
                 if same_tp:
                     reason_keys.add("same_tp")
                 if same_sl:

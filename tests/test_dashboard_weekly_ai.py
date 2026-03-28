@@ -122,6 +122,47 @@ def test_dashboard_home_marks_running_trade_rows(app_ctx, client, monkeypatch):
     assert b"Running" in response.data
 
 
+def test_dashboard_home_marks_bundled_recent_trade_rows(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-bundled-trade-user",
+        email="dashboard-bundled-trade@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    bundled_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.085,
+        exit_price=1.091,
+        lot_size=0.01,
+        pnl=60.0,
+        opened_at=datetime(2026, 3, 22, 8, 0, 0),
+        closed_at=datetime(2026, 3, 22, 10, 0, 0),
+        bundle_pubkey="bundle-dashboard-test",
+    )
+    db.session.add(bundled_trade)
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b'data-bundle="bundle-dashboard-test"' in response.data
+    assert b">Bundled</span>" in response.data
+
+
 def test_dashboard_home_does_not_mark_closed_timestamp_trade_as_running(app_ctx, client, monkeypatch):
     user, trade_account = _create_logged_in_user(
         client,

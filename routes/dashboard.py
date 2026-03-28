@@ -600,6 +600,7 @@ def home():
                 "pnl": pnl_value,
                 "session_label": classify_trading_session(trade.opened_at) if trade.opened_at else "-",
                 "is_running": trade_is_running,
+                "bundle_pubkey": getattr(trade, "bundle_pubkey", None),
             }
         )
 
