@@ -88,22 +88,6 @@
         line-height: 1.45;
     }
 
-    .outlier-confirm {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.55rem;
-        padding: 0.55rem 0.75rem;
-        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--card) 92%, transparent);
-        color: var(--ink);
-        font-weight: 700;
-    }
-
-    .outlier-confirm input {
-        margin: 0;
-    }
-
     .outlier-trade-list {
         margin: 0;
         padding: 0;
@@ -137,31 +121,70 @@
         font-size: 0.88rem;
     }
 
-    .outlier-classification {
-        display: grid;
-        gap: 0.45rem;
+    .bundle-card-action {
+        margin-top: 0.25rem;
     }
 
-    .outlier-classification-label {
-        font-size: 0.84rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--muted);
+    .bundle-card-toggle {
+        display: block;
+        cursor: pointer;
     }
 
-    .outlier-classification-options {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.65rem;
+    .bundle-card-toggle input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
     }
 
-    .outlier-radio {
+    .bundle-card-toggle-text {
         display: inline-flex;
         align-items: center;
-        gap: 0.45rem;
+        justify-content: center;
+        gap: 0.6rem;
+        width: 100%;
+        min-height: 46px;
+        padding: 0.82rem 1rem;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
+        background: color-mix(in srgb, var(--surface) 86%, var(--card));
         color: var(--ink);
-        font-size: 0.92rem;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+    }
+
+    .bundle-card-toggle:hover .bundle-card-toggle-text {
+        transform: translateY(-1px);
+        border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+    }
+
+    .bundle-card-toggle input:checked + .bundle-card-toggle-text {
+        border-color: color-mix(in srgb, var(--good) 48%, var(--accent));
+        background: color-mix(in srgb, var(--good) 14%, var(--card));
+        color: color-mix(in srgb, var(--good) 72%, var(--ink));
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--good) 10%, transparent);
+    }
+
+    .bundle-card-toggle input:focus-visible + .bundle-card-toggle-text {
+        outline: 3px solid color-mix(in srgb, var(--accent) 34%, white 66%);
+        outline-offset: 2px;
+    }
+
+    .bundle-card-toggle-mark {
+        width: 1.1rem;
+        height: 1.1rem;
+        border-radius: 999px;
+        border: 1.5px solid currentColor;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.78rem;
+        line-height: 1;
+    }
+
+    .bundle-card-toggle input:checked + .bundle-card-toggle-text .bundle-card-toggle-mark::before {
+        content: "✓";
     }
 
     .bundle-review-actions {
@@ -270,9 +293,9 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             <section class="outlier-section" aria-label="Historical bundle review">
-                <div>
-                    <h2 class="outlier-section-title">Detected Bundle Candidates</h2>
-                    <p class="bundle-review-intro">Only confirm the groups that were genuinely one trade idea with scaled entries. Leave anything ambiguous unchecked and it will stay as separate trades.</p>
+                    <div>
+                        <h2 class="outlier-section-title">Detected Bundle Candidates</h2>
+                    <p class="bundle-review-intro">Only confirm the groups that were genuinely one trade idea with scaled entries. This page is just for bundling, so anything ambiguous can stay separate and be reviewed later in your weekly check-in.</p>
                 </div>
 
                 {% for candidate in bundle_candidates %}
@@ -297,16 +320,7 @@
                                 Similar scale-in pattern detected.
                                 {% endif %}
                             </p>
-                            {% if candidate.sub_type != "neutral" and candidate.trigger %}
-                            <p class="outlier-warning">
-                                Detected as {{ candidate.sub_type }} after a {{ "%.2f"|format(candidate.trigger.pnl or 0) }} {{ candidate.trigger.symbol }} loss.
-                            </p>
-                            {% endif %}
                         </div>
-                        <label class="outlier-confirm">
-                            <input type="checkbox" name="bundle_group" value="{{ candidate.group_value }}">
-                            <span>Confirm as bundle</span>
-                        </label>
                     </div>
 
                     <ul class="outlier-trade-list">
@@ -330,22 +344,14 @@
                         {% endfor %}
                     </ul>
 
-                    <div class="outlier-classification">
-                        <span class="outlier-classification-label">If bundling, classify as</span>
-                        <div class="outlier-classification-options">
-                            <label class="outlier-radio">
-                                <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="neutral" {% if candidate.sub_type == "neutral" %}checked{% endif %}>
-                                <span>Clean scale-in</span>
-                            </label>
-                            <label class="outlier-radio">
-                                <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="reactive" {% if candidate.sub_type == "reactive" %}checked{% endif %}>
-                                <span>Reactive</span>
-                            </label>
-                            <label class="outlier-radio">
-                                <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="corrective" {% if candidate.sub_type == "corrective" %}checked{% endif %}>
-                                <span>Corrective</span>
-                            </label>
-                        </div>
+                    <div class="bundle-card-action">
+                        <label class="bundle-card-toggle">
+                            <input type="checkbox" name="bundle_group" value="{{ candidate.group_value }}">
+                            <span class="bundle-card-toggle-text">
+                                <span class="bundle-card-toggle-mark" aria-hidden="true"></span>
+                                <span>Confirm This Bundle</span>
+                            </span>
+                        </label>
                     </div>
                 </article>
                 {% endfor %}

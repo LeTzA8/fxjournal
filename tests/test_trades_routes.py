@@ -284,7 +284,6 @@ def test_bundle_review_confirms_historical_bundle(app_ctx, client):
         "/dashboard/trades/bundle-confirm",
         data={
             "bundle_group": group_value,
-            f"bundle_type_{trades_routes._bundle_group_hash([trades[0].pubkey, trades[1].pubkey])}": "corrective",
         },
         follow_redirects=False,
     )
@@ -295,12 +294,13 @@ def test_bundle_review_confirms_historical_bundle(app_ctx, client):
 
     assert review_response.status_code == 200
     assert b"Historical Bundle Review" in review_response.data
-    assert b"Confirm as bundle" in review_response.data
+    assert b"Confirm This Bundle" in review_response.data
+    assert b"If bundling, classify as" not in review_response.data
     assert confirm_response.status_code == 302
     assert trades[0].bundle_pubkey is not None
     assert trades[0].bundle_pubkey == trades[1].bundle_pubkey
-    assert trades[0].is_corrective is True
-    assert trades[1].is_corrective is True
+    assert trades[0].is_corrective is False
+    assert trades[1].is_corrective is False
     assert trade_account.bundle_review_completed_at is not None
 
 

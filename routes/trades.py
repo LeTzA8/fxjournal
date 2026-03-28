@@ -1211,19 +1211,10 @@ def bundle_confirm():
         )
         if len(trades) < 2:
             continue
-        bundle_type = (
-            request.form.get(f"bundle_type_{_bundle_group_hash(trade_pubkeys)}", "neutral")
-            .strip()
-            .lower()
-        )
         bundle_pubkey = build_unique_trade_pubkey()
         for trade in trades:
             if not trade.bundle_pubkey:
                 trade.bundle_pubkey = bundle_pubkey
-            if bundle_type == "reactive" and not trade.is_reactive:
-                trade.is_reactive = True
-            elif bundle_type == "corrective" and not trade.is_corrective:
-                trade.is_corrective = True
         updated_group_count += 1
 
     active_trade_account.bundle_review_completed_at = utcnow_naive()
