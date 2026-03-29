@@ -188,7 +188,10 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- notes_coverage: 1.00 (1 of 1 weekly trade ticket has non-empty notes)" in prompt_text
     assert "- notes_confidence: high" in prompt_text
     assert "- notes_basis: Per weekly trade idea after bundle merging; counts non-empty user-authored trade_note text only." in prompt_text
+    assert "- payload_scope: one completed review period for one trade account" in prompt_text
+    assert "- historical_scope: historical sections are prior account context, not this week's pair/session/weekday breakdown" in prompt_text
     assert "EMOTIONAL INDEX" in prompt_text
+    assert "- score_range: 0.00 to 10.00 (higher = stronger objective behavioural pressure)" in prompt_text
     assert "- label: moderate" in prompt_text
     assert "- self_report_mismatch: true" in prompt_text
     assert "- subjective_points: 0.00" in prompt_text
@@ -201,6 +204,7 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- total_closed_trades: 1" in prompt_text
     assert "- confirmed_behavior_trade_count: 1" in prompt_text
     assert "- comparison_scope: history_before_review_period_only" in prompt_text
+    assert "- comparison_scope_note: history sections are comparison-only context and may exclude the current review period" in prompt_text
     assert "- account_age_days: 45" in prompt_text
     assert "- top_symbol_trade_share_pct: 100.00%" in prompt_text
     assert "- largest_trade_abs_pnl_share_pct: 100.00%" in prompt_text
@@ -640,6 +644,10 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Never reveal exact account metrics from the payload." in prompt_text
     assert "Keep the response between 100 and 150 words." not in prompt_text
     assert "notes_coverage" in prompt_text
+    assert "emotional_index.score is on a 0.0 to 10.0 scale." in prompt_text
+    assert "HISTORICAL_CONTEXT, HISTORICAL_TOP_PAIRS, HISTORICAL_TOP_SESSIONS," in prompt_text
+    assert 'Do not prescribe a fixed cooldown like "wait one full session before' in prompt_text
+    assert "One heuristic revenge or reactive clue does not justify a rigid" in prompt_text
     assert "notes_with_content / notes_missing / notes_confidence" in prompt_text
     assert "EMOTIONAL INDEX" in prompt_text
     assert "top_symbol_by_trade_count / top_symbol_trade_share_pct" in prompt_text

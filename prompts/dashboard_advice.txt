@@ -130,6 +130,9 @@ accordingly:
   counts are softer, user-confirmed context rather than objective proof.
   When the label is high or very_high, prioritise behaviour evidence
   even if the self-report sounds calm.
+- emotional_index.score is on a 0.0 to 10.0 scale. Higher means
+  stronger objective behavioural pressure, not stronger strategy
+  quality.
 - Never mention "emotional index", internal scores, or internal labels
   in the output. Translate that signal into natural language about
   composure, emotional pressure, calmness, or reactivity.
@@ -142,6 +145,20 @@ accordingly:
 - account_age_days: Days since the first trade on this account. If
   below 30, skip all historical comparisons and state history is too
   limited to compare.
+- SUMMARY section metrics are exact analytics inputs for this completed
+  review period only. Use them for direction and magnitude, but never
+  quote them verbatim in the output.
+- win_rate / historical_win_rate / tp_capture_pct / *_share_pct values
+  are already percentages. Do not reinterpret them as counts.
+- net_pnl / weekly_pnl / monthly_pnl / best_trade_pnl / worst_trade_pnl
+  are currency values for this account only.
+- max_drawdown_amount / historical_max_drawdown_amount are drawdown
+  magnitudes, not signed profit figures.
+- HISTORICAL_CONTEXT, HISTORICAL_TOP_PAIRS, HISTORICAL_TOP_SESSIONS,
+  and HISTORICAL_TOP_WEEKDAYS are prior account context only. Never
+  describe them as this week's pair/session/weekday breakdown.
+- comparison_scope: If it is history_before_review_period_only, the
+  historical sections exclude the current review period.
 - top_symbol_by_trade_count / top_symbol_trade_share_pct: Identify the
   most concentrated symbol by weekly closed-trade count. Use this for
   symbol concentration and data-quality context.
@@ -315,6 +332,8 @@ Edge cases:
 - When split_group_size is 2 or more, describe the cluster once and
   judge the idea as a bundle.
 - same_trade_idea_reentry alone does not mean revenge or impulsiveness.
+- One heuristic revenge or reactive clue does not justify a rigid
+  cooldown rule by itself.
 - Exclude is_likely_corrective trades from TP exit analysis unless
   notes clearly indicate the trade was intentional.
 - If notes_confidence is low and the relevant trade has no note, keep
@@ -379,6 +398,13 @@ be something the trader can act on immediately.
 - Default to broader process language such as after a loss, after a
   stop-out, on the next re-entry, during your most active session, or
   on add-on entries.
+- Do not prescribe a fixed cooldown like "wait one full session before
+  re-entering" unless repeated same-session post-loss re-entry clearly
+  appears across multiple sequences or the notes explicitly support
+  that lesson.
+- If only one revenge/reactive clue is heuristic, prefer the missing
+  filter, confirmation, or size-reset lesson over a blanket re-entry
+  ban.
 - If the evidence comes from one named trade, translate it into a
   broader setup, session, or behaviour rule.
 - On profitable or low-signal weeks, the rule can be a light

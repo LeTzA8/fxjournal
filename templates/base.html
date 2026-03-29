@@ -555,7 +555,7 @@
             min-height: 68px;
             padding: 0.48rem clamp(0.75rem, 1.4vw, 1.2rem);
             display: grid;
-            grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(200px, 240px);
+            grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) auto;
             align-items: center;
             gap: 0.9rem;
             flex-wrap: nowrap;
@@ -708,17 +708,23 @@
             flex-wrap: wrap;
             justify-self: end;
             justify-content: flex-end;
+            min-width: 0;
         }
 
         .site-account-bar {
-            grid-column: 1 / -1;
-            display: block;
-            padding: 0.72rem 0.82rem 0.3rem;
-            border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-            margin-top: -0.08rem;
+            display: none !important;
+        }
+
+        .site-header-account {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            min-width: 0;
+            max-width: min(360px, 100%);
         }
 
         .site-account-disclosure {
+            position: relative;
             width: 100%;
         }
 
@@ -727,13 +733,14 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 0.9rem;
+            gap: 0.65rem;
             width: 100%;
-            padding: 0.7rem 0.82rem;
-            border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-            border-radius: 16px;
-            background: color-mix(in srgb, var(--surface) 74%, var(--card));
-            box-shadow: 0 12px 28px rgba(2, 6, 23, 0.14);
+            min-height: 38px;
+            padding: 0.34rem 0.62rem;
+            border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--surface) 76%, var(--card));
+            box-shadow: 0 10px 22px rgba(2, 6, 23, 0.14);
             cursor: pointer;
             transition:
                 border-color 180ms ease,
@@ -747,8 +754,8 @@
         }
 
         .site-account-disclosure > summary:hover {
-            border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-            background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+            border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+            background: color-mix(in srgb, var(--accent) 11%, var(--surface));
             transform: translateY(-1px);
         }
 
@@ -758,18 +765,20 @@
         }
 
         .site-account-disclosure[open] > summary {
-            border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
-            background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-            box-shadow: 0 16px 30px rgba(2, 6, 23, 0.18);
+            border-color: color-mix(in srgb, var(--accent) 54%, var(--border));
+            background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+            box-shadow: 0 14px 28px rgba(2, 6, 23, 0.18);
         }
 
         .site-account-bar-copy {
-            display: grid;
-            gap: 0.26rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
             min-width: 0;
         }
 
         .site-account-bar-label {
+            display: none;
             font-size: 0.68rem;
             letter-spacing: 0.14em;
             text-transform: uppercase;
@@ -778,16 +787,17 @@
         }
 
         .site-account-bar-meta {
-            font-size: 0.82rem;
+            font-size: 0.72rem;
             color: var(--muted);
             overflow-wrap: anywhere;
+            white-space: nowrap;
         }
 
         .site-account-summary-row {
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            gap: 0.6rem;
-            flex-wrap: wrap;
+            gap: 0.5rem;
+            flex-wrap: nowrap;
             min-width: 0;
         }
 
@@ -795,13 +805,13 @@
             display: inline-flex;
             align-items: center;
             max-width: 100%;
-            min-height: 34px;
-            padding: 0.42rem 0.72rem;
+            min-height: 28px;
+            padding: 0.24rem 0.52rem;
             border-radius: 999px;
             border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
             background: color-mix(in srgb, var(--card) 88%, var(--surface));
             color: var(--ink);
-            font-size: 0.88rem;
+            font-size: 0.78rem;
             font-weight: 800;
             line-height: 1;
             white-space: nowrap;
@@ -813,9 +823,9 @@
             flex: 0 0 auto;
             display: inline-flex;
             align-items: center;
-            gap: 0.55rem;
+            gap: 0.42rem;
             color: var(--muted);
-            font-size: 0.74rem;
+            font-size: 0.68rem;
             font-weight: 800;
             letter-spacing: 0.05em;
             text-transform: uppercase;
@@ -838,27 +848,33 @@
         .site-account-disclosure-panel {
             display: grid;
             gap: 0.72rem;
-            padding: 0.78rem 0.24rem 0 0.24rem;
+            position: absolute;
+            top: calc(100% + 0.6rem);
+            right: 0;
+            width: min(360px, calc(100vw - 2rem));
+            padding: 0.78rem;
+            border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+            border-radius: 16px;
+            background: color-mix(in srgb, var(--card) 98%, transparent);
+            box-shadow: 0 20px 36px rgba(2, 6, 23, 0.22);
+            backdrop-filter: blur(10px) saturate(1.08);
+            -webkit-backdrop-filter: blur(10px) saturate(1.08);
+            z-index: 30;
         }
 
         .site-account-bar-controls {
-            display: flex;
-            align-items: center;
+            display: grid;
             gap: 0.55rem;
-            flex-wrap: wrap;
-            justify-content: flex-start;
         }
 
         .site-account-switcher-form {
             margin: 0;
-            flex: 1 1 280px;
-            min-width: min(100%, 280px);
+            width: 100%;
         }
 
         .site-account-switcher,
         .site-account-pill {
             width: 100%;
-            max-width: 320px;
             min-height: 42px;
             padding: 0.68rem 0.88rem;
             border-radius: 12px;
@@ -899,7 +915,7 @@
                 color 160ms ease,
                 background-color 160ms ease,
                 transform 160ms ease;
-            margin-left: auto;
+            width: 100%;
         }
 
         .site-account-manage-link:hover {
@@ -1173,11 +1189,11 @@
             .site-header-inner {
                 gap: 0.55rem;
                 min-height: 62px;
-                grid-template-columns: 1fr auto;
+                grid-template-columns: 1fr;
                 grid-template-areas:
-                    "brand actions"
-                    "nav nav"
-                    "accountbar accountbar";
+                    "brand"
+                    "nav"
+                    "actions";
             }
 
             .site-brand { grid-area: brand; }
@@ -1189,29 +1205,46 @@
 
             .site-header-actions {
                 grid-area: actions;
-                justify-self: end;
+                justify-self: stretch;
+                width: 100%;
+                justify-content: flex-start;
             }
 
-            .site-account-bar {
-                grid-area: accountbar;
-                padding-top: 0.68rem;
+            .site-header-account {
+                order: -1;
+                flex: 1 1 100%;
+                max-width: none;
+                width: 100%;
             }
 
             .site-account-disclosure > summary {
-                align-items: flex-start;
-                flex-direction: column;
-                gap: 0.7rem;
+                width: 100%;
+                border-radius: 16px;
+                min-height: 0;
+                padding: 0.68rem 0.78rem;
             }
 
             .site-account-disclosure-action {
-                width: 100%;
-                justify-content: space-between;
+                margin-left: auto;
+            }
+
+            .site-account-bar-copy,
+            .site-account-summary-row {
+                display: grid;
+                gap: 0.3rem;
+                min-width: 0;
+            }
+
+            .site-account-bar-label {
+                display: inline-flex;
+            }
+
+            .site-account-bar-meta {
+                white-space: normal;
             }
 
             .site-account-bar-controls {
                 width: 100%;
-                flex-direction: column;
-                align-items: stretch;
             }
 
             .site-account-switcher-form,
@@ -1222,8 +1255,10 @@
                 max-width: none;
             }
 
-            .site-account-manage-link {
-                margin-left: 0;
+            .site-account-disclosure-panel {
+                position: static;
+                width: 100%;
+                margin-top: 0.58rem;
             }
 
             .site-brand-logo {
@@ -2146,13 +2181,69 @@
                 >Contact</a>
             </nav>
             <div class="site-header-actions">
+                {% if active_trade_account and header_trade_accounts %}
+                <div class="site-header-account" aria-label="Trade account controls">
+                    <details class="site-account-disclosure">
+                        <summary>
+                            <div class="site-account-bar-copy">
+                                <span class="site-account-bar-label">Trade Account</span>
+                                <div class="site-account-summary-row">
+                                    <span class="site-account-summary-name">{{ active_trade_account.name }}</span>
+                                    <span class="site-account-bar-meta">
+                                        {{ "Default" if active_trade_account.is_default else "Secondary" }}
+                                        |
+                                        {{ "Futures" if active_trade_account.account_type == "FUTURES" else "CFD" }}
+                                        {% if header_trade_accounts|length > 1 %}
+                                        |
+                                        {{ header_trade_accounts|length }} accounts
+                                        {% endif %}
+                                    </span>
+                                </div>
+                            </div>
+                            <span class="site-account-disclosure-action">
+                                {{ "Switch" if header_trade_accounts|length > 1 else "Manage" }}
+                                <span class="site-account-disclosure-chevron" aria-hidden="true"></span>
+                            </span>
+                        </summary>
+                        <div class="site-account-disclosure-panel">
+                            <div class="site-account-bar-controls">
+                                {% if header_trade_accounts|length > 1 %}
+                                <form action="{{ url_for('trade_accounts.switch_trade_account') }}" method="post" class="site-account-switcher-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="next" value="{{ current_page_path }}">
+                                    <select
+                                        id="headerTradeAccountSwitcher"
+                                        name="trade_account_pubkey"
+                                        class="site-account-switcher"
+                                        aria-label="Select active trade account"
+                                        onchange="this.form.submit()"
+                                    >
+                                        {% for trade_account in header_trade_accounts %}
+                                        <option
+                                            value="{{ trade_account.pubkey }}"
+                                            {% if trade_account.id == active_trade_account.id %}selected{% endif %}
+                                        >
+                                            {{ trade_account.name }}{% if trade_account.is_default %} (Default){% endif %}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </form>
+                                {% else %}
+                                <div class="site-account-pill">{{ active_trade_account.name }}</div>
+                                {% endif %}
+                                <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="site-account-manage-link">Manage Accounts</a>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+                {% endif %}
                 <a href="{{ url_for('account.account') }}" class="header-account-link">Account</a>
                 <form action="{{ url_for('logout') }}" method="post">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="site-nav-link">Log Out</button>
                 </form>
             </div>
-            {% if active_trade_account and header_trade_accounts %}
+            {% if false and active_trade_account and header_trade_accounts %}
             <section class="site-account-bar" aria-label="Trade account controls">
                 <details class="site-account-disclosure">
                     <summary>
