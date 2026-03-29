@@ -606,6 +606,7 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Only use a symbol-only rule when the week's issue was truly isolated" in prompt_text
     assert "The rule should almost never mention two different symbols." in prompt_text
     assert "Default to broader process language such as after a loss, after a" in prompt_text
+    assert "Do not invent staged-entry lessons" in prompt_text
     assert "Overnight holding alone is not a mistake." in prompt_text
     assert 'Do not create a blanket "never hold overnight" rule from one winning' in prompt_text
     assert 'Never mention "emotional index", internal scores, or internal labels' in prompt_text
@@ -613,6 +614,8 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "emotions looked controlled this week." in prompt_text
     assert "Use the examples below for structure and tone only." in prompt_text
     assert "On profitable or low-signal weeks, the rule can be a light" in prompt_text
+    assert "If the week was profitable, the emotional signal was low, and there" in prompt_text
+    assert "Do not derive an add-on timing or sizing rule from one split-entry" in prompt_text
     assert 'Bad rule example: "Never hold XAUUSD overnight again."' in prompt_text
     assert 'Better rule example: "Use the condition behind your cleanest setup as' in prompt_text
     assert "This was a profitable week with one standout trade idea and otherwise" in prompt_text

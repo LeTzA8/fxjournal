@@ -1,6 +1,7 @@
 import os
+import json
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from flask import abort, current_app, flash, redirect, render_template, request, session, url_for
@@ -8,8 +9,9 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
-from ai_service import get_latest_trade_week_period
+from ai_service import WEEKLY_DASHBOARD_KIND, get_latest_trade_week_period
 from models import (
+    AIGeneratedResponse,
     AllowedSignupEmailDomain,
     MT5Account,
     MT5AccessRequest,
@@ -606,9 +608,7 @@ def register_public_auth_routes(
         def decorated(*args, **kwargs):
             admin_user = get_current_admin_user()
             if admin_user is None:
-                if session.get("user_id"):
-                    abort(404)
-                return redirect(url_for("login"))
+                abort(404)
             return f(*args, **kwargs)
 
         return decorated
@@ -618,9 +618,7 @@ def register_public_auth_routes(
         def decorated(*args, **kwargs):
             root_admin_user = get_current_root_admin_user()
             if root_admin_user is None:
-                if session.get("user_id"):
-                    abort(404)
-                return redirect(url_for("login"))
+                abort(404)
             return f(*args, **kwargs)
 
         return decorated
@@ -628,17 +626,13 @@ def register_public_auth_routes(
     def require_admin_user():
         admin_user = get_current_admin_user()
         if admin_user is None:
-            if session.get("user_id"):
-                abort(404)
-            return None
+            abort(404)
         return admin_user
 
     def require_root_admin_user():
         root_admin_user = get_current_root_admin_user()
         if root_admin_user is None:
-            if session.get("user_id"):
-                abort(404)
-            return None
+            abort(404)
         return root_admin_user
 
     def render_login_page(*, error=None, success=None, info=None, email=""):
@@ -791,6 +785,7 @@ def register_public_auth_routes(
         endpoint_map = {
             "codes": "admin_signup_codes",
             "mt5": "admin_mt5_accounts",
+            "weekly_report": "admin_weekly_report",
         }
         endpoint = endpoint_map.get(section, "admin_signup_users")
         if message:
@@ -809,22 +804,144 @@ def register_public_auth_routes(
             "mt5_accounts": MT5Account.query.count(),
         }
 
+    def build_admin_page_context(
+        *,
+        admin_user,
+        section,
+        title="Access Control | FX Journal",
+        page_heading="Access Control",
+        page_subtitle=(
+            "Review registrations, control admin access, and manage signup codes "
+            "without exposing these routes to normal users."
+        ),
+    ):
+        return {
+            "title": title,
+            "username": admin_user.username,
+            "section": section,
+            "page_heading": page_heading,
+            "page_subtitle": page_subtitle,
+            "page_kicker": "Restricted Internal Area",
+            "is_root_admin": user_has_root_admin_access(admin_user),
+            "root_admin_emails": get_admin_user_emails(),
+            "overview": build_admin_overview(),
+            "registration_paused": get_registration_paused(),
+            "auto_approve_new_users": get_auto_approve_new_users(),
+            "signup_code_mode": get_signup_code_mode(),
+            "signup_code_query_param": get_signup_code_query_param(),
+            "public_register_url": build_external_url(url_for("register")),
+        }
+
     def render_admin_page(*, admin_user, section, **extra_context):
         return render_template(
             "admin_signup_access.html",
-            title="Access Control | FX Journal",
-            username=admin_user.username,
-            section=section,
-            is_root_admin=user_has_root_admin_access(admin_user),
-            root_admin_emails=get_admin_user_emails(),
-            overview=build_admin_overview(),
-            registration_paused=get_registration_paused(),
-            auto_approve_new_users=get_auto_approve_new_users(),
-            signup_code_mode=get_signup_code_mode(),
-            signup_code_query_param=get_signup_code_query_param(),
-            public_register_url=build_external_url(url_for("register")),
+            **build_admin_page_context(
+                admin_user=admin_user,
+                section=section,
+            ),
             **extra_context,
         )
+
+    def render_admin_weekly_report_page(*, admin_user, **extra_context):
+        return render_template(
+            "admin_weekly_report.html",
+            **build_admin_page_context(
+                admin_user=admin_user,
+                section="weekly_report",
+                title="Weekly AI Audit | FX Journal",
+                page_heading="Weekly AI Audit",
+                page_subtitle=(
+                    "Inspect stored weekly AI payloads, compare trend shifts over time, "
+                    "and review the exact model output for each saved week."
+                ),
+            ),
+            **extra_context,
+        )
+
+    def _format_admin_timestamp(value):
+        if not isinstance(value, datetime):
+            return "-"
+        return value.strftime("%Y-%m-%d %H:%M UTC")
+
+    def _format_admin_week_label(period_start_utc, period_end_utc):
+        if isinstance(period_start_utc, datetime) and isinstance(period_end_utc, datetime):
+            display_end = period_end_utc - timedelta(seconds=1)
+            if display_end.date() <= period_start_utc.date():
+                return period_start_utc.strftime("%b %d, %Y")
+            if display_end.year == period_start_utc.year:
+                return (
+                    f"{period_start_utc.strftime('%b %d')} - "
+                    f"{display_end.strftime('%b %d, %Y')}"
+                )
+            return (
+                f"{period_start_utc.strftime('%b %d, %Y')} - "
+                f"{display_end.strftime('%b %d, %Y')}"
+            )
+        if isinstance(period_start_utc, datetime):
+            return f"Week of {period_start_utc.strftime('%b %d, %Y')}"
+        if isinstance(period_end_utc, datetime):
+            return f"Ending {period_end_utc.strftime('%b %d, %Y')}"
+        return "Unknown period"
+
+    def _parse_admin_ai_payload(payload_json):
+        if not payload_json:
+            return None, None
+        try:
+            parsed = json.loads(payload_json)
+        except (TypeError, ValueError):
+            return None, "Payload JSON could not be parsed."
+        if not isinstance(parsed, dict):
+            return None, "Payload JSON did not deserialize into an object."
+        return parsed, None
+
+    def _serialize_admin_weekly_record(record, *, generation_count=1, trade_account_label=""):
+        payload, payload_error = _parse_admin_ai_payload(record.payload_json)
+        payload = payload or {}
+        summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+        emotional_index = (
+            payload.get("emotional_index")
+            if isinstance(payload.get("emotional_index"), dict)
+            else {}
+        )
+        historical_context = (
+            payload.get("historical_context")
+            if isinstance(payload.get("historical_context"), dict)
+            else {}
+        )
+        prompt_history = getattr(record, "prompt_history", None)
+        prompt_created_at = getattr(prompt_history, "created_at", None)
+
+        return {
+            "id": record.id,
+            "period_start_utc": record.period_start_utc.isoformat() if record.period_start_utc else None,
+            "period_end_utc": record.period_end_utc.isoformat() if record.period_end_utc else None,
+            "period_label": _format_admin_week_label(record.period_start_utc, record.period_end_utc),
+            "generated_at": record.generated_at.isoformat() if record.generated_at else None,
+            "generated_at_label": _format_admin_timestamp(record.generated_at),
+            "generation_count": max(int(generation_count or 1), 1),
+            "trade_account_id": record.trade_account_id,
+            "trade_account_label": trade_account_label or "Unassigned account",
+            "trade_count_used": int(record.trade_count_used or 0),
+            "model": (record.model or "").strip() or "-",
+            "response_text": record.response_text or "",
+            "payload": payload or None,
+            "payload_raw": record.payload_json or "",
+            "payload_parse_error": payload_error,
+            "notes_coverage": payload.get("notes_coverage"),
+            "notes_confidence": payload.get("notes_confidence"),
+            "notes_with_content": payload.get("notes_with_content"),
+            "notes_missing": payload.get("notes_missing"),
+            "account_age_days": payload.get("account_age_days"),
+            "summary": summary,
+            "emotional_index": emotional_index,
+            "historical_context": historical_context,
+            "prompt": {
+                "id": getattr(prompt_history, "prompt_id", None),
+                "source_path": getattr(prompt_history, "source_path", None),
+                "created_at": prompt_created_at.isoformat() if prompt_created_at else None,
+                "created_at_label": _format_admin_timestamp(prompt_created_at),
+            },
+        }
 
     @app.route("/")
     def landing():
@@ -2048,6 +2165,196 @@ def register_public_auth_routes(
             mt5_form_users=mt5_form_users,
             mt5_trade_accounts_by_user=mt5_trade_accounts_by_user,
             orphaned_mt5_count=orphaned_mt5_count,
+        )
+
+    @app.route("/dashboard/admin/access/weekly-report")
+    @app.route("/dashboard/admin/access/weekly-report/<int:user_id>")
+    @root_admin_required
+    def admin_weekly_report(user_id=None):
+        admin_user = get_current_root_admin_user()
+        requested_user_id = user_id or request.args.get("user_id", type=int)
+        requested_trade_account_id = request.args.get("trade_account_id", type=int)
+
+        latest_record = (
+            AIGeneratedResponse.query.filter_by(kind=WEEKLY_DASHBOARD_KIND)
+            .order_by(AIGeneratedResponse.generated_at.desc(), AIGeneratedResponse.id.desc())
+            .first()
+        )
+
+        if requested_user_id is not None:
+            selected_user = User.query.filter_by(id=requested_user_id).first_or_404()
+        elif latest_record is not None and latest_record.user_id is not None:
+            selected_user = User.query.filter_by(id=latest_record.user_id).first() or admin_user
+        else:
+            selected_user = admin_user
+
+        audit_users = (
+            User.query.join(AIGeneratedResponse, AIGeneratedResponse.user_id == User.id)
+            .filter(AIGeneratedResponse.kind == WEEKLY_DASHBOARD_KIND)
+            .distinct()
+            .order_by(User.username.asc(), User.id.asc())
+            .all()
+        )
+        audit_user_ids = {row.id for row in audit_users}
+        if selected_user and selected_user.id not in audit_user_ids:
+            audit_users = [selected_user, *audit_users]
+
+        user_trade_accounts = (
+            TradeAccount.query.filter_by(user_id=selected_user.id)
+            .order_by(
+                TradeAccount.is_default.desc(),
+                TradeAccount.name.asc(),
+                TradeAccount.id.asc(),
+            )
+            .all()
+        )
+
+        ai_count_rows = (
+            db.session.query(
+                AIGeneratedResponse.trade_account_id,
+                func.count(AIGeneratedResponse.id),
+            )
+            .filter_by(user_id=selected_user.id, kind=WEEKLY_DASHBOARD_KIND)
+            .group_by(AIGeneratedResponse.trade_account_id)
+            .all()
+        )
+        ai_counts_by_account_id = {
+            trade_account_id: int(record_count or 0)
+            for trade_account_id, record_count in ai_count_rows
+            if trade_account_id is not None
+        }
+
+        account_options = []
+        known_account_ids = set()
+        for account in user_trade_accounts:
+            known_account_ids.add(account.id)
+            record_count = ai_counts_by_account_id.get(account.id, 0)
+            account_type_label = str(account.account_type or "Unknown").strip().title() or "Unknown"
+            account_label = f"{account.name} ({account_type_label})"
+            if record_count:
+                account_label = f"{account_label} - {record_count} stored week{'s' if record_count != 1 else ''}"
+            account_options.append(
+                {
+                    "id": account.id,
+                    "label": account_label,
+                    "record_count": record_count,
+                }
+            )
+
+        archived_account_ids = sorted(
+            account_id
+            for account_id in ai_counts_by_account_id
+            if account_id not in known_account_ids
+        )
+        for account_id in archived_account_ids:
+            record_count = ai_counts_by_account_id.get(account_id, 0)
+            account_options.append(
+                {
+                    "id": account_id,
+                    "label": (
+                        f"Archived account [ID: {account_id}] - "
+                        f"{record_count} stored week{'s' if record_count != 1 else ''}"
+                    ),
+                    "record_count": record_count,
+                }
+            )
+
+        account_labels_by_id = {
+            option["id"]: option["label"]
+            for option in account_options
+        }
+
+        selected_trade_account_id = None
+        if requested_trade_account_id is not None:
+            if requested_trade_account_id not in account_labels_by_id:
+                abort(404)
+            selected_trade_account_id = requested_trade_account_id
+        elif latest_record is not None and latest_record.user_id == selected_user.id:
+            latest_account_id = latest_record.trade_account_id
+            if latest_account_id in account_labels_by_id:
+                selected_trade_account_id = latest_account_id
+        if selected_trade_account_id is None:
+            selected_option = next(
+                (
+                    option
+                    for option in account_options
+                    if int(option.get("record_count") or 0) > 0
+                ),
+                None,
+            )
+            if selected_option is not None:
+                selected_trade_account_id = selected_option["id"]
+            elif account_options:
+                selected_trade_account_id = account_options[0]["id"]
+
+        selected_trade_account = next(
+            (
+                account
+                for account in user_trade_accounts
+                if account.id == selected_trade_account_id
+            ),
+            None,
+        )
+        selected_trade_account_label = (
+            account_labels_by_id.get(selected_trade_account_id)
+            or "Unassigned account"
+        )
+
+        records_query = AIGeneratedResponse.query.filter_by(
+            user_id=selected_user.id,
+            kind=WEEKLY_DASHBOARD_KIND,
+        )
+        if selected_trade_account_id is not None:
+            records_query = records_query.filter_by(trade_account_id=selected_trade_account_id)
+        else:
+            records_query = records_query.filter(AIGeneratedResponse.trade_account_id.is_(None))
+
+        ordered_records = (
+            records_query.order_by(
+                AIGeneratedResponse.period_start_utc.desc(),
+                AIGeneratedResponse.generated_at.desc(),
+                AIGeneratedResponse.id.desc(),
+            ).all()
+        )
+
+        record_counts_by_period_key = {}
+        for row in ordered_records:
+            period_key = row.period_start_utc.isoformat() if row.period_start_utc else f"generated:{row.id}"
+            record_counts_by_period_key[period_key] = record_counts_by_period_key.get(period_key, 0) + 1
+
+        unique_records = []
+        seen_period_keys = set()
+        for row in ordered_records:
+            period_key = row.period_start_utc.isoformat() if row.period_start_utc else f"generated:{row.id}"
+            if period_key in seen_period_keys:
+                continue
+            seen_period_keys.add(period_key)
+            unique_records.append(
+                _serialize_admin_weekly_record(
+                    row,
+                    generation_count=record_counts_by_period_key.get(period_key, 1),
+                    trade_account_label=selected_trade_account_label,
+                )
+            )
+            if len(unique_records) >= 12:
+                break
+
+        weekly_audit_page_data = {
+            "initial_record_id": unique_records[0]["id"] if unique_records else None,
+            "records": unique_records,
+        }
+
+        return render_admin_weekly_report_page(
+            admin_user=admin_user,
+            audit_users=audit_users,
+            selected_user=selected_user,
+            user_trade_accounts=user_trade_accounts,
+            account_options=account_options,
+            selected_trade_account=selected_trade_account,
+            selected_trade_account_id=selected_trade_account_id,
+            selected_trade_account_label=selected_trade_account_label,
+            weekly_report_records=unique_records,
+            weekly_audit_page_data=weekly_audit_page_data,
         )
 
     @app.route("/dashboard/admin/access/mt5/create", methods=["POST"])

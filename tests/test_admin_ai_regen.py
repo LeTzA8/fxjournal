@@ -92,11 +92,10 @@ def _login_as(client, user):
         session_state["username"] = user.username
 
 
-def test_logged_out_admin_users_page_redirects_to_login(app_ctx, client):
+def test_logged_out_admin_users_page_returns_404(app_ctx, client):
     response = client.get("/dashboard/admin/access/users", follow_redirects=False)
 
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith("/login")
+    assert response.status_code == 404
 
 
 def test_logged_in_non_admin_users_page_returns_404(app_ctx, client, monkeypatch):

@@ -6,10 +6,10 @@
         <header class="dash-head">
             <div class="head-row admin-head-row">
                 <div>
-                    <p class="admin-kicker">Restricted Internal Area</p>
-                    <h1>Access Control</h1>
+                    <p class="admin-kicker">{{ page_kicker }}</p>
+                    <h1>{{ page_heading }}</h1>
                     <p class="welcome">Signed in as {{ username }}.</p>
-                    <p class="subtitle">Review registrations, control admin access, and manage signup codes without exposing these routes to normal users.</p>
+                    <p class="subtitle">{{ page_subtitle }}</p>
                 </div>
                 <div class="admin-head-meta">
                     <span class="chip {{ 'root-chip' if is_root_admin else 'default' }}">
@@ -78,6 +78,7 @@
             <a href="{{ url_for('admin_signup_codes') }}" class="admin-tab{% if section == 'codes' %} is-active{% endif %}">Codes</a>
             {% if is_root_admin %}
             <a href="{{ url_for('admin_mt5_accounts') }}" class="admin-tab{% if section == 'mt5' %} is-active{% endif %}">MT5</a>
+            <a href="{{ url_for('admin_weekly_report') }}" class="admin-tab{% if section == 'weekly_report' %} is-active{% endif %}">Weekly AI</a>
             {% endif %}
         </nav>
 
@@ -183,6 +184,7 @@
                                 <td>
                                     {% if is_root_admin %}
                                     <div class="inline-actions">
+                                        <a href="{{ url_for('admin_weekly_report', user_id=user.id) }}" class="ghost-btn">AI Audit</a>
                                         {% if user.signup_status == 'pending' %}
                                         <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -629,6 +631,7 @@
     .summary-card,
     .control-panel {
         padding: 0.95rem;
+        min-width: 0;
     }
 
     .summary-value {
@@ -661,6 +664,7 @@
         border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         border-radius: 12px;
         background: color-mix(in srgb, var(--surface) 96%, transparent);
+        min-width: 0;
     }
 
     .admin-tabs {
@@ -675,6 +679,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        flex: 0 0 auto;
         min-height: 38px;
         padding: 0 0.85rem;
         border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
@@ -724,6 +729,7 @@
     .create-code-panel,
     .codes-panel {
         padding: 0.95rem;
+        min-width: 0;
     }
 
     .pending-list,
@@ -740,6 +746,7 @@
         border-radius: 12px;
         padding: 0.78rem;
         background: color-mix(in srgb, var(--surface) 96%, transparent);
+        min-width: 0;
     }
 
     .pending-name,
@@ -759,6 +766,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
+        flex-wrap: wrap;
         gap: 0.65rem;
     }
 
@@ -775,6 +783,7 @@
         font: inherit;
         background: color-mix(in srgb, var(--surface) 96%, transparent);
         color: var(--ink);
+        box-sizing: border-box;
     }
 
     .regen-ai-form {
@@ -790,6 +799,7 @@
         font: inherit;
         background: color-mix(in srgb, var(--surface) 96%, transparent);
         color: var(--ink);
+        box-sizing: border-box;
     }
 
     .regen-ai-note {
@@ -798,6 +808,9 @@
 
     .admin-table-shell {
         overflow: auto;
+        max-width: 100%;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
     }
 
     .admin-table {
@@ -895,6 +908,15 @@
 
         .admin-head-meta {
             justify-content: flex-start;
+        }
+
+        .admin-tabs,
+        .filter-row {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            padding-bottom: 0.18rem;
+            scrollbar-width: thin;
+            -webkit-overflow-scrolling: touch;
         }
     }
 </style>

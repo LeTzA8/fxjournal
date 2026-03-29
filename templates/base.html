@@ -1801,6 +1801,7 @@
             padding: 0;
             background: transparent;
             max-width: min(560px, calc(100vw - 2rem));
+            max-height: calc(100vh - 2rem);
             width: 100%;
         }
 
@@ -1817,6 +1818,8 @@
             padding: 1rem;
             background: color-mix(in srgb, var(--card) 98%, transparent);
             box-shadow: 0 28px 90px rgba(6, 12, 18, 0.34);
+            max-height: calc(100vh - 3rem);
+            overflow: auto;
         }
 
         .danger-form {

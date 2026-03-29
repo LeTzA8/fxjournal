@@ -1,0 +1,848 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+<style>
+    .admin-access .dash-head,
+    .admin-access .panel {
+        border-radius: 16px;
+    }
+
+    .admin-head-row {
+        align-items: flex-start;
+    }
+
+    .admin-head-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .admin-kicker,
+    .summary-label,
+    .control-label,
+    .weekly-audit-filter-form label {
+        margin: 0;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .admin-summary-grid,
+    .weekly-audit-grid {
+        display: grid;
+        gap: 0.85rem;
+        align-items: start;
+    }
+
+    .admin-summary-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-bottom: 0.85rem;
+    }
+
+    .summary-card,
+    .control-panel,
+    .weekly-audit-scope-panel,
+    .weekly-audit-panel,
+    .weekly-audit-empty {
+        padding: 0.95rem;
+        min-width: 0;
+    }
+
+    .summary-value {
+        margin: 0.3rem 0 0;
+        font-size: clamp(1.35rem, 2.1vw, 1.9rem);
+        font-weight: 800;
+    }
+
+    .summary-note,
+    .helper-note {
+        margin: 0.3rem 0 0;
+        font-size: 0.82rem;
+        color: var(--muted);
+    }
+
+    .control-panel,
+    .weekly-audit-scope-panel {
+        margin-bottom: 0.85rem;
+    }
+
+    .control-grid,
+    .selected-record-meta-grid,
+    .selected-record-kpi-grid,
+    .response-meta-grid {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .control-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .control-item {
+        display: grid;
+        gap: 0.24rem;
+        padding: 0.72rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        min-width: 0;
+    }
+
+    .admin-tabs {
+        display: inline-flex;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.85rem;
+    }
+
+    .admin-tab {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        min-height: 38px;
+        padding: 0 0.85rem;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface) 78%, transparent);
+        color: var(--muted);
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        text-decoration: none;
+    }
+
+    .admin-tab.is-active,
+    .admin-tab:hover {
+        color: var(--accent);
+        border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    }
+
+    .panel-head-stack {
+        align-items: flex-start;
+        gap: 0.7rem;
+        flex-direction: column;
+    }
+
+    .inline-actions,
+    .selected-week-chip-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        border-radius: 999px;
+        padding: 0.22rem 0.56rem;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        background: color-mix(in srgb, var(--surface) 92%, transparent);
+        color: var(--muted);
+    }
+
+    .chip.root-chip {
+        border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
+        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+        color: color-mix(in srgb, var(--accent) 82%, white 18%);
+    }
+
+    .weekly-audit-filter-form {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.4fr) auto;
+        gap: 0.7rem;
+        align-items: end;
+    }
+
+    .weekly-audit-field {
+        display: grid;
+        gap: 0.45rem;
+    }
+
+    .weekly-audit-filter-form select {
+        width: 100%;
+        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+        border-radius: 10px;
+        padding: 0.72rem 0.78rem;
+        font: inherit;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        color: var(--ink);
+    }
+
+    .weekly-audit-scope-meta {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.7rem;
+        margin-top: 0.85rem;
+    }
+
+    .scope-value,
+    .metric-value,
+    .response-meta-value {
+        font-size: 1rem;
+        font-weight: 800;
+        color: var(--ink);
+        overflow-wrap: anywhere;
+    }
+
+    .scope-subvalue,
+    .metric-note {
+        color: var(--muted);
+        font-size: 0.78rem;
+    }
+
+    .weekly-audit-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .trend-panel {
+        grid-column: 1 / -1;
+    }
+
+    .trend-card-grid,
+    .selected-record-detail-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.7rem;
+    }
+
+    .selected-record-meta-grid,
+    .selected-record-kpi-grid,
+    .response-meta-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-top: 0.8rem;
+    }
+
+    .selected-record-detail-grid {
+        margin-top: 0.8rem;
+    }
+
+    .trend-card {
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 14px;
+        padding: 0.8rem;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        min-width: 0;
+    }
+
+    .trend-card h3,
+    .detail-card h3 {
+        margin: 0;
+        font-size: 0.92rem;
+        font-weight: 800;
+    }
+
+    .trend-card-head,
+    .detail-card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        margin-bottom: 0.55rem;
+    }
+
+    .trend-card-note {
+        margin: 0.25rem 0 0;
+        font-size: 0.76rem;
+        color: var(--muted);
+    }
+
+    .trend-chart-shell {
+        position: relative;
+        min-height: clamp(180px, 28vw, 220px);
+        border-radius: 12px;
+        background:
+            linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface) 88%, transparent));
+        overflow: hidden;
+    }
+
+    .trend-chart-shell svg {
+        width: 100%;
+        height: auto;
+        display: block;
+    }
+
+    .trend-empty-state {
+        margin: 0.45rem 0 0;
+        font-size: 0.76rem;
+        color: var(--muted);
+    }
+
+    .trend-week-strip {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 0.8rem;
+        max-width: 100%;
+    }
+
+    .trend-week-button {
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 999px;
+        padding: 0.48rem 0.7rem;
+        background: color-mix(in srgb, var(--surface) 92%, transparent);
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.76rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+    }
+
+    .trend-week-button.is-active,
+    .trend-week-button:hover {
+        color: var(--accent);
+        border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    }
+
+    .stat-list {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 0.45rem 0.65rem;
+        margin: 0;
+        align-items: start;
+    }
+
+    .stat-list dt {
+        margin: 0;
+        font-size: 0.75rem;
+        font-weight: 800;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .stat-list dd {
+        margin: 0;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+    }
+
+    .tag-list {
+        display: grid;
+        gap: 0.55rem;
+    }
+
+    .tag-card {
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 12px;
+        padding: 0.65rem 0.7rem;
+        background: color-mix(in srgb, var(--surface) 98%, transparent);
+    }
+
+    .tag-card-title {
+        margin: 0;
+        font-size: 0.84rem;
+        font-weight: 800;
+    }
+
+    .tag-card-meta {
+        margin: 0.28rem 0 0;
+        color: var(--muted);
+        font-size: 0.78rem;
+    }
+
+    .payload-json-details {
+        margin-top: 0.85rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        overflow: hidden;
+    }
+
+    .payload-json-details summary {
+        padding: 0.82rem 0.9rem;
+        cursor: pointer;
+        font-weight: 800;
+        list-style: none;
+    }
+
+    .payload-json-details summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .payload-json-details pre,
+    .response-text-shell pre {
+        margin: 0;
+        padding: 0.9rem;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        line-height: 1.55;
+        color: var(--ink);
+    }
+
+    .payload-json-details pre {
+        max-height: min(55vh, 30rem);
+    }
+
+    .response-text-shell {
+        margin-top: 0.85rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--surface) 97%, transparent);
+        min-height: 320px;
+        max-height: min(68vh, 38rem);
+        overflow: auto;
+    }
+
+    .weekly-audit-empty {
+        display: grid;
+        gap: 0.55rem;
+    }
+
+    .weekly-audit-empty h2 {
+        margin: 0;
+    }
+
+    @media (max-width: 1180px) {
+        .admin-summary-grid,
+        .control-grid,
+        .selected-record-meta-grid,
+        .selected-record-kpi-grid,
+        .response-meta-grid,
+        .selected-record-detail-grid,
+        .weekly-audit-scope-meta {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .trend-card-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 980px) {
+        .weekly-audit-grid,
+        .weekly-audit-filter-form {
+            grid-template-columns: 1fr;
+        }
+
+        .response-text-shell {
+            min-height: 260px;
+            max-height: min(60vh, 30rem);
+        }
+    }
+
+    @media (max-width: 680px) {
+        .admin-summary-grid,
+        .control-grid,
+        .selected-record-meta-grid,
+        .selected-record-kpi-grid,
+        .response-meta-grid,
+        .selected-record-detail-grid,
+        .weekly-audit-scope-meta {
+            grid-template-columns: 1fr;
+        }
+
+        .admin-head-row {
+            flex-direction: column;
+        }
+
+        .admin-head-meta {
+            justify-content: flex-start;
+        }
+
+        .admin-tabs,
+        .trend-week-strip {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            padding-bottom: 0.18rem;
+            scrollbar-width: thin;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .weekly-audit-filter-form .submit-btn {
+            width: 100%;
+        }
+
+        .trend-chart-shell {
+            min-height: 172px;
+        }
+
+        .payload-json-details pre,
+        .response-text-shell pre {
+            padding: 0.8rem;
+            font-size: 0.76rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="dash-wrap admin-access">
+    <div class="dash-content">
+        <header class="dash-head">
+            <div class="head-row admin-head-row">
+                <div>
+                    <p class="admin-kicker">{{ page_kicker }}</p>
+                    <h1>{{ page_heading }}</h1>
+                    <p class="welcome">Signed in as {{ username }}.</p>
+                    <p class="subtitle">{{ page_subtitle }}</p>
+                </div>
+                <div class="admin-head-meta">
+                    <span class="chip root-chip">Root Admin</span>
+                    <span class="soft">Stored payload and response audit</span>
+                </div>
+            </div>
+        </header>
+
+        <section class="admin-summary-grid">
+            <article class="panel summary-card">
+                <p class="summary-label">Pending</p>
+                <p class="summary-value">{{ overview.pending_users }}</p>
+                <p class="summary-note">Awaiting manual review</p>
+            </article>
+            <article class="panel summary-card">
+                <p class="summary-label">Approved</p>
+                <p class="summary-value good">{{ overview.approved_users }}</p>
+                <p class="summary-note">Can access the app</p>
+            </article>
+            <article class="panel summary-card">
+                <p class="summary-label">Rejected</p>
+                <p class="summary-value bad">{{ overview.rejected_users }}</p>
+                <p class="summary-note">Explicitly blocked</p>
+            </article>
+            <article class="panel summary-card">
+                <p class="summary-label">MT5 Accounts</p>
+                <p class="summary-value">{{ overview.mt5_accounts }}</p>
+                <p class="summary-note">Root-admin sync targets</p>
+            </article>
+        </section>
+
+        <section class="panel control-panel">
+            <div class="panel-head">
+                <h2>Runtime Controls</h2>
+                <span class="soft">Env backed</span>
+            </div>
+            <div class="control-grid">
+                <div class="control-item">
+                    <span class="control-label">Registration Paused</span>
+                    <span class="{{ 'bad' if registration_paused else 'good' }}">{{ "Yes" if registration_paused else "No" }}</span>
+                </div>
+                <div class="control-item">
+                    <span class="control-label">Auto Approve New Users</span>
+                    <span class="{{ 'good' if auto_approve_new_users else 'bad' }}">{{ "Yes" if auto_approve_new_users else "No" }}</span>
+                </div>
+                <div class="control-item">
+                    <span class="control-label">Signup Code Mode</span>
+                    <span>{{ signup_code_mode|replace('_', ' ')|title }}</span>
+                </div>
+                <div class="control-item">
+                    <span class="control-label">Admin Gate</span>
+                    <span>Root env email for writes</span>
+                </div>
+            </div>
+        </section>
+
+        <nav class="admin-tabs" aria-label="Admin Sections">
+            <a href="{{ url_for('admin_signup_users') }}" class="admin-tab">Users</a>
+            <a href="{{ url_for('admin_signup_codes') }}" class="admin-tab">Codes</a>
+            <a href="{{ url_for('admin_mt5_accounts') }}" class="admin-tab">MT5</a>
+            <a href="{{ url_for('admin_weekly_report') }}" class="admin-tab is-active">Weekly AI</a>
+        </nav>
+
+        <section class="panel weekly-audit-scope-panel">
+            <div class="panel-head panel-head-stack">
+                <div>
+                    <h2>Audit Scope</h2>
+                    <p class="helper-note">Choose a user and trade account. Trend charts use the latest saved generation for each review week.</p>
+                </div>
+            </div>
+            <form action="{{ url_for('admin_weekly_report') }}" method="get" class="weekly-audit-filter-form">
+                <div class="weekly-audit-field">
+                    <label for="weeklyAuditUser">User</label>
+                    <select
+                        id="weeklyAuditUser"
+                        name="user_id"
+                        onchange="const account=document.getElementById('weeklyAuditTradeAccount'); if (account) { account.value=''; } this.form.submit();"
+                    >
+                        {% for user in audit_users %}
+                        <option value="{{ user.id }}" {% if selected_user and user.id == selected_user.id %}selected{% endif %}>
+                            {{ user.username }} ({{ user.email }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="weekly-audit-field">
+                    <label for="weeklyAuditTradeAccount">Trade Account</label>
+                    <select id="weeklyAuditTradeAccount" name="trade_account_id" {% if not account_options %}disabled{% endif %}>
+                        <option value="">Recommended account</option>
+                        {% for option in account_options %}
+                        <option value="{{ option.id }}" {% if selected_trade_account_id == option.id %}selected{% endif %}>
+                            {{ option.label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="weekly-audit-field">
+                    <button type="submit" class="submit-btn">Load Audit</button>
+                </div>
+            </form>
+
+            {% if selected_user %}
+            <div class="weekly-audit-scope-meta">
+                <article class="control-item">
+                    <span class="control-label">Selected User</span>
+                    <span class="scope-value">{{ selected_user.username }}</span>
+                    <span class="scope-subvalue">{{ selected_user.email }}</span>
+                </article>
+                <article class="control-item">
+                    <span class="control-label">Selected Account</span>
+                    <span class="scope-value">{{ selected_trade_account_label }}</span>
+                    <span class="scope-subvalue">
+                        {% if weekly_report_records %}
+                        {{ weekly_report_records|length }} unique week{{ 's' if weekly_report_records|length != 1 else '' }} loaded
+                        {% else %}
+                        No stored weekly records loaded
+                        {% endif %}
+                    </span>
+                </article>
+                <article class="control-item">
+                    <span class="control-label">Trend Window</span>
+                    <span class="scope-value">Latest 12 Weeks</span>
+                    <span class="scope-subvalue">Most recent saved generation per review week</span>
+                </article>
+            </div>
+            {% endif %}
+        </section>
+
+        {% if weekly_report_records %}
+        <section class="weekly-audit-grid">
+            <article class="panel weekly-audit-panel trend-panel">
+                <div class="panel-head panel-head-stack">
+                    <div>
+                        <h2>Trend</h2>
+                        <p class="helper-note">Click any point to inspect that saved week's payload and the exact AI response below.</p>
+                    </div>
+                    <div class="selected-week-chip-wrap">
+                        <span class="chip root-chip">{{ weekly_report_records|length }} tracked week{{ 's' if weekly_report_records|length != 1 else '' }}</span>
+                        <span class="soft">{{ selected_trade_account_label }}</span>
+                    </div>
+                </div>
+                <div class="trend-card-grid">
+                    <article class="trend-card">
+                        <div class="trend-card-head">
+                            <div>
+                                <h3>Net PnL</h3>
+                                <p class="trend-card-note">Weekly `summary.net_pnl`</p>
+                            </div>
+                        </div>
+                        <div class="trend-chart-shell">
+                            <svg id="weeklyAuditPnlChart" viewBox="0 0 560 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Weekly net PnL trend"></svg>
+                        </div>
+                        <p class="trend-empty-state" data-empty-for="weeklyAuditPnlChart" hidden>No net PnL values were stored for these weeks.</p>
+                    </article>
+                    <article class="trend-card">
+                        <div class="trend-card-head">
+                            <div>
+                                <h3>Win Rate</h3>
+                                <p class="trend-card-note">Weekly `summary.win_rate`</p>
+                            </div>
+                        </div>
+                        <div class="trend-chart-shell">
+                            <svg id="weeklyAuditWinRateChart" viewBox="0 0 560 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Weekly win rate trend"></svg>
+                        </div>
+                        <p class="trend-empty-state" data-empty-for="weeklyAuditWinRateChart" hidden>No win-rate values were stored for these weeks.</p>
+                    </article>
+                    <article class="trend-card">
+                        <div class="trend-card-head">
+                            <div>
+                                <h3>Emotional Score</h3>
+                                <p class="trend-card-note">Weekly `emotional_index.score`</p>
+                            </div>
+                        </div>
+                        <div class="trend-chart-shell">
+                            <svg id="weeklyAuditEmotionChart" viewBox="0 0 560 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Weekly emotional score trend"></svg>
+                        </div>
+                        <p class="trend-empty-state" data-empty-for="weeklyAuditEmotionChart" hidden>No emotional-score values were stored for these weeks.</p>
+                    </article>
+                </div>
+                <div class="trend-week-strip" id="weeklyAuditWeekStrip"></div>
+            </article>
+
+            <article class="panel weekly-audit-panel payload-panel">
+                <div class="panel-head panel-head-stack">
+                    <div>
+                        <h2>Selected Week Payload</h2>
+                        <p class="helper-note">Defaults to the newest stored week for this account. Trend clicks update the metrics and raw payload.</p>
+                    </div>
+                    <div class="selected-week-chip-wrap">
+                        <span class="chip root-chip" id="weeklyAuditSelectedPeriod">-</span>
+                        <span class="soft" id="weeklyAuditSelectedGenerationCount">-</span>
+                    </div>
+                </div>
+
+                <div class="selected-record-meta-grid">
+                    <article class="control-item">
+                        <span class="control-label">Generated At</span>
+                        <span class="scope-value" id="weeklyAuditGeneratedAt">-</span>
+                        <span class="scope-subvalue">Stored generation timestamp</span>
+                    </article>
+                    <article class="control-item">
+                        <span class="control-label">Model</span>
+                        <span class="scope-value" id="weeklyAuditModel">-</span>
+                        <span class="scope-subvalue">Model name saved with the row</span>
+                    </article>
+                    <article class="control-item">
+                        <span class="control-label">Trade Account</span>
+                        <span class="scope-value" id="weeklyAuditAccountLabel">-</span>
+                        <span class="scope-subvalue">Account scope for this review</span>
+                    </article>
+                    <article class="control-item">
+                        <span class="control-label">Trades Used</span>
+                        <span class="scope-value" id="weeklyAuditTradesUsed">-</span>
+                        <span class="scope-subvalue">Rows included in the stored payload</span>
+                    </article>
+                </div>
+
+                <div class="selected-record-kpi-grid">
+                    <article class="control-item">
+                        <span class="control-label">Closed Trades</span>
+                        <span class="metric-value" id="weeklyAuditClosedTrades">-</span>
+                        <span class="metric-note">Weekly summary</span>
+                    </article>
+                    <article class="control-item">
+                        <span class="control-label">Win Rate</span>
+                        <span class="metric-value" id="weeklyAuditWinRate">-</span>
+                        <span class="metric-note">Weekly summary</span>
+                    </article>
+                    <article class="control-item">
+                        <span class="control-label">Net PnL</span>
+                        <span class="metric-value" id="weeklyAuditNetPnl">-</span>
+                        <span class="metric-note">Weekly summary</span>
+                    </article>
+                    <article class="control-item">
+                        <span class="control-label">Emotional Score</span>
+                        <span class="metric-value" id="weeklyAuditEmotionScore">-</span>
+                        <span class="metric-note">Objective behaviour signal</span>
+                    </article>
+                    <article class="control-item">
+                        <span class="control-label">Max Drawdown</span>
+                        <span class="metric-value" id="weeklyAuditDrawdown">-</span>
+                        <span class="metric-note">Weekly summary</span>
+                    </article>
+                    <article class="control-item">
+                        <span class="control-label">Notes Coverage</span>
+                        <span class="metric-value" id="weeklyAuditNotesCoverage">-</span>
+                        <span class="metric-note" id="weeklyAuditNotesConfidence">-</span>
+                    </article>
+                </div>
+
+                <div class="selected-record-detail-grid">
+                    <article class="control-item detail-card">
+                        <div class="detail-card-head">
+                            <h3>Emotional Signals</h3>
+                            <span class="soft" id="weeklyAuditEmotionLabel">-</span>
+                        </div>
+                        <dl class="stat-list" id="weeklyAuditSignalList"></dl>
+                    </article>
+                    <article class="control-item detail-card">
+                        <div class="detail-card-head">
+                            <h3>Historical Context</h3>
+                            <span class="soft" id="weeklyAuditHistoryScope">-</span>
+                        </div>
+                        <dl class="stat-list" id="weeklyAuditHistoryList"></dl>
+                    </article>
+                    <article class="control-item detail-card">
+                        <div class="detail-card-head">
+                            <h3>Historical Top Pairs</h3>
+                            <span class="soft">Context shown to the model</span>
+                        </div>
+                        <div class="tag-list" id="weeklyAuditPairsList"></div>
+                    </article>
+                    <article class="control-item detail-card">
+                        <div class="detail-card-head">
+                            <h3>Historical Top Sessions</h3>
+                            <span class="soft">Context shown to the model</span>
+                        </div>
+                        <div class="tag-list" id="weeklyAuditSessionsList"></div>
+                    </article>
+                    <article class="control-item detail-card">
+                        <div class="detail-card-head">
+                            <h3>Historical Top Weekdays</h3>
+                            <span class="soft">Context shown to the model</span>
+                        </div>
+                        <div class="tag-list" id="weeklyAuditWeekdaysList"></div>
+                    </article>
+                </div>
+
+                <details class="payload-json-details">
+                    <summary>Raw Payload JSON</summary>
+                    <pre id="weeklyAuditPayloadJson"></pre>
+                </details>
+            </article>
+
+            <article class="panel weekly-audit-panel response-panel">
+                <div class="panel-head panel-head-stack">
+                    <div>
+                        <h2>AI Output</h2>
+                        <p class="helper-note">The stored response text exactly as it was saved for the selected week.</p>
+                    </div>
+                    <div class="selected-week-chip-wrap">
+                        <span class="chip" id="weeklyAuditPromptId">-</span>
+                        <span class="soft" id="weeklyAuditPromptSource">-</span>
+                    </div>
+                </div>
+
+                <div class="response-meta-grid">
+                    <article class="control-item">
+                        <span class="control-label">Prompt ID</span>
+                        <span class="response-meta-value" id="weeklyAuditPromptIdMeta">-</span>
+                    </article>
+                    <article class="control-item">
+                        <span class="control-label">Prompt Source</span>
+                        <span class="response-meta-value" id="weeklyAuditPromptSourceMeta">-</span>
+                    </article>
+                    <article class="control-item">
+                        <span class="control-label">Prompt Saved</span>
+                        <span class="response-meta-value" id="weeklyAuditPromptCreatedAt">-</span>
+                    </article>
+                    <article class="control-item">
+                        <span class="control-label">Selected Period</span>
+                        <span class="response-meta-value" id="weeklyAuditResponsePeriod">-</span>
+                    </article>
+                </div>
+
+                <div class="response-text-shell">
+                    <pre id="weeklyAuditResponseText"></pre>
+                </div>
+            </article>
+        </section>
+        {% else %}
+        <section class="panel weekly-audit-empty">
+            <h2>No Weekly AI Records Yet</h2>
+            <p class="helper-note">
+                {% if selected_user %}
+                No saved weekly dashboard advice rows were found for {{ selected_user.email }}{% if selected_trade_account_label %} / {{ selected_trade_account_label }}{% endif %}.
+                {% else %}
+                No saved weekly AI rows were found yet.
+                {% endif %}
+            </p>
+            <p class="helper-note">Once weekly dashboard advice has been generated and stored, this page will visualize the trend and let you inspect the saved payload and response for each week.</p>
+        </section>
+        {% endif %}
+    </div>
+</section>
+
+<script id="weeklyAuditData" type="application/json">{{ weekly_audit_page_data|tojson }}</script>
+{% endblock %}
+
+{% block page_scripts %}
+    {{ super() }}
+    <script src="{{ url_for('static', filename='js/admin_weekly_report.js') }}"></script>
+{% endblock %}
