@@ -1061,7 +1061,7 @@ def register_public_auth_routes(
         accepted_legal = request.form.get("accept_legal") == "on"
         if not accepted_legal:
             return render_register_page(
-                error="You must accept the Terms and Conditions and Privacy Policy.",
+                error="You must agree to the Terms and acknowledge the Privacy Policy.",
                 username=username,
                 email=email,
                 signup_code=signup_code_value,
@@ -1371,7 +1371,7 @@ def register_public_auth_routes(
 
             if not accepted_legal:
                 return render_register_page(
-                    error="You must accept the Terms and Conditions and Privacy Policy.",
+                    error="You must agree to the Terms and acknowledge the Privacy Policy.",
                     username=username,
                     email=email,
                     signup_code=signup_code_value,

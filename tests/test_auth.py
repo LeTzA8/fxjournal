@@ -1,6 +1,7 @@
 import auth_account
 from werkzeug.security import generate_password_hash
 
+import auth_account
 from auth_account import (
     generate_auth_token,
     generate_email_change_token,
@@ -14,6 +15,17 @@ from extensions import limiter
 from models import User, db
 
 
+class _FakeOAuth:
+    def __init__(self, client=None):
+        self._client = client if client is not None else object()
+
+    def create_client(self, name):
+        return self._client
+
+    def register(self, *args, **kwargs):
+        return None
+
+
 class _FakeGoogleClient:
     def __init__(self, *, token=None):
         self._token = token or {}
@@ -23,6 +35,10 @@ class _FakeGoogleClient:
 
     def authorize_access_token(self):
         return self._token
+
+
+def _enable_google_auth(monkeypatch, client=None):
+    monkeypatch.setattr(auth_account, "oauth", _FakeOAuth(client))
 
 
 def test_generate_and_verify_auth_token(app_ctx):
@@ -127,15 +143,16 @@ def test_generate_and_verify_email_change_token(app_ctx):
     }
 
 
-def test_login_page_shows_google_button_when_enabled(app_ctx, client):
+def test_login_page_shows_google_button_when_enabled(app_ctx, client, monkeypatch):
     app_ctx.config["GOOGLE_CLIENT_ID"] = "google-client-id"
     app_ctx.config["GOOGLE_CLIENT_SECRET"] = "google-client-secret"
+    _enable_google_auth(monkeypatch)
 
     response = client.get("/login")
     response_text = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "Continue with Google" in response_text
+    assert "Sign in with Google" in response_text
     assert "/auth/google" in response_text
 
 
@@ -163,7 +180,7 @@ def test_google_callback_links_existing_user_and_logs_in(app_ctx, client, monkey
             }
         }
     )
-    monkeypatch.setattr(auth_account.oauth, "create_client", lambda name: fake_client)
+    _enable_google_auth(monkeypatch, fake_client)
 
     with client.session_transaction() as session_state:
         session_state["google_auth_intent"] = "login"
@@ -184,9 +201,10 @@ def test_google_callback_links_existing_user_and_logs_in(app_ctx, client, monkey
         assert session_state["active_trade_account_id"]
 
 
-def test_google_register_start_requires_legal_consent(app_ctx, client):
+def test_google_register_start_requires_legal_consent(app_ctx, client, monkeypatch):
     app_ctx.config["GOOGLE_CLIENT_ID"] = "google-client-id"
     app_ctx.config["GOOGLE_CLIENT_SECRET"] = "google-client-secret"
+    _enable_google_auth(monkeypatch)
 
     response = client.post(
         "/auth/google/register",
@@ -195,7 +213,21 @@ def test_google_register_start_requires_legal_consent(app_ctx, client):
     response_text = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "You must accept the Terms and Conditions and Privacy Policy." in response_text
+    assert "You must agree to the Terms and acknowledge the Privacy Policy." in response_text
+
+
+def test_register_page_shows_google_consent_dialog(app_ctx, client, monkeypatch):
+    app_ctx.config["GOOGLE_CLIENT_ID"] = "google-client-id"
+    app_ctx.config["GOOGLE_CLIENT_SECRET"] = "google-client-secret"
+    _enable_google_auth(monkeypatch)
+
+    response = client.get("/register")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'id="googleRegisterDialog"' in response_text
+    assert "Review the account agreement" in response_text
+    assert "Continue with Google" in response_text
 
 
 def test_google_callback_creates_new_user_from_register_flow(app_ctx, client, monkeypatch):
@@ -215,7 +247,7 @@ def test_google_callback_creates_new_user_from_register_flow(app_ctx, client, mo
             }
         }
     )
-    monkeypatch.setattr(auth_account.oauth, "create_client", lambda name: fake_client)
+    _enable_google_auth(monkeypatch, fake_client)
 
     with client.session_transaction() as session_state:
         session_state["google_auth_intent"] = "register"

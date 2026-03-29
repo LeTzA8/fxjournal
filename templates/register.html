@@ -29,6 +29,68 @@
         <p class="notice error">{{ error }}</p>
         {% endif %}
 
+        {% if google_auth_enabled %}
+        <div class="auth-oauth-stack">
+            <button
+                type="button"
+                class="auth-oauth-btn auth-oauth-submit"
+                id="openGoogleRegisterDialog"
+                {% if registrations_paused %}disabled{% endif %}
+            >
+                <svg class="auth-oauth-logo" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                    <path fill="#4285F4" d="M17.64 9.2045c0-.6382-.0573-1.2518-.1636-1.8409H9v3.4818h4.8436c-.2086 1.125-.8427 2.0782-1.7972 2.7155v2.2573h2.9086c1.7027-1.5673 2.685-3.8741 2.685-6.6137z"/>
+                    <path fill="#34A853" d="M9 18c2.43 0 4.4673-.8055 5.9564-2.1818l-2.9086-2.2573c-.8055.54-1.8355.8591-3.0477.8591-2.3441 0-4.3282-1.5832-5.0359-3.7105H.9573v2.3327C2.4382 15.9832 5.4818 18 9 18z"/>
+                    <path fill="#FBBC05" d="M3.9641 10.7095c-.18-.54-.2823-1.1168-.2823-1.7095s.1023-1.1695.2823-1.7095V4.9573H.9573C.3477 6.1727 0 7.5477 0 9s.3477 2.8273.9573 4.0427l3.0068-2.3332z"/>
+                    <path fill="#EA4335" d="M9 3.5795c1.3214 0 2.5077.4541 3.44 1.3459l2.5814-2.5814C13.4632.8918 11.4268 0 9 0 5.4818 0 2.4382 2.0168.9573 4.9573l3.0068 2.3332C4.6718 5.1627 6.6559 3.5795 9 3.5795z"/>
+                </svg>
+                <span>Sign up with Google</span>
+            </button>
+            <p class="auth-oauth-note">Google signup opens one quick agreement step before continuing.</p>
+        </div>
+
+        <form id="googleRegisterForm" action="{{ url_for('google_register_start') }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" id="google_register_username" name="username" value="{{ username_value or '' }}">
+            <input type="hidden" id="google_register_email" name="email" value="{{ email_value or '' }}">
+            <input type="hidden" id="google_register_signup_code" name="signup_code" value="{{ signup_code_value or '' }}">
+        </form>
+
+        <dialog id="googleRegisterDialog" class="confirm-dialog auth-consent-dialog" aria-labelledby="googleRegisterDialogTitle">
+            <div class="confirm-dialog-shell auth-consent-dialog-shell">
+                <p class="eyebrow">Before Google Signup</p>
+                <h2 id="googleRegisterDialogTitle">Review the account agreement</h2>
+                <p class="auth-consent-copy">
+                    To create your FX Journal account with Google, agree to the Terms and acknowledge the Privacy Policy first.
+                </p>
+                <label class="legal-consent auth-consent-check">
+                    <input
+                        id="google_accept_legal"
+                        name="accept_legal"
+                        type="checkbox"
+                        value="on"
+                        form="googleRegisterForm"
+                        required
+                    >
+                    <span>
+                        I agree to the
+                        <a href="{{ url_for('terms_and_conditions') }}" target="_blank" rel="noopener">Terms and Conditions</a>
+                        and acknowledge the
+                        <a href="{{ url_for('privacy_policy') }}" target="_blank" rel="noopener">Privacy Policy</a>.
+                    </span>
+                </label>
+                <p class="auth-consent-meta">The links open in new tabs if you want to review them first.</p>
+                <div class="auth-consent-actions">
+                    <button type="button" class="ghost-btn" id="cancelGoogleRegisterDialog">Cancel</button>
+                    <button type="submit" class="submit-btn" form="googleRegisterForm" {% if registrations_paused %}disabled{% endif %}>
+                        Continue with Google
+                    </button>
+                </div>
+            </div>
+        </dialog>
+
+        <p class="auth-divider"><span>or create an account with email</span></p>
+        {% endif %}
+
         <form action="/register" method="post" class="login-form" data-themed-validation>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label for="username">Username</label>
@@ -66,29 +128,10 @@
                     I agree to the
                     <a href="{{ url_for('terms_and_conditions') }}" target="_blank" rel="noopener">Terms and Conditions</a>
                     and
+                    acknowledge the
                     <a href="{{ url_for('privacy_policy') }}" target="_blank" rel="noopener">Privacy Policy</a>.
                 </span>
             </label>
-
-            {% if google_auth_enabled %}
-            <button
-                type="submit"
-                formaction="{{ url_for('google_register_start') }}"
-                formmethod="post"
-                formnovalidate
-                class="auth-oauth-btn auth-oauth-submit"
-                {% if registrations_paused %}disabled{% endif %}
-            >
-                <svg class="auth-oauth-logo" viewBox="0 0 18 18" aria-hidden="true" focusable="false">
-                    <path fill="#4285F4" d="M17.64 9.2045c0-.6382-.0573-1.2518-.1636-1.8409H9v3.4818h4.8436c-.2086 1.125-.8427 2.0782-1.7972 2.7155v2.2573h2.9086c1.7027-1.5673 2.685-3.8741 2.685-6.6137z"/>
-                    <path fill="#34A853" d="M9 18c2.43 0 4.4673-.8055 5.9564-2.1818l-2.9086-2.2573c-.8055.54-1.8355.8591-3.0477.8591-2.3441 0-4.3282-1.5832-5.0359-3.7105H.9573v2.3327C2.4382 15.9832 5.4818 18 9 18z"/>
-                    <path fill="#FBBC05" d="M3.9641 10.7095c-.18-.54-.2823-1.1168-.2823-1.7095s.1023-1.1695.2823-1.7095V4.9573H.9573C.3477 6.1727 0 7.5477 0 9s.3477 2.8273.9573 4.0427l3.0068-2.3332z"/>
-                    <path fill="#EA4335" d="M9 3.5795c1.3214 0 2.5077.4541 3.44 1.3459l2.5814-2.5814C13.4632.8918 11.4268 0 9 0 5.4818 0 2.4382 2.0168.9573 4.9573l3.0068 2.3332C4.6718 5.1627 6.6559 3.5795 9 3.5795z"/>
-                </svg>
-                <span>Sign up with Google</span>
-            </button>
-            <p class="auth-divider"><span>or create an account with email</span></p>
-            {% endif %}
 
             <button type="submit" {% if registrations_paused %}disabled{% endif %}>Create Account</button>
         </form>
@@ -96,4 +139,71 @@
     </div>
 </section>
 
+{% endblock %}
+
+{% block page_scripts %}
+{% if google_auth_enabled %}
+<script>
+    (() => {
+        const dialog = document.getElementById("googleRegisterDialog");
+        const openButton = document.getElementById("openGoogleRegisterDialog");
+        const cancelButton = document.getElementById("cancelGoogleRegisterDialog");
+        const googleForm = document.getElementById("googleRegisterForm");
+        const googleCheckbox = document.getElementById("google_accept_legal");
+
+        if (!dialog || !openButton || !googleForm) {
+            return;
+        }
+
+        const syncField = (sourceId, targetId) => {
+            const source = document.getElementById(sourceId);
+            const target = document.getElementById(targetId);
+            if (!target) {
+                return;
+            }
+            target.value = source ? source.value : "";
+        };
+
+        const syncGoogleFields = () => {
+            syncField("username", "google_register_username");
+            syncField("email", "google_register_email");
+            syncField("signup_code", "google_register_signup_code");
+        };
+
+        const closeDialog = () => {
+            if (typeof dialog.close === "function") {
+                dialog.close();
+                return;
+            }
+            dialog.removeAttribute("open");
+        };
+
+        openButton.addEventListener("click", () => {
+            syncGoogleFields();
+            if (typeof dialog.showModal === "function") {
+                dialog.showModal();
+            } else {
+                dialog.setAttribute("open", "open");
+            }
+            if (googleCheckbox) {
+                googleCheckbox.focus();
+            }
+        });
+
+        if (cancelButton) {
+            cancelButton.addEventListener("click", closeDialog);
+        }
+
+        googleForm.addEventListener("submit", () => {
+            syncGoogleFields();
+        });
+
+        dialog.addEventListener("close", () => {
+            if (googleCheckbox) {
+                googleCheckbox.checked = false;
+            }
+        });
+    })();
+</script>
+{% endif %}
 {% endblock %}
