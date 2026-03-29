@@ -497,6 +497,23 @@ def test_build_profile_instructions_handles_calm_self_report_mismatch():
 
     assert "Self-report sounded calm or controlled, but observed behaviour signals were elevated" in instructions
     assert "Mild behavioural signals detected - note briefly, don't over-weight." in instructions
+    assert "Treat overnight holds as style exceptions, not automatic mistakes." in instructions
+    assert "Only flag overnight holding when it is repeated, clearly unplanned, or concentrated the week's risk." in instructions
+
+
+def test_build_profile_instructions_can_acknowledge_controlled_emotions():
+    instructions = build_profile_instructions(
+        "intraday",
+        "experienced",
+        "forex",
+        "calm",
+        "consistent",
+        "sharp",
+        emotional_index_label="low",
+        emotional_index_mismatch=False,
+    )
+
+    assert "If the trade evidence looks orderly, explicitly acknowledge that emotions looked in check this week without mentioning any internal score." in instructions
 
 
 def test_build_trade_payload_serializes_user_profile_and_weekly_checkin(app_ctx):
@@ -589,6 +606,11 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Only use a symbol-only rule when the week's issue was truly isolated" in prompt_text
     assert "The rule should almost never mention two different symbols." in prompt_text
     assert "Default to broader process language such as after a loss, after a" in prompt_text
+    assert "Overnight holding alone is not a mistake." in prompt_text
+    assert 'Do not create a blanket "never hold overnight" rule from one winning' in prompt_text
+    assert 'Never mention "emotional index", internal scores, or internal labels' in prompt_text
+    assert "emotions looked in check this week." in prompt_text
+    assert "emotions looked controlled this week." in prompt_text
     assert 'Bad rule example: "After the XAUUSD stop, wait one full session' in prompt_text
     assert 'Better rule example: "After a large stop-out, wait one full session' in prompt_text
     assert "Do not use paragraph prose anywhere in the response." not in prompt_text

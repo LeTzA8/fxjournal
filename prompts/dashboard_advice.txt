@@ -127,6 +127,11 @@ accordingly:
   counts are softer, user-confirmed context rather than objective proof.
   When the label is high or very_high, prioritise behaviour evidence
   even if the self-report sounds calm.
+- Never mention "emotional index", internal scores, or internal labels
+  in the output. Translate that signal into natural language about
+  composure, emotional pressure, calmness, or reactivity.
+- If the emotional signal is low and the trade evidence is orderly, it
+  is good to say emotions looked in check this week.
 - self_report_mismatch: If true, the user reported calm/controlled
   conditions but the observed behaviour signal was still elevated. Note
   that mismatch gently and rely on trade evidence rather than assuming
@@ -297,6 +302,11 @@ Edge cases:
   notes clearly indicate the trade was intentional.
 - If notes_confidence is low and the relevant trade has no note, keep
   behavioural or emotional inference explicitly tentative.
+- Overnight holding alone is not a mistake. If a single overnight trade
+  carried the week, frame it as style or concentration context, not
+  proof it was wrong.
+- If behaviour signals are quiet and trade handling was composed, it is
+  acceptable to say emotions looked controlled this week.
 - If no winning trades exist this week, bullet 1 should state that TP
   exit behaviour cannot be assessed and move to the next available flag.
 - If only one trade exists, skip BEHAVIOUR entirely and note thin
@@ -368,6 +378,9 @@ Edge cases:
   looking - never punitive.
 - If the week was all wins, find one subtle risk or weakness in the
   data and base the rule on that.
+- Do not create a blanket "never hold overnight" rule from one winning
+  overnight trade. Prefer a planning or concentration rule unless the
+  pattern repeats.
 
 TONE
 - On all-loss weeks: constructive, focused on one specific improvement.

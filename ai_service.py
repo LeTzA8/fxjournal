@@ -422,7 +422,8 @@ def build_profile_instructions(
         instructions.append("Acknowledge single week is thin sample for swing traders.")
     elif trading_style == "intraday":
         instructions.append("Same-session open and close is expected.")
-        instructions.append("Flag trades held overnight as outside style.")
+        instructions.append("Treat overnight holds as style exceptions, not automatic mistakes.")
+        instructions.append("Only flag overnight holding when it is repeated, clearly unplanned, or concentrated the week's risk.")
 
     if instruments == "indices":
         instructions.append("US market hours dominate - flag trades outside 13:30-20:00 UTC.")
@@ -446,12 +447,15 @@ def build_profile_instructions(
     if emotional_index_label in {"high", "very_high"}:
         instructions.append("Objective emotional index is elevated - prioritise BEHAVIOUR section.")
         instructions.append("Treat revenge sequences as the strongest behaviour signal, and use reactive/corrective counts as supporting context only when user-confirmed.")
+        instructions.append("Describe the week as emotionally pressured or less composed only when the trade evidence supports it, and never mention internal scores or labels.")
     if emotional_index_label == "very_high":
         instructions.append("Lead with behavioural observations before performance metrics.")
     if emotional_index_mismatch:
         instructions.append("Self-report sounded calm or controlled, but observed behaviour signals were elevated - note that mismatch gently and ground it in trade evidence.")
     if emotional_index_label == "moderate" and emotional_state not in {"stressed"}:
         instructions.append("Mild behavioural signals detected - note briefly, don't over-weight.")
+    if emotional_index_label == "low" and not emotional_index_mismatch:
+        instructions.append("If the trade evidence looks orderly, explicitly acknowledge that emotions looked in check this week without mentioning any internal score.")
 
     if not instructions:
         return ""
