@@ -244,5 +244,7 @@ def test_weekly_report_keeps_latest_generation_per_week(app_ctx, client, monkeyp
     assert b"Latest duplicated output" in response.data
     assert b"Previous week output" in response.data
     assert b"Older duplicated output" not in response.data
+    assert b"Saved Prompt Text" in response.data
+    assert b"Prompt text" in response.data
     assert b"125.0" in response.data
     assert b"110.0" not in response.data

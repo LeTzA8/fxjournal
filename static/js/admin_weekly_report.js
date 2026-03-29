@@ -489,6 +489,11 @@
             responseNode.textContent = (record.response_text || "").trim() || "No response text was stored for this record.";
         }
 
+        const promptNode = document.getElementById("weeklyAuditPromptText");
+        if (promptNode) {
+            promptNode.textContent = (prompt.text || "").trim() || "No prompt text was stored for this record.";
+        }
+
         const payloadNode = document.getElementById("weeklyAuditPayloadJson");
         if (payloadNode) {
             if (record.payload && typeof record.payload === "object") {

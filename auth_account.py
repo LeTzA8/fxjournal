@@ -852,7 +852,7 @@ def register_public_auth_routes(
                 page_heading="Weekly AI Audit",
                 page_subtitle=(
                     "Inspect stored weekly AI payloads, compare trend shifts over time, "
-                    "and review the exact model output for each saved week."
+                    "and review the exact model output for each saved review."
                 ),
             ),
             **extra_context,
@@ -937,6 +937,7 @@ def register_public_auth_routes(
             "historical_context": historical_context,
             "prompt": {
                 "id": getattr(prompt_history, "prompt_id", None),
+                "text": getattr(prompt_history, "prompt_text", None),
                 "source_path": getattr(prompt_history, "source_path", None),
                 "created_at": prompt_created_at.isoformat() if prompt_created_at else None,
                 "created_at_label": _format_admin_timestamp(prompt_created_at),
@@ -2232,7 +2233,7 @@ def register_public_auth_routes(
             account_type_label = str(account.account_type or "Unknown").strip().title() or "Unknown"
             account_label = f"{account.name} ({account_type_label})"
             if record_count:
-                account_label = f"{account_label} - {record_count} stored week{'s' if record_count != 1 else ''}"
+                account_label = f"{account_label} - {record_count} stored review{'s' if record_count != 1 else ''}"
             account_options.append(
                 {
                     "id": account.id,
@@ -2253,7 +2254,7 @@ def register_public_auth_routes(
                     "id": account_id,
                     "label": (
                         f"Archived account [ID: {account_id}] - "
-                        f"{record_count} stored week{'s' if record_count != 1 else ''}"
+                        f"{record_count} stored review{'s' if record_count != 1 else ''}"
                     ),
                     "record_count": record_count,
                 }

@@ -681,15 +681,15 @@
                     <span class="scope-value">{{ selected_trade_account_label }}</span>
                     <span class="scope-subvalue">
                         {% if weekly_report_records %}
-                        {{ weekly_report_records|length }} unique week{{ 's' if weekly_report_records|length != 1 else '' }} loaded
+                        {{ weekly_report_records|length }} review{{ 's' if weekly_report_records|length != 1 else '' }} loaded
                         {% else %}
-                        No stored weekly records loaded
+                        No stored reviews loaded
                         {% endif %}
                     </span>
                 </article>
                 <article class="control-item">
                     <span class="control-label">Trend Window</span>
-                    <span class="scope-value">Latest 12 Weeks</span>
+                    <span class="scope-value">Latest 12 Reviews</span>
                     <span class="scope-subvalue">Most recent saved generation per review week</span>
                 </article>
             </div>
@@ -702,10 +702,10 @@
                 <div class="panel-head panel-head-stack">
                     <div>
                         <h2>Trend</h2>
-                        <p class="helper-note">Click any point to inspect that saved week's payload and the exact AI response below.</p>
+                        <p class="helper-note">Click any point to inspect that saved review's payload and the exact AI response below.</p>
                     </div>
                     <div class="selected-week-chip-wrap">
-                        <span class="chip root-chip">{{ weekly_report_records|length }} tracked week{{ 's' if weekly_report_records|length != 1 else '' }}</span>
+                        <span class="chip root-chip">{{ weekly_report_records|length }} tracked review{{ 's' if weekly_report_records|length != 1 else '' }}</span>
                         <span class="soft">{{ selected_trade_account_label }}</span>
                     </div>
                 </div>
@@ -754,7 +754,7 @@
                 <div class="panel-head panel-head-stack">
                     <div>
                         <h2>Selected Week Payload</h2>
-                        <p class="helper-note">Defaults to the newest stored week for this account. Trend clicks update the metrics and raw payload.</p>
+                        <p class="helper-note">Defaults to the newest stored review for this account. Trend clicks update the metrics and raw payload.</p>
                     </div>
                     <div class="selected-week-chip-wrap">
                         <span class="chip root-chip" id="weeklyAuditSelectedPeriod">-</span>
@@ -896,6 +896,11 @@
                 <div class="response-text-shell">
                     <pre id="weeklyAuditResponseText"></pre>
                 </div>
+
+                <details class="payload-json-details">
+                    <summary>Saved Prompt Text</summary>
+                    <pre id="weeklyAuditPromptText"></pre>
+                </details>
             </article>
         </section>
         {% else %}
