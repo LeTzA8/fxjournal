@@ -97,6 +97,8 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
             "net_pnl": 140.0,
             "weekly_pnl": 140.0,
             "monthly_pnl": 140.0,
+            "pair_sample_is_diverse": False,
+            "equity_has_outlier_dominance": True,
             "top_symbol_by_trade_count": "MES (MESM26)",
             "top_symbol_trade_share_pct": 100.0,
             "top_symbol_by_abs_pnl": "MES (MESM26)",
@@ -189,9 +191,19 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- notes_confidence: high" in prompt_text
     assert "- notes_basis: Per weekly trade idea after bundle merging; counts non-empty user-authored trade_note text only." in prompt_text
     assert "- payload_scope: one completed review period for one trade account" in prompt_text
+    assert "- period_bounds: period_start_utc inclusive, period_end_utc ending boundary" in prompt_text
+    assert "- summary_scope: SUMMARY metrics describe the completed review period only" in prompt_text
     assert "- historical_scope: historical sections are prior account context, not this week's pair/session/weekday breakdown" in prompt_text
+    assert "- count_semantics: total_trades, closed_trades, open_trades, closed_before_tp_count, closed_before_sl_count, and bundle_count are counts" in prompt_text
+    assert "- percent_semantics: win_rate, historical_win_rate, tp_capture_pct, and *_share_pct fields are already percentages" in prompt_text
+    assert "- currency_semantics: *_pnl fields are signed currency values for this account; *_drawdown_amount fields are drawdown magnitudes" in prompt_text
+    assert "- realized_result_semantics: SUMMARY.net_pnl is the reviewed-period result; weekly_pnl/monthly_pnl are rolling calendar aggregates relative to generated_at" in prompt_text
+    assert "- open_trade_semantics: total_trades includes open and closed trades; closed_trades is the realized-performance denominator" in prompt_text
     assert "EMOTIONAL INDEX" in prompt_text
     assert "- score_range: 0.00 to 10.00 (higher = stronger objective behavioural pressure)" in prompt_text
+    assert "- label_interpretation: low=quiet, moderate=mild, high=elevated, very_high=strong objective behavioural pressure" in prompt_text
+    assert "- component_semantics: *_points and *_repetition_bonus fields are normalized weighted components, not counts" in prompt_text
+    assert "- denominator_semantics: total_closed_trades is the denominator used for normalized behaviour scoring" in prompt_text
     assert "- label: moderate" in prompt_text
     assert "- self_report_mismatch: true" in prompt_text
     assert "- subjective_points: 0.00" in prompt_text
@@ -206,6 +218,8 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- comparison_scope: history_before_review_period_only" in prompt_text
     assert "- comparison_scope_note: history sections are comparison-only context and may exclude the current review period" in prompt_text
     assert "- account_age_days: 45" in prompt_text
+    assert "- pair_sample_is_diverse: false" in prompt_text
+    assert "- equity_has_outlier_dominance: true" in prompt_text
     assert "- top_symbol_trade_share_pct: 100.00%" in prompt_text
     assert "- largest_trade_abs_pnl_share_pct: 100.00%" in prompt_text
     assert "contract_code: MESM26" in prompt_text
@@ -592,77 +606,74 @@ def test_dashboard_prompt_uses_exit_price_language():
 
     assert "close_price" not in prompt_text
     assert "entry_price, exit_price, stop_loss, take_profit" in prompt_text
-    assert "stop_loss" in prompt_text
-    assert "take_profit" in prompt_text
-    assert "entry_session" in prompt_text
-    assert "exit_session" in prompt_text
     assert "entry_session, exit_session, session, duration_minutes" in prompt_text
-    assert "trade_sequence_number" in prompt_text
     assert "same_trade_idea_reentry" in prompt_text
     assert "is_potential_revenge" in prompt_text
     assert "is_potential_reactive" in prompt_text
-    assert "prev_symbol_trade_pnl" in prompt_text
     assert "is_revenge" in prompt_text
-    assert "planned_rr, realized_rr, tp_capture_pct" in prompt_text
+    assert "planned_rr" in prompt_text
+    assert "realized_rr" in prompt_text
+    assert "tp_capture_pct" in prompt_text
     assert "closed_before_tp" in prompt_text
     assert "split_group_size" in prompt_text
+
+    assert "INTERNAL WORKFLOW" in prompt_text
+    assert "STEP 1 - INTERPRET THE DATA CORRECTLY" in prompt_text
+    assert "STEP 2 - JUDGE DATA CONFIDENCE" in prompt_text
+    assert "STEP 3 - JUDGE PERFORMANCE SHAPE" in prompt_text
+    assert "STEP 4 - JUDGE BEHAVIOUR PRESSURE" in prompt_text
+    assert "STEP 5 - CHOOSE REVIEW MODE" in prompt_text
+    assert "STEP 6 - SELECT THE BEST 2-4 INSIGHTS" in prompt_text
+    assert "STEP 7 - WRITE THE RESPONSE" in prompt_text
+    assert "affirm_and_refine: profitable or orderly week with strengths worth" in prompt_text
+    assert "encouraging_with_limited_evidence: thin sample or sparse notes;" in prompt_text
+
+    assert "OUTPUT FORMAT" in prompt_text
     assert "Key Takeaways" in prompt_text
-    assert "Start with one unlabeled summary paragraph of 2-3 sentences." in prompt_text
-    assert "Under Key Takeaways, write 2-4 bullets total. Never write more than 4." in prompt_text
-    assert "Do not add a weak bullet just to hit a target count." in prompt_text
-    assert "Every bullet must anchor to a specific trade idea or sequence from" in prompt_text
-    assert "Choose the 2-4 most informative trade ideas or sequences from the" in prompt_text
-    assert "If the week has 5 or fewer trade ideas, aim for the summary plus" in prompt_text
-    assert "Use split_group_size, split_group_role, and possible_split_order to" in prompt_text
-    assert 'End with one final standalone line prefixed exactly with "Rule:"' in prompt_text
-    assert "If TRADER PROFILE ADJUSTMENTS are provided in the input, follow them for" in prompt_text
-    assert "The summary should set context, not restate the bullets line for line." in prompt_text
-    assert "If the summary already states the weekly result, the first bullet" in prompt_text
-    assert "If all closed trades lost, say there were no winning trades instead" in prompt_text
-    assert "avoid awkward phrasing like Tokyo-related sessions." in prompt_text
-    assert "Prioritize bullets in this order when the data supports it:" in prompt_text
-    assert "Prefer the most concrete and teachable insight, not just the most" in prompt_text
-    assert "Prefer a session, behaviour, execution, or pattern rule over a" in prompt_text
-    assert "Only use a symbol-only rule when the week's issue was truly isolated" in prompt_text
-    assert "The rule should almost never mention two different symbols." in prompt_text
-    assert "Default to broader process language such as after a loss, after a" in prompt_text
-    assert "Do not invent staged-entry lessons" in prompt_text
-    assert "Overnight holding alone is not a mistake." in prompt_text
-    assert 'Do not create a blanket "never hold overnight" rule from one winning' in prompt_text
-    assert 'Never mention "emotional index", internal scores, or internal labels' in prompt_text
-    assert "emotions looked in check this week." in prompt_text
-    assert "emotions looked controlled this week." in prompt_text
-    assert "Use the examples below for structure and tone only." in prompt_text
-    assert "On profitable or low-signal weeks, the rule can be a light" in prompt_text
-    assert "If the week was profitable, the emotional signal was low, and there" in prompt_text
-    assert "Do not derive an add-on timing or sizing rule from one split-entry" in prompt_text
-    assert 'Bad rule example: "Never hold XAUUSD overnight again."' in prompt_text
-    assert 'Better rule example: "Use the condition behind your cleanest setup as' in prompt_text
-    assert "This was a profitable week with one standout trade idea and otherwise" in prompt_text
-    assert "One split-entry cluster should be treated as one setup, not several" in prompt_text
-    assert "Do not use paragraph prose anywhere in the response." not in prompt_text
+    assert 'End with one final standalone line prefixed exactly with "Rule:".' in prompt_text
+    assert "These are candidate insight buckets, not a checklist." in prompt_text
+    assert "A bucket can contribute zero, one, or more bullets depending on the" in prompt_text
+    assert "The only heading allowed in the output is Key Takeaways." in prompt_text
+
+    assert "PRIVACY AND WORDING" in prompt_text
     assert "Never reveal exact account metrics from the payload." in prompt_text
-    assert "Keep the response between 100 and 150 words." not in prompt_text
-    assert "notes_coverage" in prompt_text
-    assert "emotional_index.score is on a 0.0 to 10.0 scale." in prompt_text
-    assert "HISTORICAL_CONTEXT, HISTORICAL_TOP_PAIRS, HISTORICAL_TOP_SESSIONS," in prompt_text
-    assert 'Do not prescribe a fixed cooldown like "wait one full session before' in prompt_text
-    assert "One heuristic revenge or reactive clue does not justify a rigid" in prompt_text
-    assert "notes_with_content / notes_missing / notes_confidence" in prompt_text
+    assert "one/two/several trades" in prompt_text
+    assert "If all closed trades lost, say there were no winning trades instead" in prompt_text
+    assert "Avoid awkward phrasing like Tokyo-related sessions." in prompt_text
+
     assert "EMOTIONAL INDEX" in prompt_text
-    assert "top_symbol_by_trade_count / top_symbol_trade_share_pct" in prompt_text
-    assert "top_symbol_abs_pnl_share_pct" in prompt_text
-    assert "largest_trade_abs_pnl_share_pct" in prompt_text
-    assert "bundle_count: Structural context only." in prompt_text
-    assert "confirmed_revenge_trade_count: User-confirmed revenge labels." in prompt_text
-    assert "revenge_trade_count: Combined revenge count" in prompt_text
-    assert "possible_split_order" in prompt_text
-    assert "is_revenge: User-confirmed revenge flag." in prompt_text
-    assert "confirmed_reactive_trade_count / confirmed_corrective_trade_count" in prompt_text
-    assert "is_potential_reactive: Heuristic signal for quick re-entry" in prompt_text
-    assert "self_report_mismatch: If true, the user reported calm/controlled" in prompt_text
+    assert "emotional_index.score is on a 0.0 to 10.0 scale." in prompt_text
+    assert "total_closed_trades in EMOTIONAL INDEX is the denominator used for" in prompt_text
+    assert "Never mention emotional index, internal scores, or internal labels" in prompt_text
+    assert "net_pnl is the realized result for the reviewed period." in prompt_text
+    assert "weekly_pnl and monthly_pnl are rolling calendar aggregates relative" in prompt_text
+    assert "total_trades includes open and closed trades in the review window." in prompt_text
+    assert "HISTORICAL_CONTEXT, HISTORICAL_TOP_PAIRS, HISTORICAL_TOP_SESSIONS," in prompt_text
+    assert "pair_sample_is_diverse and equity_has_outlier_dominance are boolean" in prompt_text
+    assert "notes_coverage is a ratio between 0.0 and 1.0" in prompt_text
+
     assert "same_trade_idea_reentry alone does not mean revenge or impulsiveness." in prompt_text
-    assert "If notes_confidence is low and the relevant trade has no note" in prompt_text
+    assert "One heuristic revenge or reactive clue does not justify a rigid" in prompt_text
+    assert "Do not invent staged-entry lessons like" in prompt_text
+    assert "Overnight holding alone is not a mistake." in prompt_text
+
+    assert "RULE WRITING" in prompt_text
+    assert 'Do not prescribe a fixed cooldown like' in prompt_text
+    assert "The rule can either protect a strength or correct a weakness," in prompt_text
+    assert 'Do not create a blanket "never hold overnight" rule from one winning' in prompt_text
+
+    assert "TONE" in prompt_text
+    assert "Overall tone should be encouraging, grounded, and honest." in prompt_text
+    assert "On all-win weeks: reinforce what worked first, then add one" in prompt_text
+    assert "On limited-evidence weeks: keep claims modest" in prompt_text
+
+    assert "GOOD FORMAT EXAMPLE" in prompt_text
+    assert "BAD FORMAT EXAMPLES" in prompt_text
+    assert "This was a profitable week driven by one clean trade idea, with the" in prompt_text
+    assert "One split-entry cluster should be treated as one setup, not several" in prompt_text
+
+    assert "Do not use paragraph prose anywhere in the response." not in prompt_text
+    assert "Keep the response between 100 and 150 words." not in prompt_text
     assert "Use only these optional plain-text section labels in the response:" not in prompt_text
 
 
