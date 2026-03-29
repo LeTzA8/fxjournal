@@ -3,59 +3,59 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="color-scheme" content="light dark" />
-  <meta name="supported-color-schemes" content="light dark" />
+  <meta name="color-scheme" content="light" />
+  <meta name="supported-color-schemes" content="light" />
   <meta name="x-apple-disable-message-reformatting" />
   <title>Welcome to FX Journal</title>
   <style>
     :root {
-      color-scheme: dark;
-      supported-color-schemes: dark;
+      color-scheme: light;
+      supported-color-schemes: light;
     }
 
     body,
     .email-bg,
     .email-shell {
-      background-color: #030507 !important;
-      color: #f8fafc !important;
+      background-color: #f4f7fb !important;
+      color: #182538 !important;
     }
 
     .email-card {
-      background-color: #0b1017 !important;
-      border: 1px solid #202a3a !important;
+      background-color: #ffffff !important;
+      border: 1px solid #dce4f0 !important;
       border-radius: 16px !important;
     }
 
     .email-surface {
-      background-color: #101722 !important;
-      border: 1px solid #202a3a !important;
+      background-color: #eef4ff !important;
+      border: 1px solid #dce4f0 !important;
     }
 
     .email-text {
-      color: #f8fafc !important;
+      color: #182538 !important;
     }
 
     .email-muted {
-      color: #8f9bb0 !important;
+      color: #66758f !important;
     }
 
     .email-accent {
-      color: #4562ff !important;
+      color: #3658e8 !important;
     }
 
     .email-divider {
-      background-color: #202a3a !important;
+      background-color: #dce4f0 !important;
     }
 
     .email-button-cell {
-      background-color: #4562ff !important;
+      background-color: #3658e8 !important;
       border-radius: 10px !important;
     }
 
     .email-button-link {
       display: block !important;
       padding: 14px 36px !important;
-      border: 1px solid #4562ff !important;
+      border: 1px solid #3658e8 !important;
       border-radius: 10px !important;
       color: #ffffff !important;
       font-size: 15px !important;
@@ -67,9 +67,9 @@
     .email-logo-wrap {
       display: inline-block;
       padding: 10px 18px;
-      border: 1px solid #202a3a;
+      border: 1px solid #dce4f0;
       border-radius: 999px;
-      background-color: #0b1017;
+      background-color: #ffffff;
     }
 
     a[x-apple-data-detectors],
@@ -79,152 +79,57 @@
       text-decoration: none !important;
       font: inherit !important;
     }
-
-    @media (prefers-color-scheme: dark) {
-      body,
-      .email-bg,
-      .email-shell {
-        background-color: #030507 !important;
-        color: #f8fafc !important;
-      }
-
-      .email-card {
-        background-color: #0b1017 !important;
-        border-color: #202a3a !important;
-      }
-
-      .email-surface {
-        background-color: #101722 !important;
-        border-color: #202a3a !important;
-      }
-
-      .email-text {
-        color: #f8fafc !important;
-      }
-
-      .email-muted {
-        color: #8f9bb0 !important;
-      }
-
-      .email-accent {
-        color: #6f84ff !important;
-      }
-
-      .email-divider {
-        background-color: #202a3a !important;
-      }
-
-      .email-button-cell {
-        background-color: #4562ff !important;
-      }
-
-      .email-button-link {
-        border-color: #4562ff !important;
-        color: #ffffff !important;
-      }
-    }
-
-    [data-ogsc] .email-bg,
-    [data-ogsb] .email-bg,
-    [data-ogsc] .email-shell,
-    [data-ogsb] .email-shell {
-      background-color: #030507 !important;
-      color: #f8fafc !important;
-    }
-
-    [data-ogsc] .email-card,
-    [data-ogsb] .email-card {
-      background-color: #0b1017 !important;
-      border-color: #202a3a !important;
-    }
-
-    [data-ogsc] .email-surface,
-    [data-ogsb] .email-surface {
-      background-color: #101722 !important;
-      border-color: #202a3a !important;
-    }
-
-    [data-ogsc] .email-text,
-    [data-ogsb] .email-text {
-      color: #f8fafc !important;
-    }
-
-    [data-ogsc] .email-muted,
-    [data-ogsb] .email-muted {
-      color: #8f9bb0 !important;
-    }
-
-    [data-ogsc] .email-accent,
-    [data-ogsb] .email-accent {
-      color: #6f84ff !important;
-    }
-
-    [data-ogsc] .email-divider,
-    [data-ogsb] .email-divider {
-      background-color: #202a3a !important;
-    }
-
-    [data-ogsc] .email-button-cell,
-    [data-ogsb] .email-button-cell {
-      background-color: #4562ff !important;
-    }
-
-    [data-ogsc] .email-button-link,
-    [data-ogsb] .email-button-link {
-      border-color: #4562ff !important;
-      color: #ffffff !important;
-    }
   </style>
 </head>
-<body class="body email-bg" style="margin:0;padding:0;background-color:#030507;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
-  <div style="display:none;font-size:1px;color:#030507;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">
+<body class="body email-bg" style="margin:0;padding:0;background-color:#f4f7fb;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+  <div style="display:none;font-size:1px;color:#f4f7fb;line-height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;">
     Welcome to MyFXJournal - your AI-powered trading journal
   </div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-bg email-shell" bgcolor="#030507" style="background-color:#030507;padding:40px 16px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="email-bg email-shell" bgcolor="#f4f7fb" style="background-color:#f4f7fb;padding:40px 16px;">
     <tr>
       <td align="center">
         <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
           <tr>
             <td style="padding-bottom:32px;" align="center">
-              <div class="email-logo-wrap" style="display:inline-block;padding:10px 18px;border:1px solid #202a3a;border-radius:999px;background-color:#0b1017;">
+              <div class="email-logo-wrap" style="display:inline-block;padding:10px 18px;border:1px solid #dce4f0;border-radius:999px;background-color:#ffffff;">
                 <img src="{{ logo_url }}" alt="FX Journal" height="36" style="display:block;" />
               </div>
             </td>
           </tr>
           <tr>
-            <td class="email-card" bgcolor="#0b1017" style="background-color:#0b1017;border-radius:16px;padding:40px 36px;border:1px solid #202a3a;">
+            <td class="email-card" bgcolor="#ffffff" style="background-color:#ffffff;border-radius:16px;padding:40px 36px;border:1px solid #dce4f0;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
                 <tr>
                   <td align="center">
-                    <div class="email-surface email-accent" style="display:inline-block;padding:10px 14px;border-radius:999px;background-color:#101722;border:1px solid #202a3a;font-size:12px;font-weight:700;letter-spacing:0.7px;text-transform:uppercase;color:#4562ff;">Account ready</div>
+                    <div class="email-surface email-accent" style="display:inline-block;padding:10px 14px;border-radius:999px;background-color:#eef4ff;border:1px solid #dce4f0;font-size:12px;font-weight:700;letter-spacing:0.7px;text-transform:uppercase;color:#3658e8;">Account ready</div>
                   </td>
                 </tr>
               </table>
-              <p class="email-text" style="margin:0 0 8px 0;font-size:24px;font-weight:700;color:#f8fafc;letter-spacing:-0.3px;">Hi {{ name }}, welcome to FX Journal.</p>
-              <p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#8f9bb0;line-height:1.7;">Your account is ready. Start importing trades now so your dashboard and weekly AI feedback have real data to work with.</p>
+              <p class="email-text" style="margin:0 0 8px 0;font-size:24px;font-weight:700;color:#182538;letter-spacing:-0.3px;">Hi {{ name }}, welcome to FX Journal.</p>
+              <p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#66758f;line-height:1.7;">Your account is ready. Start importing trades now so your dashboard and weekly AI feedback have real data to work with.</p>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
-                <tr><td class="email-divider" style="height:1px;background-color:#202a3a;"></td></tr>
+                <tr><td class="email-divider" style="height:1px;background-color:#dce4f0;"></td></tr>
               </table>
-              <p class="email-accent" style="margin:0 0 16px 0;font-size:13px;font-weight:700;color:#4562ff;letter-spacing:0.8px;text-transform:uppercase;">Get started</p>
+              <p class="email-accent" style="margin:0 0 16px 0;font-size:13px;font-weight:700;color:#3658e8;letter-spacing:0.8px;text-transform:uppercase;">Get started</p>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px;">
                 <tr>
                   <td width="34" valign="top">
-                    <div class="email-surface email-accent" style="width:28px;height:28px;border-radius:50%;background-color:#101722;border:1px solid #202a3a;text-align:center;line-height:28px;font-size:13px;font-weight:700;color:#4562ff;">1</div>
+                    <div class="email-surface email-accent" style="width:28px;height:28px;border-radius:50%;background-color:#eef4ff;border:1px solid #dce4f0;text-align:center;line-height:28px;font-size:13px;font-weight:700;color:#3658e8;">1</div>
                   </td>
                   <td valign="top" style="padding-left:12px;">
-                    <p class="email-text" style="margin:0 0 4px 0;font-size:15px;font-weight:700;color:#f8fafc;">Import your trades</p>
-                    <p class="email-muted" style="margin:0;font-size:14px;color:#8f9bb0;line-height:1.6;">Export your MT5 history and upload it to your journal.</p>
+                    <p class="email-text" style="margin:0 0 4px 0;font-size:15px;font-weight:700;color:#182538;">Import your trades</p>
+                    <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">Export your MT5 history and upload it to your journal.</p>
                   </td>
                 </tr>
               </table>
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:32px;">
                 <tr>
                   <td width="34" valign="top">
-                    <div class="email-surface email-accent" style="width:28px;height:28px;border-radius:50%;background-color:#101722;border:1px solid #202a3a;text-align:center;line-height:28px;font-size:13px;font-weight:700;color:#4562ff;">2</div>
+                    <div class="email-surface email-accent" style="width:28px;height:28px;border-radius:50%;background-color:#eef4ff;border:1px solid #dce4f0;text-align:center;line-height:28px;font-size:13px;font-weight:700;color:#3658e8;">2</div>
                   </td>
                   <td valign="top" style="padding-left:12px;">
-                    <p class="email-text" style="margin:0 0 4px 0;font-size:15px;font-weight:700;color:#f8fafc;">Check back for your AI review</p>
-                    <p class="email-muted" style="margin:0;font-size:14px;color:#8f9bb0;line-height:1.6;">Every week, your AI trading coach analyses your trades and gives you specific feedback.</p>
+                    <p class="email-text" style="margin:0 0 4px 0;font-size:15px;font-weight:700;color:#182538;">Check back for your AI review</p>
+                    <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">Every week, your AI trading coach analyses your trades and gives you specific feedback.</p>
                   </td>
                 </tr>
               </table>
@@ -233,8 +138,8 @@
                   <td align="center">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
-                        <td class="email-button-cell" bgcolor="#4562ff" align="center" style="background-color:#4562ff;border-radius:10px;">
-                          <a href="{{ dashboard_url }}" class="email-button-link" style="display:block;padding:14px 36px;border:1px solid #4562ff;border-radius:10px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">Go to Dashboard</a>
+                        <td class="email-button-cell" bgcolor="#3658e8" align="center" style="background-color:#3658e8;border-radius:10px;">
+                          <a href="{{ dashboard_url }}" class="email-button-link" style="display:block;padding:14px 36px;border:1px solid #3658e8;border-radius:10px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">Go to Dashboard</a>
                         </td>
                       </tr>
                     </table>
@@ -245,12 +150,12 @@
           </tr>
           <tr>
             <td style="padding-top:28px;" align="center">
-              <p class="email-muted" style="margin:0 0 8px 0;font-size:13px;color:#8f9bb0;">Free during open beta &mdash; no credit card required.</p>
-              <p class="email-muted" style="margin:0;font-size:12px;color:#8f9bb0;">
-                <a href="https://myfxjournal.com" class="email-accent" style="color:#4562ff;text-decoration:none;">myfxjournal.com</a>
+              <p class="email-muted" style="margin:0 0 8px 0;font-size:13px;color:#66758f;">Free during open beta &mdash; no credit card required.</p>
+              <p class="email-muted" style="margin:0;font-size:12px;color:#66758f;">
+                <a href="https://myfxjournal.com" class="email-accent" style="color:#3658e8;text-decoration:none;">myfxjournal.com</a>
                 {% if unsubscribe_url %}
                 &nbsp;&middot;&nbsp;
-                <a href="{{ unsubscribe_url }}" class="email-muted" style="color:#8f9bb0;text-decoration:none;">Unsubscribe</a>
+                <a href="{{ unsubscribe_url }}" class="email-muted" style="color:#66758f;text-decoration:none;">Unsubscribe</a>
                 {% endif %}
               </p>
             </td>

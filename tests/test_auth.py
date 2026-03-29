@@ -230,6 +230,52 @@ def test_register_page_shows_google_consent_dialog(app_ctx, client, monkeypatch)
     assert "Continue with Google" in response_text
 
 
+def test_authenticated_pages_disable_caching(app_ctx, client):
+    user = User(
+        username="cachetester",
+        email="cachetester@example.com",
+        password=generate_password_hash("password123"),
+        email_verified=True,
+        signup_status="approved",
+    )
+    db.session.add(user)
+    db.session.commit()
+
+    with client.session_transaction() as session_state:
+        session_state["user_id"] = user.id
+        session_state["username"] = user.username
+
+    response = client.get("/account")
+
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "no-store, no-cache, must-revalidate, max-age=0, private"
+    assert response.headers["Pragma"] == "no-cache"
+    assert response.headers["Expires"] == "0"
+
+
+def test_logout_response_disables_caching(app_ctx, client):
+    user = User(
+        username="logoutcachetester",
+        email="logoutcachetester@example.com",
+        password=generate_password_hash("password123"),
+        email_verified=True,
+        signup_status="approved",
+    )
+    db.session.add(user)
+    db.session.commit()
+
+    with client.session_transaction() as session_state:
+        session_state["user_id"] = user.id
+        session_state["username"] = user.username
+
+    response = client.post("/logout", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["Cache-Control"] == "no-store, no-cache, must-revalidate, max-age=0, private"
+    assert response.headers["Pragma"] == "no-cache"
+    assert response.headers["Expires"] == "0"
+
+
 def test_google_callback_creates_new_user_from_register_flow(app_ctx, client, monkeypatch):
     app_ctx.config["GOOGLE_CLIENT_ID"] = "google-client-id"
     app_ctx.config["GOOGLE_CLIENT_SECRET"] = "google-client-secret"
