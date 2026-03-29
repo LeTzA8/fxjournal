@@ -369,9 +369,9 @@ def test_checkin_shows_outlier_review_and_saves_bundle_confirmations(app_ctx, cl
     assert b"Confirm as bundle" in bundle_step_response.data
     assert b"Step 3. Weekly Check-In" not in bundle_step_response.data
     assert classification_response.status_code == 200
-    assert b"Step 2. Behaviour Review" in classification_response.data
+    assert b"Step 2. Revenge Review" in classification_response.data
     assert b"Revenge" in classification_response.data
-    assert b"Clean" in classification_response.data
+    assert b"Not Revenge" in classification_response.data
     assert b"Not sure" in classification_response.data
     assert b"Step 3. Weekly Check-In" not in classification_response.data
     assert weekly_step_response.status_code == 200
@@ -539,7 +539,7 @@ def test_checkin_unsure_classification_keeps_standalone_trade_unflagged(app_ctx,
     ).first()
 
     assert classification_step.status_code == 200
-    assert b"Step 2. Behaviour Review" in classification_step.data
+    assert b"Step 2. Revenge Review" in classification_step.data
     assert b"Not sure" in classification_step.data
     assert weekly_step.status_code == 200
     assert b"Step 3. Weekly Check-In" in weekly_step.data

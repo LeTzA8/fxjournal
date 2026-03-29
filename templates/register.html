@@ -75,6 +75,7 @@
                 type="submit"
                 formaction="{{ url_for('google_register_start') }}"
                 formmethod="post"
+                formnovalidate
                 class="auth-oauth-btn auth-oauth-submit"
                 {% if registrations_paused %}disabled{% endif %}
             >

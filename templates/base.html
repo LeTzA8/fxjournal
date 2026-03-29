@@ -1266,6 +1266,11 @@
             cursor: pointer;
         }
 
+        .notice + .auth-oauth-btn,
+        .notice + .login-form {
+            margin-top: 1rem;
+        }
+
         .auth-oauth-btn:disabled,
         .auth-oauth-btn[aria-disabled="true"] {
             cursor: not-allowed;
@@ -1278,18 +1283,43 @@
         }
 
         .auth-divider {
-            margin: 0.1rem 0 0.15rem;
-            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.8rem;
+            margin: 0.8rem 0 0.2rem;
             font-size: 0.82rem;
             letter-spacing: 0.04em;
             text-transform: uppercase;
             color: var(--muted);
         }
 
+        .auth-divider::before,
+        .auth-divider::after {
+            content: "";
+            flex: 1 1 auto;
+            min-width: 0;
+            height: 1px;
+            background: linear-gradient(
+                90deg,
+                transparent 0%,
+                color-mix(in srgb, var(--border) 88%, transparent) 16%,
+                color-mix(in srgb, var(--border) 92%, transparent) 84%,
+                transparent 100%
+            );
+        }
+
         .auth-divider span {
+            flex: 0 0 auto;
             display: inline-block;
-            padding: 0 0.65rem;
-            background: var(--card);
+            padding: 0;
+            background: transparent;
+            line-height: 1;
+            white-space: nowrap;
+        }
+
+        .auth-divider + .login-form {
+            margin-top: 0.95rem;
         }
 
         .login-form label {

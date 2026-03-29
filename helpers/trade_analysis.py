@@ -4,8 +4,9 @@ from datetime import datetime, timezone
 from trading import classify_trading_session, ensure_utc_aware, format_trade_symbol, resolve_net_pnl
 
 SPLIT_BUCKET_MINUTES = 5
-REVENGE_REENTRY_WINDOW_MINUTES = 30
-SAME_TRADE_IDEA_REENTRY_WINDOW_MINUTES = 60
+REVENGE_REENTRY_WINDOW_MINUTES = 90
+REACTIVE_REENTRY_WINDOW_MINUTES = 120
+SAME_TRADE_IDEA_REENTRY_WINDOW_MINUTES = 90
 BUNDLE_TP_SL_TOLERANCE_PCT = 0.002
 CORRECTIVE_REENTRY_WINDOW_MINUTES = 240
 
@@ -97,6 +98,113 @@ def _trade_symbol_side(trade):
         (format_trade_symbol(trade) or "").strip().upper(),
         (getattr(trade, "side", "") or "").strip().upper(),
     )
+
+
+def _score_revenge_signal(
+    *,
+    current_loss_streak,
+    current_group,
+    is_post_loss_trade,
+    is_post_loss_same_symbol_trade,
+    minutes_since_prev_close,
+    minutes_since_prev_symbol_close,
+    same_symbol_reentry,
+    same_trade_idea_reentry,
+    size_vs_prev_trade,
+    size_vs_prev_symbol_trade,
+):
+    if current_group["possible_split_order"]:
+        return 0.0
+
+    score = 0.0
+    if is_post_loss_same_symbol_trade and minutes_since_prev_symbol_close is not None:
+        if minutes_since_prev_symbol_close <= REVENGE_REENTRY_WINDOW_MINUTES:
+            score += 1.0
+    elif is_post_loss_trade and same_trade_idea_reentry and minutes_since_prev_close is not None:
+        if minutes_since_prev_close <= REVENGE_REENTRY_WINDOW_MINUTES:
+            score += 0.85
+
+    if minutes_since_prev_symbol_close is not None:
+        if minutes_since_prev_symbol_close <= 10:
+            score += 0.75
+        elif minutes_since_prev_symbol_close <= 30:
+            score += 0.5
+        elif minutes_since_prev_symbol_close <= REVENGE_REENTRY_WINDOW_MINUTES:
+            score += 0.25
+    elif minutes_since_prev_close is not None:
+        if minutes_since_prev_close <= 10:
+            score += 0.4
+        elif minutes_since_prev_close <= 30:
+            score += 0.25
+
+    if same_symbol_reentry:
+        score += 0.25
+    if same_trade_idea_reentry:
+        score += 0.35
+
+    if size_vs_prev_symbol_trade == "larger" or size_vs_prev_trade == "larger":
+        score += 0.5
+    elif size_vs_prev_symbol_trade == "same" or size_vs_prev_trade == "same":
+        score += 0.2
+
+    if current_loss_streak >= 2:
+        score += 0.75
+    elif current_loss_streak >= 1:
+        score += 0.25
+
+    return round(score, 2)
+
+
+def _score_reactive_signal(
+    *,
+    current_loss_streak,
+    current_group,
+    is_post_loss_trade,
+    minutes_since_prev_close,
+    minutes_since_prev_symbol_close,
+    same_symbol_reentry,
+    same_trade_idea_reentry,
+    size_vs_prev_trade,
+    size_vs_prev_symbol_trade,
+):
+    if current_group["possible_split_order"]:
+        return 0.0
+
+    score = 0.0
+    quick_reentry = (
+        minutes_since_prev_close is not None
+        and minutes_since_prev_close <= REACTIVE_REENTRY_WINDOW_MINUTES
+    )
+    quick_symbol_reentry = (
+        minutes_since_prev_symbol_close is not None
+        and minutes_since_prev_symbol_close <= REACTIVE_REENTRY_WINDOW_MINUTES
+    )
+
+    if same_trade_idea_reentry and quick_reentry:
+        score += 0.75
+    elif same_symbol_reentry and quick_symbol_reentry:
+        score += 0.6
+
+    if size_vs_prev_symbol_trade == "larger" or size_vs_prev_trade == "larger":
+        score += 0.55
+    elif size_vs_prev_symbol_trade == "same" or size_vs_prev_trade == "same":
+        score += 0.25
+
+    if is_post_loss_trade:
+        score += 0.35
+
+    if quick_reentry and minutes_since_prev_close is not None:
+        if minutes_since_prev_close <= 15:
+            score += 0.35
+        elif minutes_since_prev_close <= 45:
+            score += 0.2
+
+    if current_loss_streak >= 2:
+        score += 0.35
+    elif current_loss_streak >= 1:
+        score += 0.15
+
+    return round(score, 2)
 
 
 def _shares_split_bucket(anchor_trade, candidate_trade):
@@ -220,12 +328,31 @@ def build_trade_annotations(trades):
             ):
                 same_trade_idea_reentry = True
 
-        is_potential_revenge = bool(
-            is_post_loss_same_symbol_trade
-            and minutes_since_prev_symbol_close is not None
-            and minutes_since_prev_symbol_close <= REVENGE_REENTRY_WINDOW_MINUTES
-            and not current_group["possible_split_order"]
+        revenge_signal_strength = _score_revenge_signal(
+            current_loss_streak=current_loss_streak,
+            current_group=current_group,
+            is_post_loss_trade=is_post_loss_trade,
+            is_post_loss_same_symbol_trade=is_post_loss_same_symbol_trade,
+            minutes_since_prev_close=minutes_since_prev_close,
+            minutes_since_prev_symbol_close=minutes_since_prev_symbol_close,
+            same_symbol_reentry=same_symbol_reentry,
+            same_trade_idea_reentry=same_trade_idea_reentry,
+            size_vs_prev_trade=size_vs_prev_trade,
+            size_vs_prev_symbol_trade=size_vs_prev_symbol_trade,
         )
+        reactive_signal_strength = _score_reactive_signal(
+            current_loss_streak=current_loss_streak,
+            current_group=current_group,
+            is_post_loss_trade=is_post_loss_trade,
+            minutes_since_prev_close=minutes_since_prev_close,
+            minutes_since_prev_symbol_close=minutes_since_prev_symbol_close,
+            same_symbol_reentry=same_symbol_reentry,
+            same_trade_idea_reentry=same_trade_idea_reentry,
+            size_vs_prev_trade=size_vs_prev_trade,
+            size_vs_prev_symbol_trade=size_vs_prev_symbol_trade,
+        )
+        is_potential_revenge = revenge_signal_strength >= 1.5
+        is_potential_reactive = reactive_signal_strength >= 1.25
 
         annotations[identity] = {
             "trade_sequence_number": sequence_number,
@@ -244,6 +371,9 @@ def build_trade_annotations(trades):
             "is_post_loss_same_symbol_trade": is_post_loss_same_symbol_trade,
             "same_trade_idea_reentry": same_trade_idea_reentry,
             "is_potential_revenge": is_potential_revenge,
+            "revenge_signal_strength": revenge_signal_strength,
+            "is_potential_reactive": is_potential_reactive,
+            "reactive_signal_strength": reactive_signal_strength,
             "split_group_size": current_group["split_group_size"],
             "split_group_index": current_group["split_group_index"],
             "split_group_role": current_group["split_group_role"],

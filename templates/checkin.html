@@ -424,13 +424,13 @@
 
             <section class="outlier-review" aria-label="Trade classification">
                 <div>
-                    <h2 class="checkin-legend">Step 2. Behaviour Review</h2>
-                    <p class="outlier-review-intro">These trades or bundles look like possible post-loss emotional sequences. Label them as <strong>Revenge</strong>, <strong>Reactive</strong>, <strong>Corrective</strong>, <strong>Clean</strong>, or <strong>Not sure</strong>. Choosing Clean or Not sure leaves the trade unflagged.</p>
+                    <h2 class="checkin-legend">Step 2. Revenge Review</h2>
+                    <p class="outlier-review-intro">These trades or bundles look like possible revenge sequences based on timing, re-entry, and loss context. Mark only the ones that genuinely felt revenge-driven. Choosing Not Revenge or Not sure leaves the trade unflagged.</p>
                 </div>
 
                 {% if bundle_classification_candidates %}
                 <section class="outlier-section">
-                    <h3 class="outlier-section-title">Bundled Behaviour Candidates</h3>
+                    <h3 class="outlier-section-title">Bundled Revenge Candidates</h3>
                     <p class="outlier-section-note">These only show up for bundle groups you already confirmed in Step 1.</p>
                     {% for candidate in bundle_classification_candidates %}
                     {% set lead_trade = candidate.trades[0] %}
@@ -447,23 +447,15 @@
                         </div>
 
                         <div class="outlier-classification">
-                            <span class="outlier-classification-label">Behaviour label</span>
+                            <span class="outlier-classification-label">Revenge label</span>
                             <div class="outlier-classification-options">
                                 <label class="outlier-radio">
                                     <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="revenge" {% if candidate.selected_type == "revenge" %}checked{% endif %}>
                                     <span>Revenge</span>
                                 </label>
                                 <label class="outlier-radio">
-                                    <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="reactive" {% if candidate.selected_type == "reactive" %}checked{% endif %}>
-                                    <span>Reactive</span>
-                                </label>
-                                <label class="outlier-radio">
-                                    <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="corrective" {% if candidate.selected_type == "corrective" %}checked{% endif %}>
-                                    <span>Corrective</span>
-                                </label>
-                                <label class="outlier-radio">
                                     <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="neutral" {% if candidate.selected_type == "neutral" %}checked{% endif %}>
-                                    <span>Clean</span>
+                                    <span>Not Revenge</span>
                                 </label>
                                 <label class="outlier-radio">
                                     <input type="radio" name="bundle_type_{{ candidate.group_hash }}" value="unsure" {% if candidate.selected_type == "unsure" %}checked{% endif %}>
@@ -478,8 +470,8 @@
 
                 {% if standalone_classification_candidates %}
                 <section class="outlier-section">
-                    <h3 class="outlier-section-title">Standalone Behaviour Candidates</h3>
-                    <p class="outlier-section-note">Choose the best fit for each trade below.</p>
+                    <h3 class="outlier-section-title">Standalone Revenge Candidates</h3>
+                    <p class="outlier-section-note">Mark only the trades that genuinely felt like revenge.</p>
                     {% for candidate in standalone_classification_candidates %}
                     {% set trade = candidate.trade %}
                     <article class="outlier-card">
@@ -500,23 +492,15 @@
                         </div>
 
                         <div class="outlier-classification">
-                            <span class="outlier-classification-label">Behaviour label</span>
+                            <span class="outlier-classification-label">Revenge label</span>
                             <div class="outlier-classification-options">
                                 <label class="outlier-radio">
                                     <input type="radio" name="trade_type_{{ candidate.trade_pubkey }}" value="revenge" {% if candidate.selected_type == "revenge" %}checked{% endif %}>
                                     <span>Revenge</span>
                                 </label>
                                 <label class="outlier-radio">
-                                    <input type="radio" name="trade_type_{{ candidate.trade_pubkey }}" value="reactive" {% if candidate.selected_type == "reactive" %}checked{% endif %}>
-                                    <span>Reactive</span>
-                                </label>
-                                <label class="outlier-radio">
-                                    <input type="radio" name="trade_type_{{ candidate.trade_pubkey }}" value="corrective" {% if candidate.selected_type == "corrective" %}checked{% endif %}>
-                                    <span>Corrective</span>
-                                </label>
-                                <label class="outlier-radio">
                                     <input type="radio" name="trade_type_{{ candidate.trade_pubkey }}" value="neutral" {% if candidate.selected_type == "neutral" %}checked{% endif %}>
-                                    <span>Clean</span>
+                                    <span>Not Revenge</span>
                                 </label>
                                 <label class="outlier-radio">
                                     <input type="radio" name="trade_type_{{ candidate.trade_pubkey }}" value="unsure" {% if candidate.selected_type == "unsure" %}checked{% endif %}>

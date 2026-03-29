@@ -61,7 +61,7 @@ EXECUTION_QUALITY_OPTIONS = (
 VALID_EMOTIONAL_STATES = {option["value"] for option in EMOTIONAL_STATE_OPTIONS}
 VALID_PLAN_ADHERENCE = {option["value"] for option in PLAN_ADHERENCE_OPTIONS}
 VALID_EXECUTION_QUALITY = {option["value"] for option in EXECUTION_QUALITY_OPTIONS}
-VALID_OUTLIER_CLASSIFICATIONS = {"neutral", "revenge", "reactive", "corrective", "unsure"}
+VALID_OUTLIER_CLASSIFICATIONS = {"neutral", "revenge", "unsure"}
 WORKFLOW_STAGE_BUNDLE_REVIEW = "bundle_review"
 WORKFLOW_STAGE_CLASSIFICATION = "classification"
 WORKFLOW_STAGE_CHECKIN = "checkin"
@@ -416,10 +416,6 @@ def checkin():
                     trade.bundle_pubkey = bundle_pubkey
                 if bundle_type == "revenge" and not trade.is_revenge:
                     trade.is_revenge = True
-                elif bundle_type == "reactive" and not trade.is_reactive:
-                    trade.is_reactive = True
-                elif bundle_type == "corrective" and not trade.is_corrective:
-                    trade.is_corrective = True
 
         for trade_pubkey, selected_type in selected_trade_types.items():
             trade = (
@@ -436,10 +432,6 @@ def checkin():
                 continue
             if selected_type == "revenge" and not trade.is_revenge:
                 trade.is_revenge = True
-            elif selected_type == "reactive" and not trade.is_reactive:
-                trade.is_reactive = True
-            elif selected_type == "corrective" and not trade.is_corrective:
-                trade.is_corrective = True
 
         weekly_checkin = existing_checkin or WeeklyCheckin(
             user_id=user_id,

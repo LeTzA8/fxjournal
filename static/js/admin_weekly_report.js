@@ -16,8 +16,11 @@
         return;
     }
 
-    const recordMap = new Map(records.map((record) => [String(record.id), record]));
-    let selectedRecordId = String(pageData.initial_record_id || records[0].id);
+    const recordSortKey = (record) => String(record.period_start_utc || record.generated_at || "");
+    const recordsAsc = records.slice().sort((left, right) => recordSortKey(left).localeCompare(recordSortKey(right)));
+    const latestRecord = recordsAsc[recordsAsc.length - 1];
+    const recordMap = new Map(recordsAsc.map((record) => [String(record.id), record]));
+    let selectedRecordId = String(pageData.initial_record_id || latestRecord.id);
 
     const chartShared = window.FXJEquityCurveShared;
     const smoothPath = chartShared
@@ -175,14 +178,14 @@
                 parts.push(`Win rate: ${formatPercent(item.win_rate)}`);
             }
             parts.push(`Net PnL: ${formatSignedCurrency(item.net_pnl)}`);
-            meta.textContent = parts.join(" · ");
+            meta.textContent = parts.join(" | ");
 
             card.append(title, meta);
             container.appendChild(card);
         });
     };
 
-    const getSelectedRecord = () => recordMap.get(String(selectedRecordId)) || records[0];
+    const getSelectedRecord = () => recordMap.get(String(selectedRecordId)) || latestRecord;
 
     const setSelectedRecord = (recordId) => {
         const key = String(recordId);
@@ -201,12 +204,12 @@
             return;
         }
         container.innerHTML = "";
-        records.forEach((record) => {
+        recordsAsc.forEach((record) => {
             const button = document.createElement("button");
             button.type = "button";
             button.className = `trend-week-button${String(record.id) === String(selectedRecordId) ? " is-active" : ""}`;
             button.textContent = record.generation_count > 1
-                ? `${record.period_label} · ${record.generation_count} gens`
+                ? `${record.period_label} | ${record.generation_count} gens`
                 : record.period_label;
             button.addEventListener("click", () => setSelectedRecord(record.id));
             container.appendChild(button);
@@ -240,7 +243,7 @@
             baseline: 0,
             min: 0,
             max: Math.max(
-                ...records.map((record) => asNumber(((record.emotional_index || {}).score)) || 0),
+                ...recordsAsc.map((record) => asNumber(((record.emotional_index || {}).score)) || 0),
                 4,
             ),
             formatValue: (value) => numberFormatter.format(Number(value) || 0),
@@ -254,7 +257,7 @@
             return;
         }
 
-        const values = records
+        const values = recordsAsc
             .map((record, index) => {
                 const value = config.valueAccessor(record);
                 return value === null ? null : { record, index, value };

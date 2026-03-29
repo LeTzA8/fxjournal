@@ -446,7 +446,7 @@ def build_profile_instructions(
         instructions.append("Find specific examples of poor execution in the trades.")
     if emotional_index_label in {"high", "very_high"}:
         instructions.append("Objective emotional index is elevated - prioritise BEHAVIOUR section.")
-        instructions.append("Treat revenge sequences as the strongest behaviour signal, and use reactive/corrective counts as supporting context only when user-confirmed.")
+        instructions.append("Treat revenge sequences as the strongest behaviour signal, and use reactive/corrective signals as supporting context with less weight.")
         instructions.append("Describe the week as emotionally pressured or less composed only when the trade evidence supports it, and never mention internal scores or labels.")
     if emotional_index_label == "very_high":
         instructions.append("Lead with behavioural observations before performance metrics.")
@@ -847,6 +847,7 @@ def build_trade_payload(
                 "is_post_loss_same_symbol_trade": bool(annotation.get("is_post_loss_same_symbol_trade")),
                 "same_trade_idea_reentry": bool(annotation.get("same_trade_idea_reentry")),
                 "is_potential_revenge": bool(annotation.get("is_potential_revenge")),
+                "is_potential_reactive": bool(annotation.get("is_potential_reactive")),
                 "trade_note": (trade.trade_note or "").strip() or None,
                 "is_revenge": bool(getattr(trade, "is_revenge", False)),
                 "is_reactive": bool(getattr(trade, "is_reactive", False)),
@@ -920,8 +921,14 @@ def build_trade_payload(
             "bundle_count": bundle_count,
             "confirmed_revenge_trade_count": signals.get("confirmed_revenge_trade_count", 0),
             "heuristic_revenge_trade_count": signals.get("heuristic_revenge_trade_count", 0),
+            "confirmed_reactive_trade_count": signals.get("confirmed_reactive_trade_count", 0),
+            "heuristic_reactive_trade_count": signals.get("heuristic_reactive_trade_count", 0),
             "reactive_trade_count": signals.get("reactive_trade_count", 0),
+            "reactive_signal_trade_count": signals.get("reactive_signal_trade_count", 0),
+            "confirmed_corrective_trade_count": signals.get("confirmed_corrective_trade_count", 0),
+            "heuristic_corrective_trade_count": signals.get("heuristic_corrective_trade_count", 0),
             "corrective_trade_count": signals.get("corrective_trade_count", 0),
+            "corrective_signal_trade_count": signals.get("corrective_signal_trade_count", 0),
             "revenge_trade_count": signals.get("revenge_trade_count", 0),
             "best_trade_pnl": (
                 analytics["summary"]["best_trade"]["pnl"]
@@ -1086,16 +1093,28 @@ def format_payload_for_prompt(payload):
                 f"- label: {emotional_index.get('label') or '-'}",
                 f"- self_report_mismatch: {_format_bool(emotional_index.get('self_report_mismatch'))}",
                 f"- subjective_points: {_format_number(components.get('subjective_points'))}",
-                f"- confirmed_reactive_points: {_format_number(components.get('confirmed_reactive_points'))}",
-                f"- confirmed_corrective_points: {_format_number(components.get('confirmed_corrective_points'))}",
+                f"- confirmed_revenge_points: {_format_number(components.get('confirmed_revenge_points'))}",
+                f"- heuristic_revenge_points: {_format_number(components.get('heuristic_revenge_points'))}",
                 f"- revenge_points: {_format_number(components.get('revenge_points'))}",
+                f"- confirmed_reactive_points: {_format_number(components.get('confirmed_reactive_points'))}",
+                f"- heuristic_reactive_points: {_format_number(components.get('heuristic_reactive_points'))}",
+                f"- reactive_points: {_format_number(components.get('reactive_points'))}",
+                f"- confirmed_corrective_points: {_format_number(components.get('confirmed_corrective_points'))}",
+                f"- heuristic_corrective_points: {_format_number(components.get('heuristic_corrective_points'))}",
+                f"- corrective_points: {_format_number(components.get('corrective_points'))}",
                 f"- bundle_count: {signals.get('bundle_count', 0)}",
                 f"- total_closed_trades: {signals.get('total_closed_trades', 0)}",
                 f"- confirmed_behavior_trade_count: {signals.get('confirmed_behavior_trade_count', 0)}",
                 f"- confirmed_revenge_trade_count: {signals.get('confirmed_revenge_trade_count', 0)}",
                 f"- heuristic_revenge_trade_count: {signals.get('heuristic_revenge_trade_count', 0)}",
+                f"- confirmed_reactive_trade_count: {signals.get('confirmed_reactive_trade_count', 0)}",
+                f"- heuristic_reactive_trade_count: {signals.get('heuristic_reactive_trade_count', 0)}",
                 f"- reactive_trade_count: {signals.get('reactive_trade_count', 0)}",
+                f"- reactive_signal_trade_count: {signals.get('reactive_signal_trade_count', 0)}",
+                f"- confirmed_corrective_trade_count: {signals.get('confirmed_corrective_trade_count', 0)}",
+                f"- heuristic_corrective_trade_count: {signals.get('heuristic_corrective_trade_count', 0)}",
                 f"- corrective_trade_count: {signals.get('corrective_trade_count', 0)}",
+                f"- corrective_signal_trade_count: {signals.get('corrective_signal_trade_count', 0)}",
                 f"- revenge_trade_count: {signals.get('revenge_trade_count', 0)}",
             ]
         )
@@ -1122,8 +1141,14 @@ def format_payload_for_prompt(payload):
             f"- bundle_count: {summary.get('bundle_count', 0)}",
             f"- confirmed_revenge_trade_count: {summary.get('confirmed_revenge_trade_count', 0)}",
             f"- heuristic_revenge_trade_count: {summary.get('heuristic_revenge_trade_count', 0)}",
+            f"- confirmed_reactive_trade_count: {summary.get('confirmed_reactive_trade_count', 0)}",
+            f"- heuristic_reactive_trade_count: {summary.get('heuristic_reactive_trade_count', 0)}",
             f"- reactive_trade_count: {summary.get('reactive_trade_count', 0)}",
+            f"- reactive_signal_trade_count: {summary.get('reactive_signal_trade_count', 0)}",
+            f"- confirmed_corrective_trade_count: {summary.get('confirmed_corrective_trade_count', 0)}",
+            f"- heuristic_corrective_trade_count: {summary.get('heuristic_corrective_trade_count', 0)}",
             f"- corrective_trade_count: {summary.get('corrective_trade_count', 0)}",
+            f"- corrective_signal_trade_count: {summary.get('corrective_signal_trade_count', 0)}",
             f"- revenge_trade_count: {summary.get('revenge_trade_count', 0)}",
             f"- best_trade_pnl: {_format_signed_currency(summary.get('best_trade_pnl'))}",
             f"- worst_trade_pnl: {_format_signed_currency(summary.get('worst_trade_pnl'))}",
@@ -1230,6 +1255,7 @@ def format_payload_for_prompt(payload):
                 f"   is_post_loss_same_symbol_trade: {_format_bool(trade.get('is_post_loss_same_symbol_trade'))}",
                 f"   same_trade_idea_reentry: {_format_bool(trade.get('same_trade_idea_reentry'))}",
                 f"   is_potential_revenge: {_format_bool(trade.get('is_potential_revenge'))}",
+                f"   is_potential_reactive: {_format_bool(trade.get('is_potential_reactive'))}",
                 f"   is_revenge: {_format_bool(trade.get('is_revenge'))}",
                 f"   is_reactive: {_format_bool(trade.get('is_reactive'))}",
                 f"   is_corrective: {_format_bool(trade.get('is_corrective'))}",

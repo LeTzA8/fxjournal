@@ -170,6 +170,59 @@
         gap: 0.45rem;
     }
 
+    .weekly-audit-account-toggle {
+        min-width: 0;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        overflow: hidden;
+    }
+
+    .weekly-audit-account-toggle[open] {
+        border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+        background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+    }
+
+    .weekly-audit-account-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.7rem;
+        padding: 0.72rem 0.78rem;
+        cursor: pointer;
+        list-style: none;
+    }
+
+    .weekly-audit-account-summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .weekly-audit-account-summary-copy {
+        display: grid;
+        gap: 0.18rem;
+        min-width: 0;
+    }
+
+    .weekly-audit-account-summary-value {
+        font-weight: 700;
+        color: var(--ink);
+        overflow-wrap: anywhere;
+    }
+
+    .weekly-audit-account-summary-note {
+        flex: 0 0 auto;
+        font-size: 0.76rem;
+        font-weight: 700;
+        color: var(--muted);
+        text-align: right;
+    }
+
+    .weekly-audit-account-body {
+        display: grid;
+        gap: 0.45rem;
+        padding: 0 0.78rem 0.78rem;
+    }
+
     .weekly-audit-filter-form select {
         width: 100%;
         border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
@@ -578,17 +631,39 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="weekly-audit-field">
-                    <label for="weeklyAuditTradeAccount">Trade Account</label>
-                    <select id="weeklyAuditTradeAccount" name="trade_account_id" {% if not account_options %}disabled{% endif %}>
-                        <option value="">Recommended account</option>
-                        {% for option in account_options %}
-                        <option value="{{ option.id }}" {% if selected_trade_account_id == option.id %}selected{% endif %}>
-                            {{ option.label }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
+                <details class="weekly-audit-account-toggle"{% if selected_trade_account_id %} open{% endif %}>
+                    <summary class="weekly-audit-account-summary">
+                        <span class="weekly-audit-account-summary-copy">
+                            <span class="control-label">Trade Account Override</span>
+                            <span class="weekly-audit-account-summary-value">
+                                {% if selected_trade_account_id %}
+                                {{ selected_trade_account_label }}
+                                {% else %}
+                                Recommended account
+                                {% endif %}
+                            </span>
+                        </span>
+                        <span class="weekly-audit-account-summary-note">
+                            {% if selected_trade_account_id %}
+                            Custom scope
+                            {% else %}
+                            Optional
+                            {% endif %}
+                        </span>
+                    </summary>
+                    <div class="weekly-audit-account-body">
+                        <label for="weeklyAuditTradeAccount">Trade Account</label>
+                        <select id="weeklyAuditTradeAccount" name="trade_account_id" {% if not account_options %}disabled{% endif %}>
+                            <option value="">Recommended account</option>
+                            {% for option in account_options %}
+                            <option value="{{ option.id }}" {% if selected_trade_account_id == option.id %}selected{% endif %}>
+                                {{ option.label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="helper-note">Leave this on the recommended account unless you want to inspect a specific account timeline.</p>
+                    </div>
+                </details>
                 <div class="weekly-audit-field">
                     <button type="submit" class="submit-btn">Load Audit</button>
                 </div>

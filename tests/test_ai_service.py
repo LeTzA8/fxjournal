@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import ai_service
 from ai_service import (
@@ -10,6 +10,7 @@ from ai_service import (
     maybe_generate_weekly_dashboard_advice,
     normalize_dashboard_advice_text,
 )
+from helpers.scoring import compute_emotional_index
 from models import (
     AIGeneratedResponse,
     AIPromptHistory,
@@ -57,18 +58,32 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
             "self_report_mismatch": True,
             "components": {
                 "subjective_points": 0.0,
-                "combined_revenge_points": 1.25,
-                "confirmed_reactive_points": 1.5,
+                "confirmed_revenge_points": 1.25,
+                "heuristic_revenge_points": 0.0,
+                "revenge_repetition_bonus": 0.0,
+                "confirmed_reactive_points": 2.5,
+                "heuristic_reactive_points": 0.0,
+                "reactive_repetition_bonus": 0.0,
                 "confirmed_corrective_points": 0.0,
+                "heuristic_corrective_points": 0.0,
+                "corrective_repetition_bonus": 0.0,
                 "revenge_points": 1.25,
+                "reactive_points": 2.5,
+                "corrective_points": 0.0,
             },
             "signals": {
                 "bundle_count": 0,
                 "confirmed_revenge_trade_count": 1,
                 "confirmed_behavior_trade_count": 1,
                 "heuristic_revenge_trade_count": 1,
+                "confirmed_reactive_trade_count": 1,
+                "heuristic_reactive_trade_count": 0,
                 "reactive_trade_count": 1,
+                "reactive_signal_trade_count": 1,
+                "confirmed_corrective_trade_count": 0,
+                "heuristic_corrective_trade_count": 0,
                 "corrective_trade_count": 0,
+                "corrective_signal_trade_count": 0,
                 "revenge_trade_count": 1,
                 "total_closed_trades": 1,
             },
@@ -177,7 +192,7 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- label: moderate" in prompt_text
     assert "- self_report_mismatch: true" in prompt_text
     assert "- subjective_points: 0.00" in prompt_text
-    assert "- confirmed_reactive_points: 1.50" in prompt_text
+    assert "- confirmed_reactive_points: 2.50" in prompt_text
     assert "- revenge_points: 1.25" in prompt_text
     assert "- confirmed_revenge_trade_count: 1" in prompt_text
     assert "- heuristic_revenge_trade_count: 1" in prompt_text
@@ -581,6 +596,7 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "trade_sequence_number" in prompt_text
     assert "same_trade_idea_reentry" in prompt_text
     assert "is_potential_revenge" in prompt_text
+    assert "is_potential_reactive" in prompt_text
     assert "prev_symbol_trade_pnl" in prompt_text
     assert "is_revenge" in prompt_text
     assert "planned_rr, realized_rr, tp_capture_pct" in prompt_text
@@ -634,7 +650,8 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "revenge_trade_count: Combined revenge count" in prompt_text
     assert "possible_split_order" in prompt_text
     assert "is_revenge: User-confirmed revenge flag." in prompt_text
-    assert "is_reactive / is_corrective: User-confirmed behaviour flags." in prompt_text
+    assert "confirmed_reactive_trade_count / confirmed_corrective_trade_count" in prompt_text
+    assert "is_potential_reactive: Heuristic signal for quick re-entry" in prompt_text
     assert "self_report_mismatch: If true, the user reported calm/controlled" in prompt_text
     assert "same_trade_idea_reentry alone does not mean revenge or impulsiveness." in prompt_text
     assert "If notes_confidence is low and the relevant trade has no note" in prompt_text
@@ -833,6 +850,7 @@ def test_build_trade_payload_uses_bundled_view_for_summary_and_emotional_index(a
     emotional_index = payload["emotional_index"]
     assert emotional_index["signals"]["bundle_count"] == 1
     assert emotional_index["signals"]["confirmed_revenge_trade_count"] == 0
+    assert emotional_index["signals"]["heuristic_reactive_trade_count"] == 0
     assert emotional_index["signals"]["reactive_trade_count"] == 1
     assert emotional_index["components"]["confirmed_reactive_points"] == 1.25
     assert emotional_index["signals"]["total_closed_trades"] == 2
@@ -919,6 +937,7 @@ def test_build_trade_payload_adds_sequence_and_revenge_context(app_ctx):
     assert second_trade["is_post_loss_same_symbol_trade"] is True
     assert second_trade["same_trade_idea_reentry"] is True
     assert second_trade["is_potential_revenge"] is True
+    assert second_trade["is_potential_reactive"] is True
 
 
 def test_build_trade_payload_flags_calm_self_report_mismatch_when_behaviour_is_elevated(app_ctx):
@@ -976,14 +995,66 @@ def test_build_trade_payload_flags_calm_self_report_mismatch_when_behaviour_is_e
     )
 
     emotional_index = payload["emotional_index"]
-    assert emotional_index["score"] == 2.5
+    assert emotional_index["score"] == 3.5
     assert emotional_index["label"] == "moderate"
     assert emotional_index["self_report_mismatch"] is True
     assert emotional_index["signals"]["confirmed_revenge_trade_count"] == 0
     assert emotional_index["signals"]["heuristic_revenge_trade_count"] == 1
     assert emotional_index["signals"]["revenge_trade_count"] == 1
+    assert emotional_index["signals"]["heuristic_reactive_trade_count"] == 1
     assert emotional_index["components"]["confirmed_reactive_points"] == 1.25
-    assert emotional_index["components"]["revenge_points"] == 1.25
+    assert emotional_index["components"]["revenge_points"] == 2.25
+
+
+def test_compute_emotional_index_normalizes_repeated_confirmed_revenge_trades():
+    trades = []
+    base_open = datetime(2026, 3, 10, 9, 0, 0)
+    symbols = [
+        "EURUSD",
+        "GBPUSD",
+        "USDJPY",
+        "AUDUSD",
+        "USDCAD",
+        "USDCHF",
+        "NZDUSD",
+        "EURJPY",
+        "GBPJPY",
+        "AUDJPY",
+    ]
+    for trade_index in range(10):
+        opened_at = base_open + timedelta(hours=trade_index * 6)
+        closed_at = opened_at + timedelta(hours=2)
+        trades.append(
+            Trade(
+                symbol=symbols[trade_index],
+                side="BUY",
+                entry_price=1.1000,
+                exit_price=1.1010,
+                lot_size=1.0,
+                pnl=100.0,
+                is_revenge=True,
+                opened_at=opened_at,
+                closed_at=closed_at,
+            )
+        )
+
+    emotional_index = compute_emotional_index(
+        trades=trades,
+        weekly_checkin={
+            "emotional_state": "calm",
+            "plan_adherence": "consistent",
+            "execution_quality": "sharp",
+        },
+    )
+
+    assert emotional_index["signals"]["total_closed_trades"] == 10
+    assert emotional_index["signals"]["confirmed_revenge_trade_count"] == 10
+    assert emotional_index["components"]["confirmed_revenge_points"] == 4.5
+    assert emotional_index["components"]["revenge_repetition_bonus"] == 1.5
+    assert emotional_index["components"]["revenge_points"] == 6.0
+    assert emotional_index["components"]["reactive_points"] == 0.0
+    assert emotional_index["components"]["corrective_points"] == 0.0
+    assert emotional_index["score"] == 6.0
 
 
 def test_build_trade_payload_assigns_cross_week_trade_to_close_week(app_ctx):
