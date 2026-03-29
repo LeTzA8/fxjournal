@@ -82,23 +82,25 @@ OUTPUT FORMAT
   as headings.
 - Do not write a second closing paragraph after the bullets.
 - End with one final standalone line prefixed exactly with "Rule:".
+- Use the examples below for structure and tone only. Do not copy their
+  exact lesson unless the payload strongly supports it.
 
 GOOD FORMAT EXAMPLE
-This was a profitable but slightly reactive week. London produced the
-cleanest execution overall, but one later EURUSD re-entry after a loss
-made the week less composed. GBPJPY split execution was orderly as one
-trade idea, although the exits still left reward on the table.
+This was a profitable week with one standout trade idea and otherwise
+mixed follow-through. One split-entry cluster was handled as a single
+setup, and the sample was still small enough to keep behavioural
+conclusions cautious.
 
 Key Takeaways
-- The first London EURUSD trade was clean, but the later EURUSD
-  re-entry after a loss looked reactive.
-- The GBPJPY split-entry cluster should be treated as one setup, not
-  two separate trades.
-- Both GBPJPY exits closed before target, leaving reward on the table.
-- Sparse notes on XAUUSD limit how confidently behaviour can be judged.
+- One split-entry cluster should be treated as one setup, not several
+  independent trades.
+- The week's result was concentrated in one standout idea rather than
+  spread evenly across the sample.
+- Sparse notes and a short account history limit how confidently
+  behaviour can be judged.
 
-Rule: After any losing setup, wait for a full reset before re-entering
-and keep the next attempt the same size.
+Rule: Next week, define the one condition that made the cleanest setup
+worth taking and use it to filter lower-quality follow-ups.
 
 BAD FORMAT EXAMPLES (do not write like this)
 - All-caps section headers like CONSISTENCY or BEHAVIOUR.
@@ -364,11 +366,11 @@ be something the trader can act on immediately.
   on add-on entries.
 - If the evidence comes from one named trade, translate it into a
   broader setup, session, or behaviour rule.
-- Bad rule example: "After the XAUUSD stop, wait one full session
-  before re-entering USDJPY."
-- Better rule example: "After a large stop-out, wait one full session
-  before any re-entry and keep the next setup the same size or
-  smaller."
+- On profitable or low-signal weeks, the rule can be a light
+  refinement rather than a prohibition.
+- Bad rule example: "Never hold XAUUSD overnight again."
+- Better rule example: "Use the condition behind your cleanest setup as
+  the filter for next week's follow-up trades."
 
 Edge cases:
 - If the week had fewer than 3 closed trades, the rule should focus

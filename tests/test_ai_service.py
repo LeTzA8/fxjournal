@@ -611,8 +611,12 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert 'Never mention "emotional index", internal scores, or internal labels' in prompt_text
     assert "emotions looked in check this week." in prompt_text
     assert "emotions looked controlled this week." in prompt_text
-    assert 'Bad rule example: "After the XAUUSD stop, wait one full session' in prompt_text
-    assert 'Better rule example: "After a large stop-out, wait one full session' in prompt_text
+    assert "Use the examples below for structure and tone only." in prompt_text
+    assert "On profitable or low-signal weeks, the rule can be a light" in prompt_text
+    assert 'Bad rule example: "Never hold XAUUSD overnight again."' in prompt_text
+    assert 'Better rule example: "Use the condition behind your cleanest setup as' in prompt_text
+    assert "This was a profitable week with one standout trade idea and otherwise" in prompt_text
+    assert "One split-entry cluster should be treated as one setup, not several" in prompt_text
     assert "Do not use paragraph prose anywhere in the response." not in prompt_text
     assert "Never reveal exact account metrics from the payload." in prompt_text
     assert "Keep the response between 100 and 150 words." not in prompt_text
