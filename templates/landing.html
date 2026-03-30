@@ -1398,7 +1398,7 @@
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 1.15rem;
         margin: 0 auto 1rem;
-        width: min(86vw, 1580px);
+        width: min(70vw, 1080px);
         max-width: 100%;
     }
 
@@ -1475,15 +1475,14 @@
             linear-gradient(180deg, color-mix(in srgb, var(--ink) 8%, transparent), transparent),
             color-mix(in srgb, var(--surface) 90%, var(--bg));
         box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent);
-        aspect-ratio: 16 / 9;
-        min-height: 14.75rem;
+        height: clamp(10rem, 13vw, 14rem);
         padding: 0.9rem;
     }
 
     .feature-shot img {
         display: block;
         width: 100%;
-        height: 100%;
+        max-height: 100%;
         object-fit: contain;
         object-position: center;
     }
@@ -1765,9 +1764,7 @@
 
         .feature-shot,
         .feature-shot-sync-card {
-            aspect-ratio: unset;
             height: 14rem;
-            min-height: 0;
         }
 
         .founder-grid {
