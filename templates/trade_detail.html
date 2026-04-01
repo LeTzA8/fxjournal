@@ -190,7 +190,7 @@
         text-transform: uppercase; }
 
     .sim-chart { position: relative;
-        height: 260px;
+        height: clamp(200px, 22vh, 280px);
         border-radius: 10px;
         border: 1px solid var(--sim-chart-border); background-size: 22px 22px;
         overflow: hidden; }
@@ -220,9 +220,7 @@
     @keyframes sweep { from { transform: translateX(-20px); }
         to { transform: translateX(560px); } }
 
-    @media (max-width: 1050px) { .panel-grid { grid-template-columns: 1fr; }
-
-        .sim-chart { height: 220px; } }
+    @media (max-width: 1050px) { .panel-grid { grid-template-columns: 1fr; } }
 
     @media (max-width: 700px) { .dash-wrap { padding: 0.9rem; }
 

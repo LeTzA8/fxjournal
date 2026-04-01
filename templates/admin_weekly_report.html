@@ -449,7 +449,7 @@
         border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         border-radius: 14px;
         background: color-mix(in srgb, var(--surface) 97%, transparent);
-        min-height: 320px;
+        min-height: clamp(200px, 36vh, 320px);
         max-height: min(68vh, 38rem);
         overflow: auto;
     }
