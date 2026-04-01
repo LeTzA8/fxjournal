@@ -1,0 +1,81 @@
+from types import SimpleNamespace
+
+import celery_workers.mt5_setup as mt5_setup_module
+
+
+def _set_missing_psutil(monkeypatch):
+    original_import = __import__
+
+    def _fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "psutil":
+            raise ModuleNotFoundError("No module named 'psutil'")
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr("builtins.__import__", _fake_import)
+
+
+def test_cleanup_mt5_terminal_falls_back_without_psutil_and_uses_appdata_hash(monkeypatch, tmp_path):
+    terminal_dir = tmp_path / "terminals" / "mt5_1_1"
+    terminal_dir.mkdir(parents=True)
+    terminal_exe = terminal_dir / "terminal64.exe"
+    terminal_exe.write_text("", encoding="ascii")
+
+    appdata_root = tmp_path / "appdata" / "MetaQuotes" / "Terminal"
+    appdata_hash = "A" * 32
+    appdata_folder = appdata_root / appdata_hash
+    appdata_folder.mkdir(parents=True)
+
+    monkeypatch.setattr(mt5_setup_module, "APPDATA_TERMINAL_PATH", str(appdata_root))
+    monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    _set_missing_psutil(monkeypatch)
+
+    calls = []
+
+    def _fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(mt5_setup_module.subprocess, "run", _fake_run)
+
+    result = mt5_setup_module.cleanup_mt5_terminal.run(str(terminal_exe), appdata_hash)
+
+    assert result["status"] == "cleanup complete"
+    assert not terminal_dir.exists()
+    assert not appdata_folder.exists()
+    assert len(calls) == 1
+    assert calls[0][0][:3] == ["powershell.exe", "-NoProfile", "-Command"]
+    assert calls[0][1]["env"]["FXJ_TERMINAL_EXE"] == str(terminal_exe)
+
+
+def test_cleanup_mt5_terminal_skips_mismatched_hash_folder(monkeypatch, tmp_path):
+    terminal_dir = tmp_path / "terminals" / "mt5_2_2"
+    terminal_dir.mkdir(parents=True)
+    terminal_exe = terminal_dir / "terminal64.exe"
+    terminal_exe.write_text("", encoding="ascii")
+
+    appdata_root = tmp_path / "appdata" / "MetaQuotes" / "Terminal"
+    wrong_hash = "B" * 32
+    right_hash = "C" * 32
+    wrong_folder = appdata_root / wrong_hash
+    right_folder = appdata_root / right_hash
+    wrong_folder.mkdir(parents=True)
+    right_folder.mkdir(parents=True)
+
+    (wrong_folder / "origin.txt").write_text(str(tmp_path / "other-terminal"), encoding="utf-16")
+    (right_folder / "origin.txt").write_text(str(terminal_dir), encoding="utf-16")
+
+    monkeypatch.setattr(mt5_setup_module, "APPDATA_TERMINAL_PATH", str(appdata_root))
+    monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    _set_missing_psutil(monkeypatch)
+    monkeypatch.setattr(
+        mt5_setup_module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+
+    result = mt5_setup_module.cleanup_mt5_terminal.run(str(terminal_exe), wrong_hash)
+
+    assert result["status"] == "cleanup complete"
+    assert not terminal_dir.exists()
+    assert wrong_folder.exists()
+    assert not right_folder.exists()

@@ -3,6 +3,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import re
 import shutil
 import subprocess
 import time
@@ -48,6 +49,68 @@ def _find_base_appdata(base_path: str):
         except OSError:
             pass
     return None
+
+
+def _terminate_mt5_processes(terminal_exe: str):
+    normalized_terminal_exe = os.path.normcase(os.path.abspath(terminal_exe))
+
+    try:
+        import psutil
+    except ImportError:
+        _terminate_mt5_processes_via_powershell(normalized_terminal_exe)
+        return
+
+    for proc in psutil.process_iter(["pid", "exe"]):
+        try:
+            proc_exe = proc.info.get("exe")
+            if proc_exe and os.path.normcase(os.path.abspath(proc_exe)) == normalized_terminal_exe:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except psutil.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+        except (OSError, psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
+            pass
+
+
+def _terminate_mt5_processes_via_powershell(terminal_exe: str):
+    script = (
+        "$target = [System.IO.Path]::GetFullPath($env:FXJ_TERMINAL_EXE).ToLowerInvariant(); "
+        "Get-CimInstance Win32_Process | "
+        "Where-Object { $_.ExecutablePath -and "
+        "([System.IO.Path]::GetFullPath($_.ExecutablePath)).ToLowerInvariant() -eq $target } | "
+        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+    )
+    env = dict(os.environ)
+    env["FXJ_TERMINAL_EXE"] = terminal_exe
+    try:
+        subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command", script],
+            check=False,
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+        )
+    except OSError:
+        pass
+
+
+def _resolve_cleanup_appdata_folder(terminal_dir: str, appdata_hash: str):
+    normalized_terminal_dir = os.path.normcase(os.path.abspath(terminal_dir))
+    normalized_hash = (appdata_hash or "").strip().upper()
+    if re.fullmatch(r"[A-F0-9]{32}", normalized_hash):
+        candidate = os.path.join(APPDATA_TERMINAL_PATH, normalized_hash)
+        if os.path.isdir(candidate):
+            origin = os.path.join(candidate, "origin.txt")
+            try:
+                content = open(origin, encoding="utf-16", errors="ignore").read().strip().rstrip("\\")
+            except OSError:
+                return candidate
+            if os.path.normcase(content) == normalized_terminal_dir:
+                return candidate
+    return _find_base_appdata(terminal_dir)
 
 
 def _clear_chart_profiles(appdata_path: str):
@@ -244,24 +307,16 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str):
     if os.name != "nt":
         return {"error": "not Windows, skipping cleanup"}
 
-    import psutil
-
     terminal_exe = terminal_path
     terminal_dir = os.path.dirname(terminal_path)
 
-    for proc in psutil.process_iter(["pid", "exe"]):
-        try:
-            if proc.info["exe"] and os.path.normcase(proc.info["exe"]) == os.path.normcase(terminal_exe):
-                proc.terminate()
-                proc.wait(timeout=10)
-        except (psutil.NoSuchProcess, psutil.TimeoutExpired):
-            pass
+    _terminate_mt5_processes(terminal_exe)
 
     if terminal_dir and os.path.exists(terminal_dir):
         shutil.rmtree(terminal_dir, ignore_errors=True)
 
-    # Verify the correct AppData folder via origin.txt before deleting
-    appdata_folder = _find_base_appdata(terminal_dir)
+    # Prefer the stored MT5 hash when it is valid, but fall back to origin.txt lookup.
+    appdata_folder = _resolve_cleanup_appdata_folder(terminal_dir, appdata_hash)
     if appdata_folder and os.path.exists(appdata_folder):
         shutil.rmtree(appdata_folder, ignore_errors=True)
 
