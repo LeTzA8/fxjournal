@@ -91,6 +91,16 @@
         min-width: 0;
     }
 
+    .control-panel .control-item:has(.good) {
+        border-left: 3px solid color-mix(in srgb, var(--good) 62%, transparent);
+        padding-left: calc(0.72rem - 2px);
+    }
+
+    .control-panel .control-item:has(.bad) {
+        border-left: 3px solid color-mix(in srgb, var(--bad) 62%, transparent);
+        padding-left: calc(0.72rem - 2px);
+    }
+
     .admin-tabs {
         display: inline-flex;
         gap: 0.45rem;
@@ -271,9 +281,13 @@
     }
 
     .selected-record-meta-grid,
-    .selected-record-kpi-grid,
     .response-meta-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-top: 0.8rem;
+    }
+
+    .selected-record-kpi-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         margin-top: 0.8rem;
     }
 
@@ -463,6 +477,15 @@
         margin: 0;
     }
 
+    @media (max-width: 1380px) {
+        .admin-summary-grid,
+        .control-grid,
+        .selected-record-meta-grid,
+        .response-meta-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
+
     @media (max-width: 1180px) {
         .admin-summary-grid,
         .control-grid,
@@ -476,6 +499,12 @@
 
         .trend-card-grid {
             grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 860px) {
+        .selected-record-kpi-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
 

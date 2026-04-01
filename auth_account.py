@@ -1783,6 +1783,56 @@ def register_public_auth_routes(
             )
             for account in account_rows:
                 accounts_by_user.setdefault(account.user_id, []).append(account)
+        user_stats_by_user = {
+            user.id: {
+                "trade_account_count": len(accounts_by_user.get(user.id, [])),
+                "total_trades": 0,
+                "last_trade_at": None,
+                "mt5_account_count": 0,
+            }
+            for user in users
+        }
+        if user_ids:
+            trade_stat_rows = (
+                db.session.query(
+                    Trade.user_id,
+                    func.count(Trade.id),
+                    func.max(func.coalesce(Trade.closed_at, Trade.opened_at)),
+                )
+                .filter(Trade.user_id.in_(user_ids))
+                .group_by(Trade.user_id)
+                .all()
+            )
+            for row_user_id, total_trades, last_trade_at in trade_stat_rows:
+                user_stats_by_user.setdefault(
+                    row_user_id,
+                    {
+                        "trade_account_count": 0,
+                        "total_trades": 0,
+                        "last_trade_at": None,
+                        "mt5_account_count": 0,
+                    },
+                )
+                user_stats_by_user[row_user_id]["total_trades"] = total_trades or 0
+                user_stats_by_user[row_user_id]["last_trade_at"] = last_trade_at
+
+            mt5_count_rows = (
+                db.session.query(MT5Account.user_id, func.count(MT5Account.id))
+                .filter(MT5Account.user_id.in_(user_ids))
+                .group_by(MT5Account.user_id)
+                .all()
+            )
+            for row_user_id, mt5_account_count in mt5_count_rows:
+                user_stats_by_user.setdefault(
+                    row_user_id,
+                    {
+                        "trade_account_count": 0,
+                        "total_trades": 0,
+                        "last_trade_at": None,
+                        "mt5_account_count": 0,
+                    },
+                )
+                user_stats_by_user[row_user_id]["mt5_account_count"] = mt5_account_count or 0
 
         return render_admin_page(
             admin_user=admin_user,
@@ -1791,6 +1841,7 @@ def register_public_auth_routes(
             status_filter=status_filter,
             pending_users=pending_users,
             accounts_by_user=accounts_by_user,
+            user_stats_by_user=user_stats_by_user,
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/regenerate-ai-advice", methods=["POST"])

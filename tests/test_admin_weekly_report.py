@@ -3,7 +3,7 @@ from datetime import datetime
 from itertools import count
 
 from ai_service import WEEKLY_DASHBOARD_KIND
-from models import AIGeneratedResponse, AIPromptHistory, TradeAccount, User, db
+from models import AIGeneratedResponse, AIPromptHistory, Trade, TradeAccount, User, db
 
 
 _UNIQUE_COUNTER = count(1)
@@ -188,6 +188,64 @@ def test_root_admin_users_page_shows_ai_audit_link(app_ctx, client, monkeypatch)
     assert b"Weekly AI" in response.data
     assert b"AI Audit" in response.data
     assert f"/dashboard/admin/access/weekly-report/{target_user.id}".encode() in response.data
+
+
+def test_root_admin_users_page_shows_user_activity_signals(app_ctx, client, monkeypatch):
+    suffix = _unique_suffix()
+    root_email = f"weekly-root{suffix}@example.com"
+    monkeypatch.setenv("ADMIN_USER_EMAILS", root_email)
+    root_admin = _create_user(username=f"weekly-rootadmin{suffix}", email=root_email)
+    target_user = _create_user(
+        username=f"signals-targetuser{suffix}",
+        email=f"signals-target{suffix}@example.com",
+    )
+    target_user.last_login_at = datetime(2026, 3, 31, 9, 30, 0)
+    account = _create_trade_account(
+        user_id=target_user.id,
+        name="Primary FX",
+        account_type="CFD",
+        is_default=True,
+    )
+    db.session.add_all(
+        [
+            Trade(
+                user_id=target_user.id,
+                trade_account_id=account.id,
+                symbol="EURUSD",
+                side="BUY",
+                entry_price=1.1,
+                exit_price=1.12,
+                lot_size=0.5,
+                pnl=45.0,
+                opened_at=datetime(2026, 3, 20, 8, 0, 0),
+                closed_at=datetime(2026, 3, 20, 10, 0, 0),
+            ),
+            Trade(
+                user_id=target_user.id,
+                trade_account_id=account.id,
+                symbol="GBPUSD",
+                side="SELL",
+                entry_price=1.25,
+                exit_price=1.22,
+                lot_size=0.4,
+                pnl=60.0,
+                opened_at=datetime(2026, 3, 29, 13, 0, 0),
+                closed_at=datetime(2026, 3, 29, 15, 30, 0),
+            ),
+        ]
+    )
+    db.session.commit()
+
+    _login_as(client, root_admin)
+
+    response = client.get("/dashboard/admin/access/users?status=all")
+
+    assert response.status_code == 200
+    assert b"Signals" in response.data
+    assert b"Last login:" in response.data
+    assert b"Total trades: 2" in response.data
+    assert b"Trade accounts: 1" in response.data
+    assert b"MT5 linked: 0" in response.data
 
 
 def test_weekly_report_keeps_latest_generation_per_week(app_ctx, client, monkeypatch):

@@ -1,5 +1,417 @@
 {% extends "base.html" %}
 
+{% block head_extra %}
+<style>
+    .admin-access .dash-head,
+    .admin-access .panel {
+        border-radius: 16px;
+    }
+
+    .admin-head-row {
+        align-items: flex-start;
+    }
+
+    .admin-head-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .admin-kicker,
+    .summary-label,
+    .control-label,
+    .code-form label {
+        margin: 0;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .admin-summary-grid,
+    .admin-main-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.85rem;
+        align-items: start;
+    }
+
+    .admin-users-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-mt5-layout .mt5-accounts-panel {
+        grid-column: 1 / -1;
+    }
+
+    .admin-summary-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        margin-bottom: 0.85rem;
+    }
+
+    .summary-card,
+    .control-panel {
+        padding: 0.95rem;
+        min-width: 0;
+    }
+
+    .summary-value {
+        margin: 0.3rem 0 0;
+        font-size: clamp(1.35rem, 2.1vw, 1.9rem);
+        font-weight: 800;
+    }
+
+    .summary-note,
+    .helper-note {
+        margin: 0.3rem 0 0;
+        font-size: 0.82rem;
+        color: var(--muted);
+    }
+
+    .control-panel {
+        margin-bottom: 0.85rem;
+    }
+
+    .control-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.7rem;
+    }
+
+    .control-item {
+        display: grid;
+        gap: 0.24rem;
+        padding: 0.72rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        min-width: 0;
+    }
+
+    .control-panel .control-item:has(.good) {
+        border-left: 3px solid color-mix(in srgb, var(--good) 62%, transparent);
+        padding-left: calc(0.72rem - 2px);
+    }
+
+    .control-panel .control-item:has(.bad) {
+        border-left: 3px solid color-mix(in srgb, var(--bad) 62%, transparent);
+        padding-left: calc(0.72rem - 2px);
+    }
+
+    .admin-tabs {
+        display: inline-flex;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.85rem;
+    }
+
+    .admin-tab,
+    .admin-filter {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        min-height: 38px;
+        padding: 0 0.85rem;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface) 78%, transparent);
+        color: var(--muted);
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        text-decoration: none;
+    }
+
+    .admin-tab.is-active,
+    .admin-filter.is-active,
+    .admin-tab:hover,
+    .admin-filter:hover {
+        color: var(--accent);
+        border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+    }
+
+    .panel-head-stack {
+        align-items: flex-start;
+        gap: 0.7rem;
+        flex-direction: column;
+    }
+
+    .filter-row,
+    .inline-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .inline-actions form {
+        margin: 0;
+    }
+
+    .admin-table .actions-cell {
+        min-width: 0;
+        max-width: 220px;
+    }
+
+    .admin-table .inline-actions {
+        max-width: 100%;
+        row-gap: 0.35rem;
+    }
+
+    .admin-table .actions-cell .inline-actions {
+        justify-content: flex-end;
+    }
+
+    .dialog-actions {
+        justify-content: flex-end;
+    }
+
+    .spotlight-panel,
+    .users-panel,
+    .create-code-panel,
+    .codes-panel {
+        padding: 0.95rem;
+        min-width: 0;
+    }
+
+    .pending-list,
+    .codes-list {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .pending-card,
+    .code-card {
+        display: grid;
+        gap: 0.6rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 12px;
+        padding: 0.78rem;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        min-width: 0;
+    }
+
+    .pending-name,
+    .code-value {
+        margin: 0;
+        font-size: 0.95rem;
+        font-weight: 800;
+    }
+
+    .pending-line {
+        margin: 0.12rem 0 0;
+        font-size: 0.82rem;
+        overflow-wrap: anywhere;
+    }
+
+    .pending-name {
+        font-size: 1.02rem;
+        color: var(--ink);
+        letter-spacing: -0.01em;
+    }
+
+    .pending-card .pending-line:first-of-type {
+        font-weight: 700;
+        color: color-mix(in srgb, var(--muted) 70%, var(--ink) 30%);
+    }
+
+    .pending-card .inline-actions {
+        margin-top: 0.45rem;
+        padding-top: 0.55rem;
+        border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+        width: 100%;
+    }
+
+    .code-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+    }
+
+    .code-form {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .code-form input {
+        width: 100%;
+        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+        border-radius: 10px;
+        padding: 0.72rem 0.78rem;
+        font: inherit;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        color: var(--ink);
+        box-sizing: border-box;
+    }
+
+    .regen-ai-form {
+        display: grid;
+        gap: 0.7rem;
+    }
+
+    .regen-ai-form select {
+        width: 100%;
+        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+        border-radius: 10px;
+        padding: 0.72rem 0.78rem;
+        font: inherit;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        color: var(--ink);
+        box-sizing: border-box;
+    }
+
+    .regen-ai-note {
+        margin-top: 0.35rem;
+    }
+
+    .admin-table-shell {
+        overflow: auto;
+        max-width: 100%;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+    }
+
+    .admin-table {
+        width: 100%;
+        min-width: 980px;
+        border-collapse: collapse;
+    }
+
+    .admin-table th,
+    .admin-table td {
+        padding: 0.8rem 0.78rem;
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+        text-align: left;
+        vertical-align: top;
+        font-size: 0.84rem;
+    }
+
+    .admin-table th {
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+        background: color-mix(in srgb, var(--surface) 92%, transparent);
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }
+
+    .user-cell {
+        display: grid;
+        gap: 0.16rem;
+    }
+
+    .user-cell span {
+        color: var(--muted);
+        overflow-wrap: anywhere;
+    }
+
+    .user-metrics {
+        min-width: 13rem;
+    }
+
+    .chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        border-radius: 999px;
+        padding: 0.22rem 0.56rem;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        background: color-mix(in srgb, var(--surface) 92%, transparent);
+        color: var(--muted);
+    }
+
+    .chip.success-chip {
+        border-color: color-mix(in srgb, var(--good) 48%, var(--border));
+        background: color-mix(in srgb, var(--good) 14%, var(--surface));
+        color: color-mix(in srgb, var(--good) 82%, white 18%);
+    }
+
+    .chip.danger-chip {
+        border-color: color-mix(in srgb, var(--bad) 44%, var(--border));
+        background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+        color: color-mix(in srgb, var(--bad) 82%, white 18%);
+    }
+
+    .chip.root-chip {
+        border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
+        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+        color: color-mix(in srgb, var(--accent) 82%, white 18%);
+    }
+
+    @media (max-width: 1380px) {
+        .admin-summary-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 1180px) {
+        .admin-summary-grid,
+        .control-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 980px) {
+        .admin-main-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 680px) {
+        .admin-summary-grid,
+        .control-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .admin-head-row {
+            flex-direction: column;
+        }
+
+        .admin-head-meta {
+            justify-content: flex-start;
+        }
+
+        .admin-tabs,
+        .filter-row {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            padding-bottom: 0.18rem;
+            scrollbar-width: thin;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .admin-table .actions-cell {
+            max-width: 160px;
+        }
+
+        .admin-table .inline-actions {
+            gap: 0.28rem;
+        }
+
+        .admin-table .inline-actions .submit-btn,
+        .admin-table .inline-actions .ghost-btn {
+            font-size: 0.68rem;
+            padding: 0.42rem 0.6rem;
+            min-height: 32px;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <section class="dash-wrap admin-access">
     <div class="dash-content">
@@ -83,7 +495,7 @@
         </nav>
 
         {% if section == "users" %}
-        <section class="panel-grid admin-main-grid">
+        <section class="panel-grid admin-main-grid admin-users-layout">
             <article class="panel spotlight-panel">
                 <div class="panel-head">
                     <h2>Pending Spotlight</h2>
@@ -144,19 +556,23 @@
                                 <th>Status</th>
                                 <th>Verified</th>
                                 <th>Admin</th>
-                                <th>Referral</th>
-                                <th>Last Activity</th>
-                                <th>Actions</th>
+                                <th>Signals</th>
+                                <th class="actions-cell">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for user in users %}
                             {% set is_root_email = user.email|lower in root_admin_emails %}
+                            {% set user_accounts = accounts_by_user.get(user.id, []) %}
+                            {% set user_stats = user_stats_by_user.get(user.id, {}) %}
                             <tr>
                                 <td>
                                     <div class="user-cell">
                                         <strong>{{ user.username }}</strong>
                                         <span>{{ user.email }}</span>
+                                        <span>User ID: {{ user.id }}</span>
+                                        <span>Referral: {{ user.signup_code_used or "-" }}</span>
+                                        <span>Approved: {{ user.approved_at.strftime("%Y-%m-%d %H:%M UTC") if user.approved_at else "-" }}</span>
                                     </div>
                                 </td>
                                 <td>
@@ -174,14 +590,16 @@
                                     <span class="soft">No</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ user.signup_code_used or "-" }}</td>
                                 <td>
-                                    <div class="user-cell">
-                                        <span>Approved: {{ user.approved_at.strftime("%Y-%m-%d %H:%M UTC") if user.approved_at else "-" }}</span>
+                                    <div class="user-cell user-metrics">
                                         <span>Last login: {{ user.last_login_at.strftime("%Y-%m-%d %H:%M UTC") if user.last_login_at else "-" }}</span>
+                                        <span>Last trade: {{ user_stats.get("last_trade_at").strftime("%Y-%m-%d %H:%M UTC") if user_stats.get("last_trade_at") else "-" }}</span>
+                                        <span>Trade accounts: {{ user_stats.get("trade_account_count", user_accounts|length) }}</span>
+                                        <span>Total trades: {{ user_stats.get("total_trades", 0) }}</span>
+                                        <span>MT5 linked: {{ user_stats.get("mt5_account_count", 0) }}</span>
                                     </div>
                                 </td>
-                                <td>
+                                <td class="actions-cell">
                                     {% if is_root_admin %}
                                     <div class="inline-actions">
                                         <a href="{{ url_for('admin_weekly_report', user_id=user.id) }}" class="ghost-btn">AI Audit</a>
@@ -213,7 +631,6 @@
                                             <button type="submit" class="ghost-btn">{{ "Remove Admin" if user.is_admin else "Grant Admin" }}</button>
                                         </form>
                                         {% endif %}
-                                        {% set user_accounts = accounts_by_user.get(user.id, []) %}
                                         {% if user_accounts %}
                                         <button type="button" class="ghost-btn" onclick="openRegenAiDialog({{ user.id }})">Regen AI</button>
                                         <button type="button" class="ghost-btn danger-btn" onclick="openUnbundleDialog({{ user.id }})">Unbundle All</button>
@@ -237,7 +654,7 @@
             </article>
         </section>
         {% elif section == "mt5" %}
-        <section class="panel-grid admin-main-grid">
+        <section class="panel-grid admin-main-grid admin-mt5-layout">
             <article class="panel spotlight-panel">
                 <div class="panel-head">
                     <h2>Pending MT5 Requests</h2>
@@ -315,7 +732,7 @@
                 </form>
             </article>
 
-            <article class="panel codes-panel">
+            <article class="panel codes-panel mt5-accounts-panel">
                 <div class="panel-head">
                     <h2>MT5 Accounts</h2>
                     <span class="soft">
@@ -332,7 +749,7 @@
                                 <th>MT5</th>
                                 <th>Status</th>
                                 <th>Last Synced</th>
-                                <th>Actions</th>
+                                <th class="actions-cell">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -377,7 +794,7 @@
                                     {% endif %}
                                 </td>
                                 <td>{{ account.last_synced_at.strftime("%Y-%m-%d %H:%M UTC") if account.last_synced_at else "Never" }}</td>
-                                <td>
+                                <td class="actions-cell">
                                     <div class="inline-actions">
                                         <form action="{{ url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -585,341 +1002,6 @@
         {% endif %}
     {% endfor %}
 {% endif %}
-
-<style>
-    .admin-access .dash-head,
-    .admin-access .panel {
-        border-radius: 16px;
-    }
-
-    .admin-head-row {
-        align-items: flex-start;
-    }
-
-    .admin-head-meta {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.55rem;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-    }
-
-    .admin-kicker,
-    .summary-label,
-    .control-label,
-    .code-form label {
-        margin: 0;
-        font-size: 0.74rem;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-    }
-
-    .admin-summary-grid,
-    .admin-main-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.85rem;
-        align-items: start;
-    }
-
-    .admin-summary-grid {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        margin-bottom: 0.85rem;
-    }
-
-    .summary-card,
-    .control-panel {
-        padding: 0.95rem;
-        min-width: 0;
-    }
-
-    .summary-value {
-        margin: 0.3rem 0 0;
-        font-size: clamp(1.35rem, 2.1vw, 1.9rem);
-        font-weight: 800;
-    }
-
-    .summary-note,
-    .helper-note {
-        margin: 0.3rem 0 0;
-        font-size: 0.82rem;
-        color: var(--muted);
-    }
-
-    .control-panel {
-        margin-bottom: 0.85rem;
-    }
-
-    .control-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 0.7rem;
-    }
-
-    .control-item {
-        display: grid;
-        gap: 0.24rem;
-        padding: 0.72rem;
-        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-        border-radius: 12px;
-        background: color-mix(in srgb, var(--surface) 96%, transparent);
-        min-width: 0;
-    }
-
-    .admin-tabs {
-        display: inline-flex;
-        gap: 0.45rem;
-        flex-wrap: wrap;
-        margin-bottom: 0.85rem;
-    }
-
-    .admin-tab,
-    .admin-filter {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex: 0 0 auto;
-        min-height: 38px;
-        padding: 0 0.85rem;
-        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--surface) 78%, transparent);
-        color: var(--muted);
-        font-size: 0.76rem;
-        font-weight: 800;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
-        text-decoration: none;
-    }
-
-    .admin-tab.is-active,
-    .admin-filter.is-active,
-    .admin-tab:hover,
-    .admin-filter:hover {
-        color: var(--accent);
-        border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
-        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-    }
-
-    .panel-head-stack {
-        align-items: flex-start;
-        gap: 0.7rem;
-        flex-direction: column;
-    }
-
-    .filter-row,
-    .inline-actions {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-    }
-
-    .inline-actions form {
-        margin: 0;
-    }
-
-    .dialog-actions {
-        justify-content: flex-end;
-    }
-
-    .spotlight-panel,
-    .users-panel,
-    .create-code-panel,
-    .codes-panel {
-        padding: 0.95rem;
-        min-width: 0;
-    }
-
-    .pending-list,
-    .codes-list {
-        display: grid;
-        gap: 0.7rem;
-    }
-
-    .pending-card,
-    .code-card {
-        display: grid;
-        gap: 0.6rem;
-        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-        border-radius: 12px;
-        padding: 0.78rem;
-        background: color-mix(in srgb, var(--surface) 96%, transparent);
-        min-width: 0;
-    }
-
-    .pending-name,
-    .code-value {
-        margin: 0;
-        font-size: 0.95rem;
-        font-weight: 800;
-    }
-
-    .pending-line {
-        margin: 0.12rem 0 0;
-        font-size: 0.82rem;
-        overflow-wrap: anywhere;
-    }
-
-    .code-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 0.65rem;
-    }
-
-    .code-form {
-        display: grid;
-        gap: 0.7rem;
-    }
-
-    .code-form input {
-        width: 100%;
-        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
-        border-radius: 10px;
-        padding: 0.72rem 0.78rem;
-        font: inherit;
-        background: color-mix(in srgb, var(--surface) 96%, transparent);
-        color: var(--ink);
-        box-sizing: border-box;
-    }
-
-    .regen-ai-form {
-        display: grid;
-        gap: 0.7rem;
-    }
-
-    .regen-ai-form select {
-        width: 100%;
-        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
-        border-radius: 10px;
-        padding: 0.72rem 0.78rem;
-        font: inherit;
-        background: color-mix(in srgb, var(--surface) 96%, transparent);
-        color: var(--ink);
-        box-sizing: border-box;
-    }
-
-    .regen-ai-note {
-        margin-top: 0.35rem;
-    }
-
-    .admin-table-shell {
-        overflow: auto;
-        max-width: 100%;
-        -webkit-overflow-scrolling: touch;
-        overscroll-behavior-x: contain;
-    }
-
-    .admin-table {
-        width: 100%;
-        min-width: 980px;
-        border-collapse: collapse;
-    }
-
-    .admin-table th,
-    .admin-table td {
-        padding: 0.8rem 0.78rem;
-        border-bottom: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
-        text-align: left;
-        vertical-align: top;
-        font-size: 0.84rem;
-    }
-
-    .admin-table th {
-        font-size: 0.74rem;
-        font-weight: 800;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--muted);
-        background: color-mix(in srgb, var(--surface) 92%, transparent);
-        position: sticky;
-        top: 0;
-        z-index: 1;
-    }
-
-    .user-cell {
-        display: grid;
-        gap: 0.16rem;
-    }
-
-    .user-cell span {
-        color: var(--muted);
-        overflow-wrap: anywhere;
-    }
-
-    .chip {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-        border-radius: 999px;
-        padding: 0.22rem 0.56rem;
-        font-size: 0.68rem;
-        font-weight: 800;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        background: color-mix(in srgb, var(--surface) 92%, transparent);
-        color: var(--muted);
-    }
-
-    .chip.success-chip {
-        border-color: color-mix(in srgb, var(--good) 48%, var(--border));
-        background: color-mix(in srgb, var(--good) 14%, var(--surface));
-        color: color-mix(in srgb, var(--good) 82%, white 18%);
-    }
-
-    .chip.danger-chip {
-        border-color: color-mix(in srgb, var(--bad) 44%, var(--border));
-        background: color-mix(in srgb, var(--bad) 14%, var(--surface));
-        color: color-mix(in srgb, var(--bad) 82%, white 18%);
-    }
-
-    .chip.root-chip {
-        border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
-        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-        color: color-mix(in srgb, var(--accent) 82%, white 18%);
-    }
-
-    @media (max-width: 1180px) {
-        .admin-summary-grid,
-        .control-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-    }
-
-    @media (max-width: 980px) {
-        .admin-main-grid {
-            grid-template-columns: 1fr;
-        }
-    }
-
-    @media (max-width: 680px) {
-        .admin-summary-grid,
-        .control-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .admin-head-row {
-            flex-direction: column;
-        }
-
-        .admin-head-meta {
-            justify-content: flex-start;
-        }
-
-        .admin-tabs,
-        .filter-row {
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            padding-bottom: 0.18rem;
-            scrollbar-width: thin;
-            -webkit-overflow-scrolling: touch;
-        }
-    }
-</style>
 <script>
     function openRegenAiDialog(userId) {
         const dialog = document.getElementById(`regenAiDialog${userId}`);
