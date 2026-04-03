@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import g, request, session, url_for
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from models import (
     MT5AccessRequest,
@@ -231,6 +231,18 @@ def build_normalized_trade_insert_batch(
         existing_trades = Trade.query.filter_by(
             user_id=user_id,
             trade_account_id=trade_account.id,
+        ).options(
+            load_only(
+                Trade.symbol,
+                Trade.contract_code,
+                Trade.side,
+                Trade.entry_price,
+                Trade.exit_price,
+                Trade.lot_size,
+                Trade.opened_at,
+                Trade.closed_at,
+                Trade.pnl,
+            )
         ).all()
         existing_trade_keys = {
             build_trade_duplicate_key(

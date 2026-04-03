@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta
 
+import json
+
 import ai_service
 from ai_service import (
     build_dashboard_advice_messages,
+    build_dashboard_review_display,
     build_profile_instructions,
     build_trade_payload,
     format_payload_for_prompt,
@@ -133,6 +136,8 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
         },
         "trades": [
             {
+                "review_ref": "T1",
+                "trade_id": 42,
                 "symbol": "MES (MESM26)",
                 "contract_code": "MESM26",
                 "side": "BUY",
@@ -222,6 +227,7 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- equity_has_outlier_dominance: true" in prompt_text
     assert "- top_symbol_trade_share_pct: 100.00%" in prompt_text
     assert "- largest_trade_abs_pnl_share_pct: 100.00%" in prompt_text
+    assert "review_ref: T1" in prompt_text
     assert "contract_code: MESM26" in prompt_text
     assert "stop_loss: 4998.75000" in prompt_text
     assert "take_profit: 5004.00000" in prompt_text
@@ -293,6 +299,8 @@ def test_build_trade_payload_serializes_trade_risk_fields_and_session(app_ctx):
     assert payload["trades"][0]["entry_session"] == "New York"
     assert payload["trades"][0]["exit_session"] == "New York"
     assert payload["trades"][0]["session"] == "New York"
+    assert payload["trades"][0]["review_ref"] == "T1"
+    assert payload["trades"][0]["trade_id"] == trade.id
     assert payload["trades"][0]["duration_minutes"] == 45.0
     assert payload["trades"][0]["trade_sequence_number"] == 1
     assert payload["trades"][0]["trade_number_in_session"] == 1
@@ -598,7 +606,8 @@ def test_build_dashboard_advice_messages_appends_profile_adjustments(app_ctx):
     )
 
     assert prompt_history.prompt_id == "dashboard_advice"
-    assert messages[1]["content"][0]["text"].endswith("- Use plain language.")
+    assert messages[1]["content"][0]["text"] == ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert messages[2]["content"][0]["text"].endswith("- Use plain language.")
 
 
 def test_dashboard_prompt_uses_exit_price_language():
@@ -616,6 +625,7 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "tp_capture_pct" in prompt_text
     assert "closed_before_tp" in prompt_text
     assert "split_group_size" in prompt_text
+    assert "review_ref" in prompt_text
 
     assert "INTERNAL WORKFLOW" in prompt_text
     assert "STEP 1 - INTERPRET THE DATA CORRECTLY" in prompt_text
@@ -862,6 +872,9 @@ def test_build_trade_payload_uses_bundled_view_for_summary_and_emotional_index(a
     assert len(payload["trades"]) == 2
 
     bundled_trade = next(trade for trade in payload["trades"] if trade["is_bundle"] is True)
+    solo_trade = next(trade for trade in payload["trades"] if trade["is_bundle"] is False)
+    assert bundled_trade["review_ref"] == "B1"
+    assert solo_trade["review_ref"] == "T1"
     assert bundled_trade["bundle_trade_count"] == 2
     assert bundled_trade["is_reactive"] is True
     assert bundled_trade["trade_note"] == "Planned scale entry. | Added on confirmation."
@@ -1299,7 +1312,32 @@ def test_maybe_generate_weekly_dashboard_advice_generates_when_three_closed_trad
         lambda messages, model=None: {
             "model": "gpt-5-mini",
             "status": "completed",
-            "output_text": "EDGE\n- Supported insight.\n\u00e2\u2020' Rule: Keep risk fixed.",
+            "output_text": json.dumps(
+                {
+                    "summary": {
+                        "text": "This was a profitable week led by clean EURUSD and USDJPY execution, with the middle trade acting more like support than the main driver.",
+                        "refs": ["T1", "T3"],
+                    },
+                    "takeaways": [
+                        {
+                            "text": "EURUSD set the tone early and gave the clearest clean execution of the week.",
+                            "refs": ["T1"],
+                        },
+                        {
+                            "text": "GBPUSD contributed, but it looked more like a supporting winner than the week's defining idea.",
+                            "refs": ["T2"],
+                        },
+                        {
+                            "text": "USDJPY closed the week cleanly and reinforced that patience held into later setups.",
+                            "refs": ["T3"],
+                        },
+                    ],
+                    "rule": {
+                        "text": "Rule: Keep size fixed and let the first clean winner set the standard for later setups.",
+                        "refs": ["T1", "T3"],
+                    },
+                }
+            ),
             "usage": {},
             "output": [],
         },
@@ -1317,7 +1355,14 @@ def test_maybe_generate_weekly_dashboard_advice_generates_when_three_closed_trad
     assert result["record"] is not None
     assert result["record"].trade_count_used == 3
     assert result["record"].payload_json == ai_service.serialize_payload(result["payload"])
-    assert result["record"].response_text.endswith("Rule: Keep risk fixed.")
+    assert result["record"].response_meta_json is not None
+    review_display = build_dashboard_review_display(
+        result["record"].response_text,
+        result["record"].response_meta_json,
+    )
+    assert review_display["summary"]["refs"] == ["T1", "T3"]
+    assert [item["refs"] for item in review_display["takeaways"]] == [["T1"], ["T2"], ["T3"]]
+    assert review_display["rule"]["text"].startswith("Rule:")
 
 
 def test_force_weekly_generation_appends_new_response_for_same_period(app_ctx, monkeypatch):

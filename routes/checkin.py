@@ -278,11 +278,6 @@ def checkin():
         return redirect(url_for("dashboard.home"))
 
     period = get_weekly_dashboard_period(now_utc=utcnow_naive())
-    closed_trade_count = _count_closed_trades_for_period(
-        user_id=user_id,
-        trade_account_id=active_trade_account.id,
-        period=period,
-    )
     existing_checkin = _get_current_weekly_checkin(
         user_id=user_id,
         trade_account_id=active_trade_account.id,
@@ -293,6 +288,7 @@ def checkin():
         trade_account_id=active_trade_account.id,
         period=period,
     )
+    closed_trade_count = len(week_trades)
     outliers = detect_outliers(week_trades)
     has_outliers = bool(outliers["bundle_candidates"] or outliers["standalone_candidates"])
     if closed_trade_count <= 0 or (
@@ -386,6 +382,8 @@ def checkin():
                 workflow_stage=WORKFLOW_STAGE_CHECKIN,
             )
 
+        week_trade_map = {trade.pubkey: trade for trade in week_trades}
+
         for candidate in outliers["bundle_candidates"]:
             trades = candidate.get("trades") or []
             trade_pubkeys = [
@@ -396,16 +394,11 @@ def checkin():
             group_value = _build_bundle_group_value(trade_pubkeys)
             if group_value not in selected_bundle_groups:
                 continue
-            selected_trades = (
-                Trade.query.filter(
-                    Trade.user_id == user_id,
-                    Trade.trade_account_id == active_trade_account.id,
-                    Trade.pubkey.in_(trade_pubkeys),
-                    Trade.closed_at >= period["period_start_utc"],
-                    Trade.closed_at < period["period_end_utc"],
-                )
-                .all()
-            )
+            selected_trades = [
+                week_trade_map[pk]
+                for pk in trade_pubkeys
+                if pk in week_trade_map
+            ]
             if len(selected_trades) < 2:
                 continue
             bundle_pubkey = build_unique_trade_pubkey()
@@ -418,16 +411,7 @@ def checkin():
                     trade.is_revenge = True
 
         for trade_pubkey, selected_type in selected_trade_types.items():
-            trade = (
-                Trade.query.filter(
-                    Trade.user_id == user_id,
-                    Trade.trade_account_id == active_trade_account.id,
-                    Trade.pubkey == trade_pubkey,
-                    Trade.closed_at >= period["period_start_utc"],
-                    Trade.closed_at < period["period_end_utc"],
-                )
-                .first()
-            )
+            trade = week_trade_map.get(trade_pubkey)
             if trade is None:
                 continue
             if selected_type == "revenge" and not trade.is_revenge:

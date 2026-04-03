@@ -275,45 +275,169 @@
         {% endif %}
 
         <section class="ai-hero-grid {% if mt5_cfd_accounts %}has-mt5{% else %}no-mt5{% endif %}" data-reveal-row-step="120" data-reveal-col-step="70">
-            {% if mt5_cfd_accounts %}
-            <article class="panel mt5-access-panel mt5-access-panel-side mt5-access-panel-request">
-                <div class="panel-head">
-                    <div class="panel-title-wrap">
-                        <h2>Request MT5 Sync Access</h2>
-                        <p class="panel-account-note">Step 1 of 2</p>
+            <div class="mt5-side-stack">
+                {% if mt5_cfd_accounts %}
+                <article id="mt5-access" class="panel mt5-access-panel mt5-workflow-panel">
+                    <div class="panel-head">
+                        <div class="panel-title-wrap">
+                            <h2>MT5 Sync Setup</h2>
+                            {% if mt5_selected_account %}
+                            <p class="panel-account-note">{{ mt5_selected_account.name }}</p>
+                            {% else %}
+                            <p class="panel-account-note">Select a CFD trade account</p>
+                            {% endif %}
+                        </div>
+                        <span class="soft">
+                            {% if mt5_selected_status == "requestable" %}
+                            Step 1 of 2
+                            {% elif mt5_selected_status == "approved" %}
+                            Step 2 of 2
+                            {% elif mt5_selected_status == "pending" %}
+                            Pending Review
+                            {% elif mt5_selected_status == "linked" %}
+                            Connected
+                            {% else %}
+                            Manual Onboarding
+                            {% endif %}
+                        </span>
                     </div>
-                    <span class="soft">Manual Review</span>
-                </div>
-                <p class="mt5-panel-copy">Start with an access request for the CFD account you want linked. Once approved, submit your read-only MT5 details from the card below.</p>
-                {% if requestable_mt5_accounts %}
-                <form action="{{ url_for('trade_accounts.request_mt5_access') }}" method="post" class="mt5-card-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="next" value="{{ url_for('dashboard.home', _anchor='mt5-access') }}">
 
-                    <label for="mt5_request_trade_account">Trade account</label>
-                    <select id="mt5_request_trade_account" name="trade_account_pubkey" required>
-                        <option value="">Choose a CFD trade account</option>
-                        {% for trade_account in requestable_mt5_accounts %}
-                        <option value="{{ trade_account.pubkey }}">{{ trade_account.name }}</option>
+                    {% if mt5_selected_row %}
+                    <div class="mt5-workflow-summary">
+                        <span class="mt5-status-pill{% if mt5_selected_status == 'linked' %} is-linked{% elif mt5_selected_status == 'pending' %} is-pending{% elif mt5_selected_status == 'approved' %} is-approved{% else %} is-idle{% endif %}">
+                            {{ mt5_selected_row.status_label }}
+                        </span>
+                        <p class="mt5-panel-copy">{{ mt5_selected_row.note }}</p>
+                    </div>
+                    {% endif %}
+
+                    {% if mt5_selected_status == "requestable" and mt5_selected_account %}
+                    <p class="mt5-panel-copy">Request access for this CFD account first. Once approved, this same panel switches to the MT5 read-only details form automatically.</p>
+                    <form action="{{ url_for('trade_accounts.request_mt5_access') }}" method="post" class="mt5-card-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
+                        <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
+
+                        <div class="mt5-selected-account-card">
+                            <span class="mt5-selected-account-label">Selected Account</span>
+                            <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
+                            <span class="mt5-selected-account-meta">CFD account ready for a new MT5 access request.</span>
+                        </div>
+
+                        <label for="dashboard_mt5_request_note">Optional note</label>
+                        <textarea
+                            id="dashboard_mt5_request_note"
+                            name="request_note"
+                            maxlength="500"
+                            rows="3"
+                            placeholder="Anything I should know before reviewing this MT5 request?"
+                        ></textarea>
+
+                        <button type="submit" class="submit-btn">Request MT5 Sync Access</button>
+                    </form>
+                    {% elif mt5_selected_status == "approved" and mt5_selected_account %}
+                    <p class="mt5-panel-copy">Approval is done for this account. Submit MT5 investor/read-only credentials only, never a master or trading password.</p>
+                    <form action="{{ url_for('trade_accounts.submit_mt5_details') }}" method="post" class="mt5-card-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
+                        <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
+
+                        <div class="mt5-selected-account-card">
+                            <span class="mt5-selected-account-label">Approved Account</span>
+                            <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
+                            <span class="mt5-selected-account-meta">Manual review is complete. You can submit details now.</span>
+                        </div>
+
+                        <p class="mt5-card-warning">
+                            Submit MT5 investor/read-only credentials only. Do not enter your master password, trading password, or any credential that can place trades or withdraw funds.
+                        </p>
+
+                        <label for="mt5_account_number">MT5 account number</label>
+                        <input id="mt5_account_number" name="account_number" type="text" maxlength="50" required>
+
+                        <label for="mt5_server">Server</label>
+                        <input id="mt5_server" name="server" type="text" maxlength="100" required>
+
+                        <label for="mt5_investor_password">Investor password (read-only only)</label>
+                        <input id="mt5_investor_password" name="investor_password" type="password" required>
+
+                        <label class="mt5-card-consent" for="mt5_sync_consent">
+                            <input id="mt5_sync_consent" name="mt5_sync_consent" type="checkbox" value="on" required>
+                            <span>I confirm these are MT5 investor/read-only credentials with no trading or withdrawal permissions, and I agree to the <a href="{{ url_for('terms_and_conditions') }}" target="_blank" rel="noopener">Terms and Conditions</a> and <a href="{{ url_for('privacy_policy') }}" target="_blank" rel="noopener">Privacy Policy</a> for MT5 sync.</span>
+                        </label>
+
+                        <button type="submit" class="submit-btn">Save MT5 Account Details</button>
+                    </form>
+                    <p class="mt5-card-footnote">Details are stored in-app, protected for MT5 sync use, and completed manually from admin.</p>
+                    {% elif mt5_selected_status == "pending" and mt5_selected_row %}
+                    <p class="mt5-card-empty">This account is waiting on manual approval. Once approved, this panel will switch to the MT5 details form automatically.</p>
+                    {% if mt5_selected_row.pending_request and mt5_selected_row.pending_request.request_note %}
+                    <div class="mt5-selected-account-card">
+                        <span class="mt5-selected-account-label">Submitted Note</span>
+                        <strong class="mt5-selected-account-name">Review context</strong>
+                        <span class="mt5-selected-account-meta">{{ mt5_selected_row.pending_request.request_note }}</span>
+                    </div>
+                    {% endif %}
+                    {% elif mt5_selected_status == "linked" and mt5_selected_account %}
+                    <p class="mt5-card-empty">This account is already linked for MT5 sync. Select another CFD account below if you want to start or finish onboarding elsewhere.</p>
+                    <div class="mt5-selected-account-card">
+                        <span class="mt5-selected-account-label">Connected Account</span>
+                        <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
+                        <span class="mt5-selected-account-meta">MT5 details are already on file for this account.</span>
+                    </div>
+                    {% else %}
+                    <p class="mt5-card-empty">Create a CFD trade account first, then request MT5 sync access here.</p>
+                    <div class="panel-empty-actions">
+                        <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Open Trade Accounts</a>
+                    </div>
+                    {% endif %}
+                </article>
+
+                <article class="panel mt5-access-panel mt5-status-panel">
+                    <div class="panel-head">
+                        <div class="panel-title-wrap">
+                            <h2>Account Sync Status</h2>
+                            <p class="panel-account-note">Select an account to load the correct next step above.</p>
+                        </div>
+                        <span class="soft">{{ mt5_cfd_accounts|length }} CFD account{{ 's' if mt5_cfd_accounts|length != 1 else '' }}</span>
+                    </div>
+                    <div class="mt5-status-list">
+                        {% for mt5_row in mt5_status_rows %}
+                        <a
+                            href="{{ url_for('dashboard.home', mt5_account=mt5_row.account.pubkey, _anchor='mt5-access') }}"
+                            class="mt5-status-item{% if mt5_row.is_selected %} is-selected{% endif %}"
+                            {% if mt5_row.is_selected %}aria-current="true"{% endif %}
+                        >
+                            <div>
+                                <p class="mt5-status-name">{{ mt5_row.account.name }}</p>
+                                <p class="mt5-status-note">{{ mt5_row.note }}</p>
+                            </div>
+                            <div class="mt5-status-item-side">
+                                <span class="mt5-status-pill{% if mt5_row.status == 'linked' %} is-linked{% elif mt5_row.status == 'pending' %} is-pending{% elif mt5_row.status == 'approved' %} is-approved{% else %} is-idle{% endif %}">
+                                    {{ mt5_row.status_label }}
+                                </span>
+                                <span class="mt5-status-link">{{ mt5_row.action_label }}</span>
+                            </div>
+                        </a>
                         {% endfor %}
-                    </select>
-
-                    <label for="dashboard_mt5_request_note">Optional note</label>
-                    <textarea
-                        id="dashboard_mt5_request_note"
-                        name="request_note"
-                        maxlength="500"
-                        rows="3"
-                        placeholder="Anything I should know before reviewing this MT5 request?"
-                    ></textarea>
-
-                    <button type="submit" class="submit-btn">Request MT5 Sync Access</button>
-                </form>
+                    </div>
+                </article>
                 {% else %}
-                <p class="mt5-card-empty">No CFD trade accounts are waiting on a new MT5 access request right now.</p>
+                <article id="mt5-access" class="panel mt5-access-panel mt5-overview-panel-empty">
+                    <div class="panel-head">
+                        <div class="panel-title-wrap">
+                            <h2>MT5 Sync Setup</h2>
+                            <p class="panel-account-note">Create a CFD trade account first, then request MT5 sync access here.</p>
+                        </div>
+                        <span class="soft">Manual Onboarding</span>
+                    </div>
+                    <p class="mt5-card-empty">You will see the setup flow here as soon as you have a CFD trade account available.</p>
+                    <div class="panel-empty-actions">
+                        <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Open Trade Accounts</a>
+                    </div>
+                </article>
                 {% endif %}
-            </article>
-            {% endif %}
+            </div>
 
             <div class="hero-top-main">
             <article class="panel notes-panel notes-panel-hero">
@@ -337,7 +461,90 @@
                         {% endif %}
                     </p>
                     {% if weekly_ai_review %}
+                    {% if weekly_ai_review_display and (weekly_ai_review_display.summary.text or weekly_ai_review_display.takeaways or weekly_ai_review_display.rule.text) %}
+                    <div class="ai-review-structured">
+                        {% if weekly_ai_review_display.summary.text %}
+                        <div class="ai-review-block">
+                            <p class="insight-body ai-review-copy">{{ weekly_ai_review_display.summary.text }}</p>
+                            {% if weekly_ai_review_display.summary.citations %}
+                            <div class="ai-review-citations">
+                                {% for citation in weekly_ai_review_display.summary.citations %}
+                                <button
+                                    type="button"
+                                    class="ai-citation-btn"
+                                    data-citation-type="{{ citation.type }}"
+                                    {% if citation.type == "trade" %}
+                                    data-citation-trade-id="{{ citation.trade_id }}"
+                                    {% else %}
+                                    data-citation-bundle="{{ citation.bundle_key }}"
+                                    {% endif %}
+                                >
+                                    View {{ citation.label }}
+                                </button>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if weekly_ai_review_display.takeaways %}
+                        <div class="ai-review-block">
+                            <p class="ai-review-heading">Key Takeaways</p>
+                            <ul class="ai-review-list">
+                                {% for takeaway in weekly_ai_review_display.takeaways %}
+                                <li class="ai-review-item">
+                                    <p class="insight-body ai-review-copy">{{ takeaway.text }}</p>
+                                    {% if takeaway.citations %}
+                                    <div class="ai-review-citations">
+                                        {% for citation in takeaway.citations %}
+                                        <button
+                                            type="button"
+                                            class="ai-citation-btn"
+                                            data-citation-type="{{ citation.type }}"
+                                            {% if citation.type == "trade" %}
+                                            data-citation-trade-id="{{ citation.trade_id }}"
+                                            {% else %}
+                                            data-citation-bundle="{{ citation.bundle_key }}"
+                                            {% endif %}
+                                        >
+                                            View {{ citation.label }}
+                                        </button>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+
+                        {% if weekly_ai_review_display.rule.text %}
+                        <div class="ai-review-block ai-review-rule-block">
+                            <p class="insight-body ai-review-copy ai-review-rule">{{ weekly_ai_review_display.rule.text }}</p>
+                            {% if weekly_ai_review_display.rule.citations %}
+                            <div class="ai-review-citations">
+                                {% for citation in weekly_ai_review_display.rule.citations %}
+                                <button
+                                    type="button"
+                                    class="ai-citation-btn"
+                                    data-citation-type="{{ citation.type }}"
+                                    {% if citation.type == "trade" %}
+                                    data-citation-trade-id="{{ citation.trade_id }}"
+                                    {% else %}
+                                    data-citation-bundle="{{ citation.bundle_key }}"
+                                    {% endif %}
+                                >
+                                    View {{ citation.label }}
+                                </button>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% else %}
                     <p class="insight-body">{{ weekly_ai_review_text|trim }}</p>
+                    {% endif %}
                     {% elif weekly_ai_is_generating %}
                     <div class="ai-generating-shell" aria-live="polite" aria-busy="true">
                         <span class="ai-loading-orb" aria-hidden="true"></span>
@@ -462,120 +669,10 @@
                 </article>
             </section>
             </div>
-
-            {% if mt5_cfd_accounts %}
-            <article class="panel mt5-access-panel mt5-access-panel-side mt5-access-panel-details">
-                <div class="panel-head">
-                    <div class="panel-title-wrap">
-                        <h2>Submit MT5 Account Details</h2>
-                        <p class="panel-account-note">Step 2 of 2</p>
-                    </div>
-                    <span class="soft">After Approval</span>
-                </div>
-                <p class="mt5-panel-copy">Use this only for approved accounts. Submit MT5 investor/read-only credentials only, never a master or trading password.</p>
-                {% if approved_mt5_accounts %}
-                <form action="{{ url_for('trade_accounts.submit_mt5_details') }}" method="post" class="mt5-card-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="next" value="{{ url_for('dashboard.home', _anchor='mt5-access') }}">
-
-                    <p class="mt5-card-warning">
-                        Submit MT5 investor/read-only credentials only. Do not enter your master password, trading password, or any credential that can place trades or withdraw funds.
-                    </p>
-
-                    <label for="mt5_approved_trade_account">Approved trade account</label>
-                    <select id="mt5_approved_trade_account" name="trade_account_pubkey" required>
-                        <option value="">Choose an approved CFD trade account</option>
-                        {% for trade_account in approved_mt5_accounts %}
-                        <option value="{{ trade_account.pubkey }}">{{ trade_account.name }}</option>
-                        {% endfor %}
-                    </select>
-
-                    <label for="mt5_account_number">MT5 account number</label>
-                    <input id="mt5_account_number" name="account_number" type="text" maxlength="50" required>
-
-                    <label for="mt5_server">Server</label>
-                    <input id="mt5_server" name="server" type="text" maxlength="100" required>
-
-                    <label for="mt5_investor_password">Investor password (read-only only)</label>
-                    <input id="mt5_investor_password" name="investor_password" type="password" required>
-
-                    <label class="mt5-card-consent" for="mt5_sync_consent">
-                        <input id="mt5_sync_consent" name="mt5_sync_consent" type="checkbox" value="on" required>
-                        <span>I confirm these are MT5 investor/read-only credentials with no trading or withdrawal permissions, and I agree to the <a href="{{ url_for('terms_and_conditions') }}" target="_blank" rel="noopener">Terms and Conditions</a> and <a href="{{ url_for('privacy_policy') }}" target="_blank" rel="noopener">Privacy Policy</a> for MT5 sync.</span>
-                    </label>
-
-                    <button type="submit" class="submit-btn">Save MT5 Account Details</button>
-                </form>
-                <p class="mt5-card-footnote">Only approved accounts appear here. Details are stored in-app, protected for MT5 sync use, and finished manually from admin.</p>
-                {% else %}
-                <p class="mt5-card-empty">Approved accounts will appear here after MT5 access is approved.</p>
-                {% endif %}
-            </article>
-
-            <article id="mt5-access" class="panel mt5-access-panel mt5-overview-panel">
-                <div class="panel-head">
-                    <div class="panel-title-wrap">
-                        <h2>MT5 Sync Access</h2>
-                        <p class="panel-account-note">Request access, then submit MT5 details only after approval.</p>
-                    </div>
-                    <span class="soft">Manual Onboarding</span>
-                </div>
-                <div class="mt5-status-list">
-                    {% for trade_account in mt5_cfd_accounts %}
-                    {% set pending_mt5_request = pending_mt5_requests_by_trade_account.get(trade_account.id) %}
-                    {% set approved_mt5_request = approved_mt5_requests_by_trade_account.get(trade_account.id) %}
-                    {% set mt5_is_linked = trade_account.id in linked_mt5_trade_account_ids %}
-                    <article class="mt5-status-item">
-                        <div>
-                            <p class="mt5-status-name">{{ trade_account.name }}</p>
-                            {% if mt5_is_linked %}
-                            <p class="mt5-status-note">MT5 details are already on file for this account.</p>
-                            {% elif pending_mt5_request %}
-                            <p class="mt5-status-note">
-                                Requested {{ pending_mt5_request.created_at.strftime("%Y-%m-%d %H:%M UTC") if pending_mt5_request.created_at else "recently" }}.
-                            </p>
-                            {% elif approved_mt5_request %}
-                            <p class="mt5-status-note">
-                                Approved{% if approved_mt5_request.reviewed_at %} {{ approved_mt5_request.reviewed_at.strftime("%Y-%m-%d %H:%M UTC") }}{% endif %}. Submit your MT5 read-only account details below.
-                            </p>
-                            {% else %}
-                            <p class="mt5-status-note">No MT5 access request has been submitted yet.</p>
-                            {% endif %}
-                        </div>
-                        <span class="mt5-status-pill{% if mt5_is_linked %} is-linked{% elif pending_mt5_request %} is-pending{% elif approved_mt5_request %} is-approved{% else %} is-idle{% endif %}">
-                            {% if mt5_is_linked %}
-                            MT5 Linked
-                            {% elif pending_mt5_request %}
-                            Pending Review
-                            {% elif approved_mt5_request %}
-                            Approved
-                            {% else %}
-                            Not Requested
-                            {% endif %}
-                        </span>
-                    </article>
-                    {% endfor %}
-                </div>
-            </article>
-            {% else %}
-            <article id="mt5-access" class="panel mt5-access-panel mt5-overview-panel mt5-overview-panel-empty">
-                <div class="panel-head">
-                    <div class="panel-title-wrap">
-                        <h2>MT5 Sync Access</h2>
-                        <p class="panel-account-note">Request access, then submit MT5 details only after approval.</p>
-                    </div>
-                    <span class="soft">Manual Onboarding</span>
-                </div>
-                <p class="mt5-card-empty">Create a CFD trade account first, then request MT5 sync access here.</p>
-                <div class="panel-empty-actions">
-                    <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Open Trade Accounts</a>
-                </div>
-            </article>
-            {% endif %}
         </section>
         <section class="panel-grid" data-reveal-row-step="140" data-reveal-col-step="90">
             <div class="panel-column panel-column-main">
-                <article class="panel trade-log">
+                <article class="panel trade-log" id="trade-journal">
                     <div class="panel-head">
                         <div class="panel-title-wrap">
                             <h2>Trades</h2>
@@ -647,7 +744,9 @@
                                 {% if trade.is_running %}{% set _ = row_classes.append("running-trade") %}{% endif %}
                                 {% if trade.bundle_pubkey %}{% set _ = row_classes.append("bundle-row") %}{% endif %}
                                 <tr
+                                    {% if trade.trade_id %}id="trade-row-{{ trade.trade_id }}"{% endif %}
                                     {% if row_classes %}class="{{ row_classes|join(' ') }}"{% endif %}
+                                    data-trade-id="{{ trade.trade_id or '' }}"
                                     data-symbol="{{ trade.symbol }}"
                                     data-strategy="{{ trade.trade_profile_label }}"
                                     data-side="{{ trade.side }}"
@@ -1006,28 +1105,27 @@
 
     .ai-hero-grid {
         display: grid;
+        grid-template-columns: minmax(250px, 0.88fr) minmax(0, 1.52fr);
         gap: 0.8rem;
         margin-bottom: 0.9rem;
         min-width: 0;
-        align-items: stretch; }
+        align-items: start; }
 
-    .ai-hero-grid.no-mt5 {
+    .ai-hero-grid.no-mt5,
+    .ai-hero-grid.has-mt5 {
         grid-template-columns: minmax(250px, 0.88fr) minmax(0, 1.52fr);
-        grid-template-areas: "mt5-status main";
+        grid-template-areas: none;
         align-items: start;
     }
 
-    .ai-hero-grid.has-mt5 {
-        grid-template-columns: minmax(250px, 0.88fr) minmax(0, 1.52fr);
-        grid-template-areas:
-            "mt5-request main"
-            "mt5-details main"
-            "mt5-status main";
-        align-items: start;
+    .mt5-side-stack {
+        display: grid;
+        gap: 0.8rem;
+        min-width: 0;
+        align-content: start;
     }
 
     .hero-top-main {
-        grid-area: main;
         display: grid;
         gap: 0.8rem;
         min-width: 0;
@@ -1036,22 +1134,6 @@
 
     .dashboard-metric-grid {
         margin-bottom: 0;
-    }
-
-    .ai-hero-grid.has-mt5 .mt5-access-panel-request {
-        grid-area: mt5-request;
-    }
-
-    .ai-hero-grid.has-mt5 .mt5-access-panel-details {
-        grid-area: mt5-details;
-    }
-
-    .ai-hero-grid.has-mt5 .mt5-overview-panel {
-        grid-area: mt5-status;
-    }
-
-    .ai-hero-grid.no-mt5 .mt5-overview-panel {
-        grid-area: mt5-status;
     }
 
     .journey-banner {
@@ -1387,6 +1469,74 @@
         font-size: 1rem;
         line-height: 1.72; }
 
+    .ai-review-structured {
+        display: grid;
+        gap: 1rem;
+        margin-top: 0.7rem;
+    }
+
+    .ai-review-block {
+        display: grid;
+        gap: 0.58rem;
+    }
+
+    .ai-review-heading {
+        margin: 0;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--accent) 54%, var(--ink));
+    }
+
+    .ai-review-list {
+        display: grid;
+        gap: 0.85rem;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .ai-review-item {
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .ai-review-copy {
+        margin: 0;
+    }
+
+    .ai-review-rule {
+        font-weight: 600;
+    }
+
+    .ai-review-citations {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+    }
+
+    .ai-citation-btn {
+        border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--accent) 10%, var(--card));
+        color: color-mix(in srgb, var(--accent) 68%, white 32%);
+        padding: 0.36rem 0.72rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        cursor: pointer;
+        transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+    }
+
+    .ai-citation-btn:hover,
+    .ai-citation-btn:focus-visible {
+        transform: translateY(-1px);
+        border-color: color-mix(in srgb, var(--accent) 66%, var(--border));
+        background: color-mix(in srgb, var(--accent) 16%, var(--card));
+        outline: none;
+    }
+
     .ai-generating-shell {
         display: grid;
         justify-items: center;
@@ -1440,6 +1590,16 @@
         margin-bottom: 0;
     }
 
+    .mt5-workflow-panel,
+    .mt5-status-panel {
+        gap: 0.76rem;
+    }
+
+    .mt5-workflow-summary {
+        display: grid;
+        gap: 0.45rem;
+    }
+
     .mt5-panel-copy {
         margin: 0;
         font-size: 0.78rem;
@@ -1457,6 +1617,36 @@
         gap: 0.45rem;
     }
 
+    .mt5-selected-account-card {
+        display: grid;
+        gap: 0.18rem;
+        padding: 0.68rem 0.72rem;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        background: color-mix(in srgb, var(--surface) 95%, transparent);
+    }
+
+    .mt5-selected-account-label {
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--muted) 88%, var(--ink));
+    }
+
+    .mt5-selected-account-name {
+        font-size: 0.9rem;
+        color: var(--ink);
+        overflow-wrap: anywhere;
+    }
+
+    .mt5-selected-account-meta {
+        font-size: 0.76rem;
+        line-height: 1.42;
+        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
+        overflow-wrap: anywhere;
+    }
+
     .mt5-status-item {
         display: flex;
         justify-content: space-between;
@@ -1466,11 +1656,39 @@
         border-radius: 12px;
         border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         background: color-mix(in srgb, var(--surface) 95%, transparent);
+        text-decoration: none;
+        color: inherit;
+        transition:
+            transform 180ms ease,
+            border-color 180ms ease,
+            background 180ms ease,
+            box-shadow 180ms ease;
     }
 
-    .mt5-status-item > div {
+    .mt5-status-item:hover {
+        transform: translateY(-1px);
+        border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+        background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+        box-shadow: 0 10px 20px rgba(2, 6, 23, 0.12);
+    }
+
+    .mt5-status-item.is-selected {
+        border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+        background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+        box-shadow: 0 12px 24px rgba(2, 6, 23, 0.14);
+    }
+
+    .mt5-status-item > div:first-child {
         flex: 1 1 auto;
         min-width: 0;
+    }
+
+    .mt5-status-item-side {
+        flex: 0 0 auto;
+        display: grid;
+        justify-items: end;
+        align-content: start;
+        gap: 0.35rem;
     }
 
     .mt5-status-name {
@@ -1505,6 +1723,14 @@
         background: color-mix(in srgb, var(--surface) 98%, transparent);
         text-align: center;
         white-space: normal;
+    }
+
+    .mt5-status-link {
+        font-size: 0.64rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--muted) 80%, var(--ink));
     }
 
     .mt5-status-pill.is-pending {
@@ -1562,7 +1788,7 @@
         resize: vertical;
     }
 
-    .mt5-access-panel-side .submit-btn {
+    .mt5-side-stack .submit-btn {
         width: 100%;
     }
 
@@ -1672,6 +1898,10 @@
     .ai-hero-grid .mt5-status-item {
         padding: 0.62rem 0.7rem;
         gap: 0.55rem;
+    }
+
+    .ai-hero-grid .mt5-status-item-side {
+        gap: 0.32rem;
     }
 
     .ai-hero-grid .mt5-status-name {
@@ -1803,6 +2033,15 @@
         background: color-mix(in srgb, var(--bundle-accent, var(--accent)) 14%, var(--surface));
     }
 
+    .trade-log tbody tr.citation-hit td {
+        background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+        animation: trade-citation-pulse 2.4s ease;
+    }
+
+    .trade-log tbody tr.citation-hit td:first-child {
+        box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 78%, white 22%);
+    }
+
     .trade-log tbody tr.running-trade.bundle-row td {
         background: color-mix(
             in srgb,
@@ -1904,6 +2143,15 @@
         100% {
             transform: skewX(-18deg) translateX(420%);
             opacity: 0;
+        }
+    }
+
+    @keyframes trade-citation-pulse {
+        0% {
+            background: color-mix(in srgb, var(--accent) 34%, var(--surface));
+        }
+        100% {
+            background: color-mix(in srgb, var(--accent) 16%, var(--surface));
         }
     }
 
@@ -2210,20 +2458,13 @@
     }
 
     @media (max-width: 1080px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .ai-hero-grid.no-mt5 {
-            grid-template-columns: 1fr;
-            grid-template-areas:
-                "main"
-                "mt5-status";
-        }
+        .ai-hero-grid.no-mt5,
         .ai-hero-grid.has-mt5 {
             grid-template-columns: 1fr;
-            grid-template-areas:
-                "main"
-                "mt5-request"
-                "mt5-details"
-                "mt5-status";
+            grid-template-areas: none;
         }
+        .hero-top-main { order: 1; }
+        .mt5-side-stack { order: 2; }
         .panel-grid { grid-template-columns: 1fr; }
 
         .panel-column { gap: 0.8rem; }
@@ -2253,6 +2494,11 @@
 
         .mt5-status-item { flex-direction: column;
             align-items: flex-start; }
+
+        .mt5-status-item-side {
+            width: 100%;
+            justify-items: flex-start;
+        }
 
         .mt5-status-pill {
             max-width: 100%;

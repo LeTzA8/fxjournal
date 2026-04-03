@@ -1,11 +1,13 @@
+import json
 from datetime import datetime, timedelta
 
-from flask import Blueprint, current_app, jsonify, render_template, session, url_for
+from flask import Blueprint, current_app, jsonify, render_template, request, session, url_for
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import selectinload
 
 from ai_service import (
     MIN_CLOSED_TRADES_FOR_ADVICE,
+    build_dashboard_review_display,
     get_latest_trade_week_period,
     get_latest_weekly_dashboard_advice,
     get_weekly_dashboard_period,
@@ -76,9 +78,120 @@ def _deserialize_datetime(value):
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value)
+        text = str(value).strip()
+        if text.endswith("Z"):
+            text = f"{text[:-1]}+00:00"
+        return datetime.fromisoformat(text)
     except ValueError:
         return None
+
+
+def _parse_json_blob(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _build_weekly_review_citation_lookup(payload_json, timezone_name):
+    payload = _parse_json_blob(payload_json) or {}
+    trades = payload.get("trades") if isinstance(payload.get("trades"), list) else []
+    lookup = {}
+
+    for trade in trades:
+        if not isinstance(trade, dict):
+            continue
+        review_ref = str(trade.get("review_ref") or "").strip().upper()
+        if not review_ref:
+            continue
+
+        symbol = str(trade.get("symbol") or "-").strip() or "-"
+        opened_at = _deserialize_datetime(trade.get("opened_at"))
+        opened_local = to_display_timezone(opened_at, timezone_name)
+        date_label = opened_local.strftime("%d %b %Y (%a)") if opened_local is not None else "Date unavailable"
+        bundle_key = str(trade.get("bundle_pubkey") or "").strip()
+        trade_id = trade.get("trade_id")
+
+        if bool(trade.get("is_bundle")) and bundle_key:
+            lookup[review_ref] = {
+                "ref": review_ref,
+                "type": "bundle",
+                "bundle_key": bundle_key,
+                "label": f"{symbol} bundle | {date_label}",
+            }
+            continue
+
+        try:
+            normalized_trade_id = int(trade_id)
+        except (TypeError, ValueError):
+            continue
+
+        lookup[review_ref] = {
+            "ref": review_ref,
+            "type": "trade",
+            "trade_id": normalized_trade_id,
+            "label": f"{symbol} | {date_label}",
+        }
+
+    return lookup
+
+
+def _resolve_weekly_review_citations(refs, citation_lookup):
+    resolved = []
+    seen = set()
+    for raw_ref in refs or []:
+        ref = str(raw_ref or "").strip().upper()
+        if not ref or ref in seen:
+            continue
+        citation = citation_lookup.get(ref)
+        if citation is None:
+            continue
+        resolved.append(citation)
+        seen.add(ref)
+    return resolved
+
+
+def _build_weekly_ai_review_display(review_record, timezone_name):
+    if review_record is None:
+        return None
+
+    display = build_dashboard_review_display(
+        review_record.response_text or "",
+        getattr(review_record, "response_meta_json", None),
+    )
+    citation_lookup = _build_weekly_review_citation_lookup(
+        getattr(review_record, "payload_json", None),
+        timezone_name,
+    )
+
+    summary = dict(display.get("summary") or {})
+    summary["citations"] = _resolve_weekly_review_citations(summary.get("refs"), citation_lookup)
+
+    takeaways = []
+    for item in display.get("takeaways") or []:
+        takeaway = dict(item or {})
+        takeaway["citations"] = _resolve_weekly_review_citations(
+            takeaway.get("refs"),
+            citation_lookup,
+        )
+        takeaways.append(takeaway)
+
+    rule = dict(display.get("rule") or {})
+    rule["citations"] = _resolve_weekly_review_citations(rule.get("refs"), citation_lookup)
+
+    return {
+        "summary": summary,
+        "takeaways": takeaways,
+        "rule": rule,
+        "has_citations": bool(
+            summary.get("citations")
+            or rule.get("citations")
+            or any(item.get("citations") for item in takeaways)
+        ),
+    }
 
 
 def _load_user_trades(user_id, active_trade_account):
@@ -508,10 +621,11 @@ def _build_week_on_week_insight(current_week_stats, previous_week_stats):
     return "No prior completed trade week to compare yet."
 
 
-def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
+def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trades):
     account_id = getattr(active_trade_account, "id", None)
     weekly_ai_review = None
     weekly_ai_review_text = ""
+    weekly_ai_review_display = None
     weekly_ai_generated_at_label = ""
     weekly_ai_period_label = ""
     weekly_ai_empty_message = DEFAULT_WEEKLY_AI_EMPTY_MESSAGE
@@ -527,20 +641,33 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
     if latest_trade_period is None:
         weekly_ai_empty_message = WEEKLY_AI_NO_TRADES_MESSAGE
     else:
-        current_period_review = get_latest_weekly_dashboard_advice(
-            user_id=user_id,
-            trade_account_id=account_id,
-            period_start_utc=latest_trade_period["period_start_utc"],
-        )
+        current_period_review = None
         fallback_review = None
-        if current_period_review is None:
-            fallback_review = get_latest_weekly_dashboard_advice(
+        reviews_available = True
+        try:
+            current_period_review = get_latest_weekly_dashboard_advice(
                 user_id=user_id,
                 trade_account_id=account_id,
+                period_start_utc=latest_trade_period["period_start_utc"],
             )
+            if current_period_review is None:
+                fallback_review = get_latest_weekly_dashboard_advice(
+                    user_id=user_id,
+                    trade_account_id=account_id,
+                )
+        except OperationalError as exc:
+            db.session.rollback()
+            reviews_available = False
+            current_app.logger.warning("Weekly AI review query unavailable: %s", exc)
+            weekly_ai_empty_message = WEEKLY_AI_UNAVAILABLE_MESSAGE
+
         weekly_ai_review = current_period_review or fallback_review
-        if weekly_ai_review is not None:
+        if reviews_available and weekly_ai_review is not None:
             weekly_ai_review_text = normalize_dashboard_advice_text(weekly_ai_review.response_text)
+            weekly_ai_review_display = _build_weekly_ai_review_display(
+                weekly_ai_review,
+                timezone_name,
+            )
             if (
                 weekly_ai_review.period_start_utc is not None
                 or weekly_ai_review.period_end_utc is not None
@@ -560,7 +687,7 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
         except CacheUnavailableError as exc:
             current_app.logger.warning("Weekly AI status unavailable: %s", exc)
 
-        if current_period_review is None:
+        if reviews_available and current_period_review is None:
             if ai_status in {"queued", "running"}:
                 weekly_ai_is_generating = True
                 weekly_ai_empty_message = WEEKLY_AI_GENERATING_MESSAGE
@@ -574,10 +701,11 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
             ):
                 weekly_ai_empty_message = DEFAULT_WEEKLY_AI_EMPTY_MESSAGE
             else:
-                closed_trade_count = _count_closed_trades_for_period(
-                    user_id,
-                    account_id,
-                    latest_trade_period,
+                closed_trade_count = sum(
+                    1 for t in user_trades
+                    if t.closed_at is not None
+                    and t.closed_at >= latest_trade_period["period_start_utc"]
+                    and t.closed_at < latest_trade_period["period_end_utc"]
                 )
                 if closed_trade_count <= 0:
                     weekly_ai_empty_message = WEEKLY_AI_NO_TRADES_MESSAGE
@@ -657,10 +785,116 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name):
     return {
         "weekly_ai_review": weekly_ai_review,
         "weekly_ai_review_text": weekly_ai_review_text,
+        "weekly_ai_review_display": weekly_ai_review_display,
         "weekly_ai_generated_at_label": weekly_ai_generated_at_label,
         "weekly_ai_period_label": weekly_ai_period_label,
         "weekly_ai_empty_message": weekly_ai_empty_message,
         "weekly_ai_is_generating": weekly_ai_is_generating,
+    }
+
+
+def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_access_state, requested_pubkey=""):
+    mt5_cfd_accounts = [
+        account
+        for account in account_rows
+        if str(account.account_type or "").strip().upper() == "CFD"
+    ]
+    pending_requests_by_trade_account = mt5_access_state["pending_requests_by_trade_account"]
+    approved_requests_by_trade_account = mt5_access_state["approved_requests_by_trade_account"]
+    linked_mt5_trade_account_ids = mt5_access_state["linked_mt5_trade_account_ids"]
+
+    status_rows = []
+    for account in mt5_cfd_accounts:
+        pending_request = pending_requests_by_trade_account.get(account.id)
+        approved_request = approved_requests_by_trade_account.get(account.id)
+        is_linked = account.id in linked_mt5_trade_account_ids
+
+        if is_linked:
+            status = "linked"
+            status_label = "MT5 Linked"
+            note = "MT5 details are already on file for this account."
+            action_label = "Connected"
+        elif approved_request is not None:
+            status = "approved"
+            status_label = "Approved"
+            reviewed_at = approved_request.reviewed_at.strftime("%Y-%m-%d %H:%M UTC") if approved_request.reviewed_at else None
+            note = (
+                f"Approved {reviewed_at}. Submit your MT5 read-only account details."
+                if reviewed_at
+                else "Approved. Submit your MT5 read-only account details."
+            )
+            action_label = "Submit Details"
+        elif pending_request is not None:
+            status = "pending"
+            status_label = "Pending Review"
+            requested_at = pending_request.created_at.strftime("%Y-%m-%d %H:%M UTC") if pending_request.created_at else "recently"
+            note = f"Requested {requested_at}. Awaiting manual review."
+            action_label = "Awaiting Review"
+        else:
+            status = "requestable"
+            status_label = "Not Requested"
+            note = "No MT5 access request has been submitted yet."
+            action_label = "Request Access"
+
+        status_rows.append(
+            {
+                "account": account,
+                "status": status,
+                "status_label": status_label,
+                "note": note,
+                "action_label": action_label,
+                "pending_request": pending_request,
+                "approved_request": approved_request,
+                "is_linked": is_linked,
+            }
+        )
+
+    selected_row = None
+    if requested_pubkey:
+        selected_row = next(
+            (row for row in status_rows if row["account"].pubkey == requested_pubkey),
+            None,
+        )
+
+    active_account_id = getattr(active_trade_account, "id", None)
+    if selected_row is None and active_account_id is not None:
+        selected_row = next(
+            (row for row in status_rows if row["account"].id == active_account_id),
+            None,
+        )
+
+    if selected_row is None:
+        for status in ("approved", "requestable", "pending", "linked"):
+            selected_row = next(
+                (row for row in status_rows if row["status"] == status),
+                None,
+            )
+            if selected_row is not None:
+                break
+
+    selected_account = selected_row["account"] if selected_row is not None else None
+    selected_status = selected_row["status"] if selected_row is not None else None
+
+    for row in status_rows:
+        row["is_selected"] = (
+            selected_account is not None and row["account"].id == selected_account.id
+        )
+
+    dashboard_next = url_for("dashboard.home", _anchor="mt5-access")
+    if selected_account is not None:
+        dashboard_next = url_for(
+            "dashboard.home",
+            mt5_account=selected_account.pubkey,
+            _anchor="mt5-access",
+        )
+
+    return {
+        "mt5_cfd_accounts": mt5_cfd_accounts,
+        "mt5_status_rows": status_rows,
+        "mt5_selected_row": selected_row,
+        "mt5_selected_account": selected_account,
+        "mt5_selected_status": selected_status,
+        "mt5_dashboard_next": dashboard_next,
     }
 
 
@@ -672,6 +906,12 @@ def home():
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_rows = get_user_trade_accounts(user_id)
     mt5_access_state = build_mt5_access_state(user_id, account_rows)
+    mt5_sections = _build_dashboard_mt5_sections(
+        account_rows=account_rows,
+        active_trade_account=active_trade_account,
+        mt5_access_state=mt5_access_state,
+        requested_pubkey=(request.args.get("mt5_account") or "").strip(),
+    )
     user_trades = _load_user_trades(user_id, active_trade_account)
 
     timezone_name = get_display_timezone_name()
@@ -701,12 +941,17 @@ def home():
         trade_is_running = is_trade_running(trade)
         pnl_value = resolve_net_pnl(trade)
         opened_local = to_display_timezone(trade.opened_at, timezone_name)
-        trade_date = opened_local.strftime("%d %b %Y") if opened_local else "-"
+        trade_date = (
+            f"{opened_local.strftime('%d %b %Y')} ({opened_local.strftime('%a')})"
+            if opened_local
+            else "-"
+        )
         trade_date_value = opened_local.strftime("%Y-%m-%d") if opened_local else ""
         trade_profile = getattr(trade, "trade_profile", None)
         trade_profile_version = getattr(trade, "trade_profile_version", None)
         recent_trades.append(
             {
+                "trade_id": getattr(trade, "id", None),
                 "date": trade_date,
                 "date_value": trade_date_value,
                 "symbol": format_trade_symbol(trade),
@@ -742,7 +987,7 @@ def home():
         current_week_stats,
         previous_week_stats,
     )
-    weekly_ai_state = _get_weekly_ai_state(user_id, active_trade_account, timezone_name)
+    weekly_ai_state = _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trades)
     weekly_ai_review_text = weekly_ai_state.get("weekly_ai_review_text", "")
     if not weekly_ai_review_text and weekly_ai_state["weekly_ai_review"] is not None:
         weekly_ai_review_text = normalize_dashboard_advice_text(
@@ -779,6 +1024,7 @@ def home():
         chart_points=chart_points,
         weekly_ai_review=weekly_ai_state["weekly_ai_review"],
         weekly_ai_review_text=weekly_ai_review_text,
+        weekly_ai_review_display=weekly_ai_state["weekly_ai_review_display"],
         weekly_ai_generated_at_label=weekly_ai_state["weekly_ai_generated_at_label"],
         weekly_ai_period_label=weekly_ai_state["weekly_ai_period_label"],
         weekly_ai_empty_message=weekly_ai_state["weekly_ai_empty_message"],
@@ -797,16 +1043,17 @@ def home():
         has_ai_review=has_ai_review,
         show_whats_next_banner=show_whats_next_banner,
         weekly_ai_min_closed_trades=MIN_CLOSED_TRADES_FOR_ADVICE,
-        mt5_cfd_accounts=[
-            account
-            for account in account_rows
-            if str(account.account_type or "").strip().upper() == "CFD"
-        ],
+        mt5_cfd_accounts=mt5_sections["mt5_cfd_accounts"],
         requestable_mt5_accounts=mt5_access_state["requestable_mt5_accounts"],
         approved_mt5_accounts=mt5_access_state["approved_mt5_accounts"],
         pending_mt5_requests_by_trade_account=mt5_access_state["pending_requests_by_trade_account"],
         approved_mt5_requests_by_trade_account=mt5_access_state["approved_requests_by_trade_account"],
         linked_mt5_trade_account_ids=mt5_access_state["linked_mt5_trade_account_ids"],
+        mt5_status_rows=mt5_sections["mt5_status_rows"],
+        mt5_selected_row=mt5_sections["mt5_selected_row"],
+        mt5_selected_account=mt5_sections["mt5_selected_account"],
+        mt5_selected_status=mt5_sections["mt5_selected_status"],
+        mt5_dashboard_next=mt5_sections["mt5_dashboard_next"],
     )
 
 
@@ -905,3 +1152,4 @@ def analytics():
         rr_summary=rr_summary,
         has_any_trades=bool((analytics_payload.get("summary") or {}).get("total_trades")),
     )
+

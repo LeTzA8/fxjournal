@@ -17,6 +17,8 @@
         gap: 0.55rem;
         flex-wrap: wrap;
         justify-content: flex-end;
+        min-width: 0;
+        max-width: 100%;
     }
 
     .admin-kicker,
@@ -141,12 +143,64 @@
         flex-direction: column;
     }
 
+    .admin-head-row > *,
+    .panel-head > *,
+    .panel-head-stack > *,
+    .code-head > * {
+        min-width: 0;
+    }
+
     .filter-row,
     .inline-actions {
         display: inline-flex;
         align-items: center;
         gap: 0.5rem;
         flex-wrap: wrap;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .admin-search-form,
+    .users-toolbar-meta,
+    .pagination-row,
+    .pagination-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+        min-width: 0;
+    }
+
+    .admin-search-form {
+        width: 100%;
+    }
+
+    .admin-search-input {
+        flex: 1 1 18rem;
+        min-width: 0;
+        width: 100%;
+        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+        border-radius: 10px;
+        padding: 0.72rem 0.78rem;
+        font: inherit;
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+        color: var(--ink);
+        box-sizing: border-box;
+    }
+
+    .users-toolbar-meta,
+    .pagination-row {
+        justify-content: space-between;
+    }
+
+    .pagination-label {
+        margin: 0;
+        font-size: 0.78rem;
+        color: var(--muted);
+    }
+
+    .pagination-row {
+        margin-top: 0.72rem;
     }
 
     .inline-actions form {
@@ -256,8 +310,10 @@
         gap: 0.7rem;
     }
 
+    .code-form select,
     .regen-ai-form select {
         width: 100%;
+        max-width: 100%;
         border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
         border-radius: 10px;
         padding: 0.72rem 0.78rem;
@@ -276,6 +332,7 @@
         max-width: 100%;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior-x: contain;
+        touch-action: pan-x pan-y;
     }
 
     .admin-table {
@@ -352,6 +409,10 @@
         color: color-mix(in srgb, var(--accent) 82%, white 18%);
     }
 
+    .code-value {
+        overflow-wrap: anywhere;
+    }
+
     @media (max-width: 1380px) {
         .admin-summary-grid {
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -392,6 +453,24 @@
             padding-bottom: 0.18rem;
             scrollbar-width: thin;
             -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
+            touch-action: pan-x pan-y;
+        }
+
+        .admin-search-form,
+        .users-toolbar-meta,
+        .pagination-row {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .pagination-actions {
+            width: 100%;
+        }
+
+        .admin-search-form .ghost-btn,
+        .pagination-actions .ghost-btn {
+            width: 100%;
         }
 
         .admin-table .actions-cell {
@@ -539,11 +618,46 @@
                         <p class="helper-note">Filter by status or inspect admin access at a glance.</p>
                     </div>
                     <div class="filter-row">
-                        <a href="{{ url_for('admin_signup_users', status='pending') }}" class="admin-filter{% if status_filter == 'pending' %} is-active{% endif %}">Pending</a>
-                        <a href="{{ url_for('admin_signup_users', status='approved') }}" class="admin-filter{% if status_filter == 'approved' %} is-active{% endif %}">Approved</a>
-                        <a href="{{ url_for('admin_signup_users', status='rejected') }}" class="admin-filter{% if status_filter == 'rejected' %} is-active{% endif %}">Rejected</a>
-                        <a href="{{ url_for('admin_signup_users', status='admins') }}" class="admin-filter{% if status_filter == 'admins' %} is-active{% endif %}">Admins</a>
-                        <a href="{{ url_for('admin_signup_users', status='all') }}" class="admin-filter{% if status_filter == 'all' %} is-active{% endif %}">All</a>
+                        <a href="{{ url_for('admin_signup_users', status='pending', q=search_query or None) }}" class="admin-filter{% if status_filter == 'pending' %} is-active{% endif %}">Pending</a>
+                        <a href="{{ url_for('admin_signup_users', status='approved', q=search_query or None) }}" class="admin-filter{% if status_filter == 'approved' %} is-active{% endif %}">Approved</a>
+                        <a href="{{ url_for('admin_signup_users', status='rejected', q=search_query or None) }}" class="admin-filter{% if status_filter == 'rejected' %} is-active{% endif %}">Rejected</a>
+                        <a href="{{ url_for('admin_signup_users', status='admins', q=search_query or None) }}" class="admin-filter{% if status_filter == 'admins' %} is-active{% endif %}">Admins</a>
+                        <a href="{{ url_for('admin_signup_users', status='all', q=search_query or None) }}" class="admin-filter{% if status_filter == 'all' %} is-active{% endif %}">All</a>
+                    </div>
+                    <form action="{{ url_for('admin_signup_users') }}" method="get" class="admin-search-form">
+                        <input type="hidden" name="status" value="{{ status_filter }}">
+                        <input
+                            type="text"
+                            name="q"
+                            value="{{ search_query }}"
+                            class="admin-search-input"
+                            placeholder="Search username, email, or user ID"
+                            aria-label="Search users"
+                        >
+                        <button type="submit" class="ghost-btn">Search</button>
+                        {% if search_query %}
+                        <a href="{{ url_for('admin_signup_users', status=status_filter) }}" class="ghost-btn">Clear</a>
+                        {% endif %}
+                    </form>
+                    <div class="users-toolbar-meta">
+                        <p class="helper-note">
+                            {% if users_total_count %}
+                            Showing {{ users_showing_from }}-{{ users_showing_to }} of {{ users_total_count }} users
+                            {% else %}
+                            No users match this view yet
+                            {% endif %}
+                        </p>
+                        {% if users_total_pages > 1 %}
+                        <div class="pagination-actions">
+                            {% if users_page > 1 %}
+                            <a href="{{ url_for('admin_signup_users', status=status_filter, q=search_query or None, page=users_page - 1) }}" class="ghost-btn">Previous</a>
+                            {% endif %}
+                            <span class="pagination-label">Page {{ users_page }} of {{ users_total_pages }}</span>
+                            {% if users_page < users_total_pages %}
+                            <a href="{{ url_for('admin_signup_users', status=status_filter, q=search_query or None, page=users_page + 1) }}" class="ghost-btn">Next</a>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
 
@@ -648,8 +762,27 @@
                         </tbody>
                     </table>
                 </div>
+                {% if users_total_pages > 1 %}
+                <div class="pagination-row">
+                    <p class="pagination-label">Showing page {{ users_page }} of {{ users_total_pages }}</p>
+                    <div class="pagination-actions">
+                        {% if users_page > 1 %}
+                        <a href="{{ url_for('admin_signup_users', status=status_filter, q=search_query or None, page=users_page - 1) }}" class="ghost-btn">Previous</a>
+                        {% endif %}
+                        {% if users_page < users_total_pages %}
+                        <a href="{{ url_for('admin_signup_users', status=status_filter, q=search_query or None, page=users_page + 1) }}" class="ghost-btn">Next</a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
                 {% else %}
-                <p class="helper-note">No users match the current filter. Try switching status tabs or clearing the current filter.</p>
+                <p class="helper-note">
+                    {% if search_query %}
+                    No users match the current filter and search. Try a different query or clear the search.
+                    {% else %}
+                    No users match the current filter. Try switching status tabs or clearing the current filter.
+                    {% endif %}
+                </p>
                 {% endif %}
             </article>
         </section>

@@ -65,6 +65,40 @@ _DASHBOARD_ADVICE_RULE_PREFIX_REPLACEMENTS = (
     ("\u00e2\u2020' Rule:", "Rule:"),
     ("\u00c3\u00a2\u00e2\u20ac\u00a0\u00e2\u20ac\u2122 Rule:", "Rule:"),
 )
+REVIEW_RESPONSE_FORMAT_VERSION = "weekly_cited_review_v1"
+REVIEW_MAX_REFS_PER_ITEM = 3
+REVIEW_JSON_OUTPUT_INSTRUCTIONS = """
+Return valid JSON only. Do not use markdown fences.
+Use this exact shape:
+{
+  "summary": {
+    "text": "2-3 sentence unlabeled summary paragraph.",
+    "refs": ["T1", "B1"]
+  },
+  "takeaways": [
+    {
+      "text": "One sentence takeaway.",
+      "refs": ["T2"]
+    }
+  ],
+  "rule": {
+    "text": "Rule: One actionable rule line.",
+    "refs": ["B1"]
+  }
+}
+
+Rules for refs:
+- Use only review_ref values present in the TRADES section.
+- Prefer 1-2 refs per item, maximum 3.
+- Use bundle refs like B1 for bundled trade ideas and trade refs like T1 for solo trade ideas.
+- If an item is aggregate and not tied to one clear trade idea, refs may be an empty list.
+
+Rules for text fields:
+- summary.text must stay as the single opening paragraph.
+- takeaways must contain 2-4 items, each exactly one sentence.
+- rule.text must include the "Rule:" prefix exactly once.
+- Do not include any keys other than summary, takeaways, and rule.
+""".strip()
 
 
 class AIConfigError(RuntimeError):
@@ -147,6 +181,239 @@ def normalize_dashboard_advice_text(value):
     normalized = re.sub(r"(?im)^[ \t]*[-*]\s*Rule:\s*", "Rule: ", normalized)
     normalized = re.sub(r"(?im)^[ \t]*Rule:\s*", "Rule: ", normalized)
     return normalized.strip()
+
+
+def _extract_response_raw_text(response_payload):
+    output_text = str(response_payload.get("output_text") or "").strip()
+    if output_text:
+        return output_text
+
+    text_chunks = []
+    for item in response_payload.get("output", []):
+        for content in item.get("content", []):
+            if content.get("type") in {"output_text", "text"} and content.get("text"):
+                text_chunks.append(str(content["text"]).strip())
+    return "\n\n".join(chunk for chunk in text_chunks if chunk).strip()
+
+
+def _strip_json_code_fences(value):
+    text = str(value or "").strip()
+    if not text.startswith("```"):
+        return text
+
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
+
+
+def _load_response_json_object(value):
+    text = _strip_json_code_fences(value)
+    if not text:
+        return None
+
+    candidates = [text]
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        candidates.append(text[first_brace:last_brace + 1].strip())
+
+    for candidate in candidates:
+        try:
+            loaded = json.loads(candidate)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if isinstance(loaded, dict):
+            return loaded
+    return None
+
+
+def _normalize_review_item_text(value):
+    text = re.sub(r"\s+", " ", str(value or "").strip())
+    text = re.sub(r"^[\-\*\u2022]\s*", "", text)
+    return text.strip()
+
+
+def _normalize_review_rule_text(value):
+    text = normalize_dashboard_advice_text(value)
+    text = _normalize_review_item_text(text)
+    if not text:
+        return ""
+    if not text.lower().startswith("rule:"):
+        text = f"Rule: {text}"
+    return normalize_dashboard_advice_text(text)
+
+
+def _sanitize_review_refs(value, allowed_refs):
+    if not isinstance(value, (list, tuple)):
+        return []
+    refs = []
+    for item in value:
+        ref = str(item or "").strip().upper()
+        if not ref or ref not in allowed_refs or ref in refs:
+            continue
+        refs.append(ref)
+        if len(refs) >= REVIEW_MAX_REFS_PER_ITEM:
+            break
+    return refs
+
+
+def _render_review_text_from_meta(review_meta):
+    summary_text = str(((review_meta or {}).get("summary") or {}).get("text") or "").strip()
+    takeaways = (review_meta or {}).get("takeaways") or []
+    rule_text = str(((review_meta or {}).get("rule") or {}).get("text") or "").strip()
+
+    lines = []
+    if summary_text:
+        lines.append(summary_text)
+    if takeaways:
+        if lines:
+            lines.append("")
+        lines.append("Key Takeaways")
+        for item in takeaways:
+            takeaway_text = str((item or {}).get("text") or "").strip()
+            if takeaway_text:
+                lines.append(f"- {takeaway_text}")
+    if rule_text:
+        if lines:
+            lines.append("")
+        lines.append(_normalize_review_rule_text(rule_text))
+    return normalize_dashboard_advice_text("\n".join(lines).strip())
+
+
+def parse_review_response_meta(value):
+    loaded = _load_response_json_object(value)
+    if not isinstance(loaded, dict):
+        return None
+    return loaded
+
+
+def build_dashboard_review_display(response_text, response_meta_json=None):
+    review_meta = parse_review_response_meta(response_meta_json) or {}
+    summary = review_meta.get("summary") if isinstance(review_meta.get("summary"), dict) else {}
+    takeaways = review_meta.get("takeaways") if isinstance(review_meta.get("takeaways"), list) else []
+    rule = review_meta.get("rule") if isinstance(review_meta.get("rule"), dict) else {}
+
+    structured_summary = _normalize_review_item_text(summary.get("text"))
+    structured_takeaways = []
+    for item in takeaways:
+        if not isinstance(item, dict):
+            continue
+        takeaway_text = _normalize_review_item_text(item.get("text"))
+        if not takeaway_text:
+            continue
+        structured_takeaways.append(
+            {
+                "text": takeaway_text,
+                "refs": [str(ref).strip().upper() for ref in item.get("refs") or [] if str(ref or "").strip()],
+            }
+        )
+
+    structured_rule = _normalize_review_rule_text(rule.get("text"))
+    if structured_summary or structured_takeaways or structured_rule:
+        summary_refs = [str(ref).strip().upper() for ref in summary.get("refs") or [] if str(ref or "").strip()]
+        rule_refs = [str(ref).strip().upper() for ref in rule.get("refs") or [] if str(ref or "").strip()]
+        return {
+            "summary": {"text": structured_summary, "refs": summary_refs},
+            "takeaways": structured_takeaways,
+            "rule": {"text": structured_rule, "refs": rule_refs},
+            "has_citations": bool(summary_refs or rule_refs or any(item["refs"] for item in structured_takeaways)),
+        }
+
+    normalized_text = normalize_dashboard_advice_text(response_text)
+    if not normalized_text:
+        return {
+            "summary": {"text": "", "refs": []},
+            "takeaways": [],
+            "rule": {"text": "", "refs": []},
+            "has_citations": False,
+        }
+
+    summary_text = normalized_text
+    takeaway_lines = []
+    rule_text = ""
+
+    if "Key Takeaways" in normalized_text:
+        summary_text, _, remainder = normalized_text.partition("Key Takeaways")
+        summary_text = summary_text.strip()
+        for raw_line in remainder.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line == "Key Takeaways":
+                continue
+            if line.startswith("Rule:"):
+                rule_text = _normalize_review_rule_text(line)
+                continue
+            takeaway_text = _normalize_review_item_text(line)
+            if takeaway_text:
+                takeaway_lines.append({"text": takeaway_text, "refs": []})
+    else:
+        lines = [line.strip() for line in normalized_text.splitlines() if line.strip()]
+        for index, line in enumerate(lines):
+            if line.startswith("Rule:"):
+                rule_text = _normalize_review_rule_text(line)
+                summary_text = " ".join(lines[:index]).strip()
+                break
+
+    return {
+        "summary": {"text": summary_text, "refs": []},
+        "takeaways": takeaway_lines,
+        "rule": {"text": rule_text, "refs": []},
+        "has_citations": False,
+    }
+
+
+def _extract_structured_review(response_payload, allowed_refs):
+    raw_text = _extract_response_raw_text(response_payload)
+    loaded = _load_response_json_object(raw_text)
+    if not isinstance(loaded, dict):
+        return None
+
+    summary = loaded.get("summary") if isinstance(loaded.get("summary"), dict) else {}
+    takeaways = loaded.get("takeaways") if isinstance(loaded.get("takeaways"), list) else []
+    rule = loaded.get("rule") if isinstance(loaded.get("rule"), dict) else {}
+
+    summary_text = _normalize_review_item_text(summary.get("text"))
+    if not summary_text:
+        return None
+
+    structured_takeaways = []
+    for item in takeaways[:4]:
+        if not isinstance(item, dict):
+            continue
+        takeaway_text = _normalize_review_item_text(item.get("text"))
+        if not takeaway_text:
+            continue
+        structured_takeaways.append(
+            {
+                "text": takeaway_text,
+                "refs": _sanitize_review_refs(item.get("refs"), allowed_refs),
+            }
+        )
+    if not structured_takeaways:
+        return None
+
+    rule_text = _normalize_review_rule_text(rule.get("text"))
+    if not rule_text:
+        return None
+
+    review_meta = {
+        "format": REVIEW_RESPONSE_FORMAT_VERSION,
+        "summary": {
+            "text": summary_text,
+            "refs": _sanitize_review_refs(summary.get("refs"), allowed_refs),
+        },
+        "takeaways": structured_takeaways,
+        "rule": {
+            "text": rule_text,
+            "refs": _sanitize_review_refs(rule.get("refs"), allowed_refs),
+        },
+    }
+    return {
+        "response_text": _render_review_text_from_meta(review_meta),
+        "response_meta": review_meta,
+        "response_meta_json": json.dumps(review_meta, sort_keys=True),
+    }
 
 
 def hash_text(value):
@@ -809,6 +1076,8 @@ def build_trade_payload(
         )
 
     serialized_trades = []
+    next_trade_ref = 1
+    next_bundle_ref = 1
     for trade in trades:
         identity = _get_trade_identity(trade)
         annotation = trade_annotations.get(identity, {})
@@ -816,8 +1085,16 @@ def build_trade_payload(
         duration_minutes = _get_trade_duration_minutes(trade)
         trade_lot_size = _coerce_float(trade.lot_size)
         exit_quality = _build_trade_exit_quality(trade, trade_pnl)
+        is_bundle_trade = bool(getattr(trade, "_is_bundle", False))
+        review_ref = f"B{next_bundle_ref}" if is_bundle_trade else f"T{next_trade_ref}"
+        if is_bundle_trade:
+            next_bundle_ref += 1
+        else:
+            next_trade_ref += 1
         serialized_trades.append(
             {
+                "review_ref": review_ref,
+                "trade_id": getattr(trade, "id", None),
                 "symbol": format_trade_symbol(trade),
                 "contract_code": (trade.contract_code or "").strip() or None,
                 "side": trade.side,
@@ -853,7 +1130,7 @@ def build_trade_payload(
                 "is_reactive": bool(getattr(trade, "is_reactive", False)),
                 "is_corrective": bool(getattr(trade, "is_corrective", False)),
                 "bundle_pubkey": (getattr(trade, "bundle_pubkey", None) or None),
-                "is_bundle": bool(getattr(trade, "_is_bundle", False)),
+                "is_bundle": is_bundle_trade,
                 "bundle_trade_count": int(getattr(trade, "_bundle_trade_count", 1) or 1),
                 "planned_rr": exit_quality["planned_rr"],
                 "realized_rr": exit_quality["realized_rr"],
@@ -1242,7 +1519,8 @@ def format_payload_for_prompt(payload):
         note = trade.get("trade_note") or "-"
         lines.extend(
             [
-                f"{index}. symbol: {trade.get('symbol') or '-'}",
+                f"{index}. review_ref: {trade.get('review_ref') or '-'}",
+                f"   symbol: {trade.get('symbol') or '-'}",
                 f"   contract_code: {trade.get('contract_code') or '-'}",
                 f"   side: {trade.get('side') or '-'}",
                 f"   entry_price: {_format_number(trade.get('entry_price'), digits=5)}",
@@ -1311,6 +1589,15 @@ def build_dashboard_advice_messages(payload, prompt_filename=None, profile_adjus
             ],
         },
         {
+            "role": "system",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": REVIEW_JSON_OUTPUT_INSTRUCTIONS,
+                }
+            ],
+        },
+        {
             "role": "user",
             "content": [
                 {
@@ -1323,16 +1610,7 @@ def build_dashboard_advice_messages(payload, prompt_filename=None, profile_adjus
 
 
 def extract_response_text(response_payload):
-    output_text = str(response_payload.get("output_text") or "").strip()
-    if output_text:
-        return normalize_dashboard_advice_text(output_text)
-
-    text_chunks = []
-    for item in response_payload.get("output", []):
-        for content in item.get("content", []):
-            if content.get("type") in {"output_text", "text"} and content.get("text"):
-                text_chunks.append(str(content["text"]).strip())
-    return normalize_dashboard_advice_text("\n\n".join(chunk for chunk in text_chunks if chunk).strip())
+    return normalize_dashboard_advice_text(_extract_response_raw_text(response_payload))
 
 
 def describe_empty_response(response_payload):
@@ -1421,6 +1699,7 @@ def save_ai_response(
     prompt_history,
     model,
     response_text,
+    response_meta_json,
     payload_json,
     trade_count_used,
     source_last_trade_id,
@@ -1435,6 +1714,7 @@ def save_ai_response(
         kind=kind,
         model=model,
         response_text=response_text,
+        response_meta_json=response_meta_json,
         payload_json=payload_json,
         payload_hash=hash_text(payload_json),
         trade_count_used=trade_count_used,
@@ -1472,7 +1752,17 @@ def generate_dashboard_advice(*, user_id, trade_account_id=None, prompt_filename
             profile_adjustments=profile_adjustments,
         )
         response_payload = request_openai_response(messages, model=get_ai_model())
-        response_text = extract_response_text(response_payload)
+        allowed_refs = {
+            str(trade.get("review_ref") or "").strip().upper()
+            for trade in payload.get("trades", [])
+            if str(trade.get("review_ref") or "").strip()
+        }
+        structured_review = _extract_structured_review(response_payload, allowed_refs)
+        response_text = (
+            structured_review["response_text"]
+            if structured_review is not None
+            else extract_response_text(response_payload)
+        )
         if not response_text:
             logger.warning(
                 "AI dashboard advice returned no text. user_id=%s trade_account_id=%s kind=%s summary=%s",
@@ -1497,6 +1787,11 @@ def generate_dashboard_advice(*, user_id, trade_account_id=None, prompt_filename
             prompt_history=prompt_history,
             model=str(response_payload.get("model") or get_ai_model()),
             response_text=response_text,
+            response_meta_json=(
+                structured_review["response_meta_json"]
+                if structured_review is not None
+                else None
+            ),
             payload_json=payload_json,
             trade_count_used=len(payload["trades"]),
             source_last_trade_id=latest_trade.id if latest_trade else None,
@@ -1508,6 +1803,11 @@ def generate_dashboard_advice(*, user_id, trade_account_id=None, prompt_filename
             "payload": payload,
             "response_payload": response_payload,
             "response_text": response_text,
+            "response_meta": (
+                structured_review["response_meta"]
+                if structured_review is not None
+                else None
+            ),
         }
     except Exception:
         db.session.rollback()
@@ -1611,7 +1911,17 @@ def maybe_generate_weekly_dashboard_advice(
             profile_adjustments=profile_adjustments,
         )
         response_payload = request_openai_response(messages, model=get_ai_model())
-        response_text = extract_response_text(response_payload)
+        allowed_refs = {
+            str(trade.get("review_ref") or "").strip().upper()
+            for trade in payload.get("trades", [])
+            if str(trade.get("review_ref") or "").strip()
+        }
+        structured_review = _extract_structured_review(response_payload, allowed_refs)
+        response_text = (
+            structured_review["response_text"]
+            if structured_review is not None
+            else extract_response_text(response_payload)
+        )
         if not response_text:
             logger.warning(
                 "Weekly AI dashboard advice returned no text. user_id=%s trade_account_id=%s kind=%s "
@@ -1639,6 +1949,11 @@ def maybe_generate_weekly_dashboard_advice(
             prompt_history=prompt_history,
             model=str(response_payload.get("model") or get_ai_model()),
             response_text=response_text,
+            response_meta_json=(
+                structured_review["response_meta_json"]
+                if structured_review is not None
+                else None
+            ),
             payload_json=payload_json,
             trade_count_used=len(payload["trades"]),
             source_last_trade_id=latest_trade.id if latest_trade else None,
@@ -1654,6 +1969,11 @@ def maybe_generate_weekly_dashboard_advice(
             "payload": payload,
             "response_payload": response_payload,
             "response_text": response_text,
+            "response_meta": (
+                structured_review["response_meta"]
+                if structured_review is not None
+                else None
+            ),
         }
     except Exception:
         db.session.rollback()

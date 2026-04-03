@@ -6,11 +6,14 @@
 
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const AI_DEMO_TEXT = [
-        "- Edge is cleanest in London open - 4 of 5 winners came before 10:00 UTC.",
-        "- NY continuation trades showed consistent early exits, leaving ~1.2R across 3 trades.",
-        "- No revenge pattern detected; frequency and sizing held steady after losses.",
-        "- One trade (XAUUSD, Wednesday) was 3.8x your median lot - flag as outlier, not a pattern.",
-        "\u2192 Rule: During NY session, close only at TP or SL - no manual exits.",
+        "This was a profitable week driven by a standout XAUUSD swing, with a clean EURCHF split-entry capturing gains and a GBPCAD bundle producing a painful follow-up loss; overall execution looked controlled. There is limited behavioral confidence because the account is young and weekly trade notes are absent, so patterns need cautious confirmation.",
+        "",
+        "Key Takeaways",
+        "- XAUUSD trades dominated results, one large overnight sell outweighing two later XAUUSD losses.",
+        "- EURCHF split-entry (lead and add-on, Tokyo/London) produced a clear winner and one small stop exit.",
+        "- GBPCAD bundle showed a likely revenge re-entry and a larger follow-up loss during London/New York.",
+        "",
+        "Rule: After any post-loss same-symbol re-entry (eg GBPCAD this week), revert to baseline size and require one clear confirmation candle before entering.",
     ].join("\n");
     body.classList.add("js-landing-animate");
 

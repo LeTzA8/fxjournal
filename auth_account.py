@@ -842,6 +842,8 @@ def register_public_auth_routes(
             **extra_context,
         )
 
+    ADMIN_USERS_PER_PAGE = 25
+
     def render_admin_weekly_report_page(*, admin_user, **extra_context):
         return render_template(
             "admin_weekly_report.html",
@@ -1751,6 +1753,9 @@ def register_public_auth_routes(
             "all",
         }:
             status_filter = "pending"
+        search_query = (request.args.get("q") or "").strip()
+        page = request.args.get("page", 1, type=int) or 1
+        page = max(page, 1)
 
         users_query = User.query
         if status_filter == "admins":
@@ -1764,12 +1769,31 @@ def register_public_auth_routes(
         elif status_filter != "all":
             users_query = users_query.filter_by(signup_status=status_filter)
 
+        if search_query:
+            search_like = f"%{search_query}%"
+            search_filters = [
+                User.username.ilike(search_like),
+                User.email.ilike(search_like),
+            ]
+            if search_query.isdigit():
+                search_filters.append(User.id == int(search_query))
+            users_query = users_query.filter(or_(*search_filters))
+
+        total_user_count = users_query.order_by(None).count()
+        total_pages = max((total_user_count + ADMIN_USERS_PER_PAGE - 1) // ADMIN_USERS_PER_PAGE, 1)
+        if page > total_pages:
+            page = total_pages
+        page_offset = (page - 1) * ADMIN_USERS_PER_PAGE
+
         users = (
             users_query.order_by(
                 User.signup_status.asc(),
                 User.email_verified.asc(),
                 User.id.desc(),
-            ).all()
+            )
+            .offset(page_offset)
+            .limit(ADMIN_USERS_PER_PAGE)
+            .all()
         )
         pending_users = (
             User.query.filter_by(signup_status=SIGNUP_STATUS_PENDING)
@@ -1842,11 +1866,21 @@ def register_public_auth_routes(
                 )
                 user_stats_by_user[row_user_id]["mt5_account_count"] = mt5_account_count or 0
 
+        users_showing_from = page_offset + 1 if total_user_count else 0
+        users_showing_to = min(page_offset + len(users), total_user_count) if total_user_count else 0
+
         return render_admin_page(
             admin_user=admin_user,
             section="users",
             users=users,
             status_filter=status_filter,
+            search_query=search_query,
+            users_page=page,
+            users_total_pages=total_pages,
+            users_total_count=total_user_count,
+            users_page_size=ADMIN_USERS_PER_PAGE,
+            users_showing_from=users_showing_from,
+            users_showing_to=users_showing_to,
             pending_users=pending_users,
             accounts_by_user=accounts_by_user,
             user_stats_by_user=user_stats_by_user,

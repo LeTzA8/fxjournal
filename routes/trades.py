@@ -3,6 +3,7 @@ from datetime import datetime
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.orm import selectinload
 
 from extensions import limiter
 from celery_workers.cache import CacheUnavailableError, invalidate
@@ -151,6 +152,9 @@ def _find_duplicate_trade(
     existing_trades = Trade.query.filter_by(
         user_id=user_id,
         trade_account_id=trade_account_id,
+    ).filter(
+        Trade.symbol == symbol,
+        Trade.opened_at == opened_at,
     ).all()
     for existing_trade in existing_trades:
         if exclude_trade_id is not None and existing_trade.id == exclude_trade_id:
@@ -238,6 +242,10 @@ def render_trades_page(*, manage_mode=False):
             Trade.query.filter_by(
                 user_id=user_id,
                 trade_account_id=active_trade_account.id,
+            )
+            .options(
+                selectinload(Trade.trade_profile),
+                selectinload(Trade.trade_profile_version),
             )
             .order_by(Trade.opened_at.desc())
             .all()

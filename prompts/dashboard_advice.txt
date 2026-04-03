@@ -15,7 +15,7 @@ INPUT
   level.
 
 KNOWN TRADE FIELDS
-- Per-trade fields may include: symbol, contract_code, side,
+- Per-trade fields may include: review_ref, symbol, contract_code, side,
   entry_price, exit_price, stop_loss, take_profit, lot_size, pnl,
   entry_session, exit_session, session, duration_minutes, opened_at,
   closed_at, trade_sequence_number, trade_number_in_session,
@@ -117,6 +117,8 @@ Behaviour signal
 Trade interpretation rules
 - Treat one trade idea as either one solo trade or one bundled
   split-entry cluster.
+- review_ref is the short alias for that trade idea. Use it only in the
+  structured refs output, not in user-facing prose.
 - possible_split_order may be part of a split entry. Do not count it as
   a separate setup or separate sizing inconsistency.
 - is_bundle / bundle_trade_count confirm a bundled cluster. Describe the

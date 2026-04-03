@@ -655,8 +655,8 @@ def trade_accounts():
     if delete_target:
         delete_target_trade_count = account_trade_counts.get(delete_target.id, 0)
         delete_target_ai_review_count = account_review_counts.get(delete_target.id, 0)
-    total_trade_count = Trade.query.filter_by(user_id=user_id).count()
-    total_ai_review_count = AIGeneratedResponse.query.filter_by(user_id=user_id).count()
+    total_trade_count = sum(account_trade_counts.values())
+    total_ai_review_count = sum(account_review_counts.values())
 
     return render_template(
         "trade_accounts.html",

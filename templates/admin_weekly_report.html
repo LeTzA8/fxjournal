@@ -17,6 +17,8 @@
         gap: 0.55rem;
         flex-wrap: wrap;
         justify-content: flex-end;
+        min-width: 0;
+        max-width: 100%;
     }
 
     .admin-kicker,
@@ -139,12 +141,22 @@
         flex-direction: column;
     }
 
+    .admin-head-row > *,
+    .panel-head > *,
+    .panel-head-stack > *,
+    .trend-card-head > *,
+    .detail-card-head > * {
+        min-width: 0;
+    }
+
     .inline-actions,
     .selected-week-chip-wrap {
         display: inline-flex;
         align-items: center;
         gap: 0.5rem;
         flex-wrap: wrap;
+        min-width: 0;
+        max-width: 100%;
     }
 
     .chip {
@@ -225,6 +237,7 @@
         font-weight: 700;
         color: var(--muted);
         text-align: right;
+        overflow-wrap: anywhere;
     }
 
     .weekly-audit-account-body {
@@ -353,6 +366,7 @@
         flex-wrap: wrap;
         margin-top: 0.8rem;
         max-width: 100%;
+        min-width: 0;
     }
 
     .trend-week-button {
@@ -452,6 +466,9 @@
         font-size: 0.8rem;
         line-height: 1.55;
         color: var(--ink);
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        touch-action: pan-x pan-y;
     }
 
     .payload-json-details pre {
@@ -540,12 +557,29 @@
         }
 
         .admin-tabs,
-        .trend-week-strip {
+        .trend-week-strip,
+        .selected-week-chip-wrap {
             flex-wrap: nowrap;
             overflow-x: auto;
             padding-bottom: 0.18rem;
             scrollbar-width: thin;
             -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
+            touch-action: pan-x pan-y;
+        }
+
+        .selected-week-chip-wrap > * {
+            flex: 0 0 auto;
+        }
+
+        .weekly-audit-account-summary {
+            flex-wrap: wrap;
+            align-items: flex-start;
+        }
+
+        .weekly-audit-account-summary-note {
+            width: 100%;
+            text-align: left;
         }
 
         .weekly-audit-filter-form .submit-btn {

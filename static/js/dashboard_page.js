@@ -424,6 +424,8 @@
     if (!rows.length) {
         return;
     }
+    const tradeLogPanel = document.getElementById("trade-journal");
+    const citationButtons = Array.from(document.querySelectorAll(".ai-citation-btn"));
 
     const bundlePalette = [
         "#5A8DEE",
@@ -434,7 +436,12 @@
         "#3FA7B4",
     ];
     const bundleRowsByKey = new Map();
+    const rowsByTradeId = new Map();
     rows.forEach((row) => {
+        const tradeId = (row.dataset.tradeId || "").trim();
+        if (tradeId) {
+            rowsByTradeId.set(tradeId, row);
+        }
         const bundleKey = (row.dataset.bundle || "").trim();
         if (!bundleKey) {
             return;
@@ -586,6 +593,51 @@
         sortRows();
         applyFilters();
     };
+    const clearAllFilters = () => {
+        if (filterField) {
+            filterField.value = "";
+        }
+        Object.values(valueSelects).forEach((select) => {
+            if (select) {
+                select.value = "";
+            }
+        });
+        updateValueControl();
+        applyAll();
+    };
+    let citationResetTimer = null;
+    const clearCitationHighlights = () => {
+        rows.forEach((row) => {
+            row.classList.remove("citation-hit");
+        });
+    };
+    const highlightCitationRows = (targetRows) => {
+        clearCitationHighlights();
+        targetRows.forEach((row) => {
+            row.classList.add("citation-hit");
+        });
+        if (citationResetTimer) {
+            window.clearTimeout(citationResetTimer);
+        }
+        citationResetTimer = window.setTimeout(clearCitationHighlights, 2600);
+    };
+    const focusCitationRows = (targetRows) => {
+        if (!targetRows.length) {
+            if (tradeLogPanel) {
+                tradeLogPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+            return;
+        }
+
+        if (targetRows.some((row) => row.classList.contains("hidden-row"))) {
+            clearAllFilters();
+        }
+
+        const visibleRows = targetRows.filter((row) => !row.classList.contains("hidden-row"));
+        const anchorRow = visibleRows[0] || targetRows[0];
+        highlightCitationRows(targetRows);
+        anchorRow.scrollIntoView({ behavior: "smooth", block: "center" });
+    };
 
     if (filterField) {
         filterField.addEventListener("change", () => {
@@ -599,17 +651,25 @@
     }
 
     if (clearFiltersBtn) {
-        clearFiltersBtn.addEventListener("click", () => {
-            if (filterField) filterField.value = "";
-            Object.values(valueSelects).forEach((select) => {
-                if (select) {
-                    select.value = "";
-                }
-            });
-            updateValueControl();
-            applyAll();
-        });
+        clearFiltersBtn.addEventListener("click", clearAllFilters);
     }
+
+    citationButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+            const citationType = (button.dataset.citationType || "").trim();
+            if (citationType === "bundle") {
+                const bundleKey = (button.dataset.citationBundle || "").trim();
+                focusCitationRows(bundleRowsByKey.get(bundleKey) || []);
+                return;
+            }
+
+            if (citationType === "trade") {
+                const tradeId = (button.dataset.citationTradeId || "").trim();
+                const row = rowsByTradeId.get(tradeId);
+                focusCitationRows(row ? [row] : []);
+            }
+        });
+    });
 
     if (sortSelect) {
         sortSelect.addEventListener("change", applyAll);
