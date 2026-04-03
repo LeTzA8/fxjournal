@@ -461,6 +461,7 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
                             "trade_id": 101,
                             "symbol": "XAUUSD",
                             "opened_at": "2026-04-01T09:00:00Z",
+                            "pnl": 125.0,
                             "is_bundle": False,
                             "bundle_pubkey": None,
                         },
@@ -469,6 +470,7 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
                             "trade_id": 202,
                             "symbol": "GBPUSD",
                             "opened_at": "2026-04-02T10:00:00Z",
+                            "pnl": -42.0,
                             "is_bundle": True,
                             "bundle_pubkey": "bundle-xyz",
                         },
@@ -490,11 +492,15 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
         "text",
     ]
     assert display["summary"]["segments"][0]["label"] == "XAUUSD | 01 Apr 2026 (Wed)"
+    assert display["summary"]["segments"][0]["tone"] == "good"
     assert display["summary"]["segments"][2]["label"] == "GBPUSD bundle | 02 Apr 2026 (Thu)"
+    assert display["summary"]["segments"][2]["tone"] == "bad"
     assert display["takeaways"][0]["segments"][0]["type"] == "citation"
     assert display["takeaways"][0]["segments"][0]["label"] == "XAUUSD | 01 Apr 2026 (Wed)"
+    assert display["takeaways"][0]["segments"][0]["tone"] == "good"
     assert display["takeaways"][1]["segments"][0]["type"] == "citation"
     assert display["takeaways"][1]["segments"][0]["label"] == "GBPUSD bundle | 02 Apr 2026 (Thu)"
+    assert display["takeaways"][1]["segments"][0]["tone"] == "bad"
     assert "XAUUSD" in display["rule"]["text"]
     assert "GBPUSD bundle" in display["rule"]["text"]
     assert display["rule"]["citations"] == []

@@ -655,7 +655,7 @@
     }
 
     citationButtons.forEach((button) => {
-        button.addEventListener("click", () => {
+        const activateCitation = () => {
             const citationType = (button.dataset.citationType || "").trim();
             if (citationType === "bundle") {
                 const bundleKey = (button.dataset.citationBundle || "").trim();
@@ -667,6 +667,14 @@
                 const tradeId = (button.dataset.citationTradeId || "").trim();
                 const row = rowsByTradeId.get(tradeId);
                 focusCitationRows(row ? [row] : []);
+            }
+        };
+
+        button.addEventListener("click", activateCitation);
+        button.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                activateCitation();
             }
         });
     });

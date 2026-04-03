@@ -465,26 +465,7 @@
                     <div class="ai-review-structured">
                         {% if weekly_ai_review_display.summary.text %}
                         <div class="ai-review-block">
-                            <p class="insight-body ai-review-copy">
-                                {% for segment in weekly_ai_review_display.summary.segments %}
-                                {% if segment.type == "text" %}
-                                {{ segment.text }}
-                                {% elif segment.type == "citation" %}
-                                <button
-                                    type="button"
-                                    class="ai-citation-btn"
-                                    data-citation-type="{{ segment.citation_type }}"
-                                    {% if segment.citation_type == "trade" %}
-                                    data-citation-trade-id="{{ segment.trade_id }}"
-                                    {% else %}
-                                    data-citation-bundle="{{ segment.bundle_key }}"
-                                    {% endif %}
-                                >
-                                    {{ segment.label }}
-                                </button>
-                                {% endif %}
-                                {% endfor %}
-                            </p>
+                            <p class="insight-body ai-review-copy">{% for segment in weekly_ai_review_display.summary.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
                         </div>
                         {% endif %}
 
@@ -494,26 +475,7 @@
                             <ul class="ai-review-list">
                                 {% for takeaway in weekly_ai_review_display.takeaways %}
                                 <li class="ai-review-item">
-                                    <p class="insight-body ai-review-copy">
-                                        {% for segment in takeaway.segments %}
-                                        {% if segment.type == "text" %}
-                                        {{ segment.text }}
-                                        {% elif segment.type == "citation" %}
-                                        <button
-                                            type="button"
-                                            class="ai-citation-btn"
-                                            data-citation-type="{{ segment.citation_type }}"
-                                            {% if segment.citation_type == "trade" %}
-                                            data-citation-trade-id="{{ segment.trade_id }}"
-                                            {% else %}
-                                            data-citation-bundle="{{ segment.bundle_key }}"
-                                            {% endif %}
-                                        >
-                                            {{ segment.label }}
-                                        </button>
-                                        {% endif %}
-                                        {% endfor %}
-                                    </p>
+                                    <p class="insight-body ai-review-copy">{% for segment in takeaway.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
                                 </li>
                                 {% endfor %}
                             </ul>
@@ -522,26 +484,7 @@
 
                         {% if weekly_ai_review_display.rule.text %}
                         <div class="ai-review-block ai-review-rule-block">
-                            <p class="insight-body ai-review-copy ai-review-rule">
-                                {% for segment in weekly_ai_review_display.rule.segments %}
-                                {% if segment.type == "text" %}
-                                {{ segment.text }}
-                                {% elif segment.type == "citation" %}
-                                <button
-                                    type="button"
-                                    class="ai-citation-btn"
-                                    data-citation-type="{{ segment.citation_type }}"
-                                    {% if segment.citation_type == "trade" %}
-                                    data-citation-trade-id="{{ segment.trade_id }}"
-                                    {% else %}
-                                    data-citation-bundle="{{ segment.bundle_key }}"
-                                    {% endif %}
-                                >
-                                    {{ segment.label }}
-                                </button>
-                                {% endif %}
-                                {% endfor %}
-                            </p>
+                            <p class="insight-body ai-review-copy ai-review-rule">{% for segment in weekly_ai_review_display.rule.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
                         </div>
                         {% endif %}
                     </div>
@@ -1518,7 +1461,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        vertical-align: baseline;
+        vertical-align: middle;
         margin: 0 0.22rem;
         white-space: nowrap;
         appearance: none;
@@ -1527,14 +1470,33 @@
         border-radius: 999px;
         background: color-mix(in srgb, var(--accent) 10%, var(--card));
         color: color-mix(in srgb, var(--accent) 68%, white 32%);
-        padding: 0.18rem 0.56rem;
+        padding: 0.12rem 0.5rem;
         text-align: center;
-        font-size: 0.68rem;
-        font-weight: 700;
-        letter-spacing: 0.01em;
-        line-height: 1;
+        font-family: inherit;
+        font-size: 0.82em;
+        font-weight: 600;
+        letter-spacing: 0;
+        line-height: 1.05;
         cursor: pointer;
         transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+    }
+
+    .ai-citation-btn[data-citation-tone="good"] {
+        border-color: color-mix(in srgb, var(--good) 42%, var(--border));
+        background: color-mix(in srgb, var(--good) 12%, var(--card));
+        color: color-mix(in srgb, var(--good) 78%, white 22%);
+    }
+
+    .ai-citation-btn[data-citation-tone="bad"] {
+        border-color: color-mix(in srgb, var(--bad) 42%, var(--border));
+        background: color-mix(in srgb, var(--bad) 12%, var(--card));
+        color: color-mix(in srgb, var(--bad) 80%, white 20%);
+    }
+
+    .ai-citation-btn[data-citation-tone="neutral"] {
+        border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+        background: color-mix(in srgb, var(--accent) 10%, var(--card));
+        color: color-mix(in srgb, var(--accent) 68%, white 32%);
     }
 
     .ai-citation-btn:hover,
@@ -1543,6 +1505,18 @@
         border-color: color-mix(in srgb, var(--accent) 66%, var(--border));
         background: color-mix(in srgb, var(--accent) 16%, var(--card));
         outline: none;
+    }
+
+    .ai-citation-btn[data-citation-tone="good"]:hover,
+    .ai-citation-btn[data-citation-tone="good"]:focus-visible {
+        border-color: color-mix(in srgb, var(--good) 64%, var(--border));
+        background: color-mix(in srgb, var(--good) 18%, var(--card));
+    }
+
+    .ai-citation-btn[data-citation-tone="bad"]:hover,
+    .ai-citation-btn[data-citation-tone="bad"]:focus-visible {
+        border-color: color-mix(in srgb, var(--bad) 64%, var(--border));
+        background: color-mix(in srgb, var(--bad) 18%, var(--card));
     }
 
     .ai-generating-shell {
