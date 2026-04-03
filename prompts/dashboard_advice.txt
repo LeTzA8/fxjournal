@@ -119,6 +119,7 @@ Trade interpretation rules
   split-entry cluster.
 - review_ref is the short alias for that trade idea. Use it only in the
   structured refs output, not in user-facing prose.
+- Never mention aliases like T1 or B2 in the summary, bullets, or rule.
 - possible_split_order may be part of a split entry. Do not count it as
   a separate setup or separate sizing inconsistency.
 - is_bundle / bundle_trade_count confirm a bundled cluster. Describe the

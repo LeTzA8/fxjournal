@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timedelta
 
 from flask import Blueprint, current_app, jsonify, render_template, request, session, url_for
@@ -120,6 +121,7 @@ def _build_weekly_review_citation_lookup(payload_json, timezone_name):
                 "ref": review_ref,
                 "type": "bundle",
                 "bundle_key": bundle_key,
+                "inline_label": f"{symbol} bundle",
                 "label": f"{symbol} bundle | {date_label}",
             }
             continue
@@ -133,10 +135,63 @@ def _build_weekly_review_citation_lookup(payload_json, timezone_name):
             "ref": review_ref,
             "type": "trade",
             "trade_id": normalized_trade_id,
+            "inline_label": symbol,
             "label": f"{symbol} | {date_label}",
         }
 
     return lookup
+
+
+def _rewrite_review_text_refs(text, citation_lookup):
+    normalized = str(text or "").strip()
+    if not normalized or not citation_lookup:
+        return normalized
+
+    ref_codes = [ref for ref in citation_lookup.keys() if ref]
+    if not ref_codes:
+        return normalized
+
+    ref_pattern = "|".join(re.escape(ref) for ref in sorted(ref_codes, key=len, reverse=True))
+    normalized = re.sub(
+        rf"\s*[\(\[\{{]\s*(?:{ref_pattern})(?:\s*,\s*(?:{ref_pattern}))*\s*[\)\]\}}]",
+        "",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+
+    def replace_ref(match):
+        ref = str(match.group(0) or "").strip().upper()
+        citation = citation_lookup.get(ref)
+        if citation is None:
+            return ""
+        return str(citation.get("inline_label") or citation.get("label") or "").strip()
+
+    normalized = re.sub(
+        rf"\b(?:{ref_pattern})\b",
+        replace_ref,
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(r"\s{2,}", " ", normalized)
+    normalized = re.sub(r"\s+([,.;:!?])", r"\1", normalized)
+    return normalized.strip()
+
+
+def _dedupe_review_citations(citations, seen_keys):
+    deduped = []
+    for citation in citations or []:
+        if not isinstance(citation, dict):
+            continue
+        citation_type = str(citation.get("type") or "").strip()
+        if citation_type == "bundle":
+            identity = f"bundle:{citation.get('bundle_key') or ''}"
+        else:
+            identity = f"trade:{citation.get('trade_id') or ''}"
+        if not identity or identity in seen_keys:
+            continue
+        seen_keys.add(identity)
+        deduped.append(citation)
+    return deduped
 
 
 def _resolve_weekly_review_citations(refs, citation_lookup):
@@ -168,19 +223,32 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
     )
 
     summary = dict(display.get("summary") or {})
-    summary["citations"] = _resolve_weekly_review_citations(summary.get("refs"), citation_lookup)
+    seen_citation_keys = set()
+    summary["text"] = _rewrite_review_text_refs(summary.get("text"), citation_lookup)
+    summary["citations"] = _dedupe_review_citations(
+        _resolve_weekly_review_citations(summary.get("refs"), citation_lookup),
+        seen_citation_keys,
+    )
 
     takeaways = []
     for item in display.get("takeaways") or []:
         takeaway = dict(item or {})
-        takeaway["citations"] = _resolve_weekly_review_citations(
-            takeaway.get("refs"),
-            citation_lookup,
+        takeaway["text"] = _rewrite_review_text_refs(takeaway.get("text"), citation_lookup)
+        takeaway["citations"] = _dedupe_review_citations(
+            _resolve_weekly_review_citations(
+                takeaway.get("refs"),
+                citation_lookup,
+            ),
+            seen_citation_keys,
         )
         takeaways.append(takeaway)
 
     rule = dict(display.get("rule") or {})
-    rule["citations"] = _resolve_weekly_review_citations(rule.get("refs"), citation_lookup)
+    rule["text"] = _rewrite_review_text_refs(rule.get("text"), citation_lookup)
+    rule["citations"] = _dedupe_review_citations(
+        _resolve_weekly_review_citations(rule.get("refs"), citation_lookup),
+        seen_citation_keys,
+    )
 
     return {
         "summary": summary,

@@ -97,6 +97,7 @@ Rules for text fields:
 - summary.text must stay as the single opening paragraph.
 - takeaways must contain 2-4 items, each exactly one sentence.
 - rule.text must include the "Rule:" prefix exactly once.
+- Never mention review_ref aliases like T1 or B2 inside any text field.
 - Do not include any keys other than summary, takeaways, and rule.
 """.strip()
 

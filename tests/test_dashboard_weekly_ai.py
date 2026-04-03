@@ -1,5 +1,7 @@
 from datetime import datetime
 
+import json
+
 from sqlalchemy import inspect as sa_inspect
 
 from ai_service import WEEKLY_DASHBOARD_KIND
@@ -421,6 +423,87 @@ def test_dashboard_home_normalizes_broken_rule_prefix_in_weekly_ai_review(app_ct
     assert response.status_code == 200
     assert "Rule: Keep risk fixed." in response_text
     assert "\u00e2\u2020'" not in response_text
+
+
+def test_weekly_ai_review_display_rewrites_internal_refs_and_dedupes_citations():
+    review = type(
+        "Review",
+        (),
+        {
+            "response_text": "Unused fallback text",
+            "response_meta_json": json.dumps(
+                {
+                    "summary": {
+                        "text": "T1 was the cleanest winner and B1 carried the best sequence.",
+                        "refs": ["T1", "B1"],
+                    },
+                    "takeaways": [
+                        {
+                            "text": "T1 showed the best entry quality of the week.",
+                            "refs": ["T1"],
+                        },
+                        {
+                            "text": "B1 was still worth keeping in the review.",
+                            "refs": ["B1"],
+                        },
+                    ],
+                    "rule": {
+                        "text": "Rule: Use the same filter that made T1 clean before adding back into B1.",
+                        "refs": ["T1", "B1"],
+                    },
+                }
+            ),
+            "payload_json": json.dumps(
+                {
+                    "trades": [
+                        {
+                            "review_ref": "T1",
+                            "trade_id": 101,
+                            "symbol": "XAUUSD",
+                            "opened_at": "2026-04-01T09:00:00Z",
+                            "is_bundle": False,
+                            "bundle_pubkey": None,
+                        },
+                        {
+                            "review_ref": "B1",
+                            "trade_id": 202,
+                            "symbol": "GBPUSD",
+                            "opened_at": "2026-04-02T10:00:00Z",
+                            "is_bundle": True,
+                            "bundle_pubkey": "bundle-xyz",
+                        },
+                    ]
+                }
+            ),
+        },
+    )()
+
+    display = dashboard_routes._build_weekly_ai_review_display(review, "UTC")
+
+    assert "T1" not in display["summary"]["text"]
+    assert "B1" not in display["summary"]["text"]
+    assert display["summary"]["text"].startswith("XAUUSD")
+    assert display["summary"]["citations"] == [
+        {
+            "ref": "T1",
+            "type": "trade",
+            "trade_id": 101,
+            "inline_label": "XAUUSD",
+            "label": "XAUUSD | 01 Apr 2026 (Wed)",
+        },
+        {
+            "ref": "B1",
+            "type": "bundle",
+            "bundle_key": "bundle-xyz",
+            "inline_label": "GBPUSD bundle",
+            "label": "GBPUSD bundle | 02 Apr 2026 (Thu)",
+        },
+    ]
+    assert display["takeaways"][0]["citations"] == []
+    assert display["takeaways"][1]["citations"] == []
+    assert "XAUUSD" in display["rule"]["text"]
+    assert "GBPUSD bundle" in display["rule"]["text"]
+    assert display["rule"]["citations"] == []
 
 
 def test_weekly_ai_state_falls_back_to_latest_generated_review_for_account(app_ctx, client, monkeypatch):
