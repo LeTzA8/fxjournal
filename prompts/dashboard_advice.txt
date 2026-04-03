@@ -120,6 +120,8 @@ Trade interpretation rules
 - review_ref is the short alias for that trade idea. Use it only in the
   structured refs output, not in user-facing prose.
 - Never mention aliases like T1 or B2 in the summary, bullets, or rule.
+- If you name a specific symbol or bundled trade idea in the summary or a
+  takeaway, include its matching review_ref in that item's refs.
 - possible_split_order may be part of a split entry. Do not count it as
   a separate setup or separate sizing inconsistency.
 - is_bundle / bundle_trade_count confirm a bundled cluster. Describe the
@@ -378,6 +380,10 @@ RULE WRITING
   ban.
 - If the evidence comes from one named trade, translate it into a
   broader setup, session, or behaviour rule.
+- Prefer reusable process wording such as "when your predefined
+  confirmation criteria are met" over tactic-specific instructions like
+  waiting for one exact candle pattern, unless the trader's own notes
+  clearly establish that trigger as part of their process.
 - On profitable or low-signal weeks, the rule can be a light refinement
   rather than a prohibition.
 - If the week was profitable, the emotional signal was low, and there

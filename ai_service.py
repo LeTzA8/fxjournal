@@ -93,6 +93,8 @@ Rules for refs:
 - Use bundle refs like B1 for bundled trade ideas and trade refs like T1 for solo trade ideas.
 - If an item is aggregate and not tied to one clear trade idea, refs may be an empty list.
 - rule.refs must always be an empty list because the rule should be generalized guidance, not a cited trade callout.
+- If summary.text or a takeaway mentions a specific symbol or bundled trade idea, include the matching review_ref in that item's refs.
+- Do not mention a specific trade idea in summary.text or a takeaway and then leave its refs empty.
 
 Rules for text fields:
 - summary.text must stay as the single opening paragraph.
@@ -100,6 +102,7 @@ Rules for text fields:
 - rule.text must include the "Rule:" prefix exactly once.
 - rule.text must generalize one level up from the evidence and should not mention a specific trade, bundle, exact date, or weekday.
 - Prefer behavior, execution, session, sizing, or process language in rule.text over symbol-specific wording.
+- Prefer reusable process criteria in rule.text over tactic-specific setup instructions like naming an exact candle trigger or entry pattern.
 - Never mention review_ref aliases like T1 or B2 inside any text field.
 - Do not include any keys other than summary, takeaways, and rule.
 """.strip()

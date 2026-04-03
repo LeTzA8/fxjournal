@@ -509,6 +509,69 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
     ]
 
 
+def test_weekly_ai_review_display_autocites_unique_symbol_mentions():
+    review = type(
+        "Review",
+        (),
+        {
+            "response_text": "Unused fallback text",
+            "response_meta_json": json.dumps(
+                {
+                    "summary": {
+                        "text": "EURCHF used split entries cleanly while the rest of the week stayed mixed.",
+                        "refs": [],
+                    },
+                    "takeaways": [
+                        {
+                            "text": "EURCHF held together better than the other continuation ideas.",
+                            "refs": [],
+                        }
+                    ],
+                    "rule": {
+                        "text": "Rule: Keep the same confirmation standard on split entries next week.",
+                        "refs": [],
+                    },
+                }
+            ),
+            "payload_json": json.dumps(
+                {
+                    "trades": [
+                        {
+                            "review_ref": "T1",
+                            "trade_id": 303,
+                            "symbol": "EURCHF",
+                            "opened_at": "2026-04-03T08:00:00Z",
+                            "pnl": 48.0,
+                            "is_bundle": False,
+                            "bundle_pubkey": None,
+                        },
+                        {
+                            "review_ref": "T2",
+                            "trade_id": 404,
+                            "symbol": "XAUUSD",
+                            "opened_at": "2026-04-03T11:00:00Z",
+                            "pnl": -22.0,
+                            "is_bundle": False,
+                            "bundle_pubkey": None,
+                        },
+                    ]
+                }
+            ),
+        },
+    )()
+
+    display = dashboard_routes._build_weekly_ai_review_display(review, "UTC")
+
+    assert display["summary"]["segments"][0]["type"] == "citation"
+    assert display["summary"]["segments"][0]["label"] == "EURCHF | 03 Apr 2026 (Fri)"
+    assert display["summary"]["segments"][0]["tone"] == "good"
+    assert display["takeaways"][0]["segments"][0]["type"] == "citation"
+    assert display["takeaways"][0]["segments"][0]["label"] == "EURCHF | 03 Apr 2026 (Fri)"
+    assert display["rule"]["segments"] == [
+        {"type": "text", "text": display["rule"]["text"]},
+    ]
+
+
 def test_weekly_ai_state_falls_back_to_latest_generated_review_for_account(app_ctx, client, monkeypatch):
     user, trade_account = _create_logged_in_user(
         client,

@@ -24,7 +24,8 @@
         <nav class="landing-nav" aria-label="Landing">
             <a href="#workflow">Workflow</a>
             <a href="#features">Features</a>
-            <a href="#founder">About the creator</a>
+            <a href="#compare">Compare</a>
+            <a href="#founder">About</a>
             <a href="{{ url_for('contact.contact') }}">Contact</a>
         </nav>
         <div class="landing-auth-links{% if user_logged_in %} is-user-logged-in{% endif %}">
@@ -44,39 +45,43 @@
 
     <article class="landing-hero" data-reveal-scope data-reveal-immediate>
         <div class="landing-hero-inner">
-            <p class="hero-badge landing-reveal" data-reveal-delay="240">Currently in open beta - limited-time free access</p>
-            <p class="eyebrow landing-reveal" data-reveal-delay="340">FX, CFD, and Futures Journal</p>
-            <h1 class="hero-title landing-reveal" data-reveal-delay="460">A simple trading journal built for clear review and consistent execution.</h1>
+            <p class="hero-badge landing-reveal" data-reveal-delay="240">Open beta - free while we build the hands-off review workflow</p>
+            <p class="eyebrow landing-reveal" data-reveal-delay="340">Trading journal plus review automation</p>
+            <h1
+                class="hero-title landing-reveal"
+                data-reveal-delay="460"
+                data-hero-accent-words="1-2"
+                data-hero-underline-words="6"
+            >Trade first. Reflect without the friction.</h1>
             <p class="muted lead landing-reveal" data-reveal-delay="760">
-                FX Journal is built for traders who want to review their trades without the noise. Record your trades,
-                spot your patterns, and get AI feedback specific to your trading.
+                MyFXJournal turns raw trades into clear review, so journaling does not become a second job after the market closes.
             </p>
             <p class="hero-note landing-reveal" data-reveal-delay="860">
-                Built by traders, for traders. Free while beta access is open.
+                Built by a trader who wanted less review admin, not a bigger pile of charts. Free during open beta, with no credit card required.
             </p>
 
             <div class="landing-copy landing-reveal" id="workflow" data-reveal-delay="980">
-                <p class="landing-copy-title">How you use it</p>
+                <p class="landing-copy-title">How the workload gets handled</p>
                 <ol>
                     <li>
                         <span>1</span>
                         <div>
-                            <strong>Capture every trade</strong>
-                            <p>Log manually or import MT5 and Tradovate history straight into the right trading account.</p>
+                            <strong>Import the raw trading history</strong>
+                            <p>Log manually or pull MT5 and Tradovate history into the right account without spreadsheet cleanup first.</p>
                         </div>
                     </li>
                     <li>
                         <span>2</span>
                         <div>
-                            <strong>Review what happened</strong>
-                            <p>See PnL, sessions, pairs, and drawdown behavior so strengths and mistakes become obvious fast.</p>
+                            <strong>Let the journal organize the review</strong>
+                            <p>See the important account metrics, recurring mistakes, and behavior patterns without rebuilding the data by hand.</p>
                         </div>
                     </li>
                     <li>
                         <span>3</span>
                         <div>
-                            <strong>Improve your process</strong>
-                            <p>Turn trade notes and weekly performance into concrete adjustments with AI-assisted review.</p>
+                            <strong>Carry one clear adjustment into next week</strong>
+                            <p>Use the weekly review to tighten one rule, one habit, or one execution pattern instead of drowning in notes.</p>
                         </div>
                     </li>
                 </ol>
@@ -89,13 +94,13 @@
                 <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Contact</a>
                 {% else %}
                 <a href="{{ url_for('register') }}" class="submit-btn hero-cta">Start Free</a>
-                <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask a Question</a>
+                <a href="#compare" class="ghost-btn">See Pricing Context</a>
                 {% endif %}
             </div>
 
             {% if not user_logged_in %}
             <div class="hero-reassurance landing-reveal" data-reveal-delay="1240" aria-label="Signup reassurance">
-                <span>Limited-time access</span>
+                <span>Less review busywork</span>
                 <span>Free during open beta</span>
                 <span>No credit card required</span>
             </div>
@@ -121,16 +126,20 @@
                     </defs>
                     <path d="M20 140 C 90 132, 120 156, 170 122 C 220 88, 250 98, 300 80 C 345 64, 380 72, 430 50 C 468 34, 510 38, 540 24"></path>
                 </svg>
+                <div class="hook-stage-tag hook-stage-tag-trades">Trades captured</div>
+                <div class="hook-stage-tag hook-stage-tag-patterns">Patterns surfaced</div>
+                <div class="hook-signal"></div>
                 <article class="hook-journal-card">
-                    <p class="hook-kicker">Daily Journal</p>
-                    <h3>London Session Notes</h3>
+                    <p class="hook-kicker">Weekly Review</p>
+                    <h3>This week's review</h3>
+                    <p class="hook-card-meta">Auto-built from imported trading history</p>
                     <ul>
-                        <li>Setup: Breakout retest on EURUSD</li>
-                        <li>Risk: 0.5% with fixed invalidation</li>
-                        <li>Review: Entry quality improved vs last week</li>
+                        <li>11 trades imported before London open</li>
+                        <li>Pattern: size creep after same-symbol losses</li>
+                        <li>Next focus: reset to base size after revenge setups</li>
                     </ul>
                 </article>
-                <div class="hook-chip">+3.2R week</div>
+                <div class="hook-chip">Review ready</div>
             </div>
         </div>
     </article>
@@ -138,14 +147,14 @@
     <section class="landing-section ai-demo-section" id="ai-demo" aria-labelledby="ai-demo-title" data-reveal-scope>
         <div class="landing-inner">
             <div class="ai-demo-chip-row landing-reveal" data-reveal-delay="20" aria-label="AI review scope">
-                <span class="ai-demo-chip is-accent">AI Coach</span>
-                <span class="ai-demo-chip">Weekly Only</span>
+                <span class="ai-demo-chip is-accent">AI Review</span>
+                <span class="ai-demo-chip">Behavior and psychology</span>
             </div>
-            <p class="eyebrow landing-reveal" data-reveal-delay="40">Execution feedback built from your actual trade history</p>
-            <h2 id="ai-demo-title" class="landing-reveal" data-reveal-delay="110">Weekly AI Review</h2>
+            <p class="eyebrow landing-reveal" data-reveal-delay="40">A review loop traders can actually keep up with</p>
+            <h2 id="ai-demo-title" class="landing-reveal" data-reveal-delay="110">Your weekly review should arrive before the next week starts</h2>
             <p class="muted lead landing-reveal" data-reveal-delay="180">
-                Surface consistency over time, behavior patterns, and the one review you should read
-                before the next trading week starts.
+                FX Journal turns the latest trade week into a readable summary of execution quality, behavior patterns,
+                and the next rule worth tightening, so review stays short enough to repeat.
             </p>
 
             <div class="ai-demo-card landing-reveal" data-reveal-delay="260" data-typewriter-target>
@@ -160,19 +169,52 @@
                 </div>
             </div>
             <div class="ai-demo-meta landing-reveal" data-reveal-delay="320">
-                <p>This review uses the most recent eligible trade week on your active account, with older account history used as supporting context. Reviewed trade week ending: Mon 30 Mar 2026 12:00 Asia/Singapore.</p>
-                <p>Latest generated: 29 Mar 2026 22:43.</p>
+                <p>Built from the active account's most recent eligible trade week, with older history used as supporting context when it helps explain behavior.</p>
+                <p>Designed to surface what changed, what slipped, and what deserves attention before the next trading week starts.</p>
                 <p>NFA: For journaling and educational use only. This AI review is not financial or investment advice.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="landing-section workflow-automation-section" id="hands-off" aria-labelledby="workflow-automation-title" data-reveal-scope>
+        <div class="landing-inner">
+            <p class="eyebrow landing-reveal" data-reveal-delay="40">Less admin, more actual trading</p>
+            <h2 id="workflow-automation-title" class="landing-reveal" data-reveal-delay="110">The journal should carry the reflection workload around your trades.</h2>
+            <p class="muted landing-reveal" data-reveal-delay="180">
+                Most traders do not need more dashboards. They need a workflow that keeps the review habit alive
+                without turning journaling into a second job after the market closes.
+            </p>
+
+            <div class="workflow-automation-grid">
+                <article class="workflow-automation-card landing-reveal" data-reveal-delay="260">
+                    <p class="workflow-automation-kicker">FX Journal handles</p>
+                    <ul class="workflow-automation-list">
+                        <li>Trade imports, account routing, and duplicate checks.</li>
+                        <li>Performance breakdowns by session, symbol, and execution behavior.</li>
+                        <li>Weekly AI review output built from your own trade history.</li>
+                        <li>Psychology and mistake cues that are easier to act on than a blank journal page.</li>
+                    </ul>
+                </article>
+                <article class="workflow-automation-card landing-reveal" data-reveal-delay="340">
+                    <p class="workflow-automation-kicker">You stay focused on</p>
+                    <ul class="workflow-automation-list">
+                        <li>Taking your setups and managing risk in real time.</li>
+                        <li>Checking the review instead of writing a full report from scratch.</li>
+                        <li>Adjusting one rule or habit at a time before the next week starts.</li>
+                        <li>Keeping journaling realistic enough to actually continue.</li>
+                    </ul>
+                </article>
             </div>
         </div>
     </section>
 
     <section class="landing-section" id="features" aria-labelledby="feature-showcase-title" data-reveal-scope>
         <div class="landing-inner">
-            <p class="eyebrow landing-reveal" data-reveal-delay="40">Feature showcase</p>
-            <h2 id="feature-showcase-title" class="landing-reveal" data-reveal-delay="110">Built for active trading journals</h2>
+            <p class="eyebrow landing-reveal" data-reveal-delay="40">Product proof</p>
+            <h2 id="feature-showcase-title" class="landing-reveal" data-reveal-delay="110">The workflow is built to remove review friction, not add more of it</h2>
             <p class="muted landing-reveal" data-reveal-delay="180">
-                Capture trades, review execution quality, and import broker history without turning the journal into a bloated workspace.
+                These are the parts of the product already doing the heavy lifting: getting trades in cleanly,
+                keeping the account readable, and turning history into something you can actually review.
             </p>
 
             <div class="feature-showcase-grid" role="list" aria-label="FX Journal feature showcase">
@@ -189,11 +231,18 @@
                         </p>
                     </div>
                     <figure class="feature-shot">
-                        <img
-                            src="{{ url_for('static', filename='dashboard.png') }}"
-                            alt="FX Journal dashboard showing the equity curve, account summary, and recent trade data."
-                            loading="lazy"
+                        <button
+                            type="button"
+                            class="feature-shot-trigger"
+                            data-feature-shot-trigger
+                            aria-label="Expand the dashboard screenshot"
                         >
+                            <img
+                                src="{{ url_for('static', filename='dashboard.png') }}"
+                                alt="FX Journal dashboard showing the equity curve, account summary, and recent trade data."
+                                loading="lazy"
+                            >
+                        </button>
                     </figure>
                 </article>
                 <article class="feature-showcase-card landing-reveal" data-reveal-delay="340">
@@ -209,11 +258,18 @@
                         </p>
                     </div>
                     <figure class="feature-shot">
-                        <img
-                            src="{{ url_for('static', filename='analytics.png') }}"
-                            alt="FX Journal analytics page with detailed performance tables and breakdown charts."
-                            loading="lazy"
+                        <button
+                            type="button"
+                            class="feature-shot-trigger"
+                            data-feature-shot-trigger
+                            aria-label="Expand the analytics screenshot"
                         >
+                            <img
+                                src="{{ url_for('static', filename='analytics.png') }}"
+                                alt="FX Journal analytics page with detailed performance tables and breakdown charts."
+                                loading="lazy"
+                            >
+                        </button>
                     </figure>
                 </article>
                 <article class="feature-showcase-card landing-reveal" data-reveal-delay="420">
@@ -229,11 +285,18 @@
                         </p>
                     </div>
                     <figure class="feature-shot">
-                        <img
-                            src="{{ url_for('static', filename='import.png') }}"
-                            alt="FX Journal import page showing upload options, import rules, and account destination controls."
-                            loading="lazy"
+                        <button
+                            type="button"
+                            class="feature-shot-trigger"
+                            data-feature-shot-trigger
+                            aria-label="Expand the import screenshot"
                         >
+                            <img
+                                src="{{ url_for('static', filename='import.png') }}"
+                                alt="FX Journal import page showing upload options, import rules, and account destination controls."
+                                loading="lazy"
+                            >
+                        </button>
                     </figure>
                 </article>
                 <article class="feature-showcase-card feature-showcase-card-sync landing-reveal" data-reveal-delay="500">
@@ -302,28 +365,156 @@
         </div>
     </section>
 
+    <section class="landing-section comparison-section" id="compare" aria-labelledby="comparison-title" data-reveal-scope>
+        <div class="landing-inner">
+            <div class="comparison-top">
+                <div class="comparison-copy">
+                    <p class="eyebrow landing-reveal" data-reveal-delay="40">Compare the workflow</p>
+                    <h2 id="comparison-title" class="landing-reveal" data-reveal-delay="110">See the pricing context, and the kind of review workflow each journal leans toward.</h2>
+                    <p class="muted landing-reveal" data-reveal-delay="180">
+                        This is meant as a fit check, not a scorecard. Some journals go broader, some go deeper on
+                        psychology, and MyFXJournal is built for a lighter path from raw trades to usable reflection.
+                    </p>
+                </div>
+
+                <aside class="comparison-highlight-card landing-reveal" data-reveal-delay="260" aria-label="Why traders choose MyFXJournal">
+                    <p class="comparison-highlight-kicker">MyFXJournal right now</p>
+                    <h3>Free during open beta</h3>
+                    <p>
+                        If you want a lighter path from raw trades to reflection without paying upfront while the
+                        product is still evolving quickly, this is the best time to try it.
+                    </p>
+                    <ul class="comparison-highlight-list">
+                        <li>Trade imports, recurring review, and built-in behavior context.</li>
+                        <li>Lower-overhead workflow aimed at keeping reflection repeatable.</li>
+                        <li>Founder-led product with direct feedback during beta.</li>
+                    </ul>
+                    <div class="comparison-highlight-actions">
+                        {% if user_logged_in %}
+                        <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>
+                        {% else %}
+                        <a href="{{ url_for('register') }}" class="submit-btn">Start Free</a>
+                        {% endif %}
+                        <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask a Question</a>
+                    </div>
+                </aside>
+            </div>
+
+            <div class="comparison-grid" role="list" aria-label="Trading journal comparison">
+                <article class="comparison-card comparison-card-primary landing-reveal" data-reveal-delay="320">
+                    <p class="comparison-card-brand">MyFXJournal</p>
+                    <p class="comparison-card-price">Free during open beta</p>
+                    <ul class="comparison-feature-list">
+                        <li><span class="comparison-feature-label">Lightweight weekly reflection*</span><span class="comparison-feature-pill is-yes">Designed for it</span></li>
+                        <li><span class="comparison-feature-label">Review style</span><span class="comparison-feature-note">Recurring review flow</span></li>
+                        <li><span class="comparison-feature-label">Reflection layer</span><span class="comparison-feature-note">Built-in check-in context</span></li>
+                        <li><span class="comparison-feature-label">Workflow feel</span><span class="comparison-feature-note">Lower overhead</span></li>
+                        <li><span class="comparison-feature-label">Best fit</span><span class="comparison-feature-note">Lighter weekly reflection</span></li>
+                    </ul>
+                </article>
+                <article class="comparison-card comparison-card-tradersync landing-reveal" data-reveal-delay="380">
+                    <p class="comparison-card-brand">TraderSync</p>
+                    <p class="comparison-card-price">$29.95 to $79.95 per month</p>
+                    <ul class="comparison-feature-list">
+                        <li><span class="comparison-feature-label">Lightweight weekly reflection*</span><span class="comparison-feature-pill is-ondemand">Toolkit-first</span></li>
+                        <li><span class="comparison-feature-label">Review style</span><span class="comparison-feature-note">AI assistant + toolkit</span></li>
+                        <li><span class="comparison-feature-label">Reflection layer</span><span class="comparison-feature-note">Broader toolset</span></li>
+                        <li><span class="comparison-feature-label">Workflow feel</span><span class="comparison-feature-note">More platform depth</span></li>
+                        <li><span class="comparison-feature-label">Best fit</span><span class="comparison-feature-note">Replay + active analysis</span></li>
+                    </ul>
+                </article>
+                <article class="comparison-card comparison-card-tradervue landing-reveal" data-reveal-delay="440">
+                    <p class="comparison-card-brand">Tradervue</p>
+                    <p class="comparison-card-price">Free plan, then $29.95 to $49.95 per month</p>
+                    <ul class="comparison-feature-list">
+                        <li><span class="comparison-feature-label">Lightweight weekly reflection*</span><span class="comparison-feature-pill is-no">Reporting-first</span></li>
+                        <li><span class="comparison-feature-label">Review style</span><span class="comparison-feature-note">Classic reporting</span></li>
+                        <li><span class="comparison-feature-label">Reflection layer</span><span class="comparison-feature-note">Minimal</span></li>
+                        <li><span class="comparison-feature-label">Workflow feel</span><span class="comparison-feature-note">Straightforward logging</span></li>
+                        <li><span class="comparison-feature-label">Best fit</span><span class="comparison-feature-note">Traditional journal users</span></li>
+                    </ul>
+                </article>
+                <article class="comparison-card comparison-card-trademetria landing-reveal" data-reveal-delay="500">
+                    <p class="comparison-card-brand">Trademetria</p>
+                    <p class="comparison-card-price">Free plan, then $19.95 to $29.95 per month</p>
+                    <ul class="comparison-feature-list">
+                        <li><span class="comparison-feature-label">Lightweight weekly reflection*</span><span class="comparison-feature-pill is-ondemand">Analytics-first</span></li>
+                        <li><span class="comparison-feature-label">Review style</span><span class="comparison-feature-note">AI insights + analytics</span></li>
+                        <li><span class="comparison-feature-label">Reflection layer</span><span class="comparison-feature-note">Analytics-led</span></li>
+                        <li><span class="comparison-feature-label">Workflow feel</span><span class="comparison-feature-note">Broader market coverage</span></li>
+                        <li><span class="comparison-feature-label">Best fit</span><span class="comparison-feature-note">Multi-market tracking</span></li>
+                    </ul>
+                </article>
+                <article class="comparison-card comparison-card-edgewonk landing-reveal" data-reveal-delay="560">
+                    <p class="comparison-card-brand">Edgewonk</p>
+                    <p class="comparison-card-price">$197 per 12 months or $297 per 24 months</p>
+                    <ul class="comparison-feature-list">
+                        <li><span class="comparison-feature-label">Lightweight weekly reflection*</span><span class="comparison-feature-pill is-automated">Deeper review</span></li>
+                        <li><span class="comparison-feature-label">Review style</span><span class="comparison-feature-note">Deep review workflow</span></li>
+                        <li><span class="comparison-feature-label">Reflection layer</span><span class="comparison-feature-note">Psychology-heavy</span></li>
+                        <li><span class="comparison-feature-label">Workflow feel</span><span class="comparison-feature-note">More deliberate</span></li>
+                        <li><span class="comparison-feature-label">Best fit</span><span class="comparison-feature-note">Deep self-analysis</span></li>
+                    </ul>
+                </article>
+            </div>
+
+            <p class="comparison-footnote landing-reveal" data-reveal-delay="560">
+                Pricing checked against official public pages on 4 Apr 2026. *Lightweight weekly reflection refers here
+                to a recurring review flow designed to stay short, structured, and easy to repeat from recent trade
+                history, rather than a broader toolkit, classic reporting flow, analytics-first workflow, or deeper
+                long-form review approach. Workflow descriptions summarize publicly marketed positioning and packaging,
+                which can change over time.
+            </p>
+        </div>
+    </section>
+
+    <div class="feature-shot-lightbox" data-feature-shot-lightbox aria-hidden="true">
+        <div class="feature-shot-lightbox-backdrop" data-feature-shot-close></div>
+        <div
+            class="feature-shot-lightbox-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Expanded feature screenshot"
+        >
+            <button
+                type="button"
+                class="feature-shot-lightbox-close"
+                data-feature-shot-close
+                data-feature-shot-close-button
+                aria-label="Close expanded screenshot"
+            >
+                Close
+            </button>
+            <figure class="feature-shot-lightbox-frame">
+                <img data-feature-shot-image alt="">
+                <figcaption class="feature-shot-lightbox-caption" data-feature-shot-caption></figcaption>
+            </figure>
+        </div>
+    </div>
+
     <section class="landing-section" id="founder" aria-labelledby="founder-title" data-reveal-scope>
         <div class="landing-inner">
-            <p class="eyebrow landing-reveal" data-reveal-delay="40">About the creator</p>
+            <p class="eyebrow landing-reveal" data-reveal-delay="40">Built from the same problem</p>
             <div class="founder-grid">
                 <div class="founder-copy landing-reveal" data-reveal-delay="110">
-                    <h2 id="founder-title">A real early-stage product, built from an actual problem.</h2>
+                    <h2 id="founder-title">I wanted a journal that removed work, not one that gave traders more admin.</h2>
                     <p>
                         My name is Daniel. I am an A-Level graduate from Singapore, currently studying computer science
                         before university, and I am also an aspiring forex trader building the kind of journal I wanted
-                        for my own review process.
+                        for my own trading workflow.
                     </p>
                     <p>
                         I built FX Journal because the other journaling tools I found either felt too expensive, too
-                        cluttered, or too old. I wanted something simpler that made journaling realistic to keep up with.
+                        cluttered, or too demanding before the real review even started. I wanted something that made
+                        journaling realistic to keep up with.
                     </p>
                     <p>
-                        It is shaped from the perspective of someone actively reviewing and learning from trades, so the
-                        product stays grounded in the kind of workflow traders actually need day to day.
+                        The direction is simple: let the product absorb more of the cleanup, organization, and reflection
+                        prompts around trading, so the trader can focus more on execution and less on maintenance.
                     </p>
                     <p>
-                        This project is for traders who value simplicity and do not want a lot of overhead just to review
-                        their own trades.
+                        If FX Journal is doing its job well, you should spend less time maintaining a journal and more
+                        time trading with a clearer process.
                     </p>
                     <div class="founder-actions">
                         <a
@@ -345,12 +536,12 @@
                     </div>
                 </div>
                 <aside class="founder-card landing-reveal" data-reveal-delay="180">
-                    <p class="founder-card-kicker">Current status</p>
-                    <h3>Open beta</h3>
+                    <p class="founder-card-kicker">Why join beta now</p>
+                    <h3>Open beta, direct feedback loop</h3>
                     <ul class="founder-list">
-                        <li>Built and maintained by one founder.</li>
-                        <li>Core dashboard and analytics views are already live in the product.</li>
-                        <li>Questions, bugs, and feedback go directly to the project inbox.</li>
+                        <li>Free during open beta, with no credit card required.</li>
+                        <li>Core dashboard, analytics, and review workflow are already live in the product.</li>
+                        <li>Questions, bugs, and feature requests go straight to the founder inbox.</li>
                     </ul>
                 </aside>
             </div>
@@ -568,7 +759,7 @@
         }
     }
 
-    .landing-wrap > *:not(.landing-glass):not(.landing-market-bg) {
+    .landing-wrap > *:not(.landing-glass):not(.landing-market-bg):not(.feature-shot-lightbox) {
         position: relative;
         z-index: 2;
         min-width: 0;
@@ -813,14 +1004,12 @@
         color: var(--ink);
     }
 
-    .hero-title .hero-word:nth-child(2),
-    .hero-title .hero-word:nth-child(3) {
+    .hero-title .hero-word.is-accent {
         --hero-word-final-color: var(--landing-hero-word-accent);
         --hero-word-final-shadow: 0 0 14px color-mix(in srgb, var(--accent) 30%, transparent);
     }
 
-    .hero-title .hero-word:nth-child(7),
-    .hero-title .hero-word:nth-child(8) {
+    .hero-title .hero-word.is-underlined {
         --hero-underline-color: color-mix(in srgb, var(--accent) 70%, var(--accent-hover));
         --hero-word-final-color: color-mix(in srgb, var(--ink) 90%, var(--accent) 10%);
     }
@@ -833,8 +1022,7 @@
         text-shadow: var(--hero-word-final-shadow, 0 0 0 transparent);
     }
 
-    .hero-title .hero-word:nth-child(7)::after,
-    .hero-title .hero-word:nth-child(8)::after {
+    .hero-title .hero-word.is-underlined::after {
         content: "";
         position: absolute;
         left: 0;
@@ -882,8 +1070,7 @@
         text-shadow: var(--hero-word-final-shadow, 0 0 0 transparent);
     }
 
-    body.landing-layout.js-landing-animate .hero-title.is-visible .hero-word:nth-child(7)::after,
-    body.landing-layout.js-landing-animate .hero-title.is-visible .hero-word:nth-child(8)::after {
+    body.landing-layout.js-landing-animate .hero-title.is-visible .hero-word.is-underlined::after {
         opacity: 1;
         transform: scaleX(1);
         transition:
@@ -1056,6 +1243,7 @@
     .hook-glow {
         position: absolute;
         inset: 0;
+        z-index: 0;
         background:
             radial-gradient(circle at 78% 18%, rgba(84, 76, 214, 0.16), transparent 38%),
             radial-gradient(circle at 26% 74%, rgba(69, 98, 255, 0.16), transparent 42%);
@@ -1068,6 +1256,7 @@
         left: 4%;
         right: 4%;
         bottom: 18%;
+        z-index: 1;
         height: 22%;
         border-radius: 999px;
         background: linear-gradient(90deg, rgba(148, 163, 184, 0.06), rgba(148, 163, 184, 0.16), rgba(148, 163, 184, 0.06));
@@ -1078,6 +1267,7 @@
     .hook-candles {
         position: absolute;
         inset: auto 6% 26% 6%;
+        z-index: 2;
         display: flex;
         justify-content: space-between;
         align-items: end;
@@ -1135,6 +1325,7 @@
     .hook-trend {
         position: absolute;
         inset: 10% 5% auto 5%;
+        z-index: 2;
         width: 90%;
         height: 54%;
         pointer-events: none;
@@ -1152,10 +1343,74 @@
         animation: hook-trend-draw 4.4s cubic-bezier(.22, .61, .36, 1) infinite;
     }
 
+    .hook-stage-tag {
+        --hook-stage-base-transform: translateX(0);
+        position: absolute;
+        z-index: 5;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 28px;
+        padding: 0.28rem 0.62rem;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+        background: color-mix(in srgb, var(--surface) 84%, transparent);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        color: color-mix(in srgb, var(--muted) 76%, var(--ink));
+        font-family: var(--landing-font-mono);
+        font-size: 0.62rem;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        box-shadow: 0 8px 18px rgba(2, 6, 23, 0.14);
+        animation: hook-stage-pulse 5.8s ease-in-out infinite;
+    }
+
+    .hook-stage-tag-trades {
+        left: 7%;
+        bottom: 9%;
+        animation-delay: -4.1s;
+    }
+
+    .hook-stage-tag-patterns {
+        left: 58%;
+        top: 50%;
+        --hook-stage-base-transform: translateX(-50%);
+        animation-delay: -2.1s;
+    }
+
+    .hook-signal {
+        position: absolute;
+        left: 9%;
+        top: 70%;
+        z-index: 3;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--accent) 76%, white 24%);
+        box-shadow:
+            0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent),
+            0 0 18px color-mix(in srgb, var(--accent) 42%, transparent);
+        animation: hook-signal-travel 5.8s cubic-bezier(.22, .61, .36, 1) infinite;
+        pointer-events: none;
+    }
+
+    .hook-signal::after {
+        content: "";
+        position: absolute;
+        inset: -7px;
+        border-radius: inherit;
+        border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+        opacity: 0;
+        animation: hook-signal-ring 5.8s ease-out infinite;
+    }
+
     .hook-journal-card {
         position: absolute;
         top: 14%;
         left: 7%;
+        z-index: 4;
         width: min(300px, 54%);
         border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
         border-radius: 16px;
@@ -1183,6 +1438,14 @@
         line-height: 1.2;
     }
 
+    .hook-card-meta {
+        margin: 0 0 0.45rem;
+        color: color-mix(in srgb, var(--accent) 52%, var(--muted));
+        font-size: 0.7rem;
+        font-weight: 600;
+        line-height: 1.35;
+    }
+
     .hook-journal-card ul {
         margin: 0;
         padding-left: 1rem;
@@ -1200,6 +1463,7 @@
         position: absolute;
         right: 7%;
         top: 17%;
+        z-index: 5;
         min-height: 36px;
         padding: 0 0.84rem;
         border-radius: 999px;
@@ -1238,6 +1502,78 @@
         50% { transform: translateY(-7px) rotate(-0.3deg); }
     }
 
+    @keyframes hook-stage-pulse {
+        0%, 100% {
+            opacity: 0.56;
+            transform: var(--hook-stage-base-transform) translateY(0);
+            border-color: color-mix(in srgb, var(--border) 72%, transparent);
+        }
+        18%, 34% {
+            opacity: 1;
+            transform: var(--hook-stage-base-transform) translateY(-2px);
+            border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+        }
+        52% {
+            opacity: 0.82;
+            transform: var(--hook-stage-base-transform) translateY(0);
+        }
+    }
+
+    @keyframes hook-signal-travel {
+        0% {
+            left: 9%;
+            top: 70%;
+            opacity: 0;
+            transform: scale(0.65);
+        }
+        8% {
+            opacity: 1;
+            transform: scale(1);
+        }
+        24% {
+            left: 24%;
+            top: 63%;
+            opacity: 1;
+        }
+        48% {
+            left: 47%;
+            top: 49%;
+            opacity: 1;
+        }
+        74% {
+            left: 69%;
+            top: 34%;
+            opacity: 1;
+        }
+        92% {
+            left: 84%;
+            top: 23%;
+            opacity: 1;
+            transform: scale(1.08);
+        }
+        100% {
+            left: 86%;
+            top: 22%;
+            opacity: 0;
+            transform: scale(1.2);
+        }
+    }
+
+    @keyframes hook-signal-ring {
+        0%, 72%, 100% {
+            opacity: 0;
+            transform: scale(0.6);
+        }
+        12%, 42%, 78% {
+            opacity: 0.62;
+            transform: scale(1);
+        }
+        22%, 52%, 88% {
+            opacity: 0;
+            transform: scale(1.6);
+        }
+    }
+
     @keyframes hook-chip-bob {
         0%, 100% { transform: translateY(0); }
         50% { transform: translateY(-8px); }
@@ -1261,14 +1597,17 @@
     }
 
     #ai-demo,
+    #hands-off,
     #features,
+    #compare,
     #founder {
         border-radius: 22px;
         overflow: hidden;
     }
 
     #ai-demo,
-    #features {
+    #features,
+    #compare {
         width: min(86vw, 1520px);
         max-width: 100%;
     }
@@ -1448,6 +1787,46 @@
         50% { opacity: 0; }
     }
 
+    .workflow-automation-section .muted {
+        max-width: 64ch;
+    }
+
+    .workflow-automation-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+        margin-top: 0.85rem;
+    }
+
+    .workflow-automation-card {
+        padding: 1rem 1.05rem;
+        border-radius: 20px;
+        border: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+        background: color-mix(in srgb, var(--surface) 80%, transparent);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        box-shadow: 0 10px 22px rgba(2, 6, 23, 0.14);
+    }
+
+    .workflow-automation-kicker {
+        margin: 0 0 0.7rem;
+        color: color-mix(in srgb, var(--accent) 72%, var(--ink));
+        font-family: var(--landing-font-mono);
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .workflow-automation-list {
+        margin: 0;
+        padding-left: 1.05rem;
+        color: var(--muted);
+        display: grid;
+        gap: 0.58rem;
+        line-height: 1.55;
+    }
+
     .feature-showcase-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1547,6 +1926,141 @@
         box-shadow: 0 18px 28px rgba(2, 6, 23, 0.22);
         object-fit: contain;
         object-position: center;
+    }
+
+    .feature-shot-trigger {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        position: relative;
+        border-radius: 12px;
+        overflow: hidden;
+        cursor: zoom-in;
+    }
+
+    .feature-shot-trigger img {
+        transition: transform 180ms ease, filter 180ms ease;
+    }
+
+    .feature-shot-trigger:hover img,
+    .feature-shot-trigger:focus-visible img {
+        transform: scale(1.015);
+        filter: saturate(1.03);
+    }
+
+    .feature-shot-trigger:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--accent) 42%, white 58%);
+        outline-offset: 4px;
+    }
+
+    .feature-shot-lightbox {
+        position: fixed;
+        inset: 0;
+        z-index: 1200;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: clamp(0.8rem, 2vw, 1.4rem);
+    }
+
+    .landing-wrap > .feature-shot-lightbox {
+        position: fixed;
+        z-index: 1200;
+        min-width: auto;
+    }
+
+    .feature-shot-lightbox.is-open {
+        display: flex;
+    }
+
+    .feature-shot-lightbox-backdrop {
+        position: absolute;
+        inset: 0;
+        background:
+            linear-gradient(180deg, rgba(2, 6, 23, 0.88), rgba(2, 6, 23, 0.72)),
+            radial-gradient(circle at top, color-mix(in srgb, var(--accent) 18%, transparent), transparent 42%);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+    }
+
+    .feature-shot-lightbox-dialog {
+        position: relative;
+        z-index: 1;
+        width: auto;
+        max-width: calc(100vw - 1.6rem);
+        max-height: calc(100vh - 1.6rem);
+        padding: 0;
+        background: transparent;
+        border: 0;
+        box-shadow: none;
+    }
+
+    .feature-shot-lightbox-close {
+        appearance: none;
+        position: absolute;
+        top: 0.9rem;
+        right: 0.9rem;
+        z-index: 2;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        background: color-mix(in srgb, var(--surface) 74%, transparent);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        color: var(--ink);
+        min-height: 2.35rem;
+        padding: 0 0.82rem;
+        border-radius: 999px;
+        font: inherit;
+        font-size: 0.82rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
+    }
+
+    .feature-shot-lightbox-close:hover,
+    .feature-shot-lightbox-close:focus-visible {
+        transform: translateY(-1px);
+        border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+        background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    }
+
+    .feature-shot-lightbox-close:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--accent) 38%, white 62%);
+        outline-offset: 2px;
+    }
+
+    .feature-shot-lightbox-frame {
+        margin: 0;
+        display: block;
+        min-height: 0;
+    }
+
+    .feature-shot-lightbox-frame img {
+        display: block;
+        width: auto;
+        max-width: calc(100vw - 1.6rem);
+        max-height: min(88vh, 1280px);
+        margin: 0 auto;
+        border-radius: 18px;
+        border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+        background: color-mix(in srgb, var(--surface) 96%, var(--bg));
+        box-shadow: 0 24px 56px rgba(2, 6, 23, 0.3);
+        object-fit: contain;
+    }
+
+    .feature-shot-lightbox-caption {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
     }
 
     .feature-showcase-card-sync {
@@ -1708,10 +2222,358 @@
         color: color-mix(in srgb, var(--accent) 72%, var(--ink));
     }
 
+    @media (max-width: 1620px) {
+        .comparison-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
+        .comparison-card-primary {
+            transform: none;
+        }
+    }
+
     @media (max-width: 1320px) {
+        .comparison-top {
+            grid-template-columns: 1fr;
+        }
+
         .feature-showcase-grid {
             grid-template-columns: 1fr;
         }
+
+        .comparison-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .comparison-card,
+        .comparison-card-primary,
+        .comparison-card-tradersync,
+        .comparison-card-tradervue,
+        .comparison-card-trademetria,
+        .comparison-card-edgewonk {
+            order: 0;
+        }
+
+        .comparison-card:not(.comparison-card-primary) {
+            opacity: 0.94;
+            filter: saturate(0.94) brightness(0.99);
+        }
+
+        .comparison-card-primary {
+            transform: translateY(0) scale(1);
+            animation: none;
+        }
+    }
+
+    .comparison-top {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+        gap: 1rem;
+        align-items: start;
+        margin-bottom: 1.2rem;
+    }
+
+    .comparison-copy {
+        min-width: 0;
+    }
+
+    .comparison-highlight-card,
+    .comparison-card {
+        border: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+        border-radius: 20px;
+        background: color-mix(in srgb, var(--surface) 80%, transparent);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        box-shadow: 0 10px 22px rgba(2, 6, 23, 0.14);
+    }
+
+    .comparison-highlight-card {
+        display: grid;
+        gap: 0.75rem;
+        padding: 1rem 1.05rem;
+        background:
+            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 14%, transparent), transparent 42%),
+            color-mix(in srgb, var(--surface) 82%, transparent);
+    }
+
+    .comparison-highlight-kicker {
+        margin: 0;
+        color: color-mix(in srgb, var(--accent) 72%, var(--ink));
+        font-family: var(--landing-font-mono);
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .comparison-highlight-card h3 {
+        margin: 0;
+        font-size: clamp(1.2rem, 2.1vw, 1.55rem);
+        line-height: 1.14;
+    }
+
+    .comparison-highlight-card p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+    }
+
+    .comparison-highlight-list {
+        margin: 0;
+        padding-left: 1.05rem;
+        color: var(--muted);
+        display: grid;
+        gap: 0.52rem;
+        line-height: 1.5;
+    }
+
+    .comparison-highlight-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+        margin-top: 0.1rem;
+    }
+
+    .comparison-highlight-actions .submit-btn,
+    .comparison-highlight-actions .ghost-btn {
+        text-decoration: none;
+    }
+
+    .comparison-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+        align-items: stretch;
+    }
+
+    .comparison-card {
+        --comparison-card-accent: color-mix(in srgb, var(--accent) 76%, white 24%);
+        margin: 0;
+        padding: 1rem;
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+        display: grid;
+        grid-template-rows: auto minmax(3.45rem, auto) 1fr;
+        gap: 0.8rem;
+        align-content: start;
+        border-color: color-mix(in srgb, var(--comparison-card-accent) 24%, var(--border));
+        background:
+            radial-gradient(circle at top right, color-mix(in srgb, var(--comparison-card-accent) 10%, transparent), transparent 44%),
+            color-mix(in srgb, var(--surface) 84%, transparent);
+        transition:
+            transform 220ms ease,
+            opacity 220ms ease,
+            filter 220ms ease,
+            box-shadow 220ms ease,
+            border-color 220ms ease;
+    }
+
+    .comparison-card:not(.comparison-card-primary) {
+        opacity: 0.88;
+        filter: saturate(0.88) brightness(0.97);
+    }
+
+    .comparison-card:hover,
+    .comparison-card:focus-within {
+        opacity: 1;
+        filter: saturate(1) brightness(1);
+        transform: translateY(-2px);
+        box-shadow: 0 16px 30px rgba(2, 6, 23, 0.18);
+    }
+
+    .comparison-card-primary {
+        --comparison-card-accent: color-mix(in srgb, var(--good) 82%, var(--accent) 18%);
+        order: 3;
+        border-color: color-mix(in srgb, var(--comparison-card-accent) 34%, var(--border));
+        background:
+            radial-gradient(circle at top right, color-mix(in srgb, var(--comparison-card-accent) 16%, transparent), transparent 42%),
+            color-mix(in srgb, var(--surface) 84%, transparent);
+        transform: scale(1.014);
+        opacity: 1;
+        filter: none;
+        box-shadow:
+            0 20px 38px rgba(2, 6, 23, 0.2),
+            0 0 0 1px color-mix(in srgb, var(--comparison-card-accent) 20%, transparent),
+            0 0 24px color-mix(in srgb, var(--comparison-card-accent) 10%, transparent);
+    }
+
+    .comparison-card-primary::after {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        border-radius: inherit;
+        padding: 1px;
+        background:
+            linear-gradient(
+                135deg,
+                color-mix(in srgb, white 18%, var(--comparison-card-accent) 82%) 0%,
+                transparent 30%,
+                transparent 72%,
+                color-mix(in srgb, var(--comparison-card-accent) 28%, transparent) 100%
+            );
+        -webkit-mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        mask-composite: exclude;
+        pointer-events: none;
+        opacity: 0.5;
+    }
+
+    .comparison-card-tradersync {
+        order: 1;
+        --comparison-card-accent: #7b8fff;
+    }
+
+    .comparison-card-tradervue {
+        order: 2;
+        --comparison-card-accent: #c986ff;
+    }
+
+    .comparison-card-trademetria {
+        order: 4;
+        --comparison-card-accent: #f3c25d;
+    }
+
+    .comparison-card-edgewonk {
+        order: 5;
+        --comparison-card-accent: #7dd3c7;
+    }
+
+    .comparison-card-brand {
+        margin: 0;
+        color: color-mix(in srgb, var(--comparison-card-accent) 74%, var(--ink));
+        font-family: var(--landing-font-mono);
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .comparison-card-price {
+        margin: 0;
+        color: var(--ink);
+        font-size: 1.02rem;
+        font-weight: 800;
+        line-height: 1.24;
+        min-height: 3.45rem;
+    }
+
+    .comparison-feature-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 0.55rem;
+    }
+
+    .comparison-feature-list li {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.42rem;
+        align-items: start;
+        padding: 0.62rem 0.68rem;
+        border-radius: 14px;
+        border: 1px solid color-mix(in srgb, var(--comparison-card-accent) 16%, var(--border));
+        background: color-mix(in srgb, var(--surface) 90%, transparent);
+    }
+
+    .comparison-feature-list li:first-child {
+        border-color: color-mix(in srgb, var(--comparison-card-accent) 28%, var(--border));
+        background:
+            linear-gradient(180deg, color-mix(in srgb, var(--comparison-card-accent) 8%, transparent), transparent 120%),
+            color-mix(in srgb, var(--surface) 88%, transparent);
+    }
+
+    .comparison-feature-list li:last-child {
+        border-color: color-mix(in srgb, var(--comparison-card-accent) 26%, var(--border));
+        background:
+            linear-gradient(180deg, color-mix(in srgb, var(--comparison-card-accent) 5%, transparent), transparent 130%),
+            color-mix(in srgb, var(--surface) 88%, transparent);
+    }
+
+    .comparison-feature-label {
+        min-width: 0;
+        color: var(--muted);
+        font-size: 0.84rem;
+        line-height: 1.35;
+    }
+
+    .comparison-feature-pill,
+    .comparison-feature-note {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        justify-self: start;
+        min-height: 28px;
+        padding: 0.24rem 0.58rem;
+        border-radius: 999px;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .comparison-feature-pill {
+        border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+        background: color-mix(in srgb, var(--surface) 96%, transparent);
+    }
+
+    .comparison-feature-pill.is-yes {
+        border-color: color-mix(in srgb, var(--good) 36%, var(--border));
+        background: color-mix(in srgb, var(--good) 10%, var(--surface));
+        color: color-mix(in srgb, var(--good) 74%, var(--ink));
+    }
+
+    .comparison-feature-pill.is-no {
+        border-color: color-mix(in srgb, var(--bad) 34%, var(--border));
+        background: color-mix(in srgb, var(--bad) 9%, var(--surface));
+        color: color-mix(in srgb, var(--bad) 76%, var(--ink));
+    }
+
+    .comparison-feature-pill.is-ondemand {
+        border-color: color-mix(in srgb, #f5c044 40%, var(--border));
+        background: color-mix(in srgb, #f5c044 12%, var(--surface));
+        color: color-mix(in srgb, #f5c044 74%, var(--ink));
+    }
+
+    .comparison-feature-pill.is-automated {
+        border-color: color-mix(in srgb, #65d7c6 38%, var(--border));
+        background: color-mix(in srgb, #65d7c6 11%, var(--surface));
+        color: color-mix(in srgb, #65d7c6 76%, var(--ink));
+    }
+
+    .comparison-feature-pill.is-limited {
+        border-color: color-mix(in srgb, #f5c044 40%, var(--border));
+        background: color-mix(in srgb, #f5c044 12%, var(--surface));
+        color: color-mix(in srgb, #f5c044 72%, var(--ink));
+    }
+
+    .comparison-feature-note {
+        max-width: 11rem;
+        border: 1px solid color-mix(in srgb, var(--comparison-card-accent) 34%, var(--border));
+        background: color-mix(in srgb, var(--comparison-card-accent) 11%, var(--surface));
+        color: color-mix(in srgb, var(--ink) 90%, var(--comparison-card-accent));
+        text-align: center;
+        text-transform: none;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        line-height: 1.24;
+        white-space: normal;
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--comparison-card-accent) 8%, transparent);
+    }
+
+    .comparison-footnote {
+        margin: 0.85rem 0 0;
+        color: color-mix(in srgb, var(--muted) 82%, var(--ink));
+        font-size: 0.76rem;
+        line-height: 1.45;
     }
 
     .founder-grid {
@@ -1820,8 +2682,24 @@
             justify-content: flex-start;
         }
 
+        .workflow-automation-grid,
+        .comparison-grid,
         .feature-showcase-grid {
             width: 100%;
+        }
+
+        .workflow-automation-grid,
+        .comparison-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .comparison-card,
+        .comparison-card:not(.comparison-card-primary),
+        .comparison-card-primary {
+            opacity: 1;
+            filter: none;
+            transform: none;
+            animation: none;
         }
     }
 
@@ -1840,6 +2718,11 @@
             aspect-ratio: 16 / 9;
         }
 
+        .feature-shot-lightbox-dialog {
+            width: min(1320px, 100%);
+        }
+
+        .comparison-top,
         .founder-grid {
             grid-template-columns: 1fr;
         }
@@ -1850,6 +2733,10 @@
 
         .hook-journal-card {
             width: min(340px, 64%);
+        }
+
+        .hook-stage-tag {
+            font-size: 0.58rem;
         }
     }
 
@@ -1898,9 +2785,30 @@
             font-size: 0.72rem;
         }
 
+        .hook-card-meta {
+            font-size: 0.64rem;
+        }
+
         .hook-chip {
             right: 5%;
             top: 12%;
+        }
+
+        .hook-stage-tag {
+            min-height: 24px;
+            padding: 0.22rem 0.48rem;
+            font-size: 0.54rem;
+            letter-spacing: 0.04em;
+        }
+
+        .hook-stage-tag-trades {
+            left: 5%;
+            bottom: 7%;
+        }
+
+        .hook-stage-tag-patterns {
+            left: 62%;
+            top: 54%;
         }
 
         .landing-hero .lead {
@@ -1915,18 +2823,53 @@
             min-height: 10.2rem;
         }
 
+        .workflow-automation-card,
+        .comparison-highlight-card,
+        .comparison-card,
+        .feature-showcase-card {
+            padding: 0.92rem;
+        }
+
         .feature-showcase-grid {
             grid-template-columns: 1fr;
             width: 100%;
         }
 
-        .feature-showcase-card {
-            padding: 0.92rem;
-        }
-
         .feature-shot,
         .feature-shot-sync-card {
             padding: 0.6rem;
+        }
+
+        .feature-shot-lightbox {
+            padding: 0.7rem;
+        }
+
+        .feature-shot-lightbox-dialog {
+            max-width: calc(100vw - 1.4rem);
+            max-height: calc(100vh - 1.4rem);
+        }
+
+        .feature-shot-lightbox-close {
+            top: 0.7rem;
+            right: 0.7rem;
+            min-height: 2.1rem;
+            padding-inline: 0.72rem;
+        }
+
+        .feature-shot-lightbox-frame img {
+            max-width: calc(100vw - 1.4rem);
+            max-height: min(84vh, 760px);
+            border-radius: 14px;
+        }
+
+        .comparison-highlight-actions {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .comparison-highlight-actions .submit-btn,
+        .comparison-highlight-actions .ghost-btn {
+            justify-content: center;
         }
     }
 
@@ -1967,8 +2910,7 @@
             animation: none !important;
         }
 
-        .hero-title .hero-word:nth-child(7)::after,
-        .hero-title .hero-word:nth-child(8)::after {
+        .hero-title .hero-word.is-underlined::after {
             opacity: 1 !important;
             transform: scaleX(1) !important;
             transition: none !important;
@@ -1977,9 +2919,17 @@
         .hook-glow,
         .candle,
         .hook-trend path,
+        .hook-stage-tag,
+        .hook-signal,
+        .hook-signal::after,
         .hook-journal-card,
-        .hook-chip {
+        .hook-chip,
+        .comparison-card,
+        .comparison-card-primary::after,
+        .feature-shot-trigger img,
+        .feature-shot-lightbox-close {
             animation: none !important;
+            transition: none !important;
         }
     }
 </style>

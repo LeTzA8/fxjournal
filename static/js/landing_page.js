@@ -31,10 +31,52 @@
             return;
         }
 
+        const parseWordSelection = (value) => {
+            if (!value) {
+                return new Set();
+            }
+
+            const selected = new Set();
+            value.split(",").forEach((part) => {
+                const token = part.trim();
+                if (!token) {
+                    return;
+                }
+
+                const rangeMatch = token.match(/^(\d+)\s*-\s*(\d+)$/);
+                if (rangeMatch) {
+                    let start = Number.parseInt(rangeMatch[1], 10);
+                    let end = Number.parseInt(rangeMatch[2], 10);
+                    if (!Number.isInteger(start) || !Number.isInteger(end)) {
+                        return;
+                    }
+                    if (end < start) {
+                        [start, end] = [end, start];
+                    }
+                    for (let index = start; index <= end; index += 1) {
+                        if (index > 0) {
+                            selected.add(index);
+                        }
+                    }
+                    return;
+                }
+
+                const number = Number.parseInt(token, 10);
+                if (Number.isInteger(number) && number > 0) {
+                    selected.add(number);
+                }
+            });
+
+            return selected;
+        };
+
         const text = title.textContent.trim().replace(/\s+/g, " ");
         if (!text) {
             return;
         }
+
+        const accentWords = parseWordSelection(title.dataset.heroAccentWords);
+        const underlineWords = parseWordSelection(title.dataset.heroUnderlineWords);
 
         title.dataset.wordsReady = "1";
         title.setAttribute("aria-label", text);
@@ -44,6 +86,12 @@
         text.split(" ").forEach((word, index, arr) => {
             const span = document.createElement("span");
             span.className = "hero-word";
+            if (accentWords.has(index + 1)) {
+                span.classList.add("is-accent");
+            }
+            if (underlineWords.has(index + 1)) {
+                span.classList.add("is-underlined");
+            }
             span.textContent = word;
             span.setAttribute("aria-hidden", "true");
             span.style.setProperty("--word-index", String(index));
@@ -168,7 +216,7 @@
             return;
         }
 
-        const CHAR_DELAY = 18;
+        const CHAR_DELAY = 15;
         let started = false;
 
         const startTyping = () => {
@@ -177,7 +225,7 @@
             }
             started = true;
 
-            let index = 0;
+            let index = Math.floor(AI_DEMO_TEXT.length * 0.5);
             const typeNext = () => {
                 textEl.textContent = AI_DEMO_TEXT.slice(0, index);
                 if (index < AI_DEMO_TEXT.length) {
@@ -212,9 +260,83 @@
         observer.observe(card);
     };
 
+    const initFeatureShotLightbox = () => {
+        const triggers = Array.from(document.querySelectorAll("[data-feature-shot-trigger]"));
+        const lightbox = document.querySelector("[data-feature-shot-lightbox]");
+        const lightboxImage = lightbox?.querySelector("[data-feature-shot-image]");
+        const lightboxCaption = lightbox?.querySelector("[data-feature-shot-caption]");
+        const closeButton = lightbox?.querySelector("[data-feature-shot-close-button]");
+        const closeControls = lightbox
+            ? Array.from(lightbox.querySelectorAll("[data-feature-shot-close]"))
+            : [];
+
+        if (!triggers.length || !lightbox || !lightboxImage || !lightboxCaption || !closeButton) {
+            return;
+        }
+
+        let lastTrigger = null;
+
+        const closeLightbox = () => {
+            if (!lightbox.classList.contains("is-open")) {
+                return;
+            }
+
+            lightbox.classList.remove("is-open");
+            lightbox.setAttribute("aria-hidden", "true");
+            lightboxImage.removeAttribute("src");
+            lightboxImage.alt = "";
+            lightboxCaption.textContent = "";
+
+            if (lastTrigger && typeof lastTrigger.focus === "function") {
+                lastTrigger.focus();
+            }
+        };
+
+        const openLightbox = (trigger) => {
+            const sourceImage = trigger.querySelector("img");
+            const sourceUrl = sourceImage?.currentSrc || sourceImage?.src;
+            if (!sourceImage || !sourceUrl) {
+                return;
+            }
+
+            lastTrigger = trigger;
+            lightboxImage.src = sourceUrl;
+            lightboxImage.alt = sourceImage.alt || "";
+            lightboxCaption.textContent = sourceImage.alt || "Expanded feature screenshot";
+            lightbox.classList.add("is-open");
+            lightbox.setAttribute("aria-hidden", "false");
+        };
+
+        triggers.forEach((trigger) => {
+            trigger.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openLightbox(trigger);
+            });
+        });
+
+        closeControls.forEach((control) => {
+            control.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                closeLightbox();
+            });
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape" || !lightbox.classList.contains("is-open")) {
+                return;
+            }
+
+            event.preventDefault();
+            closeLightbox();
+        });
+    };
+
     splitHeroTitleWords();
     buildReplayChart();
     initAiDemoTypewriter();
+    initFeatureShotLightbox();
     pauseConveyorIfNeeded();
 
     const onMotionChange = () => {

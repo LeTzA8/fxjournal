@@ -201,6 +201,52 @@ def _dedupe_review_citations(citations, seen_keys):
     return deduped
 
 
+def _augment_citations_from_mentions(text, citations, citation_lookup):
+    normalized = str(text or "").strip()
+    deduped = _dedupe_review_citations(citations, set())
+    if not normalized or not citation_lookup:
+        return deduped
+
+    label_groups = {}
+    for citation in citation_lookup.values():
+        if not isinstance(citation, dict):
+            continue
+        label = str(citation.get("inline_label") or "").strip().lower()
+        if not label:
+            continue
+        label_groups.setdefault(label, []).append(citation)
+
+    seen_keys = set()
+    for citation in deduped:
+        citation_type = str(citation.get("type") or "").strip()
+        identity = (
+            f"bundle:{citation.get('bundle_key') or ''}"
+            if citation_type == "bundle"
+            else f"trade:{citation.get('trade_id') or ''}"
+        )
+        if identity:
+            seen_keys.add(identity)
+
+    for label, grouped_citations in label_groups.items():
+        if len(grouped_citations) != 1:
+            continue
+        if re.search(rf"\b{re.escape(label)}\b", normalized, flags=re.IGNORECASE) is None:
+            continue
+        citation = grouped_citations[0]
+        citation_type = str(citation.get("type") or "").strip()
+        identity = (
+            f"bundle:{citation.get('bundle_key') or ''}"
+            if citation_type == "bundle"
+            else f"trade:{citation.get('trade_id') or ''}"
+        )
+        if not identity or identity in seen_keys:
+            continue
+        deduped.append(citation)
+        seen_keys.add(identity)
+
+    return deduped
+
+
 def _build_review_text_segments(text, citations):
     normalized = str(text or "").strip()
     deduped_citations = _dedupe_review_citations(citations, set())
@@ -328,9 +374,10 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
 
     summary = dict(display.get("summary") or {})
     summary["text"] = _rewrite_review_text_refs(summary.get("text"), citation_lookup)
-    summary["citations"] = _dedupe_review_citations(
+    summary["citations"] = _augment_citations_from_mentions(
+        summary.get("text"),
         _resolve_weekly_review_citations(summary.get("refs"), citation_lookup),
-        set(),
+        citation_lookup,
     )
     summary["segments"] = _build_review_text_segments(summary.get("text"), summary.get("citations"))
 
@@ -338,12 +385,13 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
     for item in display.get("takeaways") or []:
         takeaway = dict(item or {})
         takeaway["text"] = _rewrite_review_text_refs(takeaway.get("text"), citation_lookup)
-        takeaway["citations"] = _dedupe_review_citations(
+        takeaway["citations"] = _augment_citations_from_mentions(
+            takeaway.get("text"),
             _resolve_weekly_review_citations(
                 takeaway.get("refs"),
                 citation_lookup,
             ),
-            set(),
+            citation_lookup,
         )
         takeaway["segments"] = _build_review_text_segments(
             takeaway.get("text"),
