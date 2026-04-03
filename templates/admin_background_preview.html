@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f8fafc;
+            --accent: #4f46e5;
+            --card: #ffffff;
+            --app-bg-accent-spot: rgba(56, 189, 248, 0.08);
+            --app-bg-deep-mid: color-mix(in srgb, var(--bg) 92%, rgb(4 9 15));
+            --app-bg-deep-end: rgb(1 3 7);
+            --neon-ribbon-opacity: 0.9;
+            --ribbon-dark-bg-start: #020304;
+            --ribbon-dark-bg-mid: #05070b;
+            --ribbon-dark-bg-end: #090d15;
+            --ribbon-dark-wash-start: rgba(69, 98, 255, 0.22);
+            --ribbon-dark-wash-mid: rgba(41, 58, 140, 0.12);
+            --ribbon-dark-wash-end: rgba(0, 0, 0, 0);
+            --ribbon-dark-primary-a-rgb: 110 138 255;
+            --ribbon-dark-primary-b-rgb: 69 98 255;
+            --ribbon-dark-secondary-a-rgb: 98 78 226;
+            --ribbon-dark-secondary-b-rgb: 62 84 190;
+            --ribbon-light-bg-start: #ffffff;
+            --ribbon-light-bg-mid: #fcfcff;
+            --ribbon-light-bg-end: #f4f0ff;
+            --ribbon-light-wash-1-start: rgba(167, 139, 250, 0.16);
+            --ribbon-light-wash-1-mid: rgba(129, 140, 248, 0.08);
+            --ribbon-light-wash-1-end: rgba(255, 255, 255, 0);
+            --ribbon-light-wash-2-start: rgba(196, 181, 253, 0.17);
+            --ribbon-light-wash-2-mid: rgba(167, 139, 250, 0.08);
+            --ribbon-light-wash-2-end: rgba(255, 255, 255, 0);
+            --ribbon-light-primary-a-rgb: 167 139 250;
+            --ribbon-light-primary-b-rgb: 129 140 248;
+            --ribbon-light-secondary-a-rgb: 196 181 253;
+            --ribbon-light-secondary-b-rgb: 167 139 250;
+        }
+
+        :root[data-theme="dark"] {
+            color-scheme: dark;
+            --bg: #000103;
+            --accent: #6a63ff;
+            --card: #0b0f14;
+            --neon-ribbon-opacity: 1;
+        }
+
+        html,
+        body {
+            width: 100%;
+            min-height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        body {
+            background:
+                radial-gradient(circle at top, color-mix(in srgb, var(--accent) 12%, transparent), transparent 32%),
+                radial-gradient(circle at 82% 8%, var(--app-bg-accent-spot), transparent 20%),
+                linear-gradient(180deg, var(--bg) 0%, var(--app-bg-deep-mid) 48%, var(--app-bg-deep-end) 100%);
+            position: relative;
+            isolation: isolate;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            background:
+                linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0%, rgba(0, 0, 0, 0.24) 24%, rgba(0, 0, 0, 0.42) 100%),
+                radial-gradient(circle at top, rgba(2, 6, 12, 0.24), transparent 42%);
+        }
+
+        .neon-ribbon-canvas {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -2;
+            pointer-events: none;
+            opacity: 0;
+            filter: saturate(1.12) contrast(1.04) brightness(0.82);
+            transition: opacity 260ms ease;
+        }
+
+        body.neon-ribbon-ready .neon-ribbon-canvas {
+            opacity: var(--neon-ribbon-opacity);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .neon-ribbon-canvas {
+                transition: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="neonRibbonCanvas" class="neon-ribbon-canvas" aria-hidden="true"></canvas>
+    <script src="{{ url_for('static', filename='js/neon_ribbon.js') }}"></script>
+</body>
+</html>

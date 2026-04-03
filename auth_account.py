@@ -1728,6 +1728,14 @@ def register_public_auth_routes(
     def admin_signup_access():
         return redirect(url_for("admin_signup_users"))
 
+    @app.route("/dashboard/admin/background-preview")
+    @admin_required
+    def admin_background_preview():
+        return render_template(
+            "admin_background_preview.html",
+            title="Background Preview | FX Journal",
+        )
+
     @app.route("/dashboard/admin/access/users")
     @admin_required
     def admin_signup_users():

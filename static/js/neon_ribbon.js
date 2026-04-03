@@ -10,11 +10,15 @@
     }
 
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const MAX_DPR = 1.25;
+    const TARGET_FPS = 30;
+    const FRAME_INTERVAL_MS = 1000 / TARGET_FPS;
     let rafId = 0;
     let width = 0;
     let height = 0;
     let dpr = 1;
     let didFirstFrame = false;
+    let lastFrameTimeMs = 0;
 
     const getTheme = () =>
         document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
@@ -35,7 +39,7 @@
     };
 
     const resize = () => {
-        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
         width = Math.max(window.innerWidth, 1);
         height = Math.max(window.innerHeight, 1);
         canvas.width = Math.floor(width * dpr);
@@ -74,7 +78,6 @@
 
             ctx.save();
             ctx.globalCompositeOperation = "lighter";
-            ctx.filter = `blur(${spec.glowBlur}px)`;
             ctx.strokeStyle = mixColor(palette.a, palette.b, laneT, spec.glowAlpha);
             ctx.lineWidth = spec.glowWidth;
             ctx.lineCap = "round";
@@ -130,7 +133,7 @@
         };
 
         strokeRibbonFamily(time, primaryPalette, {
-            lanes: 5,
+            lanes: 3,
             spacing: 12,
             speed: 0.86,
             phase: 0.4,
@@ -152,7 +155,7 @@
         });
 
         strokeRibbonFamily(time, secondaryPalette, {
-            lanes: 4,
+            lanes: 2,
             spacing: 16,
             speed: 0.72,
             phase: 2.0,
@@ -220,7 +223,7 @@
         };
 
         strokeRibbonFamily(time, primaryPalette, {
-            lanes: 4,
+            lanes: 2,
             spacing: 9,
             speed: 0.8,
             phase: 0.35,
@@ -242,7 +245,7 @@
         });
 
         strokeRibbonFamily(time, secondaryPalette, {
-            lanes: 3,
+            lanes: 2,
             spacing: 12,
             speed: 0.66,
             phase: 2.2,
@@ -265,6 +268,14 @@
     };
 
     const drawFrame = (timeMs) => {
+        if (timeMs - lastFrameTimeMs < FRAME_INTERVAL_MS) {
+            if (!prefersReducedMotion.matches) {
+                rafId = requestAnimationFrame(drawFrame);
+            }
+            return;
+        }
+
+        lastFrameTimeMs = timeMs;
         const time = timeMs * 0.001;
         const isDark = getTheme() === "dark";
         ctx.clearRect(0, 0, width, height);
@@ -284,6 +295,7 @@
 
     const render = () => {
         cancelAnimationFrame(rafId);
+        lastFrameTimeMs = 0;
         drawFrame(performance.now());
     };
 
