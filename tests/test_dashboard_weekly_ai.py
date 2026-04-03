@@ -489,20 +489,17 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
         "citation",
         "text",
     ]
-    assert display["summary"]["segments"][0]["label"] == "XAUUSD"
-    assert display["summary"]["segments"][2]["label"] == "GBPUSD bundle"
+    assert display["summary"]["segments"][0]["label"] == "XAUUSD | 01 Apr 2026 (Wed)"
+    assert display["summary"]["segments"][2]["label"] == "GBPUSD bundle | 02 Apr 2026 (Thu)"
     assert display["takeaways"][0]["segments"][0]["type"] == "citation"
-    assert display["takeaways"][0]["segments"][0]["label"] == "XAUUSD"
+    assert display["takeaways"][0]["segments"][0]["label"] == "XAUUSD | 01 Apr 2026 (Wed)"
     assert display["takeaways"][1]["segments"][0]["type"] == "citation"
-    assert display["takeaways"][1]["segments"][0]["label"] == "GBPUSD bundle"
+    assert display["takeaways"][1]["segments"][0]["label"] == "GBPUSD bundle | 02 Apr 2026 (Thu)"
     assert "XAUUSD" in display["rule"]["text"]
     assert "GBPUSD bundle" in display["rule"]["text"]
-    assert [segment["type"] for segment in display["rule"]["segments"]] == [
-        "text",
-        "citation",
-        "text",
-        "citation",
-        "text",
+    assert display["rule"]["citations"] == []
+    assert display["rule"]["segments"] == [
+        {"type": "text", "text": display["rule"]["text"]},
     ]
 
 

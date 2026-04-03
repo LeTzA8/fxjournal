@@ -352,12 +352,15 @@ PRIVACY AND WORDING
 RULE WRITING
 - End with a single actionable rule the trader can apply next week.
 - The rule must reference something specific from this week's data:
-  a session, a symbol, a behaviour, or a pattern.
+  a session, a behaviour, an execution habit, or a pattern.
 - Never write a generic rule like "stick to your plan" or
   "manage your risk."
 - The rule can either protect a strength or correct a weakness,
   depending on what the data supports.
 - The rule should usually generalize one level up from the evidence.
+- The rule should not point to one specific trade, bundle, date, or
+  weekday, and it should not depend on a clickable citation to make
+  sense.
 - Prefer a session, behaviour, execution, or pattern rule over a
   symbol-only rule.
 - Only use a symbol-only rule when the week's issue was truly isolated

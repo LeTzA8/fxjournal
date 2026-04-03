@@ -248,7 +248,7 @@ def _build_review_text_segments(text, citations):
         segments.append(
             {
                 "type": "citation",
-                "label": str(citation.get("inline_label") or citation.get("label") or "").strip(),
+                "label": str(citation.get("label") or citation.get("inline_label") or "").strip(),
                 "citation_type": citation.get("type"),
                 "trade_id": citation.get("trade_id"),
                 "bundle_key": citation.get("bundle_key"),
@@ -277,7 +277,7 @@ def _build_review_text_segments(text, citations):
             segments.append(
                 {
                     "type": "citation",
-                    "label": str(citation.get("inline_label") or citation.get("label") or "").strip(),
+                    "label": str(citation.get("label") or citation.get("inline_label") or "").strip(),
                     "citation_type": citation.get("type"),
                     "trade_id": citation.get("trade_id"),
                     "bundle_key": citation.get("bundle_key"),
@@ -344,11 +344,8 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
 
     rule = dict(display.get("rule") or {})
     rule["text"] = _rewrite_review_text_refs(rule.get("text"), citation_lookup)
-    rule["citations"] = _dedupe_review_citations(
-        _resolve_weekly_review_citations(rule.get("refs"), citation_lookup),
-        set(),
-    )
-    rule["segments"] = _build_review_text_segments(rule.get("text"), rule.get("citations"))
+    rule["citations"] = []
+    rule["segments"] = [{"type": "text", "text": rule.get("text")}] if rule.get("text") else []
 
     return {
         "summary": summary,
@@ -356,7 +353,6 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
         "rule": rule,
         "has_citations": bool(
             summary.get("citations")
-            or rule.get("citations")
             or any(item.get("citations") for item in takeaways)
         ),
     }

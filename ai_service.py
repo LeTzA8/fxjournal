@@ -83,7 +83,7 @@ Use this exact shape:
   ],
   "rule": {
     "text": "Rule: One actionable rule line.",
-    "refs": ["B1"]
+    "refs": []
   }
 }
 
@@ -92,11 +92,14 @@ Rules for refs:
 - Prefer 1-2 refs per item, maximum 3.
 - Use bundle refs like B1 for bundled trade ideas and trade refs like T1 for solo trade ideas.
 - If an item is aggregate and not tied to one clear trade idea, refs may be an empty list.
+- rule.refs must always be an empty list because the rule should be generalized guidance, not a cited trade callout.
 
 Rules for text fields:
 - summary.text must stay as the single opening paragraph.
 - takeaways must contain 2-4 items, each exactly one sentence.
 - rule.text must include the "Rule:" prefix exactly once.
+- rule.text must generalize one level up from the evidence and should not mention a specific trade, bundle, exact date, or weekday.
+- Prefer behavior, execution, session, sizing, or process language in rule.text over symbol-specific wording.
 - Never mention review_ref aliases like T1 or B2 inside any text field.
 - Do not include any keys other than summary, takeaways, and rule.
 """.strip()
@@ -312,12 +315,11 @@ def build_dashboard_review_display(response_text, response_meta_json=None):
     structured_rule = _normalize_review_rule_text(rule.get("text"))
     if structured_summary or structured_takeaways or structured_rule:
         summary_refs = [str(ref).strip().upper() for ref in summary.get("refs") or [] if str(ref or "").strip()]
-        rule_refs = [str(ref).strip().upper() for ref in rule.get("refs") or [] if str(ref or "").strip()]
         return {
             "summary": {"text": structured_summary, "refs": summary_refs},
             "takeaways": structured_takeaways,
-            "rule": {"text": structured_rule, "refs": rule_refs},
-            "has_citations": bool(summary_refs or rule_refs or any(item["refs"] for item in structured_takeaways)),
+            "rule": {"text": structured_rule, "refs": []},
+            "has_citations": bool(summary_refs or any(item["refs"] for item in structured_takeaways)),
         }
 
     normalized_text = normalize_dashboard_advice_text(response_text)
@@ -407,7 +409,7 @@ def _extract_structured_review(response_payload, allowed_refs):
         "takeaways": structured_takeaways,
         "rule": {
             "text": rule_text,
-            "refs": _sanitize_review_refs(rule.get("refs"), allowed_refs),
+            "refs": [],
         },
     }
     return {
