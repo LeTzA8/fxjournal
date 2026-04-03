@@ -425,7 +425,7 @@ def test_dashboard_home_normalizes_broken_rule_prefix_in_weekly_ai_review(app_ct
     assert "\u00e2\u2020'" not in response_text
 
 
-def test_weekly_ai_review_display_rewrites_internal_refs_and_dedupes_citations():
+def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
     review = type(
         "Review",
         (),
@@ -483,27 +483,27 @@ def test_weekly_ai_review_display_rewrites_internal_refs_and_dedupes_citations()
     assert "T1" not in display["summary"]["text"]
     assert "B1" not in display["summary"]["text"]
     assert display["summary"]["text"].startswith("XAUUSD")
-    assert display["summary"]["citations"] == [
-        {
-            "ref": "T1",
-            "type": "trade",
-            "trade_id": 101,
-            "inline_label": "XAUUSD",
-            "label": "XAUUSD | 01 Apr 2026 (Wed)",
-        },
-        {
-            "ref": "B1",
-            "type": "bundle",
-            "bundle_key": "bundle-xyz",
-            "inline_label": "GBPUSD bundle",
-            "label": "GBPUSD bundle | 02 Apr 2026 (Thu)",
-        },
+    assert [segment["type"] for segment in display["summary"]["segments"]] == [
+        "citation",
+        "text",
+        "citation",
+        "text",
     ]
-    assert display["takeaways"][0]["citations"] == []
-    assert display["takeaways"][1]["citations"] == []
+    assert display["summary"]["segments"][0]["label"] == "XAUUSD"
+    assert display["summary"]["segments"][2]["label"] == "GBPUSD bundle"
+    assert display["takeaways"][0]["segments"][0]["type"] == "citation"
+    assert display["takeaways"][0]["segments"][0]["label"] == "XAUUSD"
+    assert display["takeaways"][1]["segments"][0]["type"] == "citation"
+    assert display["takeaways"][1]["segments"][0]["label"] == "GBPUSD bundle"
     assert "XAUUSD" in display["rule"]["text"]
     assert "GBPUSD bundle" in display["rule"]["text"]
-    assert display["rule"]["citations"] == []
+    assert [segment["type"] for segment in display["rule"]["segments"]] == [
+        "text",
+        "citation",
+        "text",
+        "citation",
+        "text",
+    ]
 
 
 def test_weekly_ai_state_falls_back_to_latest_generated_review_for_account(app_ctx, client, monkeypatch):

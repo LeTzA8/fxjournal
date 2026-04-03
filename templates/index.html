@@ -465,25 +465,26 @@
                     <div class="ai-review-structured">
                         {% if weekly_ai_review_display.summary.text %}
                         <div class="ai-review-block">
-                            <p class="insight-body ai-review-copy">{{ weekly_ai_review_display.summary.text }}</p>
-                            {% if weekly_ai_review_display.summary.citations %}
-                            <div class="ai-review-citations">
-                                {% for citation in weekly_ai_review_display.summary.citations %}
+                            <p class="insight-body ai-review-copy">
+                                {% for segment in weekly_ai_review_display.summary.segments %}
+                                {% if segment.type == "text" %}
+                                {{ segment.text }}
+                                {% elif segment.type == "citation" %}
                                 <button
                                     type="button"
                                     class="ai-citation-btn"
-                                    data-citation-type="{{ citation.type }}"
-                                    {% if citation.type == "trade" %}
-                                    data-citation-trade-id="{{ citation.trade_id }}"
+                                    data-citation-type="{{ segment.citation_type }}"
+                                    {% if segment.citation_type == "trade" %}
+                                    data-citation-trade-id="{{ segment.trade_id }}"
                                     {% else %}
-                                    data-citation-bundle="{{ citation.bundle_key }}"
+                                    data-citation-bundle="{{ segment.bundle_key }}"
                                     {% endif %}
                                 >
-                                    View {{ citation.label }}
+                                    {{ segment.label }}
                                 </button>
+                                {% endif %}
                                 {% endfor %}
-                            </div>
-                            {% endif %}
+                            </p>
                         </div>
                         {% endif %}
 
@@ -493,25 +494,26 @@
                             <ul class="ai-review-list">
                                 {% for takeaway in weekly_ai_review_display.takeaways %}
                                 <li class="ai-review-item">
-                                    <p class="insight-body ai-review-copy">{{ takeaway.text }}</p>
-                                    {% if takeaway.citations %}
-                                    <div class="ai-review-citations">
-                                        {% for citation in takeaway.citations %}
+                                    <p class="insight-body ai-review-copy">
+                                        {% for segment in takeaway.segments %}
+                                        {% if segment.type == "text" %}
+                                        {{ segment.text }}
+                                        {% elif segment.type == "citation" %}
                                         <button
                                             type="button"
                                             class="ai-citation-btn"
-                                            data-citation-type="{{ citation.type }}"
-                                            {% if citation.type == "trade" %}
-                                            data-citation-trade-id="{{ citation.trade_id }}"
+                                            data-citation-type="{{ segment.citation_type }}"
+                                            {% if segment.citation_type == "trade" %}
+                                            data-citation-trade-id="{{ segment.trade_id }}"
                                             {% else %}
-                                            data-citation-bundle="{{ citation.bundle_key }}"
+                                            data-citation-bundle="{{ segment.bundle_key }}"
                                             {% endif %}
                                         >
-                                            View {{ citation.label }}
+                                            {{ segment.label }}
                                         </button>
+                                        {% endif %}
                                         {% endfor %}
-                                    </div>
-                                    {% endif %}
+                                    </p>
                                 </li>
                                 {% endfor %}
                             </ul>
@@ -520,25 +522,26 @@
 
                         {% if weekly_ai_review_display.rule.text %}
                         <div class="ai-review-block ai-review-rule-block">
-                            <p class="insight-body ai-review-copy ai-review-rule">{{ weekly_ai_review_display.rule.text }}</p>
-                            {% if weekly_ai_review_display.rule.citations %}
-                            <div class="ai-review-citations">
-                                {% for citation in weekly_ai_review_display.rule.citations %}
+                            <p class="insight-body ai-review-copy ai-review-rule">
+                                {% for segment in weekly_ai_review_display.rule.segments %}
+                                {% if segment.type == "text" %}
+                                {{ segment.text }}
+                                {% elif segment.type == "citation" %}
                                 <button
                                     type="button"
                                     class="ai-citation-btn"
-                                    data-citation-type="{{ citation.type }}"
-                                    {% if citation.type == "trade" %}
-                                    data-citation-trade-id="{{ citation.trade_id }}"
+                                    data-citation-type="{{ segment.citation_type }}"
+                                    {% if segment.citation_type == "trade" %}
+                                    data-citation-trade-id="{{ segment.trade_id }}"
                                     {% else %}
-                                    data-citation-bundle="{{ citation.bundle_key }}"
+                                    data-citation-bundle="{{ segment.bundle_key }}"
                                     {% endif %}
                                 >
-                                    View {{ citation.label }}
+                                    {{ segment.label }}
                                 </button>
+                                {% endif %}
                                 {% endfor %}
-                            </div>
-                            {% endif %}
+                            </p>
                         </div>
                         {% endif %}
                     </div>
@@ -1510,21 +1513,20 @@
         font-weight: 600;
     }
 
-    .ai-review-citations {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.45rem;
-    }
-
     .ai-citation-btn {
+        display: inline-flex;
+        align-items: center;
+        vertical-align: baseline;
+        margin: 0 0.22rem;
         border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
         border-radius: 999px;
         background: color-mix(in srgb, var(--accent) 10%, var(--card));
         color: color-mix(in srgb, var(--accent) 68%, white 32%);
-        padding: 0.36rem 0.72rem;
-        font-size: 0.72rem;
+        padding: 0.14rem 0.52rem;
+        font-size: 0.68rem;
         font-weight: 700;
         letter-spacing: 0.01em;
+        line-height: 1.2;
         cursor: pointer;
         transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
     }

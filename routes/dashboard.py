@@ -194,6 +194,101 @@ def _dedupe_review_citations(citations, seen_keys):
     return deduped
 
 
+def _build_review_text_segments(text, citations):
+    normalized = str(text or "").strip()
+    deduped_citations = _dedupe_review_citations(citations, set())
+    if not normalized:
+        return []
+
+    matches = []
+    for citation in deduped_citations:
+        label = str(citation.get("inline_label") or "").strip()
+        if not label:
+            continue
+        match = re.search(re.escape(label), normalized, flags=re.IGNORECASE)
+        if match is None:
+            continue
+        matches.append(
+            {
+                "start": match.start(),
+                "end": match.end(),
+                "length": len(label),
+                "citation": citation,
+            }
+        )
+
+    matches.sort(key=lambda item: (item["start"], -item["length"]))
+    selected_matches = []
+    last_end = -1
+    matched_keys = set()
+    for item in matches:
+        start = item["start"]
+        end = item["end"]
+        citation = item["citation"]
+        citation_type = str(citation.get("type") or "").strip()
+        identity = (
+            f"bundle:{citation.get('bundle_key') or ''}"
+            if citation_type == "bundle"
+            else f"trade:{citation.get('trade_id') or ''}"
+        )
+        if start < last_end or identity in matched_keys:
+            continue
+        selected_matches.append(item)
+        last_end = end
+        matched_keys.add(identity)
+
+    segments = []
+    cursor = 0
+    for item in selected_matches:
+        start = item["start"]
+        end = item["end"]
+        citation = item["citation"]
+        if start > cursor:
+            segments.append({"type": "text", "text": normalized[cursor:start]})
+        segments.append(
+            {
+                "type": "citation",
+                "label": str(citation.get("inline_label") or citation.get("label") or "").strip(),
+                "citation_type": citation.get("type"),
+                "trade_id": citation.get("trade_id"),
+                "bundle_key": citation.get("bundle_key"),
+            }
+        )
+        cursor = end
+
+    if cursor < len(normalized):
+        segments.append({"type": "text", "text": normalized[cursor:]})
+
+    unmatched = []
+    for citation in deduped_citations:
+        citation_type = str(citation.get("type") or "").strip()
+        identity = (
+            f"bundle:{citation.get('bundle_key') or ''}"
+            if citation_type == "bundle"
+            else f"trade:{citation.get('trade_id') or ''}"
+        )
+        if identity and identity not in matched_keys:
+            unmatched.append(citation)
+
+    if unmatched:
+        if segments:
+            segments.append({"type": "text", "text": " "})
+        for index, citation in enumerate(unmatched):
+            segments.append(
+                {
+                    "type": "citation",
+                    "label": str(citation.get("inline_label") or citation.get("label") or "").strip(),
+                    "citation_type": citation.get("type"),
+                    "trade_id": citation.get("trade_id"),
+                    "bundle_key": citation.get("bundle_key"),
+                }
+            )
+            if index < len(unmatched) - 1:
+                segments.append({"type": "text", "text": " "})
+
+    return segments
+
+
 def _resolve_weekly_review_citations(refs, citation_lookup):
     resolved = []
     seen = set()
@@ -223,12 +318,12 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
     )
 
     summary = dict(display.get("summary") or {})
-    seen_citation_keys = set()
     summary["text"] = _rewrite_review_text_refs(summary.get("text"), citation_lookup)
     summary["citations"] = _dedupe_review_citations(
         _resolve_weekly_review_citations(summary.get("refs"), citation_lookup),
-        seen_citation_keys,
+        set(),
     )
+    summary["segments"] = _build_review_text_segments(summary.get("text"), summary.get("citations"))
 
     takeaways = []
     for item in display.get("takeaways") or []:
@@ -239,7 +334,11 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
                 takeaway.get("refs"),
                 citation_lookup,
             ),
-            seen_citation_keys,
+            set(),
+        )
+        takeaway["segments"] = _build_review_text_segments(
+            takeaway.get("text"),
+            takeaway.get("citations"),
         )
         takeaways.append(takeaway)
 
@@ -247,8 +346,9 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
     rule["text"] = _rewrite_review_text_refs(rule.get("text"), citation_lookup)
     rule["citations"] = _dedupe_review_citations(
         _resolve_weekly_review_citations(rule.get("refs"), citation_lookup),
-        seen_citation_keys,
+        set(),
     )
+    rule["segments"] = _build_review_text_segments(rule.get("text"), rule.get("citations"))
 
     return {
         "summary": summary,
@@ -1092,7 +1192,7 @@ def home():
         chart_points=chart_points,
         weekly_ai_review=weekly_ai_state["weekly_ai_review"],
         weekly_ai_review_text=weekly_ai_review_text,
-        weekly_ai_review_display=weekly_ai_state["weekly_ai_review_display"],
+        weekly_ai_review_display=weekly_ai_state.get("weekly_ai_review_display"),
         weekly_ai_generated_at_label=weekly_ai_state["weekly_ai_generated_at_label"],
         weekly_ai_period_label=weekly_ai_state["weekly_ai_period_label"],
         weekly_ai_empty_message=weekly_ai_state["weekly_ai_empty_message"],
