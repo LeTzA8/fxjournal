@@ -172,7 +172,7 @@ def contact():
         )
 
         if email_result.get("sent"):
-            flash("Your message has been sent. I will review it as soon as possible.", "success")
+            flash("Your message has been sent. It will be reviewed as soon as possible.", "success")
             return redirect(url_for("contact.contact"))
 
         persisted = persist_contact_submission(

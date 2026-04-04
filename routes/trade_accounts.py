@@ -299,7 +299,7 @@ def request_mt5_access(trade_account_pubkey=None):
         )
 
     if email_sent:
-        flash("MT5 sync access request submitted. I'll review it soon.", "success")
+        flash("MT5 sync access request submitted. It will be reviewed soon.", "success")
     else:
         flash(
             "MT5 sync access request submitted and queued for review, but email notification could not be delivered.",
@@ -393,10 +393,10 @@ def submit_mt5_details():
         flash("Could not save your MT5 account details right now. Please try again.", "error")
         return redirect(_get_mt5_access_redirect_target())
 
-    flash(
-        f"MT5 account details saved for {account.name}. I'll finish the onboarding from admin.",
-        "success",
-    )
+        flash(
+            f"MT5 account details saved for {account.name}. The remaining onboarding steps will be completed from admin.",
+            "success",
+        )
     return redirect(_get_mt5_access_redirect_target())
 
 

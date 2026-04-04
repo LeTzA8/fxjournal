@@ -142,7 +142,7 @@
                             {% if pending_mt5_request.request_note %}
                             <p class="account-meta">Note: {{ pending_mt5_request.request_note }}</p>
                             {% endif %}
-                            <p class="account-meta">I'll review it from admin and let this move forward there.</p>
+                            <p class="account-meta">It will be reviewed from admin and moved forward there.</p>
                             {% elif approved_mt5_request %}
                             <p class="account-meta">
                                 Access approved{% if approved_mt5_request.reviewed_at %} {{ approved_mt5_request.reviewed_at.strftime("%Y-%m-%d %H:%M UTC") }}{% endif %}.
