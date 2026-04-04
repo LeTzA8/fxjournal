@@ -227,12 +227,16 @@ def inject_trade_account_context():
     current_page_path = request.full_path.rstrip("?")
     if not current_page_path:
         current_page_path = request.path or url_for("dashboard.home")
+    public_base_url = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/") or request.host_url.rstrip("/")
+    default_canonical_url = f"{public_base_url}{request.path}" if request.path != "/" else f"{public_base_url}/"
     return {
         "active_trade_account": getattr(g, "active_trade_account", None),
         "header_trade_accounts": getattr(g, "user_trade_accounts", []),
         "display_timezone_name": getattr(g, "display_timezone_name", get_app_timezone_name()),
         "is_admin_user": user_has_admin_access(current_user),
         "current_page_path": current_page_path,
+        "default_canonical_url": default_canonical_url,
+        "google_site_verification": os.getenv("GOOGLE_SITE_VERIFICATION", "").strip(),
     }
 
 

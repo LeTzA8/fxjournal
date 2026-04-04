@@ -13,7 +13,7 @@ from flask import (
 )
 from sqlalchemy.exc import IntegrityError, OperationalError
 
-from auth_account import send_email_placeholder
+from auth_account import build_external_url, send_email_placeholder
 from extensions import limiter
 from helpers.core import is_local_dev_environment
 from models import ContactSubmission, User, db
@@ -76,6 +76,8 @@ def contact():
             render_template(
                 "contact.html",
                 title="Contact | FX Journal",
+                meta_description="Contact MyFXJournal for support, privacy requests, bug reports, or product feedback.",
+                canonical_url=build_external_url("/contact"),
                 username=session.get("username", "User"),
                 contact_subject=contact_subject,
                 contact_category=contact_category,

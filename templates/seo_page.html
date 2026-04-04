@@ -1,0 +1,460 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="seo-shell">
+    <div class="seo-aura seo-aura-one" aria-hidden="true"></div>
+    <div class="seo-aura seo-aura-two" aria-hidden="true"></div>
+
+    <div class="seo-page">
+        <header class="seo-topbar">
+            <a href="{{ url_for('landing') }}" class="seo-brand" aria-label="MyFXJournal home">
+                <img src="{{ url_for('static', filename='site-logo.png') }}" alt="MyFXJournal" class="seo-brand-logo">
+                <span>MyFXJournal</span>
+            </a>
+            <nav class="seo-nav" aria-label="SEO page">
+                <a href="{{ url_for('landing') }}">Home</a>
+                <a href="{{ url_for('landing') }}#compare">Compare</a>
+                <a href="{{ url_for('contact.contact') }}">Contact</a>
+            </nav>
+            <div class="seo-topbar-actions">
+                {% if user_logged_in %}
+                <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Dashboard</a>
+                <a href="{{ url_for('account.account') }}" class="submit-btn">Account</a>
+                {% else %}
+                <a href="{{ url_for('login') }}" class="ghost-btn">Log In</a>
+                <a href="{{ url_for('register') }}" class="submit-btn">Start Free</a>
+                {% endif %}
+            </div>
+        </header>
+
+        <article class="seo-hero">
+            <div class="seo-hero-copy">
+                <p class="seo-eyebrow">{{ seo_page.eyebrow }}</p>
+                <h1>{{ seo_page.hero_title }}</h1>
+                <p class="seo-lead">{{ seo_page.hero_body }}</p>
+                <div class="seo-chip-row" aria-label="Page highlights">
+                    {% for chip in seo_page.chips %}
+                    <span class="seo-chip{% if seo_page_slug == 'free-mt5-sync' and loop.first %} is-featured{% endif %}">{{ chip }}</span>
+                    {% endfor %}
+                </div>
+                <div class="seo-actions">
+                    {% if user_logged_in %}
+                    <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>
+                    <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask About Setup</a>
+                    {% else %}
+                    <a href="{{ url_for('register') }}" class="submit-btn">Start Free</a>
+                    <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask About Setup</a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <aside class="seo-hero-card">
+                <p class="seo-card-eyebrow">Why this matters</p>
+                <h2>{{ seo_page.intro_title }}</h2>
+                <p>{{ seo_page.intro_body }}</p>
+                <ul class="seo-signal-list">
+                    {% for point in seo_page.fit_points %}
+                    <li>{{ point }}</li>
+                    {% endfor %}
+                </ul>
+            </aside>
+        </article>
+
+        <section class="seo-section">
+            <div class="seo-section-head">
+                <p class="seo-section-eyebrow">What the workflow is trying to remove</p>
+                <h2>Less admin between the trades and the review.</h2>
+            </div>
+            <div class="seo-card-grid">
+                {% for card in seo_page.cards %}
+                <article class="seo-info-card">
+                    <h3>{{ card.title }}</h3>
+                    <p>{{ card.body }}</p>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="seo-section">
+            <div class="seo-section-head">
+                <p class="seo-section-eyebrow">How it flows</p>
+                <h2>Keep the review loop short enough to repeat.</h2>
+            </div>
+            <div class="seo-step-grid">
+                {% for step in seo_page.workflow_steps %}
+                <article class="seo-step-card">
+                    <span class="seo-step-number">0{{ loop.index }}</span>
+                    <h3>{{ step.title }}</h3>
+                    <p>{{ step.body }}</p>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="seo-section">
+            <div class="seo-section-head">
+                <p class="seo-section-eyebrow">FAQ</p>
+                <h2>Questions a trader would naturally ask first.</h2>
+            </div>
+            <div class="seo-faq-grid">
+                {% for item in seo_page.faq %}
+                <article class="seo-faq-card">
+                    <h3>{{ item.question }}</h3>
+                    <p>{{ item.answer }}</p>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="seo-section seo-section-related">
+            <div class="seo-section-head">
+                <p class="seo-section-eyebrow">Keep exploring</p>
+                <h2>Related ways traders might find this workflow.</h2>
+            </div>
+            <div class="seo-related-grid">
+                {% for page in related_pages %}
+                <a href="{{ page.url }}" class="seo-related-card">
+                    <p class="seo-related-eyebrow">{{ page.title }}</p>
+                    <h3>{{ page.hero_title }}</h3>
+                    <span>Open page</span>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="seo-cta-panel">
+            <p class="seo-card-eyebrow">MyFXJournal right now</p>
+            <h2>Free during open beta while the review workflow keeps getting sharper.</h2>
+            <p>Import the history, keep the context, and make reflection easier to keep up with before the next trading week starts.</p>
+            <div class="seo-actions">
+                {% if user_logged_in %}
+                <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>
+                {% else %}
+                <a href="{{ url_for('register') }}" class="submit-btn">Start Free</a>
+                {% endif %}
+                <a href="{{ url_for('landing') }}#compare" class="ghost-btn">See Pricing Context</a>
+            </div>
+        </section>
+    </div>
+</section>
+
+<style>
+    main {
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+    }
+
+    .seo-shell {
+        position: relative;
+        overflow: clip;
+        padding: clamp(1rem, 2vw, 1.4rem);
+        background:
+            radial-gradient(circle at top left, rgba(99, 102, 241, 0.16), transparent 28%),
+            radial-gradient(circle at 85% 18%, rgba(20, 184, 166, 0.12), transparent 24%),
+            linear-gradient(180deg, #030513 0%, #070c1f 58%, #091124 100%);
+    }
+
+    .seo-aura {
+        position: absolute;
+        inset: auto;
+        width: 34rem;
+        height: 34rem;
+        border-radius: 999px;
+        filter: blur(70px);
+        pointer-events: none;
+        opacity: 0.38;
+    }
+
+    .seo-aura-one {
+        top: -10rem;
+        right: -8rem;
+        background: rgba(99, 102, 241, 0.28);
+    }
+
+    .seo-aura-two {
+        bottom: -14rem;
+        left: -8rem;
+        background: rgba(16, 185, 129, 0.18);
+    }
+
+    .seo-page {
+        position: relative;
+        z-index: 1;
+        width: min(1180px, 100%);
+        margin: 0 auto;
+        display: grid;
+        gap: 1.1rem;
+    }
+
+    .seo-topbar,
+    .seo-hero,
+    .seo-section,
+    .seo-cta-panel {
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        background: rgba(8, 13, 31, 0.8);
+        box-shadow: 0 24px 60px rgba(2, 6, 23, 0.28);
+        backdrop-filter: blur(16px);
+    }
+
+    .seo-topbar {
+        border-radius: 24px;
+        padding: 0.95rem 1.05rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .seo-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.75rem;
+        text-decoration: none;
+        color: rgba(241, 245, 249, 0.96);
+        font-weight: 800;
+        letter-spacing: 0.01em;
+    }
+
+    .seo-brand-logo {
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: 14px;
+    }
+
+    .seo-nav,
+    .seo-topbar-actions,
+    .seo-actions,
+    .seo-chip-row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .seo-nav a {
+        color: rgba(226, 232, 240, 0.82);
+        text-decoration: none;
+        font-size: 0.94rem;
+    }
+
+    .seo-nav a:hover {
+        color: rgba(255, 255, 255, 0.98);
+    }
+
+    .seo-hero {
+        border-radius: 32px;
+        padding: clamp(1.2rem, 3vw, 2rem);
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.92fr);
+    }
+
+    .seo-eyebrow,
+    .seo-section-eyebrow,
+    .seo-card-eyebrow,
+    .seo-related-eyebrow {
+        margin: 0;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-weight: 800;
+        color: rgba(165, 180, 252, 0.92);
+    }
+
+    .seo-hero h1,
+    .seo-section h2,
+    .seo-cta-panel h2 {
+        margin: 0;
+        color: rgba(248, 250, 252, 0.98);
+        line-height: 1.02;
+    }
+
+    .seo-hero h1 {
+        font-size: clamp(2.3rem, 5vw, 4.5rem);
+        max-width: 11ch;
+    }
+
+    .seo-lead,
+    .seo-hero-card p,
+    .seo-info-card p,
+    .seo-step-card p,
+    .seo-faq-card p,
+    .seo-cta-panel p {
+        margin: 0;
+        color: rgba(226, 232, 240, 0.78);
+        line-height: 1.7;
+    }
+
+    .seo-chip {
+        padding: 0.52rem 0.82rem;
+        border-radius: 999px;
+        border: 1px solid rgba(129, 140, 248, 0.28);
+        background: rgba(11, 18, 40, 0.76);
+        color: rgba(224, 231, 255, 0.9);
+        font-size: 0.82rem;
+        font-weight: 700;
+    }
+
+    .seo-chip.is-featured {
+        border-color: rgba(74, 222, 128, 0.42);
+        background: rgba(15, 43, 30, 0.84);
+        color: rgba(187, 247, 208, 0.95);
+        box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.08), 0 10px 28px rgba(16, 185, 129, 0.12);
+    }
+
+    .seo-hero-card,
+    .seo-info-card,
+    .seo-step-card,
+    .seo-faq-card,
+    .seo-related-card {
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 22px;
+        background: rgba(11, 18, 40, 0.74);
+    }
+
+    .seo-hero-card {
+        padding: 1.15rem;
+        display: grid;
+        gap: 0.85rem;
+        align-content: start;
+    }
+
+    .seo-hero-card h2,
+    .seo-info-card h3,
+    .seo-step-card h3,
+    .seo-faq-card h3,
+    .seo-related-card h3 {
+        margin: 0;
+        color: rgba(248, 250, 252, 0.98);
+    }
+
+    .seo-signal-list {
+        margin: 0;
+        padding-left: 1.1rem;
+        display: grid;
+        gap: 0.45rem;
+        color: rgba(226, 232, 240, 0.82);
+    }
+
+    .seo-section {
+        border-radius: 28px;
+        padding: clamp(1.15rem, 2.6vw, 1.7rem);
+        display: grid;
+        gap: 1rem;
+    }
+
+    .seo-section-head {
+        display: grid;
+        gap: 0.35rem;
+        max-width: 58rem;
+    }
+
+    .seo-card-grid,
+    .seo-step-grid,
+    .seo-faq-grid,
+    .seo-related-grid {
+        display: grid;
+        gap: 0.9rem;
+    }
+
+    .seo-card-grid,
+    .seo-faq-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .seo-step-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .seo-info-card,
+    .seo-step-card,
+    .seo-faq-card {
+        padding: 1rem;
+        display: grid;
+        gap: 0.55rem;
+    }
+
+    .seo-step-number {
+        display: inline-flex;
+        width: fit-content;
+        padding: 0.36rem 0.55rem;
+        border-radius: 999px;
+        background: rgba(99, 102, 241, 0.14);
+        border: 1px solid rgba(129, 140, 248, 0.26);
+        color: rgba(199, 210, 254, 0.94);
+        font-size: 0.8rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+    }
+
+    .seo-related-grid {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .seo-related-card {
+        text-decoration: none;
+        padding: 1rem;
+        display: grid;
+        gap: 0.5rem;
+        transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+    }
+
+    .seo-related-card span {
+        color: rgba(167, 243, 208, 0.92);
+        font-weight: 700;
+    }
+
+    .seo-related-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(99, 102, 241, 0.42);
+        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.26);
+    }
+
+    .seo-cta-panel {
+        border-radius: 30px;
+        padding: clamp(1.25rem, 3vw, 1.9rem);
+        display: grid;
+        gap: 0.7rem;
+        text-align: left;
+    }
+
+    .seo-cta-panel h2 {
+        max-width: 14ch;
+        font-size: clamp(1.75rem, 3.6vw, 3rem);
+    }
+
+    @media (max-width: 980px) {
+        .seo-topbar,
+        .seo-hero {
+            grid-template-columns: 1fr;
+        }
+
+        .seo-topbar {
+            display: grid;
+            justify-items: start;
+        }
+
+        .seo-card-grid,
+        .seo-step-grid,
+        .seo-faq-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @media (max-width: 720px) {
+        .seo-shell {
+            padding: 0.8rem;
+        }
+
+        .seo-hero h1 {
+            font-size: clamp(2rem, 11vw, 2.9rem);
+        }
+
+        .seo-nav {
+            display: none;
+        }
+    }
+</style>
+{% endblock %}

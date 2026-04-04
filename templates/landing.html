@@ -208,6 +208,45 @@
         </div>
     </section>
 
+    <section class="landing-section use-case-section" id="use-cases" aria-labelledby="use-cases-title" data-reveal-scope>
+        <div class="landing-inner">
+            <p class="eyebrow landing-reveal" data-reveal-delay="40">Popular entry points</p>
+            <h2 id="use-cases-title" class="landing-reveal" data-reveal-delay="110">If free MT5 sync is the hook, lead with that first.</h2>
+            <p class="muted landing-reveal" data-reveal-delay="180">
+                Traders usually do not search for “reflection workflow.” They search for the practical thing in front of
+                them right now. So the strongest entry point at this stage is the free MT5 sync angle, backed by the
+                broader journaling and weekly review pages.
+            </p>
+
+            <div class="use-case-grid" aria-label="Popular search pages">
+                <a href="{{ url_for('free_mt5_sync_page') }}" class="use-case-card use-case-card-featured landing-reveal" data-reveal-delay="260">
+                    <p class="use-case-kicker">Featured now</p>
+                    <h3>Free MT5 Sync</h3>
+                    <p>Free during open beta, request-based, and built to feed the weekly review workflow instead of another export routine.</p>
+                    <span>Open the page</span>
+                </a>
+                <a href="{{ url_for('mt5_trading_journal_page') }}" class="use-case-card landing-reveal" data-reveal-delay="320">
+                    <p class="use-case-kicker">MT5 journal</p>
+                    <h3>MT5 Trading Journal</h3>
+                    <p>For traders searching for a journal around MetaTrader 5, not just a raw history dump.</p>
+                    <span>Open the page</span>
+                </a>
+                <a href="{{ url_for('forex_trading_journal_page') }}" class="use-case-card landing-reveal" data-reveal-delay="380">
+                    <p class="use-case-kicker">Forex journal</p>
+                    <h3>Forex Trading Journal</h3>
+                    <p>Focused on a lighter review habit, behavior context, and carrying one rule into the next week.</p>
+                    <span>Open the page</span>
+                </a>
+                <a href="{{ url_for('weekly_trading_review_page') }}" class="use-case-card landing-reveal" data-reveal-delay="440">
+                    <p class="use-case-kicker">Review loop</p>
+                    <h3>Weekly Trading Review</h3>
+                    <p>Built around turning the week into takeaways and reusable process rules without turning it into homework.</p>
+                    <span>Open the page</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
     <section class="landing-section" id="features" aria-labelledby="feature-showcase-title" data-reveal-scope>
         <div class="landing-inner">
             <p class="eyebrow landing-reveal" data-reveal-delay="40">Product proof</p>
@@ -1827,6 +1866,74 @@
         line-height: 1.55;
     }
 
+    .use-case-section .muted {
+        max-width: 70ch;
+    }
+
+    .use-case-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+        margin-top: 0.95rem;
+    }
+
+    .use-case-card {
+        border-radius: 22px;
+        border: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+        background: color-mix(in srgb, var(--surface) 80%, transparent);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        box-shadow: 0 10px 22px rgba(2, 6, 23, 0.14);
+        padding: 1rem 1.05rem;
+        display: grid;
+        gap: 0.6rem;
+        text-decoration: none;
+        color: inherit;
+        transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+    }
+
+    .use-case-card:hover {
+        transform: translateY(-2px);
+        border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+        box-shadow: 0 16px 32px rgba(2, 6, 23, 0.18);
+    }
+
+    .use-case-card-featured {
+        background:
+            linear-gradient(160deg, color-mix(in srgb, var(--good) 16%, transparent), transparent 42%),
+            color-mix(in srgb, var(--surface) 82%, transparent);
+        border-color: color-mix(in srgb, var(--good) 42%, var(--border));
+        box-shadow: 0 18px 40px rgba(22, 163, 74, 0.12), 0 12px 28px rgba(2, 6, 23, 0.18);
+    }
+
+    .use-case-kicker {
+        margin: 0;
+        color: color-mix(in srgb, var(--accent) 72%, var(--ink));
+        font-family: var(--landing-font-mono);
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .use-case-card h3 {
+        margin: 0;
+        font-size: 1.2rem;
+        line-height: 1.16;
+    }
+
+    .use-case-card p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.58;
+    }
+
+    .use-case-card span {
+        color: color-mix(in srgb, var(--good) 74%, var(--card));
+        font-weight: 700;
+        font-size: 0.92rem;
+    }
+
     .feature-showcase-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2683,12 +2790,14 @@
         }
 
         .workflow-automation-grid,
+        .use-case-grid,
         .comparison-grid,
         .feature-showcase-grid {
             width: 100%;
         }
 
         .workflow-automation-grid,
+        .use-case-grid,
         .comparison-grid {
             grid-template-columns: 1fr;
         }
@@ -2824,6 +2933,7 @@
         }
 
         .workflow-automation-card,
+        .use-case-card,
         .comparison-highlight-card,
         .comparison-card,
         .feature-showcase-card {
