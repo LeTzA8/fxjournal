@@ -261,17 +261,17 @@ SEO_PAGE_DEFINITIONS = {
     "mt5-trading-journal": {
         "title": "MyFXJournal | MT5 Trading Journal",
         "meta_description": (
-            "Use MyFXJournal as an MT5 trading journal that keeps MT5 sync light and turns raw trades into a weekly AI review."
+            "Use MyFXJournal as an MT5 trading journal that keeps MetaTrader 5 (MT5) sync light and turns raw trades into a weekly AI review."
         ),
         "eyebrow": "MT5 trading journal",
         "hero_title": "MT5 history in. Clear review out.",
         "hero_body": (
-            "Sync the account, keep the context, and turn raw MT5 trades into a weekly review you will actually read."
+            "Sync your MetaTrader 5 (MT5) account, keep the context, and turn raw MT5 trades into a weekly review you will actually read."
         ),
         "chips": ("Read-only MT5 sync", "Revenge-pattern flags"),
         "intro_title": "Why this lands",
         "intro_body": (
-            "Most MT5 traders already have the history. The real problem is turning it into something useful before the next week starts."
+            "Most MetaTrader 5 (MT5) traders already have the history. The real problem is turning it into something useful before the next week starts."
         ),
         "fit_points": (
             "Pull MT5 history into the right account without rebuilding the week in spreadsheets.",
@@ -327,12 +327,12 @@ SEO_PAGE_DEFINITIONS = {
     "free-mt5-sync": {
         "title": "MyFXJournal | Free MT5 Sync",
         "meta_description": (
-            "Free during open beta. Get MT5 sync in MyFXJournal and turn MetaTrader 5 history into a weekly AI review without spreadsheet overhead."
+            "Free during open beta. Get MetaTrader 5 (MT5) sync in MyFXJournal and turn MT5 history into a weekly AI review without spreadsheet overhead."
         ),
         "eyebrow": "Free MT5 sync",
         "hero_title": "Free MT5 sync. Less journal admin.",
         "hero_body": (
-            "During open beta, MT5 sync is free and built to feed the review loop, not another export habit."
+            "During open beta, MetaTrader 5 (MT5) sync is free and built to feed the review loop, not another export habit."
         ),
         "chips": ("Read-only MT5 sync", "Weekly review feed"),
         "intro_title": "Why this page matters",

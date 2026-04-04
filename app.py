@@ -237,6 +237,7 @@ def inject_trade_account_context():
         "current_page_path": current_page_path,
         "default_canonical_url": default_canonical_url,
         "google_site_verification": os.getenv("GOOGLE_SITE_VERIFICATION", "").strip(),
+        "google_analytics_measurement_id": os.getenv("GOOGLE_ANALYTICS_MEASUREMENT_ID", "").strip(),
     }
 
 

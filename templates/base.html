@@ -24,6 +24,15 @@
     <meta name="twitter:title" content="{{ title or 'MyFXJournal | Free Forex Trading Journal With Weekly AI Review' }}">
     <meta name="twitter:description" content="{{ meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
     <meta name="twitter:image" content="{{ url_for('static', filename='site-logo.png', v='1', _external=True) }}">
+    {% if google_analytics_measurement_id %}
+    <script async src="https://www.googletagmanager.com/gtag/js?id={{ google_analytics_measurement_id }}"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag("js", new Date());
+        gtag("config", {{ google_analytics_measurement_id|tojson }});
+    </script>
+    {% endif %}
     {% if google_site_verification %}
     <meta name="google-site-verification" content="{{ google_site_verification }}">
     {% endif %}
