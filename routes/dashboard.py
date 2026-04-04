@@ -1014,7 +1014,7 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
     }
 
 
-def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_access_state, requested_pubkey=""):
+def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_access_state):
     mt5_cfd_accounts = [
         account
         for account in account_rows
@@ -1023,39 +1023,53 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
     pending_requests_by_trade_account = mt5_access_state["pending_requests_by_trade_account"]
     approved_requests_by_trade_account = mt5_access_state["approved_requests_by_trade_account"]
     linked_mt5_trade_account_ids = mt5_access_state["linked_mt5_trade_account_ids"]
+    active_mt5_trade_account_ids = mt5_access_state["active_mt5_trade_account_ids"]
 
     status_rows = []
     for account in mt5_cfd_accounts:
         pending_request = pending_requests_by_trade_account.get(account.id)
         approved_request = approved_requests_by_trade_account.get(account.id)
         is_linked = account.id in linked_mt5_trade_account_ids
+        is_active_linked = account.id in active_mt5_trade_account_ids
 
-        if is_linked:
+        if is_active_linked:
             status = "linked"
             status_label = "MT5 Linked"
             note = "MT5 details are already on file for this account."
-            action_label = "Connected"
+        elif is_linked and pending_request is not None:
+            status = "pending"
+            status_label = "Pending Review"
+            note = (
+                "Request received. We'll notify you by email when your MT5 sync is ready. "
+                "This usually takes 1-2 business days."
+            )
+        elif is_linked:
+            status = "submitted"
+            status_label = "Setup Pending"
+            note = (
+                "MT5 details are saved. The remaining onboarding steps will be completed from admin "
+                "before sync becomes active."
+            )
         elif approved_request is not None:
             status = "approved"
             status_label = "Approved"
             reviewed_at = approved_request.reviewed_at.strftime("%Y-%m-%d %H:%M UTC") if approved_request.reviewed_at else None
             note = (
-                f"Approved {reviewed_at}. Submit your MT5 read-only account details."
+                f"Approved {reviewed_at}. Finish your MT5 sync request in this panel."
                 if reviewed_at
-                else "Approved. Submit your MT5 read-only account details."
+                else "Approved. Finish your MT5 sync request in this panel."
             )
-            action_label = "Submit Details"
         elif pending_request is not None:
             status = "pending"
             status_label = "Pending Review"
             requested_at = pending_request.created_at.strftime("%Y-%m-%d %H:%M UTC") if pending_request.created_at else "recently"
-            note = f"Requested {requested_at}. Awaiting manual review."
-            action_label = "Awaiting Review"
+            note = (
+                f"Requested {requested_at}. You can still submit your MT5 details in this panel so admin has everything in one place."
+            )
         else:
             status = "requestable"
             status_label = "Not Requested"
-            note = "No MT5 access request has been submitted yet."
-            action_label = "Request Access"
+            note = "No MT5 sync request has been submitted yet."
 
         status_rows.append(
             {
@@ -1063,55 +1077,28 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
                 "status": status,
                 "status_label": status_label,
                 "note": note,
-                "action_label": action_label,
                 "pending_request": pending_request,
                 "approved_request": approved_request,
                 "is_linked": is_linked,
+                "is_active_linked": is_active_linked,
             }
         )
 
-    selected_row = None
-    if requested_pubkey:
-        selected_row = next(
-            (row for row in status_rows if row["account"].pubkey == requested_pubkey),
-            None,
-        )
-
     active_account_id = getattr(active_trade_account, "id", None)
-    if selected_row is None and active_account_id is not None:
+    selected_row = None
+    if active_account_id is not None:
         selected_row = next(
             (row for row in status_rows if row["account"].id == active_account_id),
             None,
         )
 
-    if selected_row is None:
-        for status in ("approved", "requestable", "pending", "linked"):
-            selected_row = next(
-                (row for row in status_rows if row["status"] == status),
-                None,
-            )
-            if selected_row is not None:
-                break
-
     selected_account = selected_row["account"] if selected_row is not None else None
     selected_status = selected_row["status"] if selected_row is not None else None
 
-    for row in status_rows:
-        row["is_selected"] = (
-            selected_account is not None and row["account"].id == selected_account.id
-        )
-
     dashboard_next = url_for("dashboard.home", _anchor="mt5-access")
-    if selected_account is not None:
-        dashboard_next = url_for(
-            "dashboard.home",
-            mt5_account=selected_account.pubkey,
-            _anchor="mt5-access",
-        )
 
     return {
         "mt5_cfd_accounts": mt5_cfd_accounts,
-        "mt5_status_rows": status_rows,
         "mt5_selected_row": selected_row,
         "mt5_selected_account": selected_account,
         "mt5_selected_status": selected_status,
@@ -1131,7 +1118,6 @@ def home():
         account_rows=account_rows,
         active_trade_account=active_trade_account,
         mt5_access_state=mt5_access_state,
-        requested_pubkey=(request.args.get("mt5_account") or "").strip(),
     )
     user_trades = _load_user_trades(user_id, active_trade_account)
 
@@ -1221,7 +1207,20 @@ def home():
     )
     onboarding_banner_state = _get_onboarding_banner_state(user_id)
     has_any_trades = bool(user_trades)
+    has_trades = has_any_trades
     has_closed_trades = closed_trade_count > 0
+    active_trade_account_id = getattr(active_trade_account, "id", None)
+    has_mt5 = (
+        active_trade_account_id in mt5_access_state["active_mt5_trade_account_ids"]
+        if active_trade_account_id is not None
+        else False
+    )
+    if has_mt5:
+        dashboard_state = "state-3"
+    elif has_trades:
+        dashboard_state = "state-2"
+    else:
+        dashboard_state = "state-1"
     has_ai_review = weekly_ai_state["weekly_ai_review"] is not None
     show_whats_next_banner = not (has_any_trades and has_ai_review)
 
@@ -1259,6 +1258,9 @@ def home():
         review_workflow_button_label=review_workflow_banner_state["button_label"],
         review_workflow_button_href=review_workflow_banner_state["button_href"],
         review_workflow_show_skip=review_workflow_banner_state["show_skip"],
+        dashboard_state=dashboard_state,
+        has_trades=has_trades,
+        has_mt5=has_mt5,
         has_any_trades=has_any_trades,
         has_closed_trades=has_closed_trades,
         has_ai_review=has_ai_review,
@@ -1270,7 +1272,6 @@ def home():
         pending_mt5_requests_by_trade_account=mt5_access_state["pending_requests_by_trade_account"],
         approved_mt5_requests_by_trade_account=mt5_access_state["approved_requests_by_trade_account"],
         linked_mt5_trade_account_ids=mt5_access_state["linked_mt5_trade_account_ids"],
-        mt5_status_rows=mt5_sections["mt5_status_rows"],
         mt5_selected_row=mt5_sections["mt5_selected_row"],
         mt5_selected_account=mt5_sections["mt5_selected_account"],
         mt5_selected_status=mt5_sections["mt5_selected_status"],

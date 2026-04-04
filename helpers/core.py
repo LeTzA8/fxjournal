@@ -465,6 +465,7 @@ def build_mt5_access_state(user_id, trade_accounts=None):
     pending_requests_by_trade_account = {}
     approved_requests_by_trade_account = {}
     linked_mt5_trade_account_ids = set()
+    active_mt5_trade_account_ids = set()
 
     if account_ids:
         linked_mt5_trade_account_ids = {
@@ -473,6 +474,16 @@ def build_mt5_access_state(user_id, trade_accounts=None):
             .filter(
                 MT5Account.trade_account_id.in_(account_ids),
                 MT5Account.trade_account_id.isnot(None),
+            )
+            .all()
+        }
+        active_mt5_trade_account_ids = {
+            trade_account_id
+            for trade_account_id, in db.session.query(MT5Account.trade_account_id)
+            .filter(
+                MT5Account.trade_account_id.in_(account_ids),
+                MT5Account.trade_account_id.isnot(None),
+                MT5Account.is_active.is_(True),
             )
             .all()
         }
@@ -523,6 +534,7 @@ def build_mt5_access_state(user_id, trade_accounts=None):
         "pending_requests_by_trade_account": pending_requests_by_trade_account,
         "approved_requests_by_trade_account": approved_requests_by_trade_account,
         "linked_mt5_trade_account_ids": linked_mt5_trade_account_ids,
+        "active_mt5_trade_account_ids": active_mt5_trade_account_ids,
         "requestable_mt5_accounts": requestable_mt5_accounts,
         "approved_mt5_accounts": approved_mt5_accounts,
     }

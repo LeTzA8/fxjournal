@@ -2589,11 +2589,17 @@ def register_public_auth_routes(
                 }
             )
         orphaned_mt5_count = sum(1 for account in mt5_accounts if account.is_orphaned)
+        mt5_accounts_by_trade_account_id = {
+            account.trade_account_id: account
+            for account in mt5_accounts
+            if account.trade_account_id is not None
+        }
         return render_admin_page(
             admin_user=admin_user,
             section="mt5",
             mt5_accounts=mt5_accounts,
             pending_mt5_requests=pending_mt5_requests,
+            mt5_accounts_by_trade_account_id=mt5_accounts_by_trade_account_id,
             mt5_trade_counts_by_account=mt5_trade_counts_by_account,
             mt5_form_users=mt5_form_users,
             mt5_trade_accounts_by_user=mt5_trade_accounts_by_user,
@@ -3003,9 +3009,17 @@ def register_public_auth_routes(
             )
 
         try:
+            mt5_account = MT5Account.query.filter_by(trade_account_id=request_row.trade_account_id).first()
             request_row.status = MT5AccessRequest.STATUS_REJECTED
             request_row.reviewed_at = utcnow_naive()
             request_row.reviewed_by_user_id = admin_user.id if admin_user else None
+            if (
+                mt5_account is not None
+                and not mt5_account.is_active
+                and not mt5_account.terminal_path
+                and not mt5_account.appdata_hash
+            ):
+                db.session.delete(mt5_account)
             db.session.commit()
         except (OperationalError, IntegrityError):
             db.session.rollback()

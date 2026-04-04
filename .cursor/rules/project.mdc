@@ -1,0 +1,12 @@
+---
+description: FXJournal project workflow
+alwaysApply: true
+---
+
+- Read `/context/PROJECT_MAP.md`, `/context/CURRENT_STATE.md`, `/context/ROLES.md`, and `/context/DECISIONS.md`
+- Classify the task into one role using `/context/ROLES.md`
+- State `Role: <name>` before acting
+- Prefer targeted reads from `/context/PROJECT_MAP.md`; avoid full repo scans unless ownership is unclear or the task truly spans modules
+- Before major edits, give a short plan
+- Update `/context/CURRENT_STATE.md` after meaningful changes
+- Respect `/context/DECISIONS.md`; if deviating, state why briefly

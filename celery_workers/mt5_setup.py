@@ -8,6 +8,8 @@ import shutil
 import subprocess
 import time
 
+from flask import current_app
+
 from celery_app import celery
 
 
@@ -154,6 +156,31 @@ class PermanentSetupError(RuntimeError):
     """Raised when setup is running on the wrong host or missing required local config."""
 
 
+def _send_mt5_ready_email(account):
+    user = getattr(account, "user", None)
+    if user is None or not getattr(user, "email", None):
+        return
+
+    from auth_account import send_email_placeholder
+
+    try:
+        send_email_placeholder(
+            user.email,
+            "Your MT5 sync is ready",
+            (
+                f"Hi {user.username}, your MT5 sync is ready for {account.account_number}. "
+                "Open your dashboard any time to review the account and let the journal keep syncing automatically."
+            ),
+        )
+    except Exception as exc:
+        current_app.logger.warning(
+            "MT5 ready email failed for mt5_account_id=%s user_id=%s: %s",
+            account.id,
+            user.id,
+            exc,
+        )
+
+
 @celery.task(bind=True, max_retries=2, default_retry_delay=30, queue="mt5_setup")
 def setup_mt5_terminal(self, mt5_account_id: int):
     """
@@ -179,6 +206,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         if account.is_orphaned:
             raise PermanentSetupError("setup_mt5_terminal cannot run for an orphaned MT5 account")
 
+        was_active = bool(account.is_active)
         user_id = account.user_id
         trade_account_id = account.trade_account_id
         login = int(account.account_number)
@@ -283,6 +311,8 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         account.terminal_path = terminal_exe
         account.is_active = True
         db.session.commit()
+        if not was_active:
+            _send_mt5_ready_email(account)
 
         return {
             "terminal_path": terminal_exe,

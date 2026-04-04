@@ -793,10 +793,11 @@
                     <h2>Pending MT5 Requests</h2>
                     <span class="soft">{{ pending_mt5_requests|length }} pending</span>
                 </div>
-                <p class="helper-note">Approve or reject access requests here. Once approved, the user can submit MT5 details from the dashboard, or you can still add them manually below.</p>
+                <p class="helper-note">Approve or reject MT5 requests here. Account number, server, consent, and encrypted investor password are now saved when the user submits the dashboard form.</p>
                 {% if pending_mt5_requests %}
                 <div class="pending-list">
                     {% for request_row in pending_mt5_requests %}
+                    {% set submitted_mt5_account = mt5_accounts_by_trade_account_id.get(request_row.trade_account_id) %}
                     <article class="pending-card">
                         <div class="pending-meta">
                             <p class="pending-name">
@@ -809,7 +810,14 @@
                             <p class="pending-line">User ID: {{ request_row.user_id }}</p>
                             <p class="pending-line">Trade Account ID: {{ request_row.trade_account_id }}</p>
                             <p class="pending-line">Requested: {{ request_row.created_at.strftime("%Y-%m-%d %H:%M UTC") if request_row.created_at else "-" }}</p>
-                            <p class="pending-line">Note: {{ request_row.request_note or "No note provided." }}</p>
+                            <p class="pending-line">Note: {{ request_row.request_note or "Not provided." }}</p>
+                            {% if submitted_mt5_account %}
+                            <p class="pending-line">MT5 Account: {{ submitted_mt5_account.account_number }}</p>
+                            <p class="pending-line">Server: {{ submitted_mt5_account.server }}</p>
+                            <p class="pending-line">Consent: {{ submitted_mt5_account.mt5_consent_accepted_at.strftime("%Y-%m-%d %H:%M UTC") if submitted_mt5_account.mt5_consent_accepted_at else "Not recorded" }}</p>
+                            {% else %}
+                            <p class="pending-line">MT5 Details: Not submitted yet</p>
+                            {% endif %}
                         </div>
                         <div class="inline-actions">
                             <form action="{{ url_for('admin_mt5_approve_request', request_id=request_row.id) }}" method="post">

@@ -9,6 +9,7 @@
 {% set top_session = analytics.session_stats[0] if analytics.session_stats else none %}
 {% set rr_ratio = rr_summary.rr_capture_ratio %}
 {% set rr_value_tone = 'good' if rr_ratio is not none and rr_ratio >= 0.85 else 'bad' if rr_ratio is not none else '' %}
+{% set has_closed_trades = (summary.closed_trades or 0) > 0 %}
 <section class="analytics-shell">
     <div class="analytics-content">
         <header class="analytics-hero panel">
@@ -30,35 +31,66 @@
             </div>
         </header>
 
-        {% if summary.closed_trades == 0 %}
-        <section class="panel empty-state">
-            <h2>{% if has_any_trades %}Analytics unlock after your first closed trade{% else %}Analytics will fill in once you add trade history{% endif %}</h2>
-            <p>
-                {% if has_any_trades %}
-                You already have trades in the journal, but this page analyzes realized outcomes. Closed trades are what power win rate, expectancy, drawdown, session performance, and symbol breakdowns.
-                {% else %}
-                This page becomes useful once you import account history or add completed trades manually. It needs real trade outcomes before it can show patterns that are worth trusting.
-                {% endif %}
-            </p>
+        {% if not has_closed_trades %}
+        <section class="panel empty-state is-guided">
+            <div class="empty-state-copy">
+                <p class="empty-state-kicker">What's next</p>
+                <h2 class="empty-state-title">
+                    {% if has_any_trades %}
+                    Build your first closed-trade sample
+                    {% else %}
+                    Start your journal with real trade history
+                    {% endif %}
+                </h2>
+                <p class="empty-state-text">
+                    {% if has_any_trades %}
+                    You already have trades in the journal, but analytics learns from realized outcomes. Closed trades are what power win rate, expectancy, drawdown, session performance, and pair breakdowns worth trusting.
+                    {% else %}
+                    Import your MT5 or Tradovate history, or add a manual trade, to start filling the journal. Once you have closed trades in the journal, this page turns into a full breakdown of edge quality, session timing, and consistency.
+                    {% endif %}
+                </p>
+                <p class="empty-state-guidance">
+                    {% if has_any_trades %}
+                    Close or import completed trades to unlock the full analytics breakdown.
+                    {% else %}
+                    Import account history or add your first trade to unlock analytics.
+                    {% endif %}
+                </p>
+                <p class="empty-state-note">New to journal metrics? Use the <strong>?</strong> icons on analytics cards for quick explanations.</p>
+            </div>
             <div class="empty-step-grid">
-                <article class="empty-step-card">
+                <article class="empty-step-card {% if has_any_trades %}is-complete{% else %}is-current{% endif %}">
                     <p class="empty-step-label">Step 1</p>
                     <p class="empty-step-title">Add or import trades</p>
-                    <p class="empty-step-copy">Use the import page for MT5 or Tradovate history, or enter a trade manually if you are starting fresh.</p>
+                    <p class="empty-step-copy">
+                        {% if has_any_trades %}
+                        Complete
+                        {% else %}
+                        Start with MT5 history or a manual trade entry.
+                        {% endif %}
+                    </p>
                 </article>
-                <article class="empty-step-card">
+                <article class="empty-step-card {% if has_any_trades %}is-current{% endif %}">
                     <p class="empty-step-label">Step 2</p>
-                    <p class="empty-step-title">Make sure some trades are closed</p>
-                    <p class="empty-step-copy">Closed trades with realized PnL are what turn this page from empty space into actual analytics.</p>
+                    <p class="empty-step-title">Build closed-trade context</p>
+                    <p class="empty-step-copy">
+                        {% if has_any_trades %}
+                        Close or import completed trades to unlock analytics.
+                        {% else %}
+                        Closed trades power win rate, expectancy, and equity.
+                        {% endif %}
+                    </p>
                 </article>
                 <article class="empty-step-card">
                     <p class="empty-step-label">Step 3</p>
-                    <p class="empty-step-title">Come back for the breakdowns</p>
+                    <p class="empty-step-title">Review the full breakdown</p>
                     <p class="empty-step-copy">You will see win rate, expectancy, session timing, pair behavior, equity, and drawdown context here.</p>
                 </article>
             </div>
-            <div class="empty-actions">
-                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Import or Add Trades</a>
+            <div class="empty-actions guided-focus-panel guided-focus-panel-pulse">
+                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">
+                    {% if has_any_trades %}Import or Add Closed Trades{% else %}Import or Add Your First Trade{% endif %}
+                </a>
                 <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
             </div>
         </section>
@@ -766,42 +798,196 @@
         color: var(--muted);
     }
 
+    @property --analytics-focus-angle {
+        syntax: "<angle>";
+        initial-value: 0deg;
+        inherits: false;
+    }
+
     .empty-state {
-        text-align: center;
-        padding: 2rem 1rem;
+        display: grid;
+        gap: 1rem;
+        padding: 1.05rem 1.1rem;
+        border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+        background:
+            radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 32%),
+            linear-gradient(145deg, color-mix(in srgb, var(--card) 97%, transparent), color-mix(in srgb, var(--surface) 92%, transparent));
     }
 
-    .empty-state h2 {
-        font-size: 1.2rem;
+    .is-guided {
+        border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+        background:
+            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 16%, transparent), transparent 48%),
+            radial-gradient(circle at bottom left, color-mix(in srgb, var(--accent) 6%, transparent), transparent 56%),
+            color-mix(in srgb, var(--surface) 88%, transparent);
+        box-shadow:
+            0 20px 40px rgba(2, 6, 23, 0.24),
+            0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent),
+            0 0 24px color-mix(in srgb, var(--accent) 16%, transparent),
+            0 0 64px color-mix(in srgb, var(--accent) 6%, transparent);
     }
 
-    .empty-state p {
-        max-width: 620px;
-        margin: 0.65rem auto 0;
-        color: var(--muted);
+    .empty-state-copy {
+        display: grid;
+        gap: 0.28rem;
+    }
+
+    .empty-state-kicker {
+        margin: 0;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--accent) 62%, var(--ink));
+    }
+
+    .empty-state-title {
+        margin: 0;
+        font-size: clamp(1.05rem, 1.8vw, 1.34rem);
+        color: var(--ink);
+    }
+
+    .empty-state-text,
+    .empty-state-note {
+        margin: 0;
+        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
+        line-height: 1.55;
+    }
+
+    .empty-state-note {
+        font-size: 0.84rem;
+    }
+
+    .empty-state-guidance {
+        margin: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: fit-content;
+        max-width: 100%;
+        padding: 0.45rem 0.72rem;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--border));
+        background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+        color: color-mix(in srgb, var(--accent) 84%, var(--ink));
+        font-size: 0.76rem;
+        font-weight: 700;
+        line-height: 1.45;
     }
 
     .empty-actions {
-        margin-top: 1rem;
         display: flex;
         gap: 0.65rem;
-        justify-content: center;
+        justify-content: flex-start;
         flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .guided-focus-panel {
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+        padding: 0.78rem 0.84rem;
+        border-radius: 16px;
+        border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+        background:
+            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 20%, transparent), transparent 46%),
+            radial-gradient(circle at bottom left, color-mix(in srgb, var(--accent) 8%, transparent), transparent 56%),
+            color-mix(in srgb, var(--surface) 90%, transparent);
+        box-shadow:
+            0 20px 38px rgba(2, 6, 23, 0.28),
+            0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent),
+            0 0 26px color-mix(in srgb, var(--accent) 24%, transparent),
+            0 0 56px color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+
+    .guided-focus-panel::before {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        z-index: 0;
+        border-radius: inherit;
+        padding: 2px;
+        background: conic-gradient(
+            from var(--analytics-focus-angle),
+            transparent 0deg,
+            color-mix(in srgb, white 72%, var(--accent) 28%) 50deg,
+            transparent 105deg,
+            transparent 180deg,
+            color-mix(in srgb, white 52%, var(--accent) 48%) 230deg,
+            transparent 285deg,
+            transparent 360deg
+        );
+        -webkit-mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        mask-composite: exclude;
+        animation: analytics-guided-edge-spin 2.8s linear infinite;
+        pointer-events: none;
+    }
+
+    .guided-focus-panel::after {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        z-index: 0;
+        border-radius: inherit;
+        padding: 1.5px;
+        background:
+            linear-gradient(
+                135deg,
+                color-mix(in srgb, white 28%, var(--accent) 72%) 0%,
+                transparent 28%,
+                transparent 68%,
+                color-mix(in srgb, var(--accent) 40%, transparent) 100%
+            );
+        -webkit-mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        mask-composite: exclude;
+        pointer-events: none;
+        opacity: 0.8;
+    }
+
+    .guided-focus-panel > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    .guided-focus-panel-pulse {
+        animation: analytics-guided-pulse 2.5s ease-in-out infinite;
     }
 
     .empty-step-grid {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 0.75rem;
-        margin-top: 1rem;
     }
 
     .empty-step-card {
         border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
         border-radius: 14px;
         padding: 0.95rem 0.9rem;
-        background: color-mix(in srgb, var(--surface) 76%, transparent);
+        background: color-mix(in srgb, var(--surface) 88%, transparent);
         text-align: left;
+    }
+
+    .empty-step-card.is-complete {
+        border-color: color-mix(in srgb, var(--good) 42%, var(--border));
+        background: color-mix(in srgb, var(--good) 10%, var(--card));
+    }
+
+    .empty-step-card.is-current {
+        border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+        background: color-mix(in srgb, var(--accent) 10%, var(--card));
     }
 
     .empty-step-label,
@@ -1145,6 +1331,27 @@
         to { opacity: 1; }
     }
 
+    @keyframes analytics-guided-pulse {
+        0%, 100% {
+            box-shadow:
+                0 20px 38px rgba(2, 6, 23, 0.28),
+                0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent),
+                0 0 26px color-mix(in srgb, var(--accent) 24%, transparent),
+                0 0 56px color-mix(in srgb, var(--accent) 12%, transparent);
+        }
+        50% {
+            box-shadow:
+                0 23px 42px rgba(2, 6, 23, 0.32),
+                0 0 0 1px color-mix(in srgb, var(--accent) 48%, transparent),
+                0 0 30px color-mix(in srgb, var(--accent) 30%, transparent),
+                0 0 64px color-mix(in srgb, var(--accent) 14%, transparent);
+        }
+    }
+
+    @keyframes analytics-guided-edge-spin {
+        to { --analytics-focus-angle: 360deg; }
+    }
+
     .detail-list div {
         border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
         border-radius: 14px;
@@ -1379,8 +1586,27 @@
             grid-template-columns: 1fr;
         }
 
+        .empty-actions {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .empty-actions .trades-btn,
+        .empty-actions .ghost-btn {
+            width: 100%;
+            justify-content: center;
+        }
+
         .analytics-table {
             min-width: 560px;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .guided-focus-panel::before,
+        .guided-focus-panel-pulse {
+            animation: none !important;
+            transition: none !important;
         }
     }
 </style>

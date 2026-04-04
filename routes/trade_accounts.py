@@ -18,15 +18,275 @@ from helpers.core import (
     resolve_active_trade_account,
 )
 from helpers.legal import LEGAL_LAST_UPDATED
-from models import AIGeneratedResponse, MT5AccessRequest, MT5Account, Trade, TradeAccount, db
+from models import AIGeneratedResponse, MT5AccessRequest, MT5Account, Trade, TradeAccount, User, db
 from trading import get_account_type_choices, normalize_account_type
 from helpers.utils import TRUE_VALUES, encrypt_password, login_required, utcnow_naive
 
 bp = Blueprint("trade_accounts", __name__)
 
+MT5_REQUEST_SUCCESS_MESSAGE = (
+    "Request received. We'll notify you by email when your MT5 sync is ready. "
+    "This usually takes 1-2 business days."
+)
+
 
 def _get_mt5_access_redirect_target():
     return get_safe_internal_next("dashboard.home")
+
+
+def _mt5_request_wants_json_response():
+    return request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+
+def _build_mt5_request_response(*, ok, message, status, status_code=200, extra=None):
+    if _mt5_request_wants_json_response():
+        payload = {
+            "ok": ok,
+            "message": message,
+        }
+        if extra:
+            payload.update(extra)
+        return jsonify(payload), status_code
+    flash(message, status)
+    return redirect(_get_mt5_access_redirect_target())
+
+
+def _send_mt5_submission_admin_email(*, request_row, account, mt5_account):
+    feedback_to_email = os.getenv("FEEDBACK_TO_EMAIL", "").strip().lower()
+    if not feedback_to_email:
+        current_app.logger.warning(
+            "MT5 sync request submitted without FEEDBACK_TO_EMAIL configured: request_id=%s",
+            request_row.id,
+        )
+        return
+
+    email_subject = f"[FX Journal MT5 Request] {session.get('username', 'User')} requested MT5 sync"
+    email_body = (
+        "New MT5 sync request\n\n"
+        f"Request ID: {request_row.id}\n"
+        f"Submitted at: {request_row.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+        f"Request Status: {request_row.status}\n"
+        f"User ID: {account.user_id}\n"
+        f"Username: {session.get('username', 'User')}\n"
+        f"Trade Account ID: {account.id}\n"
+        f"Trade Account Name: {account.name}\n"
+        f"Trade Account Type: {account.account_type}\n"
+        f"Account Pubkey: {account.pubkey}\n"
+        f"MT5 Account Number: {mt5_account.account_number}\n"
+        f"Server: {mt5_account.server}\n"
+        "Investor Password: stored securely in-app and not included in email\n"
+        f"Consent Accepted At: {mt5_account.mt5_consent_accepted_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+    )
+    if request_row.request_note:
+        email_body += f"Submitted Note: {request_row.request_note}\n"
+
+    try:
+        send_email_placeholder(
+            feedback_to_email,
+            email_subject,
+            email_body,
+        )
+    except Exception as exc:
+        current_app.logger.warning(
+            "MT5 submission admin email failed for request_id=%s: %s",
+            request_row.id,
+            exc,
+        )
+
+
+def _send_mt5_submission_user_email(*, user):
+    try:
+        send_email_placeholder(
+            user.email,
+            "We received your MT5 sync request",
+            (
+                f"Hi {user.username}, we received your MT5 sync request. "
+                "We'll notify you by email when your MT5 sync is ready. "
+                "This usually takes 1-2 business days."
+            ),
+        )
+    except Exception as exc:
+        current_app.logger.warning(
+            "MT5 submission confirmation email failed for user_id=%s: %s",
+            user.id,
+            exc,
+        )
+
+
+def _submit_mt5_sync_request(trade_account_pubkey=None):
+    user_id = session["user_id"]
+    selected_pubkey = (trade_account_pubkey or request.form.get("trade_account_pubkey") or "").strip()
+    if not selected_pubkey:
+        return _build_mt5_request_response(
+            ok=False,
+            message="Choose a CFD trade account first.",
+            status="error",
+            status_code=400,
+        )
+
+    account = get_user_trade_account_by_pubkey(user_id, selected_pubkey)
+    if not account:
+        return _build_mt5_request_response(
+            ok=False,
+            message="Trade account not found.",
+            status="error",
+            status_code=404,
+        )
+
+    if normalize_account_type(account.account_type) != "CFD":
+        return _build_mt5_request_response(
+            ok=False,
+            message="MT5 sync currently supports CFD trade accounts only.",
+            status="error",
+            status_code=400,
+        )
+
+    existing_mt5_account = MT5Account.query.filter_by(trade_account_id=account.id).first()
+    if existing_mt5_account is not None:
+        message = (
+            "This trade account already has MT5 sync access configured."
+            if existing_mt5_account.is_active
+            else "This trade account already has an MT5 sync request in progress."
+        )
+        return _build_mt5_request_response(
+            ok=False,
+            message=message,
+            status="error",
+            status_code=409,
+        )
+
+    mt5_access_state = build_mt5_access_state(user_id, [account])
+    pending_request = mt5_access_state["pending_requests_by_trade_account"].get(account.id)
+    approved_request = mt5_access_state["approved_requests_by_trade_account"].get(account.id)
+    request_row = pending_request or approved_request
+
+    request_note = (request.form.get("request_note") or request.form.get("broker_name") or "").strip()
+    account_number = (request.form.get("account_number") or "").strip()
+    investor_password = request.form.get("investor_password") or ""
+    server = (request.form.get("server") or "").strip()
+    mt5_sync_consent = (request.form.get("mt5_sync_consent") or "").strip().lower()
+
+    if not account_number or not investor_password or not server:
+        return _build_mt5_request_response(
+            ok=False,
+            message="MT5 account number, investor password, and server are required.",
+            status="error",
+            status_code=400,
+        )
+    if len(request_note) > 500:
+        return _build_mt5_request_response(
+            ok=False,
+            message="MT5 request note must be 500 characters or less.",
+            status="error",
+            status_code=400,
+        )
+    if len(account_number) > 50 or not account_number.isdigit():
+        return _build_mt5_request_response(
+            ok=False,
+            message="MT5 account number must contain digits only and be 50 characters or less.",
+            status="error",
+            status_code=400,
+        )
+    if len(server) > 100:
+        return _build_mt5_request_response(
+            ok=False,
+            message="MT5 server must be 100 characters or less.",
+            status="error",
+            status_code=400,
+        )
+    if mt5_sync_consent not in TRUE_VALUES:
+        return _build_mt5_request_response(
+            ok=False,
+            message=(
+                "Confirm that you are submitting MT5 investor/read-only credentials and accept "
+                "the Terms and Privacy Policy for MT5 sync."
+            ),
+            status="error",
+            status_code=400,
+        )
+
+    user = db.session.get(User, user_id)
+    if user is None:
+        return _build_mt5_request_response(
+            ok=False,
+            message="User not found.",
+            status="error",
+            status_code=404,
+        )
+
+    try:
+        if request_row is None:
+            request_row = MT5AccessRequest(
+                user_id=user_id,
+                trade_account_id=account.id,
+                status=MT5AccessRequest.STATUS_PENDING,
+            )
+            db.session.add(request_row)
+
+        if request_note:
+            request_row.request_note = request_note
+
+        mt5_account = MT5Account(
+            user_id=user_id,
+            trade_account_id=account.id,
+            account_number=account_number,
+            investor_password_encrypted=encrypt_password(investor_password),
+            server=server,
+            terminal_path=None,
+            appdata_hash=None,
+            is_active=False,
+            mt5_consent_accepted_at=utcnow_naive(),
+            mt5_consent_version=LEGAL_LAST_UPDATED,
+        )
+        db.session.add(mt5_account)
+        db.session.commit()
+    except (RuntimeError, ValueError) as exc:
+        db.session.rollback()
+        return _build_mt5_request_response(
+            ok=False,
+            message=str(exc),
+            status="error",
+            status_code=400,
+        )
+    except IntegrityError:
+        db.session.rollback()
+        return _build_mt5_request_response(
+            ok=False,
+            message="This trade account already has an MT5 sync request in progress.",
+            status="error",
+            status_code=409,
+        )
+    except OperationalError:
+        db.session.rollback()
+        return _build_mt5_request_response(
+            ok=False,
+            message="Could not save your MT5 sync request right now. Please try again.",
+            status="error",
+            status_code=503,
+        )
+
+    _send_mt5_submission_admin_email(
+        request_row=request_row,
+        account=account,
+        mt5_account=mt5_account,
+    )
+    _send_mt5_submission_user_email(user=user)
+
+    status_label = (
+        "Setup Pending"
+        if request_row.status == MT5AccessRequest.STATUS_APPROVED
+        else "Pending Review"
+    )
+    return _build_mt5_request_response(
+        ok=True,
+        message=MT5_REQUEST_SUCCESS_MESSAGE,
+        status="success",
+        extra={
+            "account_name": account.name,
+            "status_label": status_label,
+            "status_note": MT5_REQUEST_SUCCESS_MESSAGE,
+        },
+    )
 
 
 @bp.route("/dashboard/trade-accounts/switch", methods=["POST"])
@@ -209,103 +469,7 @@ def update_trade_account(trade_account_pubkey):
 )
 @login_required
 def request_mt5_access(trade_account_pubkey=None):
-    user_id = session["user_id"]
-    selected_pubkey = (trade_account_pubkey or request.form.get("trade_account_pubkey") or "").strip()
-    if not selected_pubkey:
-        flash("Choose a CFD trade account first.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-    account = get_user_trade_account_by_pubkey(user_id, selected_pubkey)
-    if not account:
-        flash("Trade account not found.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-    if normalize_account_type(account.account_type) != "CFD":
-        flash("MT5 sync access can only be requested for CFD trade accounts.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-    mt5_access_state = build_mt5_access_state(user_id, [account])
-    if account.id in mt5_access_state["linked_mt5_trade_account_ids"]:
-        flash("This trade account already has MT5 sync access configured.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-    if account.id in mt5_access_state["pending_requests_by_trade_account"]:
-        flash("An MT5 sync access request is already pending for this trade account.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-    if account.id in mt5_access_state["approved_requests_by_trade_account"]:
-        flash(
-            "This trade account is already approved for MT5 sync. Submit your MT5 read-only account details below.",
-            "info",
-        )
-        return redirect(_get_mt5_access_redirect_target())
-
-    request_note = (request.form.get("request_note") or "").strip()
-    if len(request_note) > 500:
-        flash("MT5 request note must be 500 characters or less.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-    request_row = MT5AccessRequest(
-        user_id=user_id,
-        trade_account_id=account.id,
-        status=MT5AccessRequest.STATUS_PENDING,
-        request_note=request_note or None,
-    )
-
-    try:
-        db.session.add(request_row)
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        flash("An MT5 sync access request is already pending for this trade account.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-    except OperationalError:
-        db.session.rollback()
-        flash("Could not submit that MT5 sync access request right now. Please try again.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-    feedback_to_email = os.getenv("FEEDBACK_TO_EMAIL", "").strip().lower()
-    email_sent = False
-    if feedback_to_email:
-        email_subject = f"[FX Journal MT5 Request] {session.get('username', 'User')} requested access"
-        email_body = (
-            "New MT5 sync access request\n\n"
-            f"Request ID: {request_row.id}\n"
-            f"Submitted at: {request_row.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-            f"User ID: {user_id}\n"
-            f"Username: {session.get('username', 'User')}\n"
-            f"Trade Account ID: {account.id}\n"
-            f"Trade Account Name: {account.name}\n"
-            f"Trade Account Type: {account.account_type}\n"
-            f"Account Pubkey: {account.pubkey}\n"
-            f"Note: {request_row.request_note or '-'}\n"
-        )
-        try:
-            email_result = send_email_placeholder(
-                feedback_to_email,
-                email_subject,
-                email_body,
-            )
-            email_sent = bool((email_result or {}).get("sent"))
-        except Exception as exc:
-            current_app.logger.warning(
-                "MT5 access request email failed for request_id=%s: %s",
-                request_row.id,
-                exc,
-            )
-    else:
-        current_app.logger.warning(
-            "MT5 access request submitted without FEEDBACK_TO_EMAIL configured: request_id=%s",
-            request_row.id,
-        )
-
-    if email_sent:
-        flash("MT5 sync access request submitted. It will be reviewed soon.", "success")
-    else:
-        flash(
-            "MT5 sync access request submitted and queued for review, but email notification could not be delivered.",
-            "info",
-        )
-    return redirect(_get_mt5_access_redirect_target())
+    return _submit_mt5_sync_request(trade_account_pubkey=trade_account_pubkey)
 
 
 @bp.route("/dashboard/mt5/submit-details", methods=["POST"])
@@ -316,88 +480,7 @@ def request_mt5_access(trade_account_pubkey=None):
 )
 @login_required
 def submit_mt5_details():
-    user_id = session["user_id"]
-    selected_pubkey = (request.form.get("trade_account_pubkey") or "").strip()
-    if not selected_pubkey:
-        flash("Choose an approved CFD trade account first.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-    account = get_user_trade_account_by_pubkey(user_id, selected_pubkey)
-    if not account:
-        flash("Trade account not found.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-    if normalize_account_type(account.account_type) != "CFD":
-        flash("MT5 sync currently supports CFD trade accounts only.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-    mt5_access_state = build_mt5_access_state(user_id, [account])
-    if account.id in mt5_access_state["linked_mt5_trade_account_ids"]:
-        flash("This trade account already has MT5 sync access configured.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-    approved_request = mt5_access_state["approved_requests_by_trade_account"].get(account.id)
-    if approved_request is None:
-        if account.id in mt5_access_state["pending_requests_by_trade_account"]:
-            flash("This MT5 sync request is still pending review.", "error")
-        else:
-            flash("This trade account has not been approved for MT5 sync yet.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-    account_number = (request.form.get("account_number") or "").strip()
-    investor_password = request.form.get("investor_password") or ""
-    server = (request.form.get("server") or "").strip()
-    mt5_sync_consent = (request.form.get("mt5_sync_consent") or "").strip().lower()
-
-    if not account_number or not investor_password or not server:
-        flash("Account number, investor password, and server are required.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-    if mt5_sync_consent not in TRUE_VALUES:
-        flash(
-            "Confirm that you are submitting MT5 investor/read-only credentials and accept the Terms and Privacy Policy for MT5 sync.",
-            "error",
-        )
-        return redirect(_get_mt5_access_redirect_target())
-    if len(account_number) > 50:
-        flash("MT5 account number must be 50 characters or less.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-    if len(server) > 100:
-        flash("MT5 server must be 100 characters or less.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-    try:
-        mt5_account = MT5Account(
-            user_id=user_id,
-            trade_account_id=account.id,
-            account_number=account_number,
-            investor_password_encrypted=encrypt_password(investor_password),
-            server=server,
-            terminal_path=None,
-            appdata_hash=None,
-            is_active=False,
-            mt5_consent_accepted_at=utcnow_naive(),
-            mt5_consent_version=LEGAL_LAST_UPDATED,
-        )
-        db.session.add(mt5_account)
-        db.session.commit()
-    except (RuntimeError, ValueError) as exc:
-        db.session.rollback()
-        flash(str(exc), "error")
-        return redirect(_get_mt5_access_redirect_target())
-    except IntegrityError:
-        db.session.rollback()
-        flash("This trade account already has MT5 sync access configured.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-    except OperationalError:
-        db.session.rollback()
-        flash("Could not save your MT5 account details right now. Please try again.", "error")
-        return redirect(_get_mt5_access_redirect_target())
-
-        flash(
-            f"MT5 account details saved for {account.name}. The remaining onboarding steps will be completed from admin.",
-            "success",
-        )
-    return redirect(_get_mt5_access_redirect_target())
+    return _submit_mt5_sync_request()
 
 
 @bp.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/delete", methods=["POST"])
@@ -676,4 +759,5 @@ def trade_accounts():
         pending_mt5_requests_by_trade_account=mt5_access_state["pending_requests_by_trade_account"],
         approved_mt5_requests_by_trade_account=mt5_access_state["approved_requests_by_trade_account"],
         linked_mt5_trade_account_ids=mt5_access_state["linked_mt5_trade_account_ids"],
+        active_mt5_trade_account_ids=mt5_access_state["active_mt5_trade_account_ids"],
     )

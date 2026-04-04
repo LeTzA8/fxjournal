@@ -5,7 +5,7 @@ import json
 from sqlalchemy import inspect as sa_inspect
 
 from ai_service import WEEKLY_DASHBOARD_KIND
-from models import AIGeneratedResponse, AIPromptHistory
+from models import AIGeneratedResponse, AIPromptHistory, MT5Account
 
 import routes.dashboard as dashboard_routes
 from models import Trade, TradeAccount, TradeProfile, TradeProfileVersion, User, UserProfile, db
@@ -84,6 +84,161 @@ def test_dashboard_home_shows_too_few_trades_weekly_ai_message(app_ctx, client, 
 
     assert response.status_code == 200
     assert b"This week has limited trade data, so the AI review will stay cautious and avoid overconfident conclusions." in response.data
+
+
+def test_dashboard_home_uses_state_1_for_active_account_even_when_other_accounts_have_activity(app_ctx, client, monkeypatch):
+    user, active_trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-state-one-user",
+        email="dashboard-state-one@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    second_account = TradeAccount(
+        user_id=user.id,
+        name="Second Account",
+        account_type="CFD",
+        is_default=False,
+    )
+    db.session.add(second_account)
+    db.session.flush()
+
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=second_account.id,
+            symbol="GBPUSD",
+            side="BUY",
+            entry_price=1.25,
+            exit_price=1.255,
+            lot_size=0.02,
+            pnl=25.0,
+            opened_at=datetime(2026, 3, 22, 8, 0, 0),
+            closed_at=datetime(2026, 3, 22, 10, 0, 0),
+        )
+    )
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
+            trade_account_id=second_account.id,
+            account_number="55112233",
+            investor_password_encrypted="stored-token",
+            server="Broker-Live",
+            is_active=True,
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b'data-dashboard-state="state-1"' in response.data
+    assert b"journey-banner is-guided" in response.data
+    assert b"mt5-workflow-panel is-guided" in response.data
+    assert b'id="trade-journal"' not in response.data
+    assert b"Weekly AI Review" in response.data
+    assert b"Week on Week" not in response.data
+    assert b"Session Performance" not in response.data
+
+
+def test_dashboard_home_uses_state_2_when_active_account_has_trades_without_active_mt5(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-state-two-user",
+        email="dashboard-state-two@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.085,
+            exit_price=1.091,
+            lot_size=0.01,
+            pnl=60.0,
+            opened_at=datetime(2026, 3, 22, 8, 0, 0),
+            closed_at=datetime(2026, 3, 22, 10, 0, 0),
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b'data-dashboard-state="state-2"' in response.data
+    assert b"Connect MT5 for automatic sync" in response.data
+    assert b"mt5-workflow-panel is-guided" in response.data
+    assert b"journey-banner is-guided" not in response.data
+    assert b'id="trade-journal"' in response.data
+    assert b"Weekly AI Review" in response.data
+    assert b"Week on Week" in response.data
+    assert b"Session Performance" in response.data
+
+
+def test_dashboard_home_uses_state_3_when_active_account_has_active_mt5(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-state-three-user",
+        email="dashboard-state-three@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            account_number="88442211",
+            investor_password_encrypted="stored-token",
+            server="Broker-Live",
+            is_active=True,
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b'data-dashboard-state="state-3"' in response.data
+    assert b"Connect MT5 for automatic sync" not in response.data
+    assert b"journey-banner is-guided" not in response.data
+    assert b"mt5-workflow-panel is-guided" not in response.data
+    assert b'id="trade-journal"' in response.data
+    assert b"Weekly AI Review" in response.data
+    assert b"Week on Week" in response.data
+    assert b"Session Performance" in response.data
 
 
 def test_dashboard_home_marks_running_trade_rows(app_ctx, client, monkeypatch):
@@ -616,7 +771,7 @@ def test_weekly_ai_state_falls_back_to_latest_generated_review_for_account(app_c
     monkeypatch.setattr(dashboard_routes, "get_ai_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(dashboard_routes, "should_generate_weekly_dashboard_advice", lambda **kwargs: False)
 
-    weekly_ai_state = dashboard_routes._get_weekly_ai_state(user.id, trade_account, "UTC")
+    weekly_ai_state = dashboard_routes._get_weekly_ai_state(user.id, trade_account, "UTC", [])
 
     assert weekly_ai_state["weekly_ai_review"] is not None
     assert weekly_ai_state["weekly_ai_review"].id == review.id

@@ -36,6 +36,7 @@
                     {% set pending_mt5_request = pending_mt5_requests_by_trade_account.get(trade_account.id) %}
                     {% set approved_mt5_request = approved_mt5_requests_by_trade_account.get(trade_account.id) %}
                     {% set mt5_is_linked = trade_account.id in linked_mt5_trade_account_ids %}
+                    {% set mt5_is_active_linked = trade_account.id in active_mt5_trade_account_ids %}
                     <article
                         class="account-card {% if active_trade_account and trade_account.id == active_trade_account.id %}active{% endif %}"
                         data-trade-account-card
@@ -65,8 +66,10 @@
                                 {% else %}
                                 <span class="chip default default-chip" hidden>Default</span>
                                 {% endif %}
-                                {% if trade_account.account_type == "CFD" and mt5_is_linked %}
+                                {% if trade_account.account_type == "CFD" and mt5_is_active_linked %}
                                 <span class="chip default">MT5 Linked</span>
+                                {% elif trade_account.account_type == "CFD" and mt5_is_linked %}
+                                <span class="chip default">MT5 Setup Pending</span>
                                 {% elif trade_account.account_type == "CFD" and pending_mt5_request %}
                                 <span class="chip default">MT5 Request Pending</span>
                                 {% elif trade_account.account_type == "CFD" and approved_mt5_request %}
@@ -133,8 +136,17 @@
                         {% if trade_account.account_type == "CFD" %}
                         <div class="mt5-request-block">
                             <p class="account-meta mt5-request-title">MT5 Sync Access</p>
-                            {% if mt5_is_linked %}
+                            {% if mt5_is_active_linked %}
                             <p class="account-meta">This trade account already has MT5 sync access configured.</p>
+                            {% elif mt5_is_linked and pending_mt5_request %}
+                            <p class="account-meta">MT5 details are already submitted for this account and the request is under review.</p>
+                            {% if pending_mt5_request.request_note %}
+                            <p class="account-meta">Note: {{ pending_mt5_request.request_note }}</p>
+                            {% endif %}
+                            <p class="account-meta">We'll notify you by email when your MT5 sync is ready.</p>
+                            {% elif mt5_is_linked %}
+                            <p class="account-meta">MT5 details are already saved for this account.</p>
+                            <p class="account-meta">Admin is completing the remaining setup before sync becomes active.</p>
                             {% elif pending_mt5_request %}
                             <p class="account-meta">
                                 Request submitted {{ pending_mt5_request.created_at.strftime("%Y-%m-%d %H:%M UTC") if pending_mt5_request.created_at else "recently" }}.
@@ -142,12 +154,15 @@
                             {% if pending_mt5_request.request_note %}
                             <p class="account-meta">Note: {{ pending_mt5_request.request_note }}</p>
                             {% endif %}
-                            <p class="account-meta">It will be reviewed from admin and moved forward there.</p>
+                            <p class="account-meta">You can now finish the full MT5 sync form from the dashboard card without waiting for approval first.</p>
                             {% elif approved_mt5_request %}
                             <p class="account-meta">
                                 Access approved{% if approved_mt5_request.reviewed_at %} {{ approved_mt5_request.reviewed_at.strftime("%Y-%m-%d %H:%M UTC") }}{% endif %}.
                             </p>
-                            <p class="account-meta">Submit your MT5 account number, read-only investor password, and server from the dashboard card.</p>
+                            {% if approved_mt5_request.request_note %}
+                            <p class="account-meta">Note: {{ approved_mt5_request.request_note }}</p>
+                            {% endif %}
+                            <p class="account-meta">Finish the full MT5 sync form from the dashboard card and admin will handle the remaining setup.</p>
                             {% else %}
                             <p class="account-meta">Manage MT5 requests from the dashboard card instead of per-account forms.</p>
                             <a href="{{ url_for('dashboard.home', _anchor='mt5-access') }}" class="ghost-link btn-link">Open Dashboard MT5 Access</a>

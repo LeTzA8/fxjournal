@@ -115,9 +115,12 @@
 {% endblock %}
 
 {% block content %}
+{% set is_state_one = dashboard_state == "state-1" %}
+{% set is_state_two = dashboard_state == "state-2" %}
+{% set show_mt5_guidance = is_state_one or is_state_two %}
 <section class="dash-wrap">
 
-    <div class="dash-content">
+    <div class="dash-content" data-dashboard-state="{{ dashboard_state }}">
         <header class="dash-head">
             <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a></div>
             <div class="head-row">
@@ -138,7 +141,7 @@
         </header>
 
         {% if show_whats_next_banner %}
-        <section class="panel journey-banner">
+        <section class="panel journey-banner{% if is_state_one %} is-guided{% endif %}">
             <div class="journey-banner-copy">
                 <p class="journey-banner-kicker">What's next</p>
                 <h2 class="journey-banner-title">
@@ -163,6 +166,9 @@
                     You already have trade data in place. Keep journaling until you have an eligible completed trade week and at least {{ weekly_ai_min_closed_trades }} closed trades for the first full weekly AI review.
                     {% endif %}
                 </p>
+                {% if is_state_one %}
+                <p class="dashboard-guidance-copy">Import account history or add your first trade to unlock the rest of the dashboard.</p>
+                {% endif %}
                 <p class="journey-banner-note">New to journal metrics? Use the <strong>?</strong> icons on dashboard and analytics cards for quick explanations.</p>
             </div>
             <div class="journey-steps" aria-label="Getting started progress">
@@ -204,8 +210,8 @@
                     </p>
                 </article>
             </div>
-            <div class="journey-actions">
-                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Import or Add Trades</a>
+            <div class="journey-actions{% if is_state_one %} guided-focus-panel guided-focus-panel-pulse{% endif %}">
+                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">{% if is_state_one %}Import or Add Your First Trade{% else %}Import or Add Trades{% endif %}</a>
                 <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
                 {% if has_closed_trades %}
                 <a href="{{ url_for('dashboard.analytics') }}" class="ghost-btn">View Analytics</a>
@@ -274,28 +280,30 @@
         </section>
         {% endif %}
 
-        <section class="ai-hero-grid {% if mt5_cfd_accounts %}has-mt5{% else %}no-mt5{% endif %}" data-reveal-row-step="120" data-reveal-col-step="70">
+        <section class="ai-hero-grid {% if mt5_cfd_accounts %}has-mt5{% else %}no-mt5{% endif %}{% if is_state_one %} state-onboarding{% endif %}" data-reveal-row-step="120" data-reveal-col-step="70">
             <div class="mt5-side-stack">
                 {% if mt5_cfd_accounts %}
-                <article id="mt5-access" class="panel mt5-access-panel mt5-workflow-panel">
+                <article id="mt5-access" class="panel mt5-access-panel mt5-workflow-panel{% if show_mt5_guidance %} is-guided{% endif %}">
                     <div class="panel-head">
                         <div class="panel-title-wrap">
                             <h2>MT5 Sync Setup</h2>
                             {% if mt5_selected_account %}
                             <p class="panel-account-note">{{ mt5_selected_account.name }}</p>
                             {% else %}
-                            <p class="panel-account-note">Select a CFD trade account</p>
+                            <p class="panel-account-note">Switch to a CFD trade account from the account switcher</p>
                             {% endif %}
                         </div>
                         <span class="soft">
-                            {% if mt5_selected_status == "requestable" %}
-                            Step 1 of 2
-                            {% elif mt5_selected_status == "approved" %}
-                            Step 2 of 2
+                            {% if mt5_selected_status == "linked" %}
+                            Connected
+                            {% elif mt5_selected_row and mt5_selected_row.is_linked and mt5_selected_status == "pending" %}
+                            Pending Review
+                            {% elif mt5_selected_row and mt5_selected_row.is_linked %}
+                            Setup Pending
+                            {% elif mt5_selected_status in ("requestable", "approved", "pending") %}
+                            Request MT5 Sync
                             {% elif mt5_selected_status == "pending" %}
                             Pending Review
-                            {% elif mt5_selected_status == "linked" %}
-                            Connected
                             {% else %}
                             Manual Onboarding
                             {% endif %}
@@ -304,126 +312,133 @@
 
                     {% if mt5_selected_row %}
                     <div class="mt5-workflow-summary">
-                        <span class="mt5-status-pill{% if mt5_selected_status == 'linked' %} is-linked{% elif mt5_selected_status == 'pending' %} is-pending{% elif mt5_selected_status == 'approved' %} is-approved{% else %} is-idle{% endif %}">
+                        <span class="mt5-status-pill{% if mt5_selected_status == 'linked' %} is-linked{% elif mt5_selected_status == 'pending' %} is-pending{% elif mt5_selected_status == 'approved' %} is-approved{% elif mt5_selected_status == 'submitted' %} is-submitted{% else %} is-idle{% endif %}" data-mt5-status-pill>
                             {{ mt5_selected_row.status_label }}
                         </span>
-                        <p class="mt5-panel-copy">{{ mt5_selected_row.note }}</p>
+                        <p class="mt5-panel-copy" data-mt5-panel-copy>{{ mt5_selected_row.note }}</p>
                     </div>
                     {% endif %}
 
-                    {% if mt5_selected_status == "requestable" and mt5_selected_account %}
-                    <p class="mt5-panel-copy">Request access for this CFD account first. Once approved, this same panel switches to the MT5 read-only details form automatically.</p>
-                    <form action="{{ url_for('trade_accounts.request_mt5_access') }}" method="post" class="mt5-card-form">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
-                        <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
+                    {% if show_mt5_guidance %}
+                    <p class="dashboard-guidance-copy dashboard-guidance-copy-mt5">Connect MT5 for automatic sync{% if is_state_one %} on this account{% endif %}.</p>
+                    {% endif %}
 
-                        <div class="mt5-selected-account-card">
-                            <span class="mt5-selected-account-label">Selected Account</span>
-                            <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                            <span class="mt5-selected-account-meta">CFD account ready for a new MT5 access request.</span>
-                        </div>
+                    {% if mt5_selected_account and mt5_selected_row and not mt5_selected_row.is_linked and mt5_selected_status in ("requestable", "approved", "pending") %}
+                    {% if mt5_selected_status == "pending" %}
+                    <p class="mt5-panel-copy">You already have an MT5 request in review for this account. Finish the full form here so admin has everything in one place.</p>
+                    {% elif mt5_selected_status == "approved" %}
+                    <p class="mt5-panel-copy">Approval is already in place for this account. Finish the full form here so admin can complete setup.</p>
+                    {% else %}
+                    <p class="mt5-panel-copy">Submit one form and admin will handle the remaining MT5 setup from there. Use investor/read-only credentials only, never a trading or master password.</p>
+                    {% endif %}
+                    <div class="mt5-form-shell{% if show_mt5_guidance %} guided-focus-panel{% endif %}{% if is_state_one %} guided-focus-panel-pulse{% endif %}" data-mt5-form-shell>
+                        <form
+                            action="{{ url_for('trade_accounts.request_mt5_access') }}"
+                            method="post"
+                            class="mt5-card-form"
+                            data-themed-validation
+                            data-mt5-request-form
+                        >
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
+                            <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
 
-                        <label for="dashboard_mt5_request_note">Optional note</label>
-                        <textarea
-                            id="dashboard_mt5_request_note"
-                            name="request_note"
-                            maxlength="500"
-                            rows="3"
-                            placeholder="Anything I should know before reviewing this MT5 request?"
-                        ></textarea>
+                            <div class="mt5-selected-account-card">
+                                <span class="mt5-selected-account-label">Selected Account</span>
+                                <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
+                                <span class="mt5-selected-account-meta">Your full MT5 sync request for this CFD account is collected here in one step.</span>
+                            </div>
 
-                        <button type="submit" class="submit-btn">Request MT5 Sync Access</button>
-                    </form>
-                    {% elif mt5_selected_status == "approved" and mt5_selected_account %}
-                    <p class="mt5-panel-copy">Approval is done for this account. Submit MT5 investor/read-only credentials only, never a master or trading password.</p>
-                    <form action="{{ url_for('trade_accounts.submit_mt5_details') }}" method="post" class="mt5-card-form">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
-                        <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
+                            <div class="mt5-request-form-alert" data-mt5-form-alert role="status" hidden></div>
 
-                        <div class="mt5-selected-account-card">
-                            <span class="mt5-selected-account-label">Approved Account</span>
-                            <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                            <span class="mt5-selected-account-meta">Manual review is complete. You can submit details now.</span>
-                        </div>
+                            <div class="mt5-form-grid">
+                                <div class="mt5-form-field">
+                                    <label for="mt5_account_number">MT5 account number</label>
+                                    <input
+                                        id="mt5_account_number"
+                                        name="account_number"
+                                        type="text"
+                                        inputmode="numeric"
+                                        maxlength="50"
+                                        placeholder="Enter your MT5 login"
+                                        required
+                                    >
+                                </div>
 
-                        <p class="mt5-card-warning">
-                            Submit MT5 investor/read-only credentials only. Do not enter your master password, trading password, or any credential that can place trades or withdraw funds.
-                        </p>
+                                <div class="mt5-form-field">
+                                    <label for="mt5_investor_password">Investor password</label>
+                                    <div class="mt5-password-row">
+                                        <input
+                                            id="mt5_investor_password"
+                                            name="investor_password"
+                                            type="password"
+                                            placeholder="Read-only investor password"
+                                            required
+                                        >
+                                        <button type="button" class="ghost-btn mt5-password-toggle" data-mt5-password-toggle aria-controls="mt5_investor_password" aria-pressed="false">
+                                            Show
+                                        </button>
+                                    </div>
+                                    <p class="mt5-card-helper">Use your investor (read-only) password, not your master trading password</p>
+                                </div>
 
-                        <label for="mt5_account_number">MT5 account number</label>
-                        <input id="mt5_account_number" name="account_number" type="text" maxlength="50" required>
+                                <div class="mt5-form-field">
+                                    <label for="mt5_server">Server name</label>
+                                    <input
+                                        id="mt5_server"
+                                        name="server"
+                                        type="text"
+                                        maxlength="100"
+                                        placeholder="e.g. Broker-Server"
+                                        required
+                                    >
+                                </div>
+                            </div>
 
-                        <label for="mt5_server">Server</label>
-                        <input id="mt5_server" name="server" type="text" maxlength="100" required>
+                            <label class="mt5-card-consent" for="mt5_sync_consent">
+                                <input id="mt5_sync_consent" name="mt5_sync_consent" type="checkbox" value="on" required data-mt5-consent>
+                                <span>I confirm this is my read-only investor password. MyFXJournal cannot place trades or withdraw funds on my behalf.</span>
+                            </label>
 
-                        <label for="mt5_investor_password">Investor password (read-only only)</label>
-                        <input id="mt5_investor_password" name="investor_password" type="password" required>
-
-                        <label class="mt5-card-consent" for="mt5_sync_consent">
-                            <input id="mt5_sync_consent" name="mt5_sync_consent" type="checkbox" value="on" required>
-                            <span>I confirm these are MT5 investor/read-only credentials with no trading or withdrawal permissions, and I agree to the <a href="{{ url_for('terms_and_conditions') }}" target="_blank" rel="noopener">Terms and Conditions</a> and <a href="{{ url_for('privacy_policy') }}" target="_blank" rel="noopener">Privacy Policy</a> for MT5 sync.</span>
-                        </label>
-
-                        <button type="submit" class="submit-btn">Save MT5 Account Details</button>
-                    </form>
-                    <p class="mt5-card-footnote">Details are stored in-app, protected for MT5 sync use, and completed manually from admin.</p>
-                    {% elif mt5_selected_status == "pending" and mt5_selected_row %}
-                    <p class="mt5-card-empty">This account is waiting on manual approval. Once approved, this panel will switch to the MT5 details form automatically.</p>
-                    {% if mt5_selected_row.pending_request and mt5_selected_row.pending_request.request_note %}
+                            <button type="submit" class="submit-btn" data-mt5-submit disabled>Request MT5 Sync</button>
+                        </form>
+                    </div>
+                    <p class="mt5-card-footnote">Your investor password is encrypted before storage and kept only for approved MT5 sync setup.</p>
+                    {% elif mt5_selected_status == "pending" and mt5_selected_account %}
+                    <p class="mt5-card-empty">Request received. We'll notify you by email when your MT5 sync is ready. This usually takes 1-2 business days.</p>
                     <div class="mt5-selected-account-card">
-                        <span class="mt5-selected-account-label">Submitted Note</span>
-                        <strong class="mt5-selected-account-name">Review context</strong>
-                        <span class="mt5-selected-account-meta">{{ mt5_selected_row.pending_request.request_note }}</span>
+                        <span class="mt5-selected-account-label">Request Received</span>
+                        <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
+                        <span class="mt5-selected-account-meta">Admin is reviewing your MT5 sync request.</span>
                     </div>
-                    {% endif %}
+                    {% elif mt5_selected_status == "submitted" and mt5_selected_account %}
+                    <p class="mt5-card-empty">MT5 details are saved for this account. The remaining onboarding steps will be completed from admin before sync becomes active.</p>
+                    <div class="mt5-selected-account-card">
+                        <span class="mt5-selected-account-label">Saved Details</span>
+                        <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
+                        <span class="mt5-selected-account-meta">You do not need to resubmit credentials unless support asks you to update them.</span>
+                    </div>
                     {% elif mt5_selected_status == "linked" and mt5_selected_account %}
-                    <p class="mt5-card-empty">This account is already linked for MT5 sync. Select another CFD account below if you want to start or finish onboarding elsewhere.</p>
+                    <p class="mt5-card-empty">This account is already linked for MT5 sync. Switch your active dashboard account if you want to check MT5 onboarding on a different account.</p>
                     <div class="mt5-selected-account-card">
                         <span class="mt5-selected-account-label">Connected Account</span>
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
                         <span class="mt5-selected-account-meta">MT5 details are already on file for this account.</span>
                     </div>
+                    {% elif mt5_cfd_accounts and not mt5_selected_account %}
+                    <p class="mt5-card-empty">Switch your active dashboard account to a CFD trade account to view or manage its MT5 sync status here.</p>
+                    <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}{% if is_state_one %} guided-focus-panel-pulse{% endif %}">
+                        <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Open Trade Accounts</a>
+                    </div>
                     {% else %}
                     <p class="mt5-card-empty">Create a CFD trade account first, then request MT5 sync access here.</p>
-                    <div class="panel-empty-actions">
+                    <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}{% if is_state_one %} guided-focus-panel-pulse{% endif %}">
                         <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Open Trade Accounts</a>
                     </div>
                     {% endif %}
                 </article>
-
-                <article class="panel mt5-access-panel mt5-status-panel">
-                    <div class="panel-head">
-                        <div class="panel-title-wrap">
-                            <h2>Account Sync Status</h2>
-                            <p class="panel-account-note">Select an account to load the correct next step above.</p>
-                        </div>
-                        <span class="soft">{{ mt5_cfd_accounts|length }} CFD account{{ 's' if mt5_cfd_accounts|length != 1 else '' }}</span>
-                    </div>
-                    <div class="mt5-status-list">
-                        {% for mt5_row in mt5_status_rows %}
-                        <a
-                            href="{{ url_for('dashboard.home', mt5_account=mt5_row.account.pubkey, _anchor='mt5-access') }}"
-                            class="mt5-status-item{% if mt5_row.is_selected %} is-selected{% endif %}"
-                            {% if mt5_row.is_selected %}aria-current="true"{% endif %}
-                        >
-                            <div>
-                                <p class="mt5-status-name">{{ mt5_row.account.name }}</p>
-                                <p class="mt5-status-note">{{ mt5_row.note }}</p>
-                            </div>
-                            <div class="mt5-status-item-side">
-                                <span class="mt5-status-pill{% if mt5_row.status == 'linked' %} is-linked{% elif mt5_row.status == 'pending' %} is-pending{% elif mt5_row.status == 'approved' %} is-approved{% else %} is-idle{% endif %}">
-                                    {{ mt5_row.status_label }}
-                                </span>
-                                <span class="mt5-status-link">{{ mt5_row.action_label }}</span>
-                            </div>
-                        </a>
-                        {% endfor %}
-                    </div>
-                </article>
                 {% else %}
-                <article id="mt5-access" class="panel mt5-access-panel mt5-overview-panel-empty">
+                <article id="mt5-access" class="panel mt5-access-panel mt5-overview-panel-empty{% if show_mt5_guidance %} is-guided{% endif %}">
                     <div class="panel-head">
                         <div class="panel-title-wrap">
                             <h2>MT5 Sync Setup</h2>
@@ -431,8 +446,11 @@
                         </div>
                         <span class="soft">Manual Onboarding</span>
                     </div>
+                    {% if show_mt5_guidance %}
+                    <p class="dashboard-guidance-copy dashboard-guidance-copy-mt5">Connect MT5 for automatic sync{% if is_state_one %} after you add the right account{% endif %}.</p>
+                    {% endif %}
                     <p class="mt5-card-empty">You will see the setup flow here as soon as you have a CFD trade account available.</p>
-                    <div class="panel-empty-actions">
+                    <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}{% if is_state_one %} guided-focus-panel-pulse{% endif %}">
                         <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Open Trade Accounts</a>
                     </div>
                 </article>
@@ -513,6 +531,7 @@
                     <p class="insight-note">NFA: For journaling and educational use only. This AI review is not financial or investment advice.</p>
                 </div>
             </article>
+            {% if not is_state_one %}
             <section class="metric-grid dashboard-metric-grid">
                 <article class="metric">
                     <p class="metric-label">
@@ -614,8 +633,10 @@
                     </p>
                 </article>
             </section>
+            {% endif %}
             </div>
         </section>
+        {% if not is_state_one %}
         <section class="panel-grid" data-reveal-row-step="140" data-reveal-col-step="90">
             <div class="panel-column panel-column-main">
                 <article class="panel trade-log" id="trade-journal">
@@ -931,6 +952,7 @@
                 </article>
             </div>
         </section>
+        {% endif %}
     </div>
 </section>
 
@@ -949,6 +971,39 @@
 
     .dash-content { position: relative;
         z-index: 1; }
+
+    .dash-content[data-dashboard-state="state-1"] {
+        display: grid;
+        grid-template-columns: minmax(0, 1.04fr) minmax(360px, 0.96fr);
+        gap: 0.9rem;
+        align-items: start;
+    }
+
+    .dash-content[data-dashboard-state="state-1"] > .dash-head,
+    .dash-content[data-dashboard-state="state-1"] > .onboarding-banner,
+    .dash-content[data-dashboard-state="state-1"] > .workflow-banner {
+        grid-column: 1 / -1;
+    }
+
+    .dash-content[data-dashboard-state="state-1"] > .journey-banner {
+        order: 1;
+        margin-bottom: 0;
+        min-width: 0;
+    }
+
+    .dash-content[data-dashboard-state="state-1"] > .ai-hero-grid.state-onboarding {
+        order: 2;
+        margin-bottom: 0;
+        min-width: 0;
+    }
+
+    .dash-content[data-dashboard-state="state-1"] > .onboarding-banner {
+        order: 3;
+    }
+
+    .dash-content[data-dashboard-state="state-1"] > .workflow-banner {
+        order: 4;
+    }
     .dash-head { margin-bottom: 1rem;
         padding: 1rem 1.05rem 1.02rem;
         border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
@@ -1064,6 +1119,10 @@
         align-items: start;
     }
 
+    .ai-hero-grid.state-onboarding {
+        grid-template-columns: 1fr;
+    }
+
     .mt5-side-stack {
         display: grid;
         gap: 0.8rem;
@@ -1091,6 +1150,108 @@
         background:
             radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 32%),
             linear-gradient(145deg, color-mix(in srgb, var(--card) 97%, transparent), color-mix(in srgb, var(--surface) 92%, transparent));
+    }
+
+    @property --dashboard-focus-angle {
+        syntax: "<angle>";
+        initial-value: 0deg;
+        inherits: false;
+    }
+
+    .is-guided {
+        border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+        background:
+            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 16%, transparent), transparent 48%),
+            radial-gradient(circle at bottom left, color-mix(in srgb, var(--accent) 6%, transparent), transparent 56%),
+            color-mix(in srgb, var(--surface) 88%, transparent);
+        box-shadow:
+            0 20px 40px rgba(2, 6, 23, 0.24),
+            0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent),
+            0 0 24px color-mix(in srgb, var(--accent) 16%, transparent),
+            0 0 64px color-mix(in srgb, var(--accent) 6%, transparent);
+    }
+
+    .guided-focus-panel {
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+        padding: 0.78rem 0.84rem;
+        border-radius: 16px;
+        border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+        background:
+            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 20%, transparent), transparent 46%),
+            radial-gradient(circle at bottom left, color-mix(in srgb, var(--accent) 8%, transparent), transparent 56%),
+            color-mix(in srgb, var(--surface) 90%, transparent);
+        box-shadow:
+            0 20px 38px rgba(2, 6, 23, 0.28),
+            0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent),
+            0 0 26px color-mix(in srgb, var(--accent) 24%, transparent),
+            0 0 56px color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+
+    .guided-focus-panel::before {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        z-index: 0;
+        border-radius: inherit;
+        padding: 2px;
+        background: conic-gradient(
+            from var(--dashboard-focus-angle),
+            transparent 0deg,
+            color-mix(in srgb, white 72%, var(--accent) 28%) 50deg,
+            transparent 105deg,
+            transparent 180deg,
+            color-mix(in srgb, white 52%, var(--accent) 48%) 230deg,
+            transparent 285deg,
+            transparent 360deg
+        );
+        -webkit-mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        mask-composite: exclude;
+        animation: dashboard-guided-edge-spin 2.8s linear infinite;
+        pointer-events: none;
+    }
+
+    .guided-focus-panel::after {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        z-index: 0;
+        border-radius: inherit;
+        padding: 1.5px;
+        background:
+            linear-gradient(
+                135deg,
+                color-mix(in srgb, white 28%, var(--accent) 72%) 0%,
+                transparent 28%,
+                transparent 68%,
+                color-mix(in srgb, var(--accent) 40%, transparent) 100%
+            );
+        -webkit-mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        mask-composite: exclude;
+        pointer-events: none;
+        opacity: 0.8;
+    }
+
+    .guided-focus-panel > * {
+        position: relative;
+        z-index: 1;
+    }
+
+    .guided-focus-panel-pulse {
+        animation: dashboard-guided-pulse 2.5s ease-in-out infinite;
     }
 
     .journey-banner-copy {
@@ -1125,6 +1286,29 @@
 
     .journey-banner-note {
         font-size: 0.84rem;
+    }
+
+    .dashboard-guidance-copy {
+        margin: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: fit-content;
+        max-width: 100%;
+        padding: 0.45rem 0.72rem;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--border));
+        background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+        color: color-mix(in srgb, var(--accent) 84%, var(--ink));
+        font-size: 0.76rem;
+        font-weight: 700;
+        line-height: 1.45;
+    }
+
+    .dashboard-guidance-copy-mt5 {
+        width: 100%;
+        justify-content: flex-start;
+        border-radius: 12px;
     }
 
     .journey-steps {
@@ -1572,8 +1756,7 @@
         margin-bottom: 0;
     }
 
-    .mt5-workflow-panel,
-    .mt5-status-panel {
+    .mt5-workflow-panel {
         gap: 0.76rem;
     }
 
@@ -1592,11 +1775,6 @@
 
     .mt5-overview-panel-empty {
         align-content: center;
-    }
-
-    .mt5-status-list {
-        display: grid;
-        gap: 0.45rem;
     }
 
     .mt5-selected-account-card {
@@ -1629,66 +1807,6 @@
         overflow-wrap: anywhere;
     }
 
-    .mt5-status-item {
-        display: flex;
-        justify-content: space-between;
-        gap: 0.6rem;
-        align-items: flex-start;
-        padding: 0.62rem 0.72rem;
-        border-radius: 12px;
-        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-        background: color-mix(in srgb, var(--surface) 95%, transparent);
-        text-decoration: none;
-        color: inherit;
-        transition:
-            transform 180ms ease,
-            border-color 180ms ease,
-            background 180ms ease,
-            box-shadow 180ms ease;
-    }
-
-    .mt5-status-item:hover {
-        transform: translateY(-1px);
-        border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
-        background: color-mix(in srgb, var(--accent) 7%, var(--surface));
-        box-shadow: 0 10px 20px rgba(2, 6, 23, 0.12);
-    }
-
-    .mt5-status-item.is-selected {
-        border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
-        background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-        box-shadow: 0 12px 24px rgba(2, 6, 23, 0.14);
-    }
-
-    .mt5-status-item > div:first-child {
-        flex: 1 1 auto;
-        min-width: 0;
-    }
-
-    .mt5-status-item-side {
-        flex: 0 0 auto;
-        display: grid;
-        justify-items: end;
-        align-content: start;
-        gap: 0.35rem;
-    }
-
-    .mt5-status-name {
-        margin: 0;
-        font-size: 0.84rem;
-        font-weight: 800;
-        color: var(--ink);
-        overflow-wrap: anywhere;
-    }
-
-    .mt5-status-note {
-        margin: 0.12rem 0 0;
-        font-size: 0.75rem;
-        line-height: 1.42;
-        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
-        overflow-wrap: anywhere;
-    }
-
     .mt5-status-pill {
         flex: 0 0 auto;
         display: inline-flex;
@@ -1707,14 +1825,6 @@
         white-space: normal;
     }
 
-    .mt5-status-link {
-        font-size: 0.64rem;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: color-mix(in srgb, var(--muted) 80%, var(--ink));
-    }
-
     .mt5-status-pill.is-pending {
         border-color: color-mix(in srgb, var(--muted) 42%, var(--border));
         background: color-mix(in srgb, var(--muted) 10%, var(--surface));
@@ -1727,6 +1837,12 @@
         color: color-mix(in srgb, var(--accent) 76%, var(--ink));
     }
 
+    .mt5-status-pill.is-submitted {
+        border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+        background: color-mix(in srgb, var(--surface) 90%, var(--card));
+        color: color-mix(in srgb, var(--accent) 68%, var(--ink));
+    }
+
     .mt5-status-pill.is-linked {
         border-color: color-mix(in srgb, var(--good) 40%, var(--border));
         background: color-mix(in srgb, var(--good) 12%, transparent);
@@ -1735,7 +1851,7 @@
 
     .mt5-card-form {
         display: grid;
-        gap: 0.48rem;
+        gap: 0.62rem;
     }
 
     .mt5-card-form label {
@@ -1765,6 +1881,96 @@
         color: var(--muted);
     }
 
+    .mt5-form-shell {
+        display: grid;
+        gap: 0.62rem;
+    }
+
+    .mt5-form-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.68rem;
+    }
+
+    .mt5-form-field {
+        display: grid;
+        gap: 0.34rem;
+        min-width: 0;
+    }
+
+    .mt5-password-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .mt5-password-toggle {
+        min-width: 72px;
+        justify-content: center;
+        white-space: nowrap;
+    }
+
+    .mt5-card-helper {
+        margin: 0;
+        font-size: 0.74rem;
+        line-height: 1.42;
+        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
+    }
+
+    .mt5-request-form-alert {
+        margin: 0;
+        padding: 0.68rem 0.74rem;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+        background: color-mix(in srgb, var(--surface) 94%, transparent);
+        font-size: 0.76rem;
+        line-height: 1.45;
+        color: color-mix(in srgb, var(--muted) 82%, var(--ink));
+    }
+
+    .mt5-request-form-alert.is-error {
+        border-color: color-mix(in srgb, var(--bad) 40%, var(--border));
+        background: color-mix(in srgb, var(--bad) 12%, var(--surface));
+        color: color-mix(in srgb, var(--bad) 72%, var(--ink));
+    }
+
+    .mt5-request-form-alert.is-success {
+        border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+        background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+        color: color-mix(in srgb, var(--accent) 54%, var(--ink));
+    }
+
+    .mt5-success-card {
+        display: grid;
+        gap: 0.48rem;
+        padding: 0.84rem;
+        border-radius: 14px;
+        border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border));
+        background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    }
+
+    .mt5-success-title {
+        margin: 0;
+        font-size: 0.9rem;
+        font-weight: 800;
+        color: color-mix(in srgb, var(--accent) 44%, var(--ink));
+    }
+
+    .mt5-success-copy {
+        margin: 0;
+        font-size: 0.78rem;
+        line-height: 1.5;
+        color: color-mix(in srgb, var(--muted) 82%, var(--ink));
+    }
+
+    .mt5-success-meta {
+        margin: 0;
+        font-size: 0.74rem;
+        line-height: 1.4;
+        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
+    }
+
     .mt5-card-form textarea {
         min-height: 3.9rem;
         resize: vertical;
@@ -1772,6 +1978,12 @@
 
     .mt5-side-stack .submit-btn {
         width: 100%;
+    }
+
+    .mt5-card-form .submit-btn[disabled] {
+        opacity: 0.66;
+        cursor: not-allowed;
+        box-shadow: none;
     }
 
     .mt5-card-empty,
@@ -1854,6 +2066,10 @@
         gap: 0.45rem;
     }
 
+    .ai-hero-grid .mt5-form-grid {
+        gap: 0.58rem;
+    }
+
     .ai-hero-grid .mt5-card-form label {
         font-size: 0.7rem;
     }
@@ -1868,32 +2084,16 @@
         min-height: 3.75rem;
     }
 
+    .ai-hero-grid .mt5-card-helper,
+    .ai-hero-grid .mt5-success-copy,
+    .ai-hero-grid .mt5-success-meta,
+    .ai-hero-grid .mt5-request-form-alert {
+        font-size: 0.75rem;
+    }
+
     .ai-hero-grid .mt5-card-warning {
         padding: 0.62rem 0.68rem;
         font-size: 0.76rem;
-    }
-
-    .ai-hero-grid .mt5-status-list {
-        gap: 0.45rem;
-    }
-
-    .ai-hero-grid .mt5-status-item {
-        padding: 0.62rem 0.7rem;
-        gap: 0.55rem;
-    }
-
-    .ai-hero-grid .mt5-status-item-side {
-        gap: 0.32rem;
-    }
-
-    .ai-hero-grid .mt5-status-name {
-        font-size: 0.84rem;
-    }
-
-    .ai-hero-grid .mt5-status-note {
-        margin-top: 0.16rem;
-        font-size: 0.74rem;
-        line-height: 1.42;
     }
 
     .ai-hero-grid .mt5-status-pill {
@@ -2423,6 +2623,27 @@
     @keyframes sweep { from { transform: translateX(-20px); }
         to { transform: translateX(560px); } }
 
+    @keyframes dashboard-guided-pulse {
+        0%, 100% {
+            box-shadow:
+                0 20px 38px rgba(2, 6, 23, 0.28),
+                0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent),
+                0 0 26px color-mix(in srgb, var(--accent) 24%, transparent),
+                0 0 56px color-mix(in srgb, var(--accent) 12%, transparent);
+        }
+        50% {
+            box-shadow:
+                0 23px 42px rgba(2, 6, 23, 0.32),
+                0 0 0 1px color-mix(in srgb, var(--accent) 48%, transparent),
+                0 0 30px color-mix(in srgb, var(--accent) 30%, transparent),
+                0 0 64px color-mix(in srgb, var(--accent) 14%, transparent);
+        }
+    }
+
+    @keyframes dashboard-guided-edge-spin {
+        to { --dashboard-focus-angle: 360deg; }
+    }
+
     @keyframes draw-line { to { stroke-dashoffset: 0; } }
 
     @keyframes area-fade { to { opacity: 1; } }
@@ -2433,6 +2654,10 @@
     @keyframes ai-spin { to { transform: rotate(360deg); } }
 
     @media (max-width: 1280px) {
+        .dash-content[data-dashboard-state="state-1"] {
+            grid-template-columns: minmax(0, 1fr) minmax(320px, 0.92fr);
+        }
+
         .ai-hero-grid.has-mt5,
         .ai-hero-grid.no-mt5 {
             grid-template-columns: minmax(225px, 0.86fr) minmax(0, 1.4fr);
@@ -2440,6 +2665,10 @@
     }
 
     @media (max-width: 1080px) { .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .dash-content[data-dashboard-state="state-1"] {
+            display: block;
+        }
+
         .ai-hero-grid.no-mt5,
         .ai-hero-grid.has-mt5 {
             grid-template-columns: 1fr;
@@ -2474,20 +2703,20 @@
         .panel-head { flex-wrap: wrap;
             align-items: flex-start; }
 
-        .mt5-status-item { flex-direction: column;
-            align-items: flex-start; }
-
-        .mt5-status-item-side {
-            width: 100%;
-            justify-items: flex-start;
-        }
-
         .mt5-status-pill {
             max-width: 100%;
         }
 
         .mt5-card-consent {
             gap: 0.45rem;
+        }
+
+        .mt5-password-row {
+            grid-template-columns: 1fr;
+        }
+
+        .mt5-password-toggle {
+            width: 100%;
         }
 
         .mt5-overview-panel-empty .panel-empty-actions,
@@ -2513,7 +2742,9 @@
         .chart-path,
         .chart-point,
         .scanline,
-        .ai-loading-orb { animation: none !important;
+        .ai-loading-orb,
+        .guided-focus-panel::before,
+        .guided-focus-panel-pulse { animation: none !important;
             transition: none !important; } }
 </style>
 
@@ -2522,6 +2753,7 @@
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/trade_filters_shared.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard_page.js') }}"></script>
+<script src="{{ url_for('static', filename='js/mt5_request_form.js') }}"></script>
 {% if weekly_ai_is_generating %}
 <script>
 (() => {
