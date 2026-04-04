@@ -1898,9 +1898,6 @@ def maybe_generate_weekly_dashboard_advice(
         )
         if not payload["trades"]:
             return {"record": None, "generated": False, "period": period, "skip_reason": "no_trades"}
-        if payload["summary"].get("closed_trades", 0) < MIN_CLOSED_TRADES_FOR_ADVICE:
-            return {"record": None, "generated": False, "period": period, "skip_reason": "too_few_trades"}
-
         payload_json = serialize_payload(payload)
         payload_hash = hash_text(payload_json)
         if existing is not None and not force_regenerate and existing.payload_hash == payload_hash:

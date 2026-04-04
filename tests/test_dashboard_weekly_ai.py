@@ -75,7 +75,7 @@ def test_dashboard_home_shows_too_few_trades_weekly_ai_message(app_ctx, client, 
             "weekly_ai_review": None,
             "weekly_ai_generated_at_label": "",
             "weekly_ai_period_label": "",
-            "weekly_ai_empty_message": "Not enough data for a meaningful review. Add at least 3 closed trades this week.",
+            "weekly_ai_empty_message": "This week has limited trade data, so the AI review will stay cautious and avoid overconfident conclusions.",
             "weekly_ai_is_generating": False,
         },
     )
@@ -83,7 +83,7 @@ def test_dashboard_home_shows_too_few_trades_weekly_ai_message(app_ctx, client, 
     response = client.get("/dashboard")
 
     assert response.status_code == 200
-    assert b"Not enough data for a meaningful review. Add at least 3 closed trades this week." in response.data
+    assert b"This week has limited trade data, so the AI review will stay cautious and avoid overconfident conclusions." in response.data
 
 
 def test_dashboard_home_marks_running_trade_rows(app_ctx, client, monkeypatch):

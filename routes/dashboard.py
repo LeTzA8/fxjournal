@@ -58,7 +58,7 @@ WEEKLY_AI_GENERATING_MESSAGE = (
 )
 WEEKLY_AI_NO_TRADES_MESSAGE = "No trades this week. Add closed trades to generate your AI review."
 WEEKLY_AI_TOO_FEW_TRADES_MESSAGE = (
-    "Not enough data for a meaningful review. Add at least 3 closed trades this week."
+    "This week has limited trade data, so the AI review will stay cautious and avoid overconfident conclusions."
 )
 WEEKLY_AI_UNAVAILABLE_MESSAGE = (
     "Weekly AI review is temporarily unavailable. Please try again in a little while."

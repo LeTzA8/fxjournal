@@ -1488,3 +1488,104 @@ def test_force_weekly_generation_appends_new_response_for_same_period(app_ctx, m
     assert rows[0].response_text == "Existing weekly advice"
     assert rows[1].response_text == "Fresh weekly advice"
     assert rows[1].payload_json == '{"payload":"new"}'
+
+
+def test_weekly_generation_allows_thin_sample_with_cautious_review(app_ctx, monkeypatch):
+    user = User(
+        username="ai-thin-week-user",
+        email="ai-thin-week@example.com",
+        password="hashed-password",
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    trade_account = TradeAccount(
+        user_id=user.id,
+        name="Primary Account",
+        account_type="CFD",
+        is_default=True,
+    )
+    db.session.add(trade_account)
+    db.session.flush()
+
+    prompt_history = AIPromptHistory(
+        prompt_id="dashboard_advice",
+        prompt_sha256="thin-week-sha",
+        prompt_text="Prompt text",
+        source_path="prompts/dashboard_advice.txt",
+    )
+    db.session.add(prompt_history)
+    db.session.commit()
+
+    period = {
+        "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
+        "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
+    }
+
+    monkeypatch.setattr(ai_service, "get_latest_trade_week_period", lambda **kwargs: period)
+    monkeypatch.setattr(ai_service, "should_generate_weekly_dashboard_advice", lambda **kwargs: True)
+    monkeypatch.setattr(
+        ai_service,
+        "build_trade_payload",
+        lambda **kwargs: {
+            "generated_at": "2026-03-12T12:00:00Z",
+            "period_start_utc": "2026-03-07T21:30:00Z",
+            "period_end_utc": "2026-03-14T21:30:00Z",
+            "historical_context": {},
+            "summary": {"closed_trades": 1},
+            "trades": [{"review_ref": "T1", "symbol": "EURUSD"}],
+        },
+    )
+    monkeypatch.setattr(
+        ai_service,
+        "build_dashboard_advice_messages",
+        lambda payload, prompt_filename=None, profile_adjustments="": (
+            prompt_history,
+            [{"role": "user", "content": []}],
+            '{"payload":"thin-week"}',
+        ),
+    )
+    monkeypatch.setattr(
+        ai_service,
+        "request_openai_response",
+        lambda messages, model=None: {
+            "model": "gpt-5-mini",
+            "status": "completed",
+            "output_text": json.dumps(
+                {
+                    "summary": {
+                        "text": "This week had limited evidence, but the single trade still offers a cautious review point.",
+                        "refs": ["T1"],
+                    },
+                    "takeaways": [
+                        {
+                            "text": "EURUSD provided the only closed trade, so any pattern read should stay tentative.",
+                            "refs": ["T1"],
+                        },
+                        {
+                            "text": "The week is too thin for broad conclusions, but the trade is still worth reviewing.",
+                            "refs": ["T1"],
+                        },
+                    ],
+                    "rule": {
+                        "text": "Rule: When the sample is thin, keep any adjustment modest and wait for more evidence before changing too much.",
+                        "refs": [],
+                    },
+                }
+            ),
+            "usage": {},
+            "output": [],
+        },
+    )
+
+    result = maybe_generate_weekly_dashboard_advice(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        prompt_filename="dashboard_advice.txt",
+        now_utc=datetime(2026, 3, 14, 22, 0, 0),
+        force_regenerate=True,
+    )
+
+    assert result["generated"] is True
+    assert result["record"] is not None
+    assert result["record"].trade_count_used == 1
