@@ -18,12 +18,12 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="MyFXJournal">
     <meta property="og:url" content="{{ resolved_canonical_url }}">
-    <meta property="og:image" content="{{ url_for('static', filename='site-logo.png', v='1', _external=True) }}">
-    <meta property="og:image:alt" content="MyFXJournal logo">
-    <meta name="twitter:card" content="summary">
+    <meta property="og:image" content="{{ url_for('static', filename='dashboard.png', v='1', _external=True) }}">
+    <meta property="og:image:alt" content="MyFXJournal dashboard and weekly AI review preview">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ title or 'MyFXJournal | Free Forex Trading Journal With Weekly AI Review' }}">
     <meta name="twitter:description" content="{{ meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
-    <meta name="twitter:image" content="{{ url_for('static', filename='site-logo.png', v='1', _external=True) }}">
+    <meta name="twitter:image" content="{{ url_for('static', filename='dashboard.png', v='1', _external=True) }}">
     {% if google_analytics_measurement_id %}
     <script async src="https://www.googletagmanager.com/gtag/js?id={{ google_analytics_measurement_id }}"></script>
     <script>
@@ -1355,6 +1355,13 @@
             font-size: 0.95rem;
         }
 
+        .auth-helper-copy {
+            margin: 0.8rem 0 0;
+            text-align: center;
+            font-size: 0.82rem;
+            line-height: 1.45;
+        }
+
         .switch-link a {
             font-weight: 700;
             text-decoration: none;
@@ -1447,6 +1454,29 @@
             color: var(--muted);
             font-size: 0.82rem;
             line-height: 1.45;
+        }
+
+        .auth-reassurance {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem;
+            justify-content: center;
+            margin-top: 0.9rem;
+        }
+
+        .auth-reassurance span {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 30px;
+            padding: 0 0.7rem;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+            background: color-mix(in srgb, var(--surface) 78%, transparent);
+            color: var(--muted);
+            font-size: 0.74rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
         }
 
         .notice + .auth-oauth-btn,

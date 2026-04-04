@@ -58,19 +58,17 @@
                     <h1 class="seo-page-title landing-reveal" data-reveal-delay="180">{{ seo_page.hero_title }}</h1>
                     <p class="seo-page-lead landing-reveal" data-reveal-delay="260">{{ seo_page.hero_body }}</p>
                     <div class="ai-demo-chip-row landing-reveal" data-reveal-delay="340" aria-label="Page highlights">
-                        <span class="ai-demo-chip is-accent">Free MT5 Sync</span>
-                        <span class="ai-demo-chip is-accent">Weekly AI Review</span>
                         {% for chip in seo_page.chips %}
-                        <span class="ai-demo-chip">{{ chip }}</span>
+                        <span class="ai-demo-chip{% if loop.first %} is-accent{% endif %}">{{ chip }}</span>
                         {% endfor %}
                     </div>
                     <div class="landing-actions landing-reveal" data-reveal-delay="420">
                         {% if user_logged_in %}
                         <a href="{{ url_for('dashboard.home') }}" class="submit-btn hero-cta">Open Dashboard</a>
-                        <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask About Setup</a>
+                        <a href="{{ url_for('landing') }}#features" class="ghost-btn">See Product Proof</a>
                         {% else %}
                         <a href="{{ url_for('register') }}" class="submit-btn hero-cta">Start Free</a>
-                        <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask About Setup</a>
+                        <a href="{{ url_for('landing') }}#features" class="ghost-btn">See Product Proof</a>
                         {% endif %}
                     </div>
                 </div>
@@ -151,7 +149,7 @@
                     {% else %}
                     <a href="{{ url_for('register') }}" class="submit-btn hero-cta">Start Free</a>
                     {% endif %}
-                    <a href="{{ url_for('landing') }}#compare" class="ghost-btn">See Pricing Context</a>
+                    <a href="{{ url_for('landing') }}#features" class="ghost-btn">See Product Proof</a>
                 </div>
             </div>
         </section>

@@ -261,14 +261,14 @@ SEO_PAGE_DEFINITIONS = {
     "mt5-trading-journal": {
         "title": "MyFXJournal | MT5 Trading Journal",
         "meta_description": (
-            "Use MyFXJournal as an MT5 trading journal that keeps MetaTrader 5 (MT5) sync light and turns raw trades into a weekly AI review."
+            "Use MyFXJournal as an MT5 trading journal to import or sync MetaTrader 5 history, review the right account, and turn the week into one clear AI summary."
         ),
         "eyebrow": "MT5 trading journal",
-        "hero_title": "MT5 history in. Clear review out.",
+        "hero_title": "MT5 history in. One clear review out.",
         "hero_body": (
-            "Sync your MetaTrader 5 (MT5) account, keep the context, and turn raw MT5 trades into a weekly review you will actually read."
+            "Bring MetaTrader 5 (MT5) history into MyFXJournal, keep the account context intact, and turn raw trades into a weekly review you will actually use."
         ),
-        "chips": ("Read-only MT5 sync", "Revenge-pattern flags"),
+        "chips": ("Weekly AI review", "Read-only MT5 sync", "Account-level context"),
         "intro_title": "Why this lands",
         "intro_body": (
             "Most MetaTrader 5 (MT5) traders already have the history. The real problem is turning it into something useful before the next week starts."
@@ -294,8 +294,8 @@ SEO_PAGE_DEFINITIONS = {
         ),
         "workflow_steps": (
             {
-                "title": "Automatic MT5 sync",
-                "body": "Use automatic read-only MT5 sync for approved accounts so the history arrives without a manual cleanup project first.",
+                "title": "Import now, sync when ready",
+                "body": "Start with MT5 report imports today, then use automatic read-only MT5 sync for approved accounts when you want less export upkeep.",
             },
             {
                 "title": "See what actually happened",
@@ -327,14 +327,14 @@ SEO_PAGE_DEFINITIONS = {
     "free-mt5-sync": {
         "title": "MyFXJournal | Free MT5 Sync",
         "meta_description": (
-            "Free during open beta. Get MetaTrader 5 (MT5) sync in MyFXJournal and turn MT5 history into a weekly AI review without spreadsheet overhead."
+            "Free during open beta. Request read-only MetaTrader 5 (MT5) sync in MyFXJournal and turn account history into a weekly AI review without repeated exports."
         ),
         "eyebrow": "Free MT5 sync",
-        "hero_title": "Free MT5 sync. Less journal admin.",
+        "hero_title": "Read-only MT5 sync for a lighter review workflow.",
         "hero_body": (
-            "During open beta, MetaTrader 5 (MT5) sync is free and built to feed the review loop, not another export habit."
+            "During open beta, MT5 sync is request-based, read-only, and built to keep account history flowing into weekly review instead of another export routine."
         ),
-        "chips": ("Read-only MT5 sync", "Weekly review feed"),
+        "chips": ("Request-based beta", "Read-only only", "Weekly review feed"),
         "intro_title": "Why this page matters",
         "intro_body": (
             "The sync is not the product. It is the fastest way into a cleaner review workflow."
@@ -361,7 +361,7 @@ SEO_PAGE_DEFINITIONS = {
         "workflow_steps": (
             {
                 "title": "Request MT5 sync",
-                "body": "Use the in-product beta flow so setup stays supported while the workflow sharpens.",
+                "body": "Use the in-product beta flow so setup stays supported while the workflow sharpens. Manual import still works right away.",
             },
             {
                 "title": "Connect read-only",
@@ -393,14 +393,14 @@ SEO_PAGE_DEFINITIONS = {
     "forex-trading-journal": {
         "title": "MyFXJournal | Forex Trading Journal",
         "meta_description": (
-            "MyFXJournal is a forex trading journal built to cut journaling overhead and turn the week into a lighter AI review."
+            "MyFXJournal is a forex trading journal built to cut journaling overhead, review trades by account, and turn the week into a lighter AI review."
         ),
         "eyebrow": "Forex trading journal",
         "hero_title": "A forex journal that stays out of the way.",
         "hero_body": (
-            "Track the week, spot the pattern, and keep reflection close to the trades without turning it into homework."
+            "Track the week, spot the pattern, and keep reflection close to the trades without turning journaling into weekend homework."
         ),
-        "chips": ("Behavior-aware review", "Revenge-pattern flags"),
+        "chips": ("Weekly AI review", "Behavior-aware review", "Revenge-pattern flags"),
         "intro_title": "Why this works",
         "intro_body": (
             "Most traders do not skip review because they do not care. They skip it because the process gets heavy after the market closes."
@@ -459,14 +459,14 @@ SEO_PAGE_DEFINITIONS = {
     "weekly-trading-review": {
         "title": "MyFXJournal | Weekly Trading Review",
         "meta_description": (
-            "Use MyFXJournal to turn trade history into a lighter weekly AI review with clearer patterns and less journaling overhead."
+            "Use MyFXJournal to turn trade history into a lighter weekly AI review with clearer patterns, one rule worth carrying forward, and less journaling overhead."
         ),
         "eyebrow": "Weekly trading review",
         "hero_title": "Weekly review without the weekend drag.",
         "hero_body": (
-            "Turn the week into a readable review, a clearer pattern, and one rule worth testing next."
+            "Turn the week into a readable review, a clearer pattern, and one rule worth testing before the next trading week starts."
         ),
-        "chips": ("Repeatable review loop", "Revenge-pattern flags"),
+        "chips": ("Weekly AI review", "Repeatable review loop", "Revenge-pattern flags"),
         "intro_title": "Why this matters",
         "intro_body": (
             "The problem is rarely knowing review matters. The problem is staying consistent once the process starts to drag."
@@ -863,9 +863,9 @@ def register_public_auth_routes(
         )
         send_email_placeholder(
             user.email,
-            "Welcome to FX Journal",
+            "Welcome to MyFXJournal",
             (
-                f"Hi {user.username}, your FX Journal account is ready. "
+                f"Hi {user.username}, your MyFXJournal account is ready. "
                 "Head to your dashboard to get started."
             ),
             html_body=welcome_html,
@@ -1233,8 +1233,7 @@ def register_public_auth_routes(
             "landing.html",
             title="MyFXJournal | Free Forex Trading Journal With Weekly AI Review",
             meta_description=(
-                "Free during open beta. Import MT5 and Tradovate trades, surface patterns, and get a lighter weekly AI review "
-                "workflow built for reflection without extra journaling overhead."
+                "Import MT5 and Tradovate history, review trades by account, and get a weekly AI review that surfaces patterns worth carrying into next week."
             ),
             body_class="landing-layout",
             canonical_url=build_external_url("/"),
@@ -1507,7 +1506,7 @@ def register_public_auth_routes(
             clear_google_auth_session()
             return render_login_page(
                 error=(
-                    "No FX Journal account was found for this Google email. "
+                    "No MyFXJournal account was found for this Google email. "
                     "Use the Google button on the registration page to create one."
                 ),
                 email=email,
@@ -1748,7 +1747,7 @@ def register_public_auth_routes(
                     verify_link = build_external_url(
                         url_for("verify_email_token", token=verify_token)
                     )
-                    email_subject = "Verify your FX Journal email"
+                    email_subject = "Verify your MyFXJournal email"
                     email_body = (
                         f"Hi {existing_user.username},\n\n"
                         "You requested a new verification link.\n"
@@ -1811,7 +1810,7 @@ def register_public_auth_routes(
             verify_link = build_external_url(
                 url_for("verify_email_token", token=verify_token)
             )
-            email_subject = "Verify your FX Journal email"
+            email_subject = "Verify your MyFXJournal email"
             email_body = (
                 f"Hi {user.username},\n\n"
                 "Thanks for registering.\n"
@@ -1913,7 +1912,7 @@ def register_public_auth_routes(
             verify_link = build_external_url(
                 url_for("verify_email_token", token=verify_token)
             )
-            email_subject = "Verify your FX Journal email"
+            email_subject = "Verify your MyFXJournal email"
             email_body = (
                 f"Hi {pending_username},\n\n"
                 "You requested a new verification link.\n"
@@ -3183,7 +3182,7 @@ def register_public_auth_routes(
                         reset_link = build_external_url(
                             url_for("reset_password_token", token=reset_token)
                         )
-                        email_subject = "Reset your FX Journal password"
+                        email_subject = "Reset your MyFXJournal password"
                         email_body = (
                             f"Hi {user.username},\n\n"
                             "You requested a password reset.\n"

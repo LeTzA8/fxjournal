@@ -52,43 +52,43 @@
 
     <article class="landing-hero" data-reveal-scope data-reveal-immediate>
         <div class="landing-hero-inner">
-            <p class="hero-badge landing-reveal" data-reveal-delay="240">Open beta - free while we build the hands-off review workflow</p>
-            <p class="eyebrow landing-reveal" data-reveal-delay="340">Trading journal plus review automation</p>
+            <p class="hero-badge landing-reveal" data-reveal-delay="240">Free beta. No credit card required.</p>
+            <p class="eyebrow landing-reveal" data-reveal-delay="340">Trading journal with weekly AI review</p>
             <h1
                 class="hero-title landing-reveal"
                 data-reveal-delay="460"
-                data-hero-accent-words="1-2"
-                data-hero-underline-words="6"
-            >Trade first. Reflect without the friction.</h1>
+                data-hero-accent-words="7-9"
+                data-hero-underline-words="9"
+            >Turn raw trade history into one clear weekly review.</h1>
             <p class="muted lead landing-reveal" data-reveal-delay="760">
-                MyFXJournal turns raw trades into clear review, so journaling does not become a second job after the market closes.
+                Import MT5, Tradovate, or manual trades, review the right account, and surface the behavior patterns worth fixing before next week starts.
             </p>
             <p class="hero-note landing-reveal" data-reveal-delay="860">
-                Built by a trader who wanted less review admin, not a bigger pile of charts. No credit card required.
+                Manual import works today. Read-only MT5 sync is request-based during beta.
             </p>
 
             <div class="landing-copy landing-reveal" id="workflow" data-reveal-delay="980">
-                <p class="landing-copy-title">Where the work goes</p>
+                <p class="landing-copy-title">How Traders Start Here</p>
                 <ol>
                     <li>
                         <span>1</span>
                         <div>
-                            <strong>Import the raw trading history</strong>
-                            <p>Log manually or pull MT5 and Tradovate history into the right account without spreadsheet cleanup first.</p>
+                            <strong>Import the trades you already have</strong>
+                            <p>Bring in MT5 reports, Tradovate exports, or manual trades without rebuilding the week in spreadsheets first.</p>
                         </div>
                     </li>
                     <li>
                         <span>2</span>
                         <div>
-                            <strong>Let the journal organize the review</strong>
-                            <p>See the important account metrics, recurring mistakes, and behavior patterns without rebuilding the data by hand.</p>
+                            <strong>Review one account with real context</strong>
+                            <p>See performance, execution behavior, and weekly AI feedback without piecing the story together by hand.</p>
                         </div>
                     </li>
                     <li>
                         <span>3</span>
                         <div>
-                            <strong>Carry one clear adjustment into next week</strong>
-                            <p>Use the weekly review to tighten one rule, one habit, or one execution pattern instead of drowning in notes.</p>
+                            <strong>Leave with one rule worth using next week</strong>
+                            <p>Turn the week into one clear adjustment you can actually carry into the next session cycle.</p>
                         </div>
                     </li>
                 </ol>
@@ -100,14 +100,14 @@
                 <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Log New Trade</a>
                 {% else %}
                 <a href="{{ url_for('register') }}" class="submit-btn hero-cta">Start Free</a>
-                <a href="#compare" class="ghost-btn">See Pricing Context</a>
+                <a href="#ai-demo" class="ghost-btn">See Weekly Review</a>
                 {% endif %}
             </div>
 
             {% if not user_logged_in %}
             <div class="hero-reassurance landing-reveal" data-reveal-delay="1240" aria-label="Signup reassurance">
-                <span>Sustainable review loop</span>
-                <span>Open beta</span>
+                <span>Import on day one</span>
+                <span>Read-only MT5 sync</span>
                 <span>No credit card required</span>
             </div>
             {% endif %}
@@ -153,14 +153,14 @@
     <section class="landing-section ai-demo-section" id="ai-demo" aria-labelledby="ai-demo-title" data-reveal-scope>
         <div class="landing-inner">
             <div class="ai-demo-chip-row landing-reveal" data-reveal-delay="20" aria-label="AI review scope">
-                <span class="ai-demo-chip is-accent">AI Review</span>
-                <span class="ai-demo-chip">Behavior and psychology</span>
+                <span class="ai-demo-chip is-accent">Weekly AI Review</span>
+                <span class="ai-demo-chip">Built from your trade history</span>
             </div>
-            <p class="eyebrow landing-reveal" data-reveal-delay="40">A review loop traders can actually keep up with</p>
-            <h2 id="ai-demo-title" class="landing-reveal" data-reveal-delay="110">Your weekly review should arrive before the next week starts</h2>
+            <p class="eyebrow landing-reveal" data-reveal-delay="40">What the weekly review actually looks like</p>
+            <h2 id="ai-demo-title" class="landing-reveal" data-reveal-delay="110">See what lands in front of you when the trading week closes</h2>
             <p class="muted lead landing-reveal" data-reveal-delay="180">
-                MyFXJournal turns the latest trade week into a readable summary of execution quality, behavior patterns,
-                and the next rule worth tightening, so review stays short enough to repeat.
+                The weekly review turns your most recent eligible trade week into a short read on what worked,
+                what slipped, and the one adjustment worth carrying into the next week.
             </p>
 
             <div class="ai-demo-card landing-reveal" data-reveal-delay="260" data-typewriter-target>
@@ -176,7 +176,7 @@
             </div>
             <div class="ai-demo-meta landing-reveal" data-reveal-delay="320">
                 <p>Built from the active account's most recent eligible trade week, with older history used as supporting context when it helps explain behavior.</p>
-                <p>Designed to surface what changed, what slipped, and what deserves attention before the next trading week starts.</p>
+                <p>Designed to surface what changed, what slipped, and what deserves attention without turning review into another long document.</p>
                 <p>NFA: For journaling and educational use only. This AI review is not financial or investment advice.</p>
             </div>
         </div>
@@ -217,7 +217,7 @@
     <section class="landing-section use-case-section" id="use-cases" aria-labelledby="use-cases-title" data-reveal-scope hidden>
         <div class="landing-inner">
             <p class="eyebrow landing-reveal" data-reveal-delay="40">Popular entry points</p>
-            <h2 id=”use-cases-title” class=”landing-reveal” data-reveal-delay=”110”>Find the angle that fits where you are right now.</h2>
+            <h2 id="use-cases-title" class="landing-reveal" data-reveal-delay="110">Find the angle that fits where you are right now.</h2>
 
             <div class="use-case-grid" aria-label="Popular search pages">
                 <a href="{{ url_for('free_mt5_sync_page') }}" class="use-case-card use-case-card-featured landing-reveal" data-reveal-delay="260">
@@ -250,11 +250,10 @@
 
     <section class="landing-section" id="features" aria-labelledby="feature-showcase-title" data-reveal-scope>
         <div class="landing-inner">
-            <p class="eyebrow landing-reveal" data-reveal-delay="40">Product proof</p>
-            <h2 id="feature-showcase-title" class="landing-reveal" data-reveal-delay="110">The workflow is built to remove review friction, not add more of it</h2>
+            <p class="eyebrow landing-reveal" data-reveal-delay="40">What's Live Right Now</p>
+            <h2 id="feature-showcase-title" class="landing-reveal" data-reveal-delay="110">Everything you need to go from broker history to weekly review is already live</h2>
             <p class="muted landing-reveal" data-reveal-delay="180">
-                These are the parts of the product already doing the heavy lifting: getting trades in cleanly,
-                keeping the account readable, and turning history into something you can actually review.
+                Import trades cleanly, review one account with context, and spot recurring mistakes without creating more journal admin around it.
             </p>
 
             <div class="feature-showcase-grid" role="list" aria-label="MyFXJournal feature showcase">
@@ -266,9 +265,7 @@
                             The dashboard keeps the active account front and center with quick access to trade history,
                             account metrics, and the equity curve so you can review execution quality in one pass.
                         </p>
-                        <p class="feature-detail">
-                            Built for a fast daily workflow: switch accounts, scan the curve, then move straight into trade review. Clean, fast, and focused.
-                        </p>
+                        <p class="feature-detail">Switch accounts, scan the curve, and move straight into trade review without bouncing between tabs.</p>
                     </div>
                     <figure class="feature-shot">
                         <button
@@ -293,9 +290,7 @@
                             The analytics view surfaces win rate, session timing, pair performance, and other account-specific patterns
                             so review is based on real behavior instead of guesswork.
                         </p>
-                        <p class="feature-detail">
-                            Use it to isolate where performance actually comes from and where recurring mistakes keep showing up before they become habits.
-                        </p>
+                        <p class="feature-detail">Use it to see where edge actually comes from and where recurring mistakes keep showing up before they turn into routine.</p>
                     </div>
                     <figure class="feature-shot">
                         <button
@@ -320,9 +315,7 @@
                             MT5 and Tradovate imports are built to land inside the correct account with duplicate checks,
                             cleaner timestamps, and less manual cleanup after each upload.
                         </p>
-                        <p class="feature-detail">
-                            Upload history into the right account, keep timestamps consistent, and block duplicate rows before they pollute your journal.
-                        </p>
+                        <p class="feature-detail">Upload into the right account, keep timestamps consistent, and stop duplicate rows from muddying the journal.</p>
                     </div>
                     <figure class="feature-shot">
                         <button
@@ -342,7 +335,7 @@
                 <article class="feature-showcase-card feature-showcase-card-sync landing-reveal" data-reveal-delay="500">
                     <div class="feature-showcase-copy">
                         <div class="feature-kicker-row">
-                            <p class="feature-kicker">Automatic MT5 Sync</p>
+                            <p class="feature-kicker">🔄 Automatic MT5 Sync</p>
                             <span class="feature-access-pill">Request Access</span>
                         </div>
                         <h3><span class="feature-title-accent">Keep broker history fresh</span> Sync approved MT5 accounts into the journal without repeated exports</h3>
@@ -350,7 +343,7 @@
                             Automatic MT5 Sync lets approved accounts pull read-only MT5 history into MyFXJournal, so your dashboard, analytics, and trade review stay closer to the live account state.
                         </p>
                         <p class="feature-detail">
-                            Request access in-app, submit investor credentials only after approval, and cut down the repeated export-import cycle that slows down regular journaling.
+                            Manual import works right away. Request read-only sync for approved MT5 accounts when you want less export upkeep and fewer moving parts week to week.
                         </p>
                     </div>
                     <figure class="feature-shot feature-shot-sync-card" aria-hidden="true">
@@ -381,26 +374,6 @@
                         </div>
                     </figure>
                 </article>
-                {#
-                    <div class="feature-showcase-copy">
-                        <p class="feature-kicker">🤖 AI Review</p>
-                        <h3><span class="feature-title-accent">Sharper feedback</span> Turn a week of trades into one clear review loop</h3>
-                        <p>
-                            Weekly AI summaries focus on sessions, symbols, mistakes, and the next rule to tighten so your
-                            review process stays short enough to repeat consistently.
-                        </p>
-                        <p class="feature-detail">
-                            The review stays grounded in your actual trades so the output is specific enough to act on instead of generic motivation.
-                        </p>
-                    </div>
-                    <figure class="feature-shot">
-                        <img
-                            src="{{ url_for('static', filename='ai review.png') }}"
-                            alt="MyFXJournal AI review panel with a weekly performance summary and trading feedback."
-                            loading="lazy"
-                        >
-                    </figure>
-                #}
             </div>
         </div>
     </section>
@@ -409,25 +382,25 @@
         <div class="landing-inner">
             <div class="comparison-top">
                 <div class="comparison-copy">
-                    <p class="eyebrow landing-reveal" data-reveal-delay="40">Compare the workflow</p>
-                    <h2 id="comparison-title" class="landing-reveal" data-reveal-delay="110">See the pricing context, and the kind of review workflow each journal leans toward.</h2>
+                    <p class="eyebrow landing-reveal" data-reveal-delay="40">Who It's For</p>
+                    <h2 id="comparison-title" class="landing-reveal" data-reveal-delay="110">MyFXJournal fits traders who want a lighter review loop, not a bigger platform to manage.</h2>
                     <p class="muted landing-reveal" data-reveal-delay="180">
-                        This is meant as a fit check, not a scorecard. Some journals go broader, some go deeper on
-                        psychology, and MyFXJournal is built for a lighter path from raw trades to usable reflection.
+                        If your goal is to stop rebuilding the week by hand and leave with one useful adjustment, this is the fit.
+                        If you want replay-heavy analysis or a broader toolkit, other journals lean harder there.
                     </p>
                 </div>
 
                 <aside class="comparison-highlight-card landing-reveal" data-reveal-delay="260" aria-label="Why traders choose MyFXJournal">
                     <p class="comparison-highlight-kicker">MyFXJournal right now</p>
-                    <h3>Free during open beta</h3>
+                    <h3>Try the workflow before paying for another heavy platform</h3>
                     <p>
-                        If you want a lighter path from raw trades to reflection without paying upfront while the
-                        product is still evolving quickly, this is the best time to try it.
+                        Import first, review the right account, and see whether the weekly AI review gives you a cleaner next step
+                        before you commit to another monthly subscription.
                     </p>
                     <ul class="comparison-highlight-list">
-                        <li>Trade imports, recurring review, and built-in behavior context.</li>
-                        <li>Lower-overhead workflow aimed at keeping reflection repeatable.</li>
-                        <li>Founder-led product with direct feedback during beta.</li>
+                        <li>Manual import is ready today. Read-only MT5 sync is request-based during beta.</li>
+                        <li>Weekly AI review, analytics, and account-level review are already usable now.</li>
+                        <li>Founder-led support means faster answers while the product is still taking shape.</li>
                     </ul>
                     <div class="comparison-highlight-actions">
                         {% if user_logged_in %}
@@ -435,7 +408,7 @@
                         {% else %}
                         <a href="{{ url_for('register') }}" class="submit-btn">Start Free</a>
                         {% endif %}
-                        <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask a Question</a>
+                        <a href="#ai-demo" class="ghost-btn">See Weekly Review</a>
                     </div>
                 </aside>
             </div>
@@ -540,7 +513,7 @@
                     <h2 id="founder-title">I wanted a journal that removed work, not one that gave traders more admin.</h2>
                     <p>
                         My name is Daniel. I am based in Singapore, trading forex and building the kind of journal I
-                        always wanted — one that keeps reflection close to the trades without making it a project in
+                        always wanted, one that keeps reflection close to the trades without making it a project in
                         itself.
                     </p>
                     <p>

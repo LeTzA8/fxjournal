@@ -6,19 +6,19 @@
         <a href="{{ url_for('landing') }}" class="auth-topbar-brand" aria-label="Go to landing page">
             <img
                 src="{{ url_for('static', filename='site-logo.png') }}"
-                alt="FX Journal Logo"
+                alt="MyFXJournal Logo"
                 class="auth-topbar-logo"
             >
-            <span>FX Journal</span>
+            <span>MyFXJournal</span>
         </a>
         <div class="auth-topbar-links">
             <a href="{{ url_for('landing') }}" class="auth-topbar-link ghost">Back to Landing</a>
         </div>
     </div>
     <div class="login-card">
-        <p class="eyebrow">FX Journal</p>
+        <p class="eyebrow">MyFXJournal</p>
         <h1>Welcome back</h1>
-        <p class="subtext">Sign in to continue tracking your trading journal.</p>
+        <p class="subtext">Sign in to pick up your trade review, analytics, and weekly AI feedback.</p>
         {% if success %}
         <p class="notice success">{{ success }}</p>
         {% endif %}
@@ -52,11 +52,10 @@
 
             <button type="submit">Log In</button>
         </form>
+        <p class="helper-note auth-helper-copy">Use the same Google or email method you used at signup.</p>
         <p class="switch-link"><a href="/password/forgot">Forgot password?</a></p>
         <p class="switch-link">No account yet? <a href="/register">Create one</a></p>
     </div>
 </section>
 
 {% endblock %}
-
-

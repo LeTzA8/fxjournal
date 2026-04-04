@@ -6,19 +6,19 @@
         <a href="{{ url_for('landing') }}" class="auth-topbar-brand" aria-label="Go to landing page">
             <img
                 src="{{ url_for('static', filename='site-logo.png') }}"
-                alt="FX Journal Logo"
+                alt="MyFXJournal Logo"
                 class="auth-topbar-logo"
             >
-            <span>FX Journal</span>
+            <span>MyFXJournal</span>
         </a>
         <div class="auth-topbar-links">
             <a href="{{ url_for('landing') }}" class="auth-topbar-link ghost">Back to Landing</a>
         </div>
     </div>
     <div class="login-card">
-        <p class="eyebrow">FX Journal</p>
+        <p class="eyebrow">MyFXJournal</p>
         <h1>Create account</h1>
-        <p class="subtext">Register to start logging trades and reviewing your performance.</p>
+        <p class="subtext">Create your MyFXJournal account and get from broker history to weekly review without building another spreadsheet routine.</p>
         {% if success %}
         <p class="notice success">{{ success }}</p>
         {% endif %}
@@ -28,6 +28,11 @@
         {% if error %}
         <p class="notice error">{{ error }}</p>
         {% endif %}
+        <div class="auth-reassurance" aria-label="Signup reassurance">
+            <span>Free beta</span>
+            <span>Google or email</span>
+            <span>Import on day one</span>
+        </div>
 
         {% if google_auth_enabled %}
         <div class="auth-oauth-stack">
@@ -45,7 +50,7 @@
                 </svg>
                 <span>Sign up with Google</span>
             </button>
-            <p class="auth-oauth-note">Google signup opens one quick agreement step before continuing.</p>
+            <p class="auth-oauth-note">Fastest way in. You'll review the account agreement once before continuing.</p>
         </div>
 
         <form id="googleRegisterForm" action="{{ url_for('google_register_start') }}" method="post">
@@ -60,7 +65,7 @@
                 <p class="eyebrow">Before Google Signup</p>
                 <h2 id="googleRegisterDialogTitle">Review the account agreement</h2>
                 <p class="auth-consent-copy">
-                    To create your FX Journal account with Google, agree to the Terms and acknowledge the Privacy Policy first.
+                    To create your MyFXJournal account with Google, agree to the Terms and acknowledge the Privacy Policy first.
                 </p>
                 <label class="legal-consent auth-consent-check">
                     <input
@@ -95,6 +100,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label for="username">Username</label>
             <input id="username" name="username" type="text" placeholder="your_username" value="{{ username_value or '' }}" required>
+            <p class="helper-note">This is your in-app name inside the journal.</p>
 
             <label for="email">Email</label>
             <input id="email" name="email" type="email" placeholder="you@example.com" value="{{ email_value or '' }}" required>
@@ -133,8 +139,9 @@
                 </span>
             </label>
 
-            <button type="submit" {% if registrations_paused %}disabled{% endif %}>Create Account</button>
+            <button type="submit" {% if registrations_paused %}disabled{% endif %}>Create Free Account</button>
         </form>
+        <p class="helper-note auth-helper-copy">Email verification comes right after signup. Once you're in, manual import is ready on day one.</p>
         <p class="switch-link">Already have an account? <a href="/login">Log in</a></p>
     </div>
 </section>
