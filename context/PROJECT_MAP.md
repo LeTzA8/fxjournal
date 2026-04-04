@@ -23,13 +23,16 @@ Stable system blueprint.
 ## High-Level Structure
 
 - `app.py`: app bootstrap, config, blueprint registration
+- `extensions.py`: shared limiter and OAuth setup
 - `models.py`: schema and relationships
 - `auth_account.py`: auth, admin, landing/SEO pages
-- `ai_service.py`: weekly AI payloads, prompts, storage, rendering helpers
+- `ai_service.py`: weekly AI payloads, prompts, storage helpers
 - `trading.py`: calculations, analytics helpers, import parsing
 - `routes/`: feature routes
 - `helpers/`: shared state, behavior analysis, scoring, utilities
+- `celery_app.py`: Celery bootstrap, routing, beat schedule
 - `celery_workers/`: MT5 setup/sync and cache tasks
+- `migrations/`: Alembic schema history
 - `templates/`, `static/js/`: UI
 - `tests/`: focused pytest coverage
 
@@ -61,29 +64,31 @@ Stable system blueprint.
 - Weekly check-in:
   `routes/checkin.py`, `templates/checkin.html`, `tests/test_checkin_routes.py`
 - Bundle grouping:
-  `helpers/trade_analysis.py`, `routes/trades.py`, `templates/bundle_review.html`
+  `helpers/trade_analysis.py`, `routes/trades.py`, `templates/bundle_review.html`, `tests/test_trading_math.py`
 - Emotional index and scoring:
   `helpers/scoring.py`, `helpers/trade_analysis.py`
 - Trade forms / table / detail:
-  `routes/trades.py`, `templates/trades.html`, `templates/trade_entry.html`, `templates/trade_detail.html`
+  `routes/trades.py`, `templates/trades.html`, `templates/trade_entry.html`, `templates/trade_detail.html`, `tests/test_trades_routes.py`
 - Import pipeline / trade math:
   `routes/trades.py`, `trading.py`, `tests/test_trading_import.py`, `tests/test_trading_math.py`
 - Analytics page:
-  `routes/dashboard.py`, `templates/analytics.html`, `static/js/analytics_page.js`
+  `routes/dashboard.py`, `templates/analytics.html`, `static/js/analytics_page.js`, `tests/test_trades_routes.py`
 - Trade accounts / MT5 request-access:
-  `routes/trade_accounts.py`, `templates/trade_accounts.html`, `static/js/mt5_request_form.js`, `tests/test_mt5_access_requests.py`
+  `routes/trade_accounts.py`, `templates/trade_accounts.html`, `static/js/mt5_request_form.js`, `tests/test_mt5_access_requests.py`, `tests/test_mt5_ready_email.py`
 - Admin MT5 actions:
-  `auth_account.py`, `templates/admin_signup_access.html`
+  `auth_account.py`, `templates/admin_signup_access.html`, `tests/test_admin_route_gating.py`
 - Account / onboarding:
-  `routes/account.py`, `templates/account.html`, `templates/onboarding.html`
+  `routes/account.py`, `templates/account.html`, `templates/onboarding.html`, `tests/test_account_page.py`, `tests/test_onboarding_resume.py`
 - Auth / signup gating:
-  `auth_account.py`, `templates/login.html`, `templates/register.html`
+  `auth_account.py`, `templates/login.html`, `templates/register.html`, `tests/test_auth.py`
 - Landing / SEO:
-  `auth_account.py`, `templates/landing.html`, `templates/seo_page.html`
+  `auth_account.py`, `templates/landing.html`, `templates/seo_page.html`, `tests/test_landing_page.py`, `tests/test_public_seo.py`
 - Contact:
   `routes/contact.py`, `templates/contact.html`
+- Cache / async state:
+  `celery_app.py`, `celery_workers/cache.py`, `tests/test_celery_app.py`, `tests/test_cache.py`
 - MT5 workers:
-  `celery_app.py`, `celery_workers/mt5_setup.py`, `celery_workers/mt5_sync.py`, `routes/mt5_internal.py`
+  `celery_app.py`, `celery_workers/mt5_setup.py`, `celery_workers/mt5_sync.py`, `routes/mt5_internal.py`, `tests/test_mt5_setup.py`, `tests/test_mt5_sync.py`
 
 ## Data Flow
 
@@ -98,10 +103,19 @@ Stable system blueprint.
 - `models.py`: deletes, relationships, uniqueness, lifecycle invariants
 - `ai_service.py`: payload semantics, citations, persisted AI output
 
+## Schema / Migration Rules
+
+- Use Alembic for schema changes; update `models.py` and add a matching migration under `migrations/versions/`
+- Do not change schema without a migration
+- Treat FK / relationship changes as high risk; verify nullability, cascades, backfills, and delete behavior
+- Keep schema changes separate from one-off data migrations unless one revision truly needs both
+
 ## Essential Commands
 
 - Run app:
   `.venv\Scripts\python.exe -m flask --app app run`
+- Create migration:
+  `.venv\Scripts\python.exe -m flask db migrate -m "describe change"`
 - Run migrations:
   `.venv\Scripts\python.exe -m flask db upgrade`
 - Run all tests:

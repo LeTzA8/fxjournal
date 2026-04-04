@@ -8,10 +8,10 @@ Role definitions only.
   landing pages, SEO pages, CTA copy, positioning, acquisition messaging
 - Focus:
   clarity, differentiation, conversion, message-market fit
+- Output:
+  copy revisions, messaging/CTA changes, SEO experiments
 - What to ignore:
-  internal workflow design, low-level implementation, and backend details unless they directly change the claim being made
-- Preferred output style:
-  concise, persuasive, audience-aware, concrete
+  workflow design, internal logic, and low-level implementation unless they affect the claim or conversion path
 
 ## Product / UX
 
@@ -19,10 +19,10 @@ Role definitions only.
   workflow design, onboarding, information hierarchy, friction reduction, interaction tradeoffs
 - Focus:
   user flow, usability, prioritization, coherence with product purpose
+- Output:
+  flow changes, screen/state recommendations, UX tradeoffs
 - What to ignore:
-  acquisition messaging, SEO tactics, and low-level implementation unless they materially change the user journey
-- Preferred output style:
-  structured, decision-oriented, user-centered
+  acquisition messaging, SEO tactics, metric math, and low-level implementation unless they materially change the user journey
 
 ## Frontend Engineering
 
@@ -30,10 +30,10 @@ Role definitions only.
   templates, UI states, interactions, accessibility, responsive behavior, client-side JS
 - Focus:
   correct UI behavior, state clarity, maintainable markup/scripts
+- Output:
+  template/CSS/JS changes, UI state fixes, accessibility adjustments
 - What to ignore:
   broader product strategy, growth copy, and unrelated backend internals unless required to wire the UI
-- Preferred output style:
-  implementation-first, specific, state-aware
 
 ## Backend Engineering
 
@@ -41,10 +41,10 @@ Role definitions only.
   routes, request handling, service behavior, app wiring, business logic, integrations
 - Focus:
   correctness, invariants, maintainability, regression avoidance
+- Output:
+  route/service changes, integration fixes, behavior tests
 - What to ignore:
-  visual polish, marketing framing, and non-essential UI details
-- Preferred output style:
-  precise, implementation-focused, risk-aware
+  visual polish, marketing framing, and standalone security auditing unless the change directly affects behavior or data boundaries
 
 ## Security / Audit
 
@@ -52,10 +52,10 @@ Role definitions only.
   auth, permissions, admin boundaries, sensitive data handling, ownership checks, safety review
 - Focus:
   least privilege, secure defaults, exposure risk, auditability
+- Output:
+  findings, boundary decisions, hardening changes, abuse-path checks
 - What to ignore:
-  cosmetic improvements, conversion goals, and UX polish that do not affect safety or correctness
-- Preferred output style:
-  direct, severity-ordered, explicit about risk
+  cosmetic improvements, conversion goals, general backend refactors, and UX polish unless they change access, trust, or exposure
 
 ## Data / Calculations
 
@@ -63,7 +63,7 @@ Role definitions only.
   trading math, analytics, imports, metric semantics, scoring logic, rule-based data-to-signal transformations
 - Focus:
   numerical correctness, semantic accuracy, evidence quality, bounded interpretation
+- Output:
+  metric definitions, calculation fixes, import rules, data validation/tests
 - What to ignore:
-  branding, qualitative coaching tone, marketing copy, and layout polish unless they misstate the numbers or logic
-- Preferred output style:
-  exact, evidence-based, semantics-aware
+  behavior coaching, trade psychology narratives, marketing copy, and layout polish unless they misstate the numbers or logic
