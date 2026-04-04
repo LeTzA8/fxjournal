@@ -282,7 +282,7 @@ def handle_rate_limit(_error):
         return (
             render_template(
                 "login.html",
-                title="Login | FX Journal",
+                title="MyFXJournal | Login",
                 body_class="auth-layout",
                 error="Too many sign-in attempts. Please wait a minute and try again.",
             ),
@@ -300,7 +300,7 @@ def render_error_page(status_code, heading, description, title=None):
     return (
         render_template(
             "error.html",
-            title=title or f"{status_code} | FX Journal",
+            title=title or f"MyFXJournal | {status_code}",
             status_code=status_code,
             heading=heading,
             description=description,
@@ -320,17 +320,17 @@ def handle_http_error(error):
         403: (
             "Access denied",
             "You do not have permission to view this page.",
-            "403 | FX Journal",
+            "MyFXJournal | 403",
         ),
         404: (
             "Page not found",
             "The page you requested does not exist or may have moved.",
-            "404 | FX Journal",
+            "MyFXJournal | 404",
         ),
         405: (
             "Method not allowed",
             "That action is not available for this page.",
-            "405 | FX Journal",
+            "MyFXJournal | 405",
         ),
     }
     heading, description, title = page_content.get(
@@ -338,7 +338,7 @@ def handle_http_error(error):
         (
             error.name or "Request error",
             error.description or "Something went wrong while processing your request.",
-            f"{error.code} | FX Journal" if error.code else "Error | FX Journal",
+            f"MyFXJournal | {error.code}" if error.code else "MyFXJournal | Error",
         ),
     )
     return render_error_page(error.code or 500, heading, description, title=title)
@@ -352,7 +352,7 @@ def handle_unexpected_error(error):
         500,
         "Something broke on our side",
         "The page could not be loaded right now. Please try again in a moment.",
-        title="500 | FX Journal",
+        title="MyFXJournal | 500",
     )
 
 

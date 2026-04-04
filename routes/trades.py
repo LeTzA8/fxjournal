@@ -353,7 +353,7 @@ def render_trades_page(*, manage_mode=False):
 
     return render_template(
         "trades.html",
-        title="My Trades | FX Journal",
+        title="MyFXJournal | My Trades",
         username=username,
         trades=trade_rows,
         size_label=size_label,
@@ -630,7 +630,7 @@ def new_trade():
 
     return render_template(
         "trade_entry.html",
-        title="New Trade | FX Journal",
+        title="MyFXJournal | New Trade",
         username=session.get("username", "User"),
         active_trade_account_name=active_trade_account.name,
         symbol_options=get_symbol_options(active_trade_account.account_type),
@@ -931,7 +931,7 @@ def trade_detail(trade_pubkey):
 
     return render_template(
         "trade_detail.html",
-        title="Trade Detail | FX Journal",
+        title="MyFXJournal | Trade Detail",
         username=session.get("username", "User"),
         trade=trade,
         trade_display_symbol=format_trade_symbol(trade),
@@ -1131,7 +1131,7 @@ def edit_trade(trade_pubkey):
 
     return render_template(
         "trade_entry.html",
-        title="Edit Trade | FX Journal",
+        title="MyFXJournal | Edit Trade",
         username=session.get("username", "User"),
         active_trade_account_name=trade_account.name,
         symbol_options=get_symbol_options(trade_account.account_type, trade.symbol),
@@ -1179,7 +1179,7 @@ def bundle_review():
 
     return render_template(
         "bundle_review.html",
-        title="Bundle Review | FX Journal",
+        title="MyFXJournal | Bundle Review",
         username=session.get("username", "User"),
         bundle_candidates=bundle_candidates,
         complete_action=url_for("trades.bundle_review_complete") if review_pending else None,

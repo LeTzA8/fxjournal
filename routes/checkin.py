@@ -249,7 +249,7 @@ def _render_checkin_page(
     workflow_state = _build_checkin_workflow_state(outliers, form_data)
     return render_template(
         "checkin.html",
-        title="Weekly Check-In | FX Journal",
+        title="MyFXJournal | Weekly Check-In",
         body_class="auth-layout",
         username=session.get("username", "User"),
         error=error,

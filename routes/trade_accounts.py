@@ -660,7 +660,7 @@ def trade_accounts():
 
     return render_template(
         "trade_accounts.html",
-        title="Trade Accounts | FX Journal",
+        title="MyFXJournal | Trade Accounts",
         username=session.get("username", "User"),
         account_rows=account_rows,
         account_trade_counts=account_trade_counts,

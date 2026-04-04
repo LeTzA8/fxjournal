@@ -9,20 +9,20 @@
     {% set should_noindex = is_app_layout or request.path.startswith('/login') or request.path.startswith('/register') or request.path.startswith('/password/') or request.path.startswith('/verify-email') or request.path.startswith('/onboarding') or request.path.startswith('/auth/google') %}
     {% set resolved_meta_robots = meta_robots or ('noindex, nofollow' if should_noindex else 'index, follow') %}
     {% set resolved_canonical_url = canonical_url or default_canonical_url %}
-    <title>{{ title or "FX Journal - AI-Assisted Forex Trading Journal" }}</title>
+    <title>{{ title or "MyFXJournal | Free Forex Trading Journal With Weekly AI Review" }}</title>
     <meta name="robots" content="{{ resolved_meta_robots }}">
-    <meta name="description" content="{{ meta_description or 'Track, analyse, and review your forex trading with AI-assisted weekly journal insights. Free during open beta.' }}">
+    <meta name="description" content="{{ meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
     <link rel="canonical" href="{{ resolved_canonical_url }}">
-    <meta property="og:title" content="{{ title or 'FX Journal - AI-Assisted Forex Trading Journal' }}">
-    <meta property="og:description" content="{{ meta_description or 'Track, analyse, and review your forex trading with AI-assisted weekly journal insights. Free during open beta.' }}">
+    <meta property="og:title" content="{{ title or 'MyFXJournal | Free Forex Trading Journal With Weekly AI Review' }}">
+    <meta property="og:description" content="{{ meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
     <meta property="og:type" content="website">
-    <meta property="og:site_name" content="FX Journal">
+    <meta property="og:site_name" content="MyFXJournal">
     <meta property="og:url" content="{{ resolved_canonical_url }}">
     <meta property="og:image" content="{{ url_for('static', filename='site-logo.png', v='1', _external=True) }}">
-    <meta property="og:image:alt" content="FX Journal logo">
+    <meta property="og:image:alt" content="MyFXJournal logo">
     <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="{{ title or 'FX Journal - AI-Assisted Forex Trading Journal' }}">
-    <meta name="twitter:description" content="{{ meta_description or 'Track, analyse, and review your forex trading with AI-assisted weekly journal insights. Free during open beta.' }}">
+    <meta name="twitter:title" content="{{ title or 'MyFXJournal | Free Forex Trading Journal With Weekly AI Review' }}">
+    <meta name="twitter:description" content="{{ meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
     <meta name="twitter:image" content="{{ url_for('static', filename='site-logo.png', v='1', _external=True) }}">
     {% if google_site_verification %}
     <meta name="google-site-verification" content="{{ google_site_verification }}">
@@ -34,7 +34,7 @@
         {
             "@context": "https://schema.org",
             "@type": "Organization",
-            "name": "FX Journal",
+            "name": "MyFXJournal",
             "url": {{ url_for('landing', _external=True)|tojson }},
             "logo": {{ url_for('static', filename='site-logo.png', v='1', _external=True)|tojson }}
         }
@@ -2136,13 +2136,13 @@
     {% if is_app_layout %}
     <header class="site-header">
         <div class="site-header-inner">
-            <a href="{{ url_for('landing') }}" class="site-brand" aria-label="FX Journal home">
+            <a href="{{ url_for('landing') }}" class="site-brand" aria-label="MyFXJournal home">
                 <img
                     src="{{ url_for('static', filename='site-logo.png') }}"
-                    alt="FX Journal"
+                    alt="MyFXJournal"
                     class="site-brand-logo"
                 >
-                <span class="site-brand-text">FX Journal</span>
+                <span class="site-brand-text">MyFXJournal</span>
             </a>
             <nav class="site-nav" aria-label="Primary">
                 <a

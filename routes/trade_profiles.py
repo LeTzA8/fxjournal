@@ -47,7 +47,7 @@ def strategies():
 
     return render_template(
         "trade_profiles.html",
-        title="Strategies | FX Journal",
+        title="MyFXJournal | Strategies",
         username=username,
         trade_profiles=profiles,
         profile_versions=profile_versions,

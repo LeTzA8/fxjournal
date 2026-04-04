@@ -1227,7 +1227,7 @@ def home():
 
     return render_template(
         "index.html",
-        title="FX Journal",
+        title="MyFXJournal | Dashboard",
         username=username,
         active_trade_account=active_trade_account,
         win_rate=summary.get("win_rate"),
@@ -1365,7 +1365,7 @@ def analytics():
 
     return render_template(
         "analytics.html",
-        title="Analytics | FX Journal",
+        title="MyFXJournal | Analytics",
         username=session.get("username", "User"),
         analytics=analytics_payload,
         analytics_timezone=timezone_name,

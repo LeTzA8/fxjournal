@@ -1,439 +1,932 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="seo-shell">
-    <div class="seo-aura seo-aura-one" aria-hidden="true"></div>
-    <div class="seo-aura seo-aura-two" aria-hidden="true"></div>
+<section class="landing-wrap seo-landing-wrap">
+    <div class="landing-glass" aria-hidden="true"></div>
+    <div class="landing-market-bg" aria-hidden="true">
+        <div class="market-replay-shell">
+            <div class="replay-crosshair replay-crosshair-h"></div>
+            <div class="replay-crosshair replay-crosshair-v"></div>
+            <div class="replay-candles" id="replayCandles"></div>
+            <div class="replay-vignette"></div>
+        </div>
+    </div>
 
-    <div class="seo-page">
-        <header class="seo-topbar">
-            <a href="{{ url_for('landing') }}" class="seo-brand" aria-label="MyFXJournal home">
-                <img src="{{ url_for('static', filename='site-logo.png') }}" alt="MyFXJournal" class="seo-brand-logo">
-                <span>MyFXJournal</span>
-            </a>
-            <nav class="seo-nav" aria-label="SEO page">
-                <a href="{{ url_for('landing') }}">Home</a>
-                <a href="{{ url_for('landing') }}#compare">Compare</a>
-                <a href="{{ url_for('contact.contact') }}">Contact</a>
-            </nav>
-            <div class="seo-topbar-actions">
-                {% if user_logged_in %}
-                <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Dashboard</a>
-                <a href="{{ url_for('account.account') }}" class="submit-btn">Account</a>
-                {% else %}
-                <a href="{{ url_for('login') }}" class="ghost-btn">Log In</a>
-                <a href="{{ url_for('register') }}" class="submit-btn">Start Free</a>
-                {% endif %}
-            </div>
-        </header>
-
-        <article class="seo-hero">
-            <div class="seo-hero-copy">
-                <p class="seo-eyebrow">{{ seo_page.eyebrow }}</p>
-                <h1>{{ seo_page.hero_title }}</h1>
-                <p class="seo-lead">{{ seo_page.hero_body }}</p>
-                <div class="seo-chip-row" aria-label="Page highlights">
-                    {% for chip in seo_page.chips %}
-                    <span class="seo-chip{% if seo_page_slug == 'free-mt5-sync' and loop.first %} is-featured{% endif %}">{{ chip }}</span>
-                    {% endfor %}
-                </div>
-                <div class="seo-actions">
-                    {% if user_logged_in %}
-                    <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>
-                    <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask About Setup</a>
-                    {% else %}
-                    <a href="{{ url_for('register') }}" class="submit-btn">Start Free</a>
-                    <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask About Setup</a>
-                    {% endif %}
+    <header class="landing-header{% if user_logged_in %} is-user-logged-in{% endif %}">
+        <a href="{{ url_for('landing') }}" class="landing-brand" aria-label="MyFXJournal Home">
+            <img
+                src="{{ url_for('static', filename='site-logo.png') }}"
+                alt="MyFXJournal"
+                class="landing-brand-logo"
+            >
+            <span class="landing-brand-text">MyFXJournal</span>
+        </a>
+        <nav class="landing-nav" aria-label="Landing">
+            <a href="{{ url_for('landing') }}#workflow">Workflow</a>
+            <a href="{{ url_for('landing') }}#features">Features</a>
+            <div class="landing-nav-dropdown site-nav-group" data-nav-dropdown>
+                <button type="button" class="landing-nav-summary" aria-haspopup="true" aria-expanded="false" data-nav-dropdown-toggle>Explore</button>
+                <div class="landing-nav-menu" aria-label="Explore workflows" data-nav-dropdown-menu hidden>
+                    <a href="{{ url_for('free_mt5_sync_page') }}" class="site-nav-link site-nav-sublink">Free MT5 Sync</a>
+                    <a href="{{ url_for('weekly_trading_review_page') }}" class="site-nav-link site-nav-sublink">Weekly Trading Review</a>
                 </div>
             </div>
+            <a href="{{ url_for('landing') }}#compare">Compare</a>
+            <a href="{{ url_for('landing') }}#founder">About</a>
+            <a href="{{ url_for('contact.contact') }}">Contact</a>
+        </nav>
+        <div class="landing-auth-links{% if user_logged_in %} is-user-logged-in{% endif %}">
+            {% if user_logged_in %}
+            <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Dashboard</a>
+            <a href="{{ url_for('account.account') }}" class="submit-btn">Account</a>
+            <form action="{{ url_for('logout') }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="ghost-btn logout-btn">Log Out</button>
+            </form>
+            {% else %}
+            <a href="{{ url_for('login') }}" class="ghost-btn">Log In</a>
+            <a href="{{ url_for('register') }}" class="submit-btn">Start Free</a>
+            {% endif %}
+        </div>
+    </header>
 
-            <aside class="seo-hero-card">
-                <p class="seo-card-eyebrow">Why this matters</p>
-                <h2>{{ seo_page.intro_title }}</h2>
-                <p>{{ seo_page.intro_body }}</p>
-                <ul class="seo-signal-list">
-                    {% for point in seo_page.fit_points %}
-                    <li>{{ point }}</li>
-                    {% endfor %}
-                </ul>
-            </aside>
+    <div class="seo-page-stack">
+        <article class="landing-section seo-page-hero landing-reveal" data-reveal-scope data-reveal-immediate>
+            <div class="landing-inner seo-page-hero-inner">
+                <div class="seo-page-hero-copy">
+                    <p class="eyebrow landing-reveal" data-reveal-delay="120">{{ seo_page.eyebrow }}</p>
+                    <h1 class="seo-page-title landing-reveal" data-reveal-delay="180">{{ seo_page.hero_title }}</h1>
+                    <p class="seo-page-lead landing-reveal" data-reveal-delay="260">{{ seo_page.hero_body }}</p>
+                    <div class="ai-demo-chip-row landing-reveal" data-reveal-delay="340" aria-label="Page highlights">
+                        <span class="ai-demo-chip is-accent">Free MT5 Sync</span>
+                        <span class="ai-demo-chip is-accent">Weekly AI Review</span>
+                        {% for chip in seo_page.chips %}
+                        <span class="ai-demo-chip">{{ chip }}</span>
+                        {% endfor %}
+                    </div>
+                    <div class="landing-actions landing-reveal" data-reveal-delay="420">
+                        {% if user_logged_in %}
+                        <a href="{{ url_for('dashboard.home') }}" class="submit-btn hero-cta">Open Dashboard</a>
+                        <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask About Setup</a>
+                        {% else %}
+                        <a href="{{ url_for('register') }}" class="submit-btn hero-cta">Start Free</a>
+                        <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Ask About Setup</a>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <aside class="seo-page-panel landing-reveal" data-reveal-delay="260">
+                    <p class="seo-panel-kicker">Why this matters</p>
+                    <h2>{{ seo_page.intro_title }}</h2>
+                    <p>{{ seo_page.intro_body }}</p>
+                    <ul class="seo-signal-list">
+                        {% for point in seo_page.fit_points %}
+                        <li>{{ point }}</li>
+                        {% endfor %}
+                    </ul>
+                </aside>
+            </div>
         </article>
 
-        <section class="seo-section">
-            <div class="seo-section-head">
-                <p class="seo-section-eyebrow">What the workflow is trying to remove</p>
-                <h2>Less admin between the trades and the review.</h2>
-            </div>
-            <div class="seo-card-grid">
-                {% for card in seo_page.cards %}
-                <article class="seo-info-card">
-                    <h3>{{ card.title }}</h3>
-                    <p>{{ card.body }}</p>
-                </article>
-                {% endfor %}
-            </div>
-        </section>
-
-        <section class="seo-section">
-            <div class="seo-section-head">
-                <p class="seo-section-eyebrow">How it flows</p>
-                <h2>Keep the review loop short enough to repeat.</h2>
-            </div>
-            <div class="seo-step-grid">
-                {% for step in seo_page.workflow_steps %}
-                <article class="seo-step-card">
-                    <span class="seo-step-number">0{{ loop.index }}</span>
-                    <h3>{{ step.title }}</h3>
-                    <p>{{ step.body }}</p>
-                </article>
-                {% endfor %}
+        <section class="landing-section seo-page-section landing-reveal" data-reveal-scope>
+            <div class="landing-inner">
+                <div class="seo-section-head landing-reveal" data-reveal-delay="50">
+                    <p class="seo-section-eyebrow">What it removes</p>
+                    <h2>Less admin. More clarity.</h2>
+                </div>
+                <div class="seo-card-grid">
+                    {% for card in seo_page.cards %}
+                    <article class="seo-page-panel landing-reveal" data-reveal-delay="{{ 120 + loop.index0 * 70 }}">
+                        <h3>{{ card.title }}</h3>
+                        <p>{{ card.body }}</p>
+                    </article>
+                    {% endfor %}
+                </div>
             </div>
         </section>
 
-        <section class="seo-section">
-            <div class="seo-section-head">
-                <p class="seo-section-eyebrow">FAQ</p>
-                <h2>Questions a trader would naturally ask first.</h2>
-            </div>
-            <div class="seo-faq-grid">
-                {% for item in seo_page.faq %}
-                <article class="seo-faq-card">
-                    <h3>{{ item.question }}</h3>
-                    <p>{{ item.answer }}</p>
-                </article>
-                {% endfor %}
-            </div>
-        </section>
-
-        <section class="seo-section seo-section-related">
-            <div class="seo-section-head">
-                <p class="seo-section-eyebrow">Keep exploring</p>
-                <h2>Related ways traders might find this workflow.</h2>
-            </div>
-            <div class="seo-related-grid">
-                {% for page in related_pages %}
-                <a href="{{ page.url }}" class="seo-related-card">
-                    <p class="seo-related-eyebrow">{{ page.title }}</p>
-                    <h3>{{ page.hero_title }}</h3>
-                    <span>Open page</span>
-                </a>
-                {% endfor %}
+        <section class="landing-section seo-page-section landing-reveal" data-reveal-scope>
+            <div class="landing-inner">
+                <div class="seo-section-head landing-reveal" data-reveal-delay="50">
+                    <p class="seo-section-eyebrow">{{ seo_page.workflow_eyebrow or "How it works" }}</p>
+                    <h2>{{ seo_page.workflow_heading or "Short enough to keep doing." }}</h2>
+                </div>
+                <div class="seo-step-grid">
+                    {% for step in seo_page.workflow_steps %}
+                    <article class="seo-page-panel seo-step-card landing-reveal" data-reveal-delay="{{ 120 + loop.index0 * 70 }}">
+                        <span class="seo-step-number">0{{ loop.index }}</span>
+                        <h3>{{ step.title }}</h3>
+                        <p>{{ step.body }}</p>
+                    </article>
+                    {% endfor %}
+                </div>
             </div>
         </section>
 
-        <section class="seo-cta-panel">
-            <p class="seo-card-eyebrow">MyFXJournal right now</p>
-            <h2>Free during open beta while the review workflow keeps getting sharper.</h2>
-            <p>Import the history, keep the context, and make reflection easier to keep up with before the next trading week starts.</p>
-            <div class="seo-actions">
-                {% if user_logged_in %}
-                <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>
-                {% else %}
-                <a href="{{ url_for('register') }}" class="submit-btn">Start Free</a>
-                {% endif %}
-                <a href="{{ url_for('landing') }}#compare" class="ghost-btn">See Pricing Context</a>
+        <section class="landing-section seo-page-section landing-reveal" data-reveal-scope>
+            <div class="landing-inner">
+                <div class="seo-section-head landing-reveal" data-reveal-delay="50">
+                    <p class="seo-section-eyebrow">FAQ</p>
+                    <h2>The quick answers.</h2>
+                </div>
+                <div class="seo-faq-grid">
+                    {% for item in seo_page.faq %}
+                    <article class="seo-page-panel landing-reveal" data-reveal-delay="{{ 120 + loop.index0 * 70 }}">
+                        <h3>{{ item.question }}</h3>
+                        <p>{{ item.answer }}</p>
+                    </article>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <section class="landing-section seo-page-cta landing-reveal" data-reveal-scope>
+            <div class="landing-inner">
+                <p class="seo-panel-kicker landing-reveal" data-reveal-delay="50">MyFXJournal right now</p>
+                <h2 class="landing-reveal" data-reveal-delay="120">{{ seo_page.cta_heading }}</h2>
+                <p class="landing-reveal" data-reveal-delay="200">{{ seo_page.cta_body }}</p>
+                <div class="landing-actions landing-reveal" data-reveal-delay="280">
+                    {% if user_logged_in %}
+                    <a href="{{ url_for('dashboard.home') }}" class="submit-btn hero-cta">Open Dashboard</a>
+                    {% else %}
+                    <a href="{{ url_for('register') }}" class="submit-btn hero-cta">Start Free</a>
+                    {% endif %}
+                    <a href="{{ url_for('landing') }}#compare" class="ghost-btn">See Pricing Context</a>
+                </div>
             </div>
         </section>
     </div>
 </section>
 
 <style>
-    main {
+    body.landing-layout {
+        min-width: 0;
+        max-width: none;
+        --landing-font-body: var(--font-ui);
+        --landing-font-display: var(--font-display);
+        --landing-font-mono: var(--font-mono);
+        --landing-lead-ink: color-mix(in srgb, var(--ink) 94%, var(--card));
+        --landing-candle-up-start: color-mix(in srgb, var(--good) 78%, var(--card));
+        --landing-candle-up-end: color-mix(in srgb, var(--good) 50%, var(--bg));
+        --landing-candle-down-start: color-mix(in srgb, var(--bad) 84%, var(--card));
+        --landing-candle-down-end: color-mix(in srgb, var(--bad) 54%, var(--bg));
+        font-family: var(--landing-font-body);
+    }
+
+    body.landing-layout main {
         max-width: none;
         margin: 0;
         padding: 0;
         min-height: 100vh;
     }
 
-    .seo-shell {
-        position: relative;
-        overflow: clip;
-        padding: clamp(1rem, 2vw, 1.4rem);
-        background:
-            radial-gradient(circle at top left, rgba(99, 102, 241, 0.16), transparent 28%),
-            radial-gradient(circle at 85% 18%, rgba(20, 184, 166, 0.12), transparent 24%),
-            linear-gradient(180deg, #030513 0%, #070c1f 58%, #091124 100%);
+    body.landing-layout p,
+    body.landing-layout li,
+    body.landing-layout a,
+    body.landing-layout span,
+    body.landing-layout button,
+    body.landing-layout input,
+    body.landing-layout label {
+        font-family: var(--landing-font-body);
     }
 
-    .seo-aura {
-        position: absolute;
-        inset: auto;
-        width: 34rem;
-        height: 34rem;
-        border-radius: 999px;
-        filter: blur(70px);
+    body.landing-layout h1,
+    body.landing-layout h2,
+    body.landing-layout h3,
+    body.landing-layout h4,
+    body.landing-layout h5,
+    body.landing-layout h6,
+    body.landing-layout .landing-brand-text {
+        font-family: var(--landing-font-display);
+    }
+
+    .landing-glass {
+        position: fixed;
+        inset: 0;
         pointer-events: none;
-        opacity: 0.38;
+        z-index: 0;
+        background:
+            linear-gradient(170deg, rgba(0, 0, 0, 0.24), transparent 46%),
+            radial-gradient(circle at 14% 14%, rgba(69, 98, 255, 0.06), transparent 48%),
+            radial-gradient(circle at 88% 16%, rgba(72, 84, 214, 0.06), transparent 50%),
+            radial-gradient(circle at 52% 84%, rgba(39, 76, 184, 0.04), transparent 52%),
+            linear-gradient(165deg, color-mix(in srgb, var(--card) 10%, transparent), transparent);
+        backdrop-filter: blur(12px) brightness(0.94);
+        -webkit-backdrop-filter: blur(12px) brightness(0.94);
+        filter: saturate(0.98);
     }
 
-    .seo-aura-one {
-        top: -10rem;
-        right: -8rem;
-        background: rgba(99, 102, 241, 0.28);
-    }
-
-    .seo-aura-two {
-        bottom: -14rem;
-        left: -8rem;
-        background: rgba(16, 185, 129, 0.18);
-    }
-
-    .seo-page {
-        position: relative;
+    .landing-market-bg {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
         z-index: 1;
-        width: min(1180px, 100%);
-        margin: 0 auto;
+        overflow: hidden;
+        opacity: 0.28;
+    }
+
+    .market-replay-shell {
+        position: absolute;
+        inset: 1.4vh 0;
+        border-radius: 28px;
+        overflow: hidden;
+        border: none;
+        background: transparent;
+        box-shadow: none;
+        animation: replay-shell-bob 7.8s ease-in-out 1.7s infinite;
+    }
+
+    .replay-crosshair {
+        position: absolute;
+        pointer-events: none;
+        opacity: 0.24;
+    }
+
+    .replay-crosshair-h {
+        left: 0;
+        right: 0;
+        top: 12%;
+        border-top: 1px dashed rgba(226, 232, 240, 0.18);
+    }
+
+    .replay-crosshair-v {
+        top: 4%;
+        bottom: 4%;
+        right: 2.2%;
+        border-left: 1px dashed rgba(226, 232, 240, 0.18);
+    }
+
+    .replay-candles {
+        position: absolute;
+        inset: 2% 0 4%;
+        clip-path: inset(0 100% 0 0);
+        animation: replay-reveal 1.55s cubic-bezier(.22, .61, .36, 1) 1 both;
+        transform: scaleY(1.2);
+        transform-origin: 50% 100%;
+        filter: saturate(1.35) contrast(1.22) brightness(1.12);
+    }
+
+    .replay-candle {
+        --candle-color: rgba(19, 202, 204, 1);
+        --candle-fill: rgba(19, 202, 204, 0.52);
+        position: absolute;
+        left: calc(var(--x) * 1%);
+        bottom: 0;
+        width: max(2px, calc(var(--candle-step) * 1% - 4.4px));
+        height: 100%;
+        transform: translateX(-50%);
+    }
+
+    .replay-candle .wick-top,
+    .replay-candle .wick-bottom,
+    .replay-candle .candle-body {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        shape-rendering: crispEdges;
+    }
+
+    .replay-candle .wick-top,
+    .replay-candle .wick-bottom {
+        width: 1.4px;
+        background: var(--candle-color);
+        z-index: 2;
+        filter: drop-shadow(0 0 2px color-mix(in srgb, var(--candle-color) 55%, transparent));
+    }
+
+    .replay-candle .wick-top {
+        bottom: calc((var(--body-bottom) + var(--body-height)) * 1%);
+        height: max(1px, calc(var(--wick-top-height) * 1%));
+    }
+
+    .replay-candle .wick-bottom {
+        bottom: calc(var(--wick-low) * 1%);
+        height: max(1px, calc(var(--wick-bottom-height) * 1%));
+    }
+
+    .replay-candle .candle-body {
+        width: calc(100% - 2px);
+        bottom: calc(var(--body-bottom) * 1%);
+        height: max(2px, calc(var(--body-height) * 1%));
+        border: 2px solid var(--candle-color);
+        background: var(--candle-fill);
+        z-index: 3;
+        box-shadow: 0 0 5px color-mix(in srgb, var(--candle-color) 32%, transparent);
+    }
+
+    .replay-candle.down {
+        --candle-color: rgba(255, 96, 106, 1);
+        --candle-fill: rgba(255, 96, 106, 0.5);
+    }
+
+    .replay-vignette {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 50% 50%, transparent 72%, rgba(2, 6, 23, 0.004) 100%);
+        pointer-events: none;
+    }
+
+    @keyframes replay-reveal {
+        0% {
+            clip-path: inset(0 100% 0 0);
+            opacity: 0.88;
+        }
+        100% {
+            clip-path: inset(0 0 0 0);
+            opacity: 1;
+        }
+    }
+
+    @keyframes replay-shell-bob {
+        0%, 100% {
+            transform: translateY(0) scale(1);
+        }
+        50% {
+            transform: translateY(-3px) scale(1.0015);
+        }
+    }
+
+    .landing-wrap > *:not(.landing-glass):not(.landing-market-bg) {
+        position: relative;
+        z-index: 2;
+        min-width: 0;
+    }
+
+    .landing-wrap {
+        min-height: 100vh;
+        box-sizing: border-box;
+        width: 100%;
+        max-width: none;
+        margin: 0;
+        min-width: 0;
+        position: relative;
+        padding: clamp(0.8rem, 3vw, 2rem);
+        overflow: visible;
         display: grid;
-        gap: 1.1rem;
-    }
-
-    .seo-topbar,
-    .seo-hero,
-    .seo-section,
-    .seo-cta-panel {
-        border: 1px solid rgba(148, 163, 184, 0.22);
-        background: rgba(8, 13, 31, 0.8);
-        box-shadow: 0 24px 60px rgba(2, 6, 23, 0.28);
-        backdrop-filter: blur(16px);
-    }
-
-    .seo-topbar {
-        border-radius: 24px;
-        padding: 0.95rem 1.05rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
+        grid-template-columns: minmax(0, 1fr);
         gap: 1rem;
+        align-items: start;
     }
 
-    .seo-brand {
+    .landing-header {
+        position: sticky;
+        top: 0.75rem;
+        z-index: 200 !important;
+        width: 100%;
+        min-height: 68px;
+        margin: 0;
+        padding: 0.48rem clamp(0.75rem, 1.4vw, 1.2rem);
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) auto minmax(220px, 1fr);
+        align-items: center;
+        gap: 0.9rem;
+        border: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+        border-radius: 16px;
+        background: color-mix(in srgb, var(--card) 30%, transparent);
+        backdrop-filter: blur(8px) saturate(1.05);
+        -webkit-backdrop-filter: blur(8px) saturate(1.05);
+        box-shadow: 0 8px 20px rgba(2, 6, 23, 0.1);
+        min-width: 0;
+        isolation: isolate;
+    }
+
+    .landing-brand {
         display: inline-flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: 0.56rem;
+        color: var(--ink);
         text-decoration: none;
-        color: rgba(241, 245, 249, 0.96);
+        min-width: 0;
+        justify-self: start;
+    }
+
+    .landing-brand-logo {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+        object-fit: cover;
+        background: color-mix(in srgb, var(--surface) 84%, transparent);
+    }
+
+    .landing-brand-text {
+        font-family: var(--font-display);
+        font-size: clamp(0.96rem, 1vw, 1.08rem);
         font-weight: 800;
         letter-spacing: 0.01em;
+        white-space: nowrap;
+        color: var(--ink);
     }
 
-    .seo-brand-logo {
-        width: 2.25rem;
-        height: 2.25rem;
-        border-radius: 14px;
-    }
-
-    .seo-nav,
-    .seo-topbar-actions,
-    .seo-actions,
-    .seo-chip-row {
-        display: flex;
+    .landing-nav {
+        display: inline-flex;
         align-items: center;
-        gap: 0.75rem;
+        justify-content: center;
+        justify-self: center;
+        gap: 0.32rem;
+        min-width: 0;
         flex-wrap: wrap;
     }
 
-    .seo-nav a {
-        color: rgba(226, 232, 240, 0.82);
-        text-decoration: none;
-        font-size: 0.94rem;
-    }
-
-    .seo-nav a:hover {
-        color: rgba(255, 255, 255, 0.98);
-    }
-
-    .seo-hero {
-        border-radius: 32px;
-        padding: clamp(1.2rem, 3vw, 2rem);
-        display: grid;
-        gap: 1rem;
-        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.92fr);
-    }
-
-    .seo-eyebrow,
-    .seo-section-eyebrow,
-    .seo-card-eyebrow,
-    .seo-related-eyebrow {
-        margin: 0;
-        font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        font-weight: 800;
-        color: rgba(165, 180, 252, 0.92);
-    }
-
-    .seo-hero h1,
-    .seo-section h2,
-    .seo-cta-panel h2 {
-        margin: 0;
-        color: rgba(248, 250, 252, 0.98);
-        line-height: 1.02;
-    }
-
-    .seo-hero h1 {
-        font-size: clamp(2.3rem, 5vw, 4.5rem);
-        max-width: 11ch;
-    }
-
-    .seo-lead,
-    .seo-hero-card p,
-    .seo-info-card p,
-    .seo-step-card p,
-    .seo-faq-card p,
-    .seo-cta-panel p {
-        margin: 0;
-        color: rgba(226, 232, 240, 0.78);
-        line-height: 1.7;
-    }
-
-    .seo-chip {
-        padding: 0.52rem 0.82rem;
+    .landing-nav > a,
+    .landing-nav > .landing-nav-dropdown > .landing-nav-summary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 0.92rem;
         border-radius: 999px;
-        border: 1px solid rgba(129, 140, 248, 0.28);
-        background: rgba(11, 18, 40, 0.76);
-        color: rgba(224, 231, 255, 0.9);
-        font-size: 0.82rem;
+        border: 1px solid transparent;
+        color: var(--muted);
+        background: transparent;
+        text-decoration: none;
+        font-size: 0.75rem;
         font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        line-height: 1;
+        font-family: var(--font-ui);
     }
 
-    .seo-chip.is-featured {
-        border-color: rgba(74, 222, 128, 0.42);
-        background: rgba(15, 43, 30, 0.84);
-        color: rgba(187, 247, 208, 0.95);
-        box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.08), 0 10px 28px rgba(16, 185, 129, 0.12);
+    .landing-nav-summary {
+        appearance: none;
+        cursor: pointer;
     }
 
-    .seo-hero-card,
-    .seo-info-card,
-    .seo-step-card,
-    .seo-faq-card,
-    .seo-related-card {
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        border-radius: 22px;
-        background: rgba(11, 18, 40, 0.74);
+    .landing-nav-dropdown {
+        position: relative;
+        display: inline-flex;
+        z-index: 220;
     }
 
-    .seo-hero-card {
-        padding: 1.15rem;
+    .landing-nav-summary::after {
+        content: "";
+        width: 0.42rem;
+        height: 0.42rem;
+        margin-left: 0.42rem;
+        border-right: 1.5px solid currentColor;
+        border-bottom: 1.5px solid currentColor;
+        transform: translateY(-0.08rem) rotate(45deg);
+        transition: transform 180ms ease;
+    }
+
+    .landing-nav > a:hover,
+    .landing-nav > .landing-nav-dropdown > .landing-nav-summary:hover,
+    .landing-nav-dropdown.is-open > .landing-nav-summary {
+        color: var(--accent);
+        border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+        background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+
+    .landing-nav-dropdown.is-open > .landing-nav-summary::after {
+        transform: translateY(0.02rem) rotate(225deg);
+    }
+
+    .landing-nav-menu {
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        left: 0;
+        z-index: 9999;
+        min-width: 200px;
+        padding: 0.45rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 14px;
+        background: var(--card);
+        box-shadow: 0 18px 34px rgba(2, 6, 23, 0.28);
         display: grid;
-        gap: 0.85rem;
+        gap: 0.28rem;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-6px);
+        transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .landing-nav-menu[hidden] {
+        display: none !important;
+    }
+
+    .landing-nav-dropdown.is-open .landing-nav-menu,
+    .landing-nav-dropdown:hover .landing-nav-menu,
+    .landing-nav-dropdown:focus-within .landing-nav-menu {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+    }
+
+    .site-nav-link.site-nav-sublink {
+        text-transform: none;
+        letter-spacing: 0.01em;
+        font-size: 0.8rem;
+    }
+
+    .landing-auth-links {
+        width: fit-content;
+        justify-self: end;
+        display: inline-flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .landing-auth-links form {
+        margin: 0;
+        display: flex;
+    }
+
+    .landing-auth-links .submit-btn,
+    .landing-auth-links .ghost-btn,
+    .landing-actions .submit-btn,
+    .landing-actions .ghost-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        border-radius: 999px;
+        padding: 0 1rem;
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        text-decoration: none;
+    }
+
+    .landing-actions .hero-cta {
+        min-height: 48px;
+        padding: 0 1.35rem;
+        font-size: 0.82rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        box-shadow: 0 12px 24px rgba(69, 98, 255, 0.24);
+    }
+
+    .landing-actions .hero-cta:hover {
+        transform: translateY(-2px) scale(1.02);
+        box-shadow: 0 16px 32px rgba(69, 98, 255, 0.3);
+    }
+
+    .seo-landing-wrap .eyebrow,
+    .seo-section-eyebrow,
+    .seo-panel-kicker {
+        margin: 0;
+        color: color-mix(in srgb, var(--accent) 72%, var(--ink));
+        font-family: var(--landing-font-mono);
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .seo-page-stack {
+        width: 100%;
+        margin: 0 auto;
+        display: grid;
+        gap: 1.15rem;
+        padding-top: clamp(0.5rem, 1.2vw, 0.85rem);
+    }
+
+    .landing-section {
+        width: min(1120px, 100%);
+        margin: 0 auto;
+        padding: clamp(0.72rem, 1.55vw, 1.05rem) 0;
+        border-top: 1px solid color-mix(in srgb, var(--border) 56%, transparent);
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+        background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--card) 12%, transparent),
+            color-mix(in srgb, var(--card) 4%, transparent)
+        );
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.04);
+        min-width: 0;
+    }
+
+    .landing-inner {
+        width: 100%;
+        margin: 0;
+        min-width: 0;
+        padding: 0 clamp(0.9rem, 2.8vw, 2.6rem);
+    }
+
+    .landing-section h2 {
+        margin-top: 0.35rem;
+    }
+
+    .landing-section .muted {
+        margin: 0 0 0.9rem;
+        max-width: 70ch;
+    }
+
+    .seo-page-stack > .landing-section {
+        width: min(86vw, 1520px);
+        max-width: 100%;
+    }
+
+    .seo-page-hero,
+    .seo-page-section,
+    .seo-page-cta {
+        border-radius: 22px;
+        overflow: hidden;
+    }
+
+    .seo-page-hero {
+        padding: clamp(0.72rem, 1.55vw, 1.05rem) 0;
+    }
+
+    .seo-page-hero-inner {
+        display: grid;
+        gap: 1.05rem;
+        grid-template-columns: minmax(0, 1.3fr) minmax(300px, 0.9fr);
+        align-items: start;
+    }
+
+    .seo-page-hero-copy {
+        display: grid;
+        gap: 0.62rem;
         align-content: start;
     }
 
-    .seo-hero-card h2,
-    .seo-info-card h3,
-    .seo-step-card h3,
-    .seo-faq-card h3,
-    .seo-related-card h3 {
+    .seo-page-title {
         margin: 0;
-        color: rgba(248, 250, 252, 0.98);
+        max-width: 12ch;
+        font-size: clamp(2.15rem, 3.9vw, 3.75rem);
+        line-height: 1.04;
+        letter-spacing: -0.03em;
+        color: var(--ink);
+    }
+
+    .seo-page-lead {
+        margin: 0;
+        max-width: 58ch;
+        font-size: clamp(1rem, 1.45vw, 1.12rem);
+        color: var(--landing-lead-ink);
+        line-height: 1.7;
+    }
+
+    .landing-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.72rem;
+        flex-wrap: wrap;
+    }
+
+    .ai-demo-chip-row {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.45rem;
+    }
+
+    .ai-demo-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0.34rem 0.9rem;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
+        background: color-mix(in srgb, var(--surface) 80%, transparent);
+        color: color-mix(in srgb, var(--muted) 76%, var(--ink));
+        font-family: var(--landing-font-mono);
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        box-shadow: 0 8px 18px rgba(2, 6, 23, 0.16);
+    }
+
+    @property --chip-angle {
+        syntax: "<angle>";
+        initial-value: 0deg;
+        inherits: false;
+    }
+
+    @keyframes chip-border-spin {
+        to { --chip-angle: 360deg; }
+    }
+
+    @keyframes chip-shimmer {
+        0%         { transform: translateX(-120%); }
+        28%, 100%  { transform: translateX(220%); }
+    }
+
+    .ai-demo-chip.is-accent {
+        position: relative;
+        overflow: hidden;
+        border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+        background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+        color: color-mix(in srgb, var(--accent) 84%, var(--ink));
+    }
+
+    .ai-demo-chip.is-accent::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            105deg,
+            transparent 20%,
+            color-mix(in srgb, white 22%, transparent) 50%,
+            transparent 80%
+        );
+        transform: translateX(-120%);
+        animation: chip-shimmer 3.4s ease-in-out infinite;
+        pointer-events: none;
+    }
+
+    .ai-demo-chip.is-accent::before {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        border-radius: inherit;
+        padding: 1.5px;
+        background: conic-gradient(
+            from var(--chip-angle),
+            transparent 0deg,
+            color-mix(in srgb, white 60%, var(--accent) 40%) 50deg,
+            transparent 100deg,
+            transparent 360deg
+        );
+        -webkit-mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        mask-composite: exclude;
+        animation: chip-border-spin 3.4s linear infinite;
+        pointer-events: none;
+    }
+
+    .ai-demo-chip.is-accent:nth-child(2)::before,
+    .ai-demo-chip.is-accent:nth-child(2)::after {
+        animation-delay: 1.7s;
+    }
+
+    .seo-page-panel {
+        border: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+        border-radius: 20px;
+        background:
+            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 10%, transparent), transparent 44%),
+            color-mix(in srgb, var(--surface) 84%, transparent);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        box-shadow: 0 10px 22px rgba(2, 6, 23, 0.14);
+        padding: 1rem 1.05rem;
+        display: grid;
+        gap: 0.58rem;
+    }
+
+    .seo-page-panel h2,
+    .seo-page-panel h3,
+    .seo-section-head h2,
+    .seo-page-cta h2 {
+        margin: 0;
+        color: var(--ink);
+    }
+
+    .seo-page-panel p,
+    .seo-page-panel li,
+    .seo-page-cta p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.6;
     }
 
     .seo-signal-list {
         margin: 0;
-        padding-left: 1.1rem;
+        padding-left: 1.05rem;
         display: grid;
-        gap: 0.45rem;
-        color: rgba(226, 232, 240, 0.82);
+        gap: 0.48rem;
+        color: var(--muted);
     }
 
-    .seo-section {
-        border-radius: 28px;
-        padding: clamp(1.15rem, 2.6vw, 1.7rem);
-        display: grid;
-        gap: 1rem;
+    .seo-page-section {
+        padding: clamp(0.72rem, 1.55vw, 1.05rem) 0;
     }
 
     .seo-section-head {
         display: grid;
-        gap: 0.35rem;
-        max-width: 58rem;
+        gap: 0.34rem;
+        max-width: 60ch;
+    }
+
+    .seo-section-head h2 {
+        font-size: clamp(1.5rem, 2.35vw, 2.2rem);
+        line-height: 1.08;
     }
 
     .seo-card-grid,
     .seo-step-grid,
-    .seo-faq-grid,
-    .seo-related-grid {
+    .seo-faq-grid {
         display: grid;
         gap: 0.9rem;
     }
 
     .seo-card-grid,
+    .seo-step-grid,
     .seo-faq-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .seo-step-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .seo-info-card,
-    .seo-step-card,
-    .seo-faq-card {
-        padding: 1rem;
-        display: grid;
-        gap: 0.55rem;
     }
 
     .seo-step-number {
         display: inline-flex;
         width: fit-content;
-        padding: 0.36rem 0.55rem;
+        padding: 0.36rem 0.56rem;
         border-radius: 999px;
-        background: rgba(99, 102, 241, 0.14);
-        border: 1px solid rgba(129, 140, 248, 0.26);
-        color: rgba(199, 210, 254, 0.94);
+        border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+        background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+        color: color-mix(in srgb, var(--accent) 72%, var(--ink));
         font-size: 0.8rem;
         font-weight: 800;
         letter-spacing: 0.08em;
     }
 
-    .seo-related-grid {
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    .seo-page-cta {
+        padding: clamp(0.72rem, 1.55vw, 1.05rem) 0;
     }
 
-    .seo-related-card {
-        text-decoration: none;
-        padding: 1rem;
+    .seo-page-section > .landing-inner,
+    .seo-page-cta > .landing-inner {
         display: grid;
-        gap: 0.5rem;
-        transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+        gap: 0.95rem;
     }
 
-    .seo-related-card span {
-        color: rgba(167, 243, 208, 0.92);
-        font-weight: 700;
+    .seo-page-cta > .landing-inner {
+        gap: 0.72rem;
     }
 
-    .seo-related-card:hover {
-        transform: translateY(-2px);
-        border-color: rgba(99, 102, 241, 0.42);
-        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.26);
-    }
-
-    .seo-cta-panel {
-        border-radius: 30px;
-        padding: clamp(1.25rem, 3vw, 1.9rem);
-        display: grid;
-        gap: 0.7rem;
-        text-align: left;
-    }
-
-    .seo-cta-panel h2 {
+    .seo-page-cta h2 {
         max-width: 14ch;
-        font-size: clamp(1.75rem, 3.6vw, 3rem);
+        font-size: clamp(1.7rem, 3.8vw, 3rem);
+    }
+
+    body.landing-layout.js-landing-animate .landing-reveal {
+        opacity: 0;
+        transform: translateY(24px) scale(0.988);
+        filter: blur(8px);
+        transition:
+            opacity 700ms cubic-bezier(.22, .61, .36, 1),
+            transform 700ms cubic-bezier(.22, .61, .36, 1),
+            filter 520ms cubic-bezier(.22, .61, .36, 1);
+        transition-delay: var(--enter-delay, 0ms);
+        will-change: opacity, transform;
+    }
+
+    body.landing-layout.js-landing-animate .seo-page-hero .landing-reveal {
+        transition:
+            opacity 860ms cubic-bezier(.22, .61, .36, 1),
+            transform 860ms cubic-bezier(.22, .61, .36, 1),
+            filter 640ms cubic-bezier(.22, .61, .36, 1);
+    }
+
+    body.landing-layout.js-landing-animate .landing-reveal.is-visible {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: blur(0);
     }
 
     @media (max-width: 980px) {
-        .seo-topbar,
-        .seo-hero {
+        .landing-header {
+            grid-template-columns: auto auto;
+            grid-template-areas:
+                "brand actions"
+                "nav nav";
+            row-gap: 0.55rem;
+        }
+
+        .landing-brand { grid-area: brand; }
+        .landing-auth-links { grid-area: actions; }
+        .landing-nav {
+            grid-area: nav;
+            justify-content: flex-start;
+        }
+
+        .landing-header.is-user-logged-in {
+            grid-template-columns: minmax(0, 1fr);
+            grid-template-areas:
+                "brand"
+                "actions"
+                "nav";
+        }
+
+        .landing-header.is-user-logged-in .landing-auth-links {
+            justify-self: start;
+            justify-content: flex-start;
+        }
+
+        .seo-page-hero {
+            padding: 0.72rem 0;
+        }
+
+        .seo-page-hero-inner {
             grid-template-columns: 1fr;
         }
 
-        .seo-topbar {
-            display: grid;
-            justify-items: start;
+        .seo-page-stack {
+            padding-top: 0.35rem;
         }
 
         .seo-card-grid,
@@ -444,17 +937,42 @@
     }
 
     @media (max-width: 720px) {
-        .seo-shell {
-            padding: 0.8rem;
-        }
-
-        .seo-hero h1 {
-            font-size: clamp(2rem, 11vw, 2.9rem);
-        }
-
-        .seo-nav {
+        .landing-nav {
             display: none;
+        }
+
+        .landing-header {
+            grid-template-columns: 1fr;
+        }
+
+        .landing-auth-links {
+            justify-self: start;
+            justify-content: flex-start;
+        }
+
+        .seo-page-title {
+            font-size: clamp(2rem, 10vw, 3rem);
+            max-width: none;
+        }
+
+        .seo-page-cta h2 {
+            max-width: none;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .market-replay-shell,
+        .replay-candles,
+        body.landing-layout.js-landing-animate .landing-reveal,
+        .ai-demo-chip.is-accent::before,
+        .ai-demo-chip.is-accent::after {
+            animation: none;
+            transition: none;
         }
     }
 </style>
+{% endblock %}
+
+{% block page_scripts %}
+<script src="{{ url_for('static', filename='js/landing_page.js') }}"></script>
 {% endblock %}

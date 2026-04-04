@@ -259,266 +259,266 @@ def build_external_url(path_or_url):
 
 SEO_PAGE_DEFINITIONS = {
     "mt5-trading-journal": {
-        "title": "MT5 Trading Journal | MyFXJournal",
+        "title": "MyFXJournal | MT5 Trading Journal",
         "meta_description": (
-            "Use MyFXJournal as an MT5 trading journal that keeps imports light, organizes account history, "
-            "and turns raw trades into a weekly review workflow."
+            "Use MyFXJournal as an MT5 trading journal that keeps MT5 sync light and turns raw trades into a weekly AI review."
         ),
         "eyebrow": "MT5 trading journal",
-        "hero_title": "An MT5 trading journal built for review, not extra admin.",
+        "hero_title": "MT5 history in. Clear review out.",
         "hero_body": (
-            "Pull MetaTrader 5 history into one place, keep your account data organized, and get a lighter path "
-            "from raw trades to usable weekly reflection."
+            "Sync the account, keep the context, and turn raw MT5 trades into a weekly review you will actually read."
         ),
-        "chips": ("MT5 sync workflow", "Weekly AI review", "Less spreadsheet cleanup"),
-        "intro_title": "Why traders look for an MT5 journal",
+        "chips": ("Read-only MT5 sync", "Revenge-pattern flags"),
+        "intro_title": "Why this lands",
         "intro_body": (
-            "The raw MT5 history usually exists already. The problem is turning it into something you will actually "
-            "review after the week ends. MyFXJournal is built to close that gap without turning journaling into another job."
+            "Most MT5 traders already have the history. The real problem is turning it into something useful before the next week starts."
         ),
         "fit_points": (
-            "Bring MT5 history into the right account without rebuilding the data by hand.",
-            "See performance patterns and recurring mistakes in a cleaner weekly review flow.",
-            "Carry one process adjustment into next week instead of collecting more loose notes.",
+            "Pull MT5 history into the right account without rebuilding the week in spreadsheets.",
+            "See patterns, slips, sizing mistakes, and revenge-style re-entries in a tighter weekly review.",
+            "Leave with one rule worth carrying forward.",
         ),
         "cards": (
             {
-                "title": "Start from real MT5 history",
-                "body": "Use the imported trading history as the base instead of manually rebuilding the week in spreadsheets first.",
+                "title": "Real history, not memory",
+                "body": "Start from the account that actually traded, not a weekend reconstruction project.",
             },
             {
-                "title": "Keep account context intact",
-                "body": "Organize review around the account that actually produced the trades, so the feedback stays grounded in how you traded.",
+                "title": "One account, one review",
+                "body": "Keep the context intact so the review stays grounded in how you actually traded.",
             },
             {
-                "title": "Review before the next week starts",
-                "body": "Turn imported history into a repeatable review loop that is short enough to keep up with consistently.",
+                "title": "Short enough to repeat",
+                "body": "Turn MT5 history into a review loop you can keep up with every week.",
             },
         ),
         "workflow_steps": (
             {
-                "title": "Import the MT5 history",
-                "body": "Bring in the raw trade data without first turning it into a manual spreadsheet project.",
+                "title": "Automatic MT5 sync",
+                "body": "Use automatic read-only MT5 sync for approved accounts so the history arrives without a manual cleanup project first.",
             },
             {
-                "title": "Let the journal structure the review",
-                "body": "Use the account metrics, execution patterns, and notes context to surface what actually mattered.",
+                "title": "See what actually happened",
+                "body": "Let the review surface what mattered, what slipped, and where revenge-style sequences may be creeping in.",
             },
             {
-                "title": "Leave with one clear adjustment",
-                "body": "Finish the week with a process rule you can carry into the next set of trades.",
+                "title": "Leave with one rule",
+                "body": "Leave the week with one cleaner rule instead of a pile of notes.",
             },
         ),
+        "workflow_heading": "Sync it. Review it. Move on.",
+        "cta_heading": "MT5 history in. Weekly review out.",
+        "cta_body": "Sync the account, surface what mattered, and leave with one cleaner rule.",
         "faq": (
             {
                 "question": "Is this only for MT5?",
-                "answer": "No. MT5 is one of the main workflows, but the broader goal is reducing review overhead across your trading journal workflow.",
+                "answer": "No. MT5 is one of the strongest workflows, but the bigger goal is lighter review across the whole journal.",
             },
             {
                 "question": "Does it replace MetaTrader 5?",
-                "answer": "No. MT5 stays the trading platform. MyFXJournal is for organizing review, reflection, and journal context around that history.",
+                "answer": "No. MT5 stays the trading platform. MyFXJournal sits around it for review and reflection.",
             },
             {
                 "question": "What makes this different from a generic MT5 tracker?",
-                "answer": "The focus is not just storing trades. It is turning the week into a usable review loop that stays light enough to repeat.",
+                "answer": "It is built to turn the week into a usable review, not just store another trade log.",
             },
         ),
     },
     "free-mt5-sync": {
-        "title": "Free MT5 Sync During Open Beta | MyFXJournal",
+        "title": "MyFXJournal | Free MT5 Sync",
         "meta_description": (
-            "Request free MT5 sync during open beta in MyFXJournal and turn MetaTrader 5 history into a lighter review "
-            "workflow without extra spreadsheet overhead."
+            "Free during open beta. Get MT5 sync in MyFXJournal and turn MetaTrader 5 history into a weekly AI review without spreadsheet overhead."
         ),
         "eyebrow": "Free MT5 sync",
-        "hero_title": "Free MT5 sync during open beta, built to feed a cleaner review workflow.",
+        "hero_title": "Free MT5 sync. Less journal admin.",
         "hero_body": (
-            "Request MT5 sync onboarding, map the account into your journal, and use the imported history as the base "
-            "for weekly review without rebuilding the week by hand."
+            "During open beta, MT5 sync is free and built to feed the review loop, not another export habit."
         ),
-        "chips": ("Free during open beta", "Request-based onboarding", "Investor/read-only workflow"),
+        "chips": ("Read-only MT5 sync", "Weekly review feed"),
         "intro_title": "Why this page matters",
         "intro_body": (
-            "A lot of traders do not need another export file to manage. They need a simpler path from MT5 trade history "
-            "to actual reflection. MyFXJournal keeps the sync pitch honest: free during open beta, request-based, and focused on review."
+            "The sync is not the product. It is the fastest way into a cleaner review workflow."
         ),
         "fit_points": (
-            "Keep MT5 history flowing into the journal without turning every week into manual import cleanup.",
-            "Use imported account context to support weekly review, pattern spotting, and lighter journaling.",
-            "Request access with investor/read-only credentials instead of sharing full trading control.",
+            "Keep MT5 history flowing into the journal without a weekly cleanup ritual.",
+            "Use imported context to support weekly review, revenge-pattern flags, and lighter journaling.",
+            "Connect with investor or read-only access instead of trading permissions.",
         ),
         "cards": (
             {
-                "title": "Request the MT5 sync workflow",
-                "body": "Start with the open beta access flow instead of setting up a separate journal pipeline on your own.",
+                "title": "Start with sync",
+                "body": "Use the open beta flow instead of building a separate MT5 journal pipeline yourself.",
             },
             {
-                "title": "Map the right account into review",
-                "body": "Keep the sync tied to the trade account that actually produced the history, so the review stays grounded.",
+                "title": "Keep the right account attached",
+                "body": "Tie the history to the account that produced it so the review stays grounded.",
             },
             {
-                "title": "Use the imported week properly",
-                "body": "Let the imported trades feed a cleaner review loop instead of becoming another raw data dump.",
+                "title": "Use the week properly",
+                "body": "Let synced trades feed a review loop instead of becoming another raw data dump.",
             },
         ),
         "workflow_steps": (
             {
-                "title": "Request open beta sync access",
-                "body": "Use the in-product MT5 access flow so the setup stays deliberate and easier to support.",
+                "title": "Request MT5 sync",
+                "body": "Use the in-product beta flow so setup stays supported while the workflow sharpens.",
             },
             {
-                "title": "Connect with read-only context",
-                "body": "Use investor/read-only credentials for approved sync workflows rather than trading access.",
+                "title": "Connect read-only",
+                "body": "Use investor credentials only. No trading access and no extra export routine.",
             },
             {
-                "title": "Review the imported week",
-                "body": "Use the synced history to power a lighter weekly review instead of another export-and-cleanup routine.",
+                "title": "Let the week arrive",
+                "body": "Let automatic MT5 sync feed weekly review and revenge-pattern flags instead of rebuilding the week by hand.",
             },
         ),
+        "workflow_heading": "Automatic sync in. Weekly review out.",
+        "cta_heading": "MT5 sync is free during beta.",
+        "cta_body": "Connect read-only, skip the export routine, and start a review loop that actually runs.",
         "faq": (
             {
                 "question": "Is MT5 sync really free?",
-                "answer": "It is free during open beta. That wording matters because pricing can change later as the workflow matures.",
+                "answer": "Yes, during open beta. That can change later, but it is free right now.",
             },
             {
                 "question": "Do I need to share trading access?",
-                "answer": "No. The MT5 sync workflow is built around investor or read-only access, not trading permissions.",
+                "answer": "No. The workflow is built around investor or read-only access.",
             },
             {
                 "question": "Is the sync instant self-serve?",
-                "answer": "Not yet. The current workflow is request-based, which keeps the beta safer and easier to support while it sharpens.",
+                "answer": "Not yet. It is still request-based while the beta sharpens.",
             },
         ),
     },
     "forex-trading-journal": {
-        "title": "Forex Trading Journal | MyFXJournal",
+        "title": "MyFXJournal | Forex Trading Journal",
         "meta_description": (
-            "MyFXJournal is a forex trading journal built to reduce journaling overhead, surface patterns, and make weekly "
-            "reflection easier to keep up with."
+            "MyFXJournal is a forex trading journal built to cut journaling overhead and turn the week into a lighter AI review."
         ),
         "eyebrow": "Forex trading journal",
-        "hero_title": "A forex trading journal that keeps reflection close to the trades.",
+        "hero_title": "A forex journal that stays out of the way.",
         "hero_body": (
-            "Track the week, organize account history, and surface execution or behavior patterns without making your "
-            "post-market review feel like a second shift."
+            "Track the week, spot the pattern, and keep reflection close to the trades without turning it into homework."
         ),
-        "chips": ("Forex-focused workflow", "Behavior-aware review", "Weekly reflection"),
-        "intro_title": "Why forex journaling often gets skipped",
+        "chips": ("Behavior-aware review", "Revenge-pattern flags"),
+        "intro_title": "Why this works",
         "intro_body": (
-            "Most traders know they should review. The friction usually starts after the market closes, when journaling "
-            "turns into admin. MyFXJournal is built around making the review step easier to start and easier to keep going."
+            "Most traders do not skip review because they do not care. They skip it because the process gets heavy after the market closes."
         ),
         "fit_points": (
-            "Keep the review focused on execution, psychology, and recurring patterns instead of raw logging alone.",
-            "Use one account-centered workflow instead of piecing review together across charts, notes, and spreadsheets.",
-            "Build a lighter journaling habit that supports actual trading rather than competing with it.",
+            "Keep the review focused on execution, psychology, and revenge-style patterns that are easy to miss in raw logs.",
+            "Use one account-centered workflow instead of piecing review together across charts and notes.",
+            "Build a lighter journaling habit that supports trading instead of competing with it.",
         ),
         "cards": (
             {
-                "title": "Capture the week clearly",
-                "body": "Bring your forex trade history into one place so the review starts from the actual account activity, not memory.",
+                "title": "See the week clearly",
+                "body": "Start from the actual account activity, not memory or scattered screenshots.",
             },
             {
-                "title": "See what repeated",
-                "body": "Surface clusters of good execution, impulsive behavior, or sloppy follow-up losses before they blur together.",
+                "title": "Spot what repeated",
+                "body": "Catch clusters of good execution, impulsive follow-ups, sloppy losses, and revenge-style re-entries before they blur together.",
             },
             {
-                "title": "Keep the next step simple",
-                "body": "Use the weekly review to tighten one rule or one habit instead of overwhelming yourself with too many fixes.",
+                "title": "Keep the next step small",
+                "body": "Tighten one rule or one habit instead of overwhelming yourself with ten fixes.",
             },
         ),
         "workflow_steps": (
             {
-                "title": "Collect the trading week",
-                "body": "Use your actual forex trade history as the starting point for the journal.",
+                "title": "Capture less",
+                "body": "Start from synced or imported trade history so the journal does not begin with manual logging.",
             },
             {
-                "title": "Turn history into reflection",
-                "body": "Let the journal organize the important performance and behavior context into one review flow.",
+                "title": "See the pattern",
+                "body": "Let the journal organize the performance and behavior context, including likely revenge patterns, into one review flow.",
             },
             {
-                "title": "Trade the next week with clarity",
-                "body": "Carry one useful adjustment forward instead of rewriting your whole process every weekend.",
+                "title": "Carry one adjustment",
+                "body": "Move into next week with one useful adjustment instead of a full process rewrite.",
             },
         ),
+        "workflow_heading": "Capture less. Learn faster.",
+        "cta_heading": "Keep journaling realistic.",
+        "cta_body": "Track the week, spot the pattern, and carry one adjustment forward without turning it into homework.",
         "faq": (
             {
                 "question": "Is MyFXJournal only for forex traders?",
-                "answer": "No, but the workflow is especially suited to forex traders who want less review friction and more consistent reflection.",
+                "answer": "No, but it fits forex traders especially well because the workflow stays light.",
             },
             {
                 "question": "Does the product tell me what to trade next?",
-                "answer": "No. The goal is journal review and process clarity, not trade signals or brokerage advice.",
+                "answer": "No. It is for review and process clarity, not trade signals.",
             },
             {
                 "question": "Who is this best for?",
-                "answer": "Traders who want a lighter review loop and who care about execution and behavior, not just a ledger of past trades.",
+                "answer": "Traders who want a lighter review loop and care about execution and behavior, not just a ledger.",
             },
         ),
     },
     "weekly-trading-review": {
-        "title": "Weekly Trading Review | MyFXJournal",
+        "title": "MyFXJournal | Weekly Trading Review",
         "meta_description": (
-            "Use MyFXJournal to turn trade history into a lighter weekly trading review with clearer patterns, reusable rules, "
-            "and less journaling overhead."
+            "Use MyFXJournal to turn trade history into a lighter weekly AI review with clearer patterns and less journaling overhead."
         ),
         "eyebrow": "Weekly trading review",
-        "hero_title": "A weekly trading review that does not turn into homework.",
+        "hero_title": "Weekly review without the weekend drag.",
         "hero_body": (
-            "MyFXJournal helps you close the gap between trading and reflection by turning the week into a review flow "
-            "that stays structured, short, and easier to repeat."
+            "Turn the week into a readable review, a clearer pattern, and one rule worth testing next."
         ),
-        "chips": ("Repeatable review loop", "Clearer takeaways", "Less overhead"),
-        "intro_title": "Why weekly review breaks down",
+        "chips": ("Repeatable review loop", "Revenge-pattern flags"),
+        "intro_title": "Why this matters",
         "intro_body": (
-            "The issue is rarely knowing that review matters. The issue is staying consistent when the process feels too heavy. "
-            "MyFXJournal is built to help you leave the week with something clearer than raw trade logs and looser than a full manual report."
+            "The problem is rarely knowing review matters. The problem is staying consistent once the process starts to drag."
         ),
         "fit_points": (
-            "Review the week through reusable patterns and process rules instead of one-off reactions.",
-            "Keep the reflection structured enough to be useful, but light enough to keep doing.",
+            "Review the week through reusable patterns, revenge-style sequences, and process rules instead of one-off reactions.",
+            "Keep reflection structured enough to be useful, but light enough to keep doing.",
             "Bridge raw trades and next-week adjustments without making review the main event.",
         ),
         "cards": (
             {
                 "title": "Summarize what mattered",
-                "body": "See the week through the major winners, the costly follow-ups, and the patterns that actually deserve your attention.",
+                "body": "See the week through the major winners, the costly follow-ups, and the pattern that deserves attention.",
             },
             {
                 "title": "Generalize the lesson",
-                "body": "Turn trade evidence into a process rule that is reusable next week instead of tied to one exact trade.",
+                "body": "Turn trade evidence into a process rule you can reuse next week.",
             },
             {
                 "title": "Keep the loop going",
-                "body": "Use a weekly review style that stays practical enough to repeat instead of becoming a once-a-month catch-up task.",
+                "body": "Keep the review practical enough to repeat instead of turning it into a monthly catch-up task.",
             },
         ),
         "workflow_steps": (
             {
-                "title": "Start from the week that just happened",
-                "body": "Use the actual trading history as the base instead of trying to reconstruct the week from scratch.",
+                "title": "Start from the week",
+                "body": "Start from synced or imported trade history instead of reconstructing the week from scratch.",
             },
             {
-                "title": "Surface the real pattern",
-                "body": "Highlight the behavior, sizing, or execution idea worth carrying forward.",
+                "title": "Surface the pattern",
+                "body": "Highlight the behavior, sizing, or revenge-style sequence the review surfaced as worth carrying forward.",
             },
             {
-                "title": "End with one rule worth testing",
-                "body": "Leave with a cleaner next-step rule instead of another long document you never revisit.",
+                "title": "Leave with one rule",
+                "body": "End the week with a cleaner next-step rule instead of another long document.",
             },
         ),
+        "workflow_heading": "A weekly review you can keep up with.",
+        "cta_heading": "One review. One rule. Every week.",
+        "cta_body": "Turn this week's trades into a takeaway short enough to act on before the next week starts.",
         "faq": (
             {
                 "question": "What should a weekly trading review produce?",
-                "answer": "Usually one or two clear takeaways and one process rule you can actually apply next week.",
+                "answer": "Usually one or two clear takeaways and one process rule you can actually use next week.",
             },
             {
                 "question": "Why not just write the review manually?",
-                "answer": "You can, but many traders stop because the workload grows too quickly. MyFXJournal aims to keep the review step lighter.",
+                "answer": "You can, but many traders stop because the workload grows too quickly. MyFXJournal keeps it lighter.",
             },
             {
                 "question": "Is the weekly review meant to replace thinking?",
-                "answer": "No. It is there to organize the reflection process so you spend less time assembling the review and more time learning from it.",
+                "answer": "No. It helps organize reflection so you spend less time assembling the review and more time learning from it.",
             },
         ),
     },
@@ -906,7 +906,7 @@ def register_public_auth_routes(
     def render_login_page(*, error=None, success=None, info=None, email=""):
         return render_template(
             "login.html",
-            title="Login | FX Journal",
+            title="MyFXJournal | Login",
             body_class="auth-layout",
             error=error,
             success=success,
@@ -929,7 +929,7 @@ def register_public_auth_routes(
         show_signup_code_input = signup_code_mode != SIGNUP_CODE_MODE_OFF
         return render_template(
             "register.html",
-            title="Register | FX Journal",
+            title="MyFXJournal | Register",
             body_class="auth-layout",
             error=error,
             success=success,
@@ -1026,7 +1026,7 @@ def register_public_auth_routes(
         form_data = form_data or {}
         return render_template(
             "onboarding.html",
-            title="Onboarding | FX Journal",
+            title="MyFXJournal | Onboarding",
             body_class="auth-layout",
             error=error,
             trading_style_options=ONBOARDING_TRADING_STYLE_OPTIONS,
@@ -1076,7 +1076,7 @@ def register_public_auth_routes(
         *,
         admin_user,
         section,
-        title="Access Control | FX Journal",
+        title="MyFXJournal | Access Control",
         page_heading="Access Control",
         page_subtitle=(
             "Review registrations, control admin access, and manage signup codes "
@@ -1118,7 +1118,7 @@ def register_public_auth_routes(
             **build_admin_page_context(
                 admin_user=admin_user,
                 section="weekly_report",
-                title="Weekly AI Audit | FX Journal",
+                title="MyFXJournal | Weekly AI Audit",
                 page_heading="Weekly AI Audit",
                 page_subtitle=(
                     "Inspect stored weekly AI payloads, compare trend shifts over time, "
@@ -1216,16 +1216,6 @@ def register_public_auth_routes(
 
     def _render_public_seo_page(page_slug):
         page = SEO_PAGE_DEFINITIONS[page_slug]
-        related_pages = [
-            {
-                "slug": slug,
-                "title": SEO_PAGE_DEFINITIONS[slug]["eyebrow"].title(),
-                "hero_title": SEO_PAGE_DEFINITIONS[slug]["hero_title"],
-                "url": f"/{slug}",
-            }
-            for slug in SEO_PAGE_DEFINITIONS
-            if slug != page_slug
-        ]
         return render_template(
             "seo_page.html",
             title=page["title"],
@@ -1235,16 +1225,15 @@ def register_public_auth_routes(
             user_logged_in=bool(session.get("user_id")),
             seo_page=page,
             seo_page_slug=page_slug,
-            related_pages=related_pages,
         )
 
     @app.route("/")
     def landing():
         return render_template(
             "landing.html",
-            title="MyFXJournal | Forex Trading Journal With Weekly AI Review",
+            title="MyFXJournal | Free Forex Trading Journal With Weekly AI Review",
             meta_description=(
-                "Import MT5 and Tradovate trades, surface patterns, and get a lighter weekly AI review "
+                "Free during open beta. Import MT5 and Tradovate trades, surface patterns, and get a lighter weekly AI review "
                 "workflow built for reflection without extra journaling overhead."
             ),
             body_class="landing-layout",
@@ -1306,8 +1295,8 @@ def register_public_auth_routes(
     def privacy_policy():
         return render_template(
             "privacy_policy.html",
-            title="Privacy Policy | FX Journal",
-            meta_description="Read how MyFXJournal handles personal data, privacy requests, and account information for the trading journal service.",
+            title="MyFXJournal | Privacy Policy",
+            meta_description="Read how MyFXJournal handles personal data, privacy requests, MT5 sync information, and account data for the trading journal service.",
             canonical_url=build_external_url("/privacy"),
             last_updated=legal_last_updated,
         )
@@ -1317,8 +1306,8 @@ def register_public_auth_routes(
     def terms_and_conditions():
         return render_template(
             "terms_and_conditions.html",
-            title="Terms and Conditions | FX Journal",
-            meta_description="Review the terms for using MyFXJournal, including account responsibilities, acceptable use, and service limitations.",
+            title="MyFXJournal | Terms and Conditions",
+            meta_description="Review the terms for using MyFXJournal, including account responsibilities, acceptable use, MT5 sync conditions, and service limitations.",
             canonical_url=build_external_url("/terms"),
             last_updated=legal_last_updated,
         )
@@ -1948,7 +1937,7 @@ def register_public_auth_routes(
 
         return render_template(
             "resend_verification.html",
-            title="Verify Email | FX Journal",
+            title="MyFXJournal | Verify Email",
             body_class="auth-layout",
             pending_email=pending_email,
             success=success or None,
@@ -2085,7 +2074,7 @@ def register_public_auth_routes(
     def admin_background_preview():
         return render_template(
             "admin_background_preview.html",
-            title="Background Preview | FX Journal",
+            title="MyFXJournal | Background Preview",
         )
 
     @app.route("/dashboard/admin/access/users")
@@ -3205,7 +3194,7 @@ def register_public_auth_routes(
 
         return render_template(
             "forgot_password.html",
-            title="Forgot Password | FX Journal",
+            title="MyFXJournal | Forgot Password",
             body_class="auth-layout",
             success=success or None,
             error=error or None,
@@ -3223,7 +3212,7 @@ def register_public_auth_routes(
         if not reset_claim:
             return render_template(
                 "reset_password.html",
-                title="Reset Password | FX Journal",
+                title="MyFXJournal | Reset Password",
                 body_class="auth-layout",
                 error="This password reset link is invalid or has expired.",
                 token_valid=False,
@@ -3233,7 +3222,7 @@ def register_public_auth_routes(
         if not user or not user.password_reset_nonce or user.password_reset_nonce != reset_claim["reset_nonce"]:
             return render_template(
                 "reset_password.html",
-                title="Reset Password | FX Journal",
+                title="MyFXJournal | Reset Password",
                 body_class="auth-layout",
                 error="This password reset link is invalid or has expired.",
                 token_valid=False,
@@ -3246,7 +3235,7 @@ def register_public_auth_routes(
             if not new_password or not confirm_password:
                 return render_template(
                     "reset_password.html",
-                    title="Reset Password | FX Journal",
+                    title="MyFXJournal | Reset Password",
                     body_class="auth-layout",
                     error="Both password fields are required.",
                     token_valid=True,
@@ -3254,7 +3243,7 @@ def register_public_auth_routes(
             if new_password != confirm_password:
                 return render_template(
                     "reset_password.html",
-                    title="Reset Password | FX Journal",
+                    title="MyFXJournal | Reset Password",
                     body_class="auth-layout",
                     error="Passwords do not match.",
                     token_valid=True,
@@ -3262,7 +3251,7 @@ def register_public_auth_routes(
             if len(new_password) < 8:
                 return render_template(
                     "reset_password.html",
-                    title="Reset Password | FX Journal",
+                    title="MyFXJournal | Reset Password",
                     body_class="auth-layout",
                     error="Password must be at least 8 characters.",
                     token_valid=True,
@@ -3276,7 +3265,7 @@ def register_public_auth_routes(
 
         return render_template(
             "reset_password.html",
-            title="Reset Password | FX Journal",
+            title="MyFXJournal | Reset Password",
             body_class="auth-layout",
             token_valid=True,
         )

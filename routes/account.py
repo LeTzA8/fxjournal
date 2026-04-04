@@ -307,7 +307,7 @@ def account():
 
     return render_template(
         "account.html",
-        title="My Account | FX Journal",
+        title="MyFXJournal | My Account",
         username=session.get("username", "User"),
         account_user=user,
         email_verified=bool(user.email_verified),

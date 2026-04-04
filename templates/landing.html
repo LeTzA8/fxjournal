@@ -13,17 +13,24 @@
     </div>
 
     <header class="landing-header{% if user_logged_in %} is-user-logged-in{% endif %}">
-        <a href="{{ url_for('landing') }}" class="landing-brand" aria-label="FX Journal Home">
+        <a href="{{ url_for('landing') }}" class="landing-brand" aria-label="MyFXJournal Home">
             <img
                 src="{{ url_for('static', filename='site-logo.png') }}"
-                alt="FX Journal"
+                alt="MyFXJournal"
                 class="landing-brand-logo"
             >
-            <span class="landing-brand-text">FX Journal</span>
+            <span class="landing-brand-text">MyFXJournal</span>
         </a>
         <nav class="landing-nav" aria-label="Landing">
             <a href="#workflow">Workflow</a>
             <a href="#features">Features</a>
+            <div class="landing-nav-dropdown site-nav-group" data-nav-dropdown>
+                <button type="button" class="landing-nav-summary" aria-haspopup="true" aria-expanded="false" data-nav-dropdown-toggle>Explore</button>
+                <div class="landing-nav-menu" aria-label="Explore workflows" data-nav-dropdown-menu hidden>
+                    <a href="{{ url_for('free_mt5_sync_page') }}" class="site-nav-link site-nav-sublink">Free MT5 Sync</a>
+                    <a href="{{ url_for('weekly_trading_review_page') }}" class="site-nav-link site-nav-sublink">Weekly Trading Review</a>
+                </div>
+            </div>
             <a href="#compare">Compare</a>
             <a href="#founder">About</a>
             <a href="{{ url_for('contact.contact') }}">Contact</a>
@@ -38,7 +45,7 @@
             </form>
             {% else %}
             <a href="{{ url_for('login') }}" class="ghost-btn">Log In</a>
-            <a href="{{ url_for('register') }}" class="submit-btn">Start For Free</a>
+            <a href="{{ url_for('register') }}" class="submit-btn">Start Free</a>
             {% endif %}
         </div>
     </header>
@@ -57,11 +64,11 @@
                 MyFXJournal turns raw trades into clear review, so journaling does not become a second job after the market closes.
             </p>
             <p class="hero-note landing-reveal" data-reveal-delay="860">
-                Built by a trader who wanted less review admin, not a bigger pile of charts. Free during open beta, with no credit card required.
+                Built by a trader who wanted less review admin, not a bigger pile of charts. No credit card required.
             </p>
 
             <div class="landing-copy landing-reveal" id="workflow" data-reveal-delay="980">
-                <p class="landing-copy-title">How the workload gets handled</p>
+                <p class="landing-copy-title">Where the work goes</p>
                 <ol>
                     <li>
                         <span>1</span>
@@ -91,7 +98,6 @@
                 {% if user_logged_in %}
                 <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>
                 <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Log New Trade</a>
-                <a href="{{ url_for('contact.contact') }}" class="ghost-btn">Contact</a>
                 {% else %}
                 <a href="{{ url_for('register') }}" class="submit-btn hero-cta">Start Free</a>
                 <a href="#compare" class="ghost-btn">See Pricing Context</a>
@@ -100,8 +106,8 @@
 
             {% if not user_logged_in %}
             <div class="hero-reassurance landing-reveal" data-reveal-delay="1240" aria-label="Signup reassurance">
-                <span>Less review busywork</span>
-                <span>Free during open beta</span>
+                <span>Sustainable review loop</span>
+                <span>Open beta</span>
                 <span>No credit card required</span>
             </div>
             {% endif %}
@@ -153,7 +159,7 @@
             <p class="eyebrow landing-reveal" data-reveal-delay="40">A review loop traders can actually keep up with</p>
             <h2 id="ai-demo-title" class="landing-reveal" data-reveal-delay="110">Your weekly review should arrive before the next week starts</h2>
             <p class="muted lead landing-reveal" data-reveal-delay="180">
-                FX Journal turns the latest trade week into a readable summary of execution quality, behavior patterns,
+                MyFXJournal turns the latest trade week into a readable summary of execution quality, behavior patterns,
                 and the next rule worth tightening, so review stays short enough to repeat.
             </p>
 
@@ -179,7 +185,7 @@
     <section class="landing-section workflow-automation-section" id="hands-off" aria-labelledby="workflow-automation-title" data-reveal-scope>
         <div class="landing-inner">
             <p class="eyebrow landing-reveal" data-reveal-delay="40">Less admin, more actual trading</p>
-            <h2 id="workflow-automation-title" class="landing-reveal" data-reveal-delay="110">The journal should carry the reflection workload around your trades.</h2>
+            <h2 id="workflow-automation-title" class="landing-reveal" data-reveal-delay="110">The journal does the heavy lifting. You do the trading.</h2>
             <p class="muted landing-reveal" data-reveal-delay="180">
                 Most traders do not need more dashboards. They need a workflow that keeps the review habit alive
                 without turning journaling into a second job after the market closes.
@@ -187,7 +193,7 @@
 
             <div class="workflow-automation-grid">
                 <article class="workflow-automation-card landing-reveal" data-reveal-delay="260">
-                    <p class="workflow-automation-kicker">FX Journal handles</p>
+                    <p class="workflow-automation-kicker">MyFXJournal handles</p>
                     <ul class="workflow-automation-list">
                         <li>Trade imports, account routing, and duplicate checks.</li>
                         <li>Performance breakdowns by session, symbol, and execution behavior.</li>
@@ -208,21 +214,16 @@
         </div>
     </section>
 
-    <section class="landing-section use-case-section" id="use-cases" aria-labelledby="use-cases-title" data-reveal-scope>
+    <section class="landing-section use-case-section" id="use-cases" aria-labelledby="use-cases-title" data-reveal-scope hidden>
         <div class="landing-inner">
             <p class="eyebrow landing-reveal" data-reveal-delay="40">Popular entry points</p>
-            <h2 id="use-cases-title" class="landing-reveal" data-reveal-delay="110">If free MT5 sync is the hook, lead with that first.</h2>
-            <p class="muted landing-reveal" data-reveal-delay="180">
-                Traders usually do not search for “reflection workflow.” They search for the practical thing in front of
-                them right now. So the strongest entry point at this stage is the free MT5 sync angle, backed by the
-                broader journaling and weekly review pages.
-            </p>
+            <h2 id=”use-cases-title” class=”landing-reveal” data-reveal-delay=”110”>Find the angle that fits where you are right now.</h2>
 
             <div class="use-case-grid" aria-label="Popular search pages">
                 <a href="{{ url_for('free_mt5_sync_page') }}" class="use-case-card use-case-card-featured landing-reveal" data-reveal-delay="260">
                     <p class="use-case-kicker">Featured now</p>
                     <h3>Free MT5 Sync</h3>
-                    <p>Free during open beta, request-based, and built to feed the weekly review workflow instead of another export routine.</p>
+                    <p>Request-based and built to feed the weekly review workflow instead of becoming another export routine.</p>
                     <span>Open the page</span>
                 </a>
                 <a href="{{ url_for('mt5_trading_journal_page') }}" class="use-case-card landing-reveal" data-reveal-delay="320">
@@ -256,7 +257,7 @@
                 keeping the account readable, and turning history into something you can actually review.
             </p>
 
-            <div class="feature-showcase-grid" role="list" aria-label="FX Journal feature showcase">
+            <div class="feature-showcase-grid" role="list" aria-label="MyFXJournal feature showcase">
                 <article class="feature-showcase-card landing-reveal" data-reveal-delay="260">
                     <div class="feature-showcase-copy">
                         <p class="feature-kicker">📊 Dashboard</p>
@@ -278,7 +279,7 @@
                         >
                             <img
                                 src="{{ url_for('static', filename='dashboard.png') }}"
-                                alt="FX Journal dashboard showing the equity curve, account summary, and recent trade data."
+                                alt="MyFXJournal dashboard showing the equity curve, account summary, and recent trade data."
                                 loading="lazy"
                             >
                         </button>
@@ -305,7 +306,7 @@
                         >
                             <img
                                 src="{{ url_for('static', filename='analytics.png') }}"
-                                alt="FX Journal analytics page with detailed performance tables and breakdown charts."
+                                alt="MyFXJournal analytics page with detailed performance tables and breakdown charts."
                                 loading="lazy"
                             >
                         </button>
@@ -332,7 +333,7 @@
                         >
                             <img
                                 src="{{ url_for('static', filename='import.png') }}"
-                                alt="FX Journal import page showing upload options, import rules, and account destination controls."
+                                alt="MyFXJournal import page showing upload options, import rules, and account destination controls."
                                 loading="lazy"
                             >
                         </button>
@@ -346,7 +347,7 @@
                         </div>
                         <h3><span class="feature-title-accent">Keep broker history fresh</span> Sync approved MT5 accounts into the journal without repeated exports</h3>
                         <p>
-                            Automatic MT5 Sync lets approved accounts pull read-only MT5 history into FX Journal, so your dashboard, analytics, and trade review stay closer to the live account state.
+                            Automatic MT5 Sync lets approved accounts pull read-only MT5 history into MyFXJournal, so your dashboard, analytics, and trade review stay closer to the live account state.
                         </p>
                         <p class="feature-detail">
                             Request access in-app, submit investor credentials only after approval, and cut down the repeated export-import cycle that slows down regular journaling.
@@ -395,7 +396,7 @@
                     <figure class="feature-shot">
                         <img
                             src="{{ url_for('static', filename='ai review.png') }}"
-                            alt="FX Journal AI review panel with a weekly performance summary and trading feedback."
+                            alt="MyFXJournal AI review panel with a weekly performance summary and trading feedback."
                             loading="lazy"
                         >
                     </figure>
@@ -446,7 +447,7 @@
                     <ul class="comparison-feature-list">
                         <li><span class="comparison-feature-label">Lightweight weekly reflection*</span><span class="comparison-feature-pill is-yes">Designed for it</span></li>
                         <li><span class="comparison-feature-label">Review style</span><span class="comparison-feature-note">Recurring review flow</span></li>
-                        <li><span class="comparison-feature-label">Reflection layer</span><span class="comparison-feature-note">Built-in check-in context</span></li>
+                        <li><span class="comparison-feature-label">Reflection layer</span><span class="comparison-feature-note">Behavior context built in</span></li>
                         <li><span class="comparison-feature-label">Workflow feel</span><span class="comparison-feature-note">Lower overhead</span></li>
                         <li><span class="comparison-feature-label">Best fit</span><span class="comparison-feature-note">Lighter weekly reflection</span></li>
                     </ul>
@@ -538,12 +539,12 @@
                 <div class="founder-copy landing-reveal" data-reveal-delay="110">
                     <h2 id="founder-title">I wanted a journal that removed work, not one that gave traders more admin.</h2>
                     <p>
-                        My name is Daniel. I am an A-Level graduate from Singapore, currently studying computer science
-                        before university, and I am also an aspiring forex trader building the kind of journal I wanted
-                        for my own trading workflow.
+                        My name is Daniel. I am based in Singapore, trading forex and building the kind of journal I
+                        always wanted — one that keeps reflection close to the trades without making it a project in
+                        itself.
                     </p>
                     <p>
-                        I built FX Journal because the other journaling tools I found either felt too expensive, too
+                        I built MyFXJournal because the other journaling tools I found either felt too expensive, too
                         cluttered, or too demanding before the real review even started. I wanted something that made
                         journaling realistic to keep up with.
                     </p>
@@ -552,7 +553,7 @@
                         prompts around trading, so the trader can focus more on execution and less on maintenance.
                     </p>
                     <p>
-                        If FX Journal is doing its job well, you should spend less time maintaining a journal and more
+                        If MyFXJournal is doing its job well, you should spend less time maintaining a journal and more
                         time trading with a clearer process.
                     </p>
                     <div class="founder-actions">
@@ -578,7 +579,7 @@
                     <p class="founder-card-kicker">Why join beta now</p>
                     <h3>Open beta, direct feedback loop</h3>
                     <ul class="founder-list">
-                        <li>Free during open beta, with no credit card required.</li>
+                        <li>Free to use right now, no credit card required.</li>
                         <li>Core dashboard, analytics, and review workflow are already live in the product.</li>
                         <li>Questions, bugs, and feature requests go straight to the founder inbox.</li>
                     </ul>
@@ -823,7 +824,7 @@
     .landing-header {
         position: sticky;
         top: 0.75rem;
-        z-index: 4;
+        z-index: 200 !important;
         width: 100%;
         min-height: 68px;
         margin: 0;
@@ -839,6 +840,7 @@
         -webkit-backdrop-filter: blur(8px) saturate(1.05);
         box-shadow: 0 8px 20px rgba(2, 6, 23, 0.1);
         min-width: 0;
+        isolation: isolate;
     }
 
     .landing-brand {
@@ -879,7 +881,8 @@
         flex-wrap: wrap;
     }
 
-    .landing-nav a {
+    .landing-nav > a,
+    .landing-nav > .landing-nav-dropdown > .landing-nav-summary {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -898,11 +901,76 @@
         font-family: var(--font-ui);
     }
 
-    .landing-nav a:hover {
+    .landing-nav-summary {
+        appearance: none;
+        cursor: pointer;
+    }
+
+    .landing-nav-dropdown {
+        position: relative;
+        display: inline-flex;
+        z-index: 220;
+    }
+
+    .landing-nav-summary::after {
+        content: "";
+        width: 0.42rem;
+        height: 0.42rem;
+        margin-left: 0.42rem;
+        border-right: 1.5px solid currentColor;
+        border-bottom: 1.5px solid currentColor;
+        transform: translateY(-0.08rem) rotate(45deg);
+        transition: transform 180ms ease;
+    }
+
+    .landing-nav > a:hover,
+    .landing-nav > .landing-nav-dropdown > .landing-nav-summary:hover,
+    .landing-nav-dropdown.is-open > .landing-nav-summary {
         color: var(--accent);
         border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
         background: color-mix(in srgb, var(--accent) 20%, var(--surface));
         box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+    }
+
+    .landing-nav-dropdown.is-open > .landing-nav-summary::after {
+        transform: translateY(0.02rem) rotate(225deg);
+    }
+
+    .landing-nav-menu {
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        left: 0;
+        z-index: 9999;
+        min-width: 200px;
+        padding: 0.45rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 14px;
+        background: var(--card);
+        box-shadow: 0 18px 34px rgba(2, 6, 23, 0.28);
+        display: grid;
+        gap: 0.28rem;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-6px);
+        transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .landing-nav-menu[hidden] {
+        display: none !important;
+    }
+
+    .landing-nav-dropdown.is-open .landing-nav-menu,
+    .landing-nav-dropdown:hover .landing-nav-menu,
+    .landing-nav-dropdown:focus-within .landing-nav-menu {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+    }
+
+    .site-nav-link.site-nav-sublink {
+        text-transform: none;
+        letter-spacing: 0.01em;
+        font-size: 0.8rem;
     }
 
     .landing-auth-links {
@@ -963,42 +1031,24 @@
         min-width: 0;
     }
 
-    .landing-hero::before,
-    .landing-hero::after {
+    .landing-hero::before {
         content: "";
         position: absolute;
         pointer-events: none;
-        filter: blur(24px);
+        filter: blur(36px);
         z-index: 0;
-    }
-
-    .landing-hero::before {
-        width: min(1200px, 90vw);
-        height: min(560px, 54vw);
+        width: min(1380px, 96vw);
+        height: min(700px, 64vw);
         left: 50%;
-        top: 8%;
+        top: 2%;
         transform: translateX(-50%);
-        background: radial-gradient(circle at 50% 48%, rgba(59, 98, 255, 0.24) 0%, rgba(59, 98, 255, 0) 72%);
+        background: radial-gradient(circle at 50% 40%, rgba(59, 98, 255, 0.22) 0%, rgba(59, 98, 255, 0.1) 32%, rgba(59, 98, 255, 0) 82%);
         animation: hero-drift-main 12s ease-in-out infinite;
-    }
-
-    .landing-hero::after {
-        width: min(1000px, 76vw);
-        height: min(540px, 48vw);
-        right: -8%;
-        top: 34%;
-        background: radial-gradient(circle at 30% 30%, rgba(84, 76, 214, 0.2) 0%, rgba(84, 76, 214, 0) 72%);
-        animation: hero-drift-side 15s ease-in-out infinite;
     }
 
     @keyframes hero-drift-main {
         0%, 100% { transform: translateX(-50%) translateY(0); }
         50% { transform: translateX(-50%) translateY(16px); }
-    }
-
-    @keyframes hero-drift-side {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-14px); }
     }
 
     .landing-hero-inner {
@@ -2372,6 +2422,21 @@
         }
     }
 
+    @property --primary-card-angle {
+        syntax: "<angle>";
+        initial-value: 0deg;
+        inherits: false;
+    }
+
+    @keyframes primary-card-spin {
+        to { --primary-card-angle: 360deg; }
+    }
+
+    @keyframes primary-card-pulse {
+        0%, 100% { opacity: 0.82; }
+        50% { opacity: 1; }
+    }
+
     .comparison-top {
         display: grid;
         grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
@@ -2489,20 +2554,63 @@
         box-shadow: 0 16px 30px rgba(2, 6, 23, 0.18);
     }
 
+    .comparison-card-primary:hover,
+    .comparison-card-primary:focus-within {
+        transform: scale(1.026) translateY(-2px);
+        box-shadow:
+            0 24px 48px rgba(2, 6, 23, 0.36),
+            0 0 0 1px color-mix(in srgb, var(--comparison-card-accent) 48%, transparent),
+            0 0 28px color-mix(in srgb, var(--comparison-card-accent) 28%, transparent),
+            0 0 64px color-mix(in srgb, var(--comparison-card-accent) 16%, transparent),
+            0 0 120px color-mix(in srgb, var(--comparison-card-accent) 7%, transparent);
+    }
+
     .comparison-card-primary {
-        --comparison-card-accent: color-mix(in srgb, var(--good) 82%, var(--accent) 18%);
+        --comparison-card-accent: var(--accent);
         order: 3;
-        border-color: color-mix(in srgb, var(--comparison-card-accent) 34%, var(--border));
+        border-color: color-mix(in srgb, var(--comparison-card-accent) 55%, var(--border));
         background:
-            radial-gradient(circle at top right, color-mix(in srgb, var(--comparison-card-accent) 16%, transparent), transparent 42%),
+            radial-gradient(circle at top right, color-mix(in srgb, var(--comparison-card-accent) 22%, transparent), transparent 46%),
+            radial-gradient(circle at bottom left, color-mix(in srgb, var(--comparison-card-accent) 8%, transparent), transparent 52%),
             color-mix(in srgb, var(--surface) 84%, transparent);
-        transform: scale(1.014);
+        transform: scale(1.026);
         opacity: 1;
         filter: none;
+        animation: primary-card-pulse 2.8s ease-in-out infinite;
         box-shadow:
-            0 20px 38px rgba(2, 6, 23, 0.2),
-            0 0 0 1px color-mix(in srgb, var(--comparison-card-accent) 20%, transparent),
-            0 0 24px color-mix(in srgb, var(--comparison-card-accent) 10%, transparent);
+            0 24px 48px rgba(2, 6, 23, 0.36),
+            0 0 0 1px color-mix(in srgb, var(--comparison-card-accent) 48%, transparent),
+            0 0 28px color-mix(in srgb, var(--comparison-card-accent) 28%, transparent),
+            0 0 64px color-mix(in srgb, var(--comparison-card-accent) 16%, transparent),
+            0 0 120px color-mix(in srgb, var(--comparison-card-accent) 7%, transparent);
+    }
+
+    .comparison-card-primary::before {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        border-radius: inherit;
+        padding: 2px;
+        background: conic-gradient(
+            from var(--primary-card-angle),
+            transparent 0deg,
+            color-mix(in srgb, white 72%, var(--comparison-card-accent) 28%) 50deg,
+            transparent 105deg,
+            transparent 180deg,
+            color-mix(in srgb, white 52%, var(--comparison-card-accent) 48%) 230deg,
+            transparent 285deg,
+            transparent 360deg
+        );
+        -webkit-mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+        mask-composite: exclude;
+        animation: primary-card-spin 2.8s linear infinite;
+        pointer-events: none;
     }
 
     .comparison-card-primary::after {
@@ -2510,14 +2618,14 @@
         position: absolute;
         inset: -1px;
         border-radius: inherit;
-        padding: 1px;
+        padding: 1.5px;
         background:
             linear-gradient(
                 135deg,
-                color-mix(in srgb, white 18%, var(--comparison-card-accent) 82%) 0%,
-                transparent 30%,
-                transparent 72%,
-                color-mix(in srgb, var(--comparison-card-accent) 28%, transparent) 100%
+                color-mix(in srgb, white 28%, var(--comparison-card-accent) 72%) 0%,
+                transparent 28%,
+                transparent 68%,
+                color-mix(in srgb, var(--comparison-card-accent) 40%, transparent) 100%
             );
         -webkit-mask:
             linear-gradient(#000 0 0) content-box,
@@ -2528,27 +2636,27 @@
             linear-gradient(#000 0 0);
         mask-composite: exclude;
         pointer-events: none;
-        opacity: 0.5;
+        opacity: 0.8;
     }
 
     .comparison-card-tradersync {
         order: 1;
-        --comparison-card-accent: #7b8fff;
+        --comparison-card-accent: var(--muted);
     }
 
     .comparison-card-tradervue {
         order: 2;
-        --comparison-card-accent: #c986ff;
+        --comparison-card-accent: var(--muted);
     }
 
     .comparison-card-trademetria {
         order: 4;
-        --comparison-card-accent: #f3c25d;
+        --comparison-card-accent: var(--muted);
     }
 
     .comparison-card-edgewonk {
         order: 5;
-        --comparison-card-accent: #7dd3c7;
+        --comparison-card-accent: var(--muted);
     }
 
     .comparison-card-brand {
@@ -3035,6 +3143,8 @@
         .hook-journal-card,
         .hook-chip,
         .comparison-card,
+        .comparison-card-primary,
+        .comparison-card-primary::before,
         .comparison-card-primary::after,
         .feature-shot-trigger img,
         .feature-shot-lightbox-close {
