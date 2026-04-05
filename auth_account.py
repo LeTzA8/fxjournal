@@ -257,6 +257,40 @@ def build_external_url(path_or_url):
     return f"{get_public_base_url()}{path_or_url}"
 
 
+def _build_admin_mt5_status(*, account, request_row=None):
+    if getattr(account, "is_orphaned", False):
+        return {
+            "label": "Cleanup Pending",
+            "chip_class": "default",
+        }
+
+    terminal_exists = bool(
+        str(getattr(account, "terminal_path", "") or "").strip()
+        or str(getattr(account, "appdata_hash", "") or "").strip()
+    )
+    request_status = str(getattr(request_row, "status", "") or "").strip().lower()
+
+    if bool(getattr(account, "is_active", False)):
+        return {
+            "label": "Active",
+            "chip_class": "success-chip",
+        }
+    if terminal_exists:
+        return {
+            "label": "Inactive",
+            "chip_class": "danger-chip",
+        }
+    if request_status == MT5AccessRequest.STATUS_PENDING:
+        return {
+            "label": "Requested",
+            "chip_class": "requested-chip",
+        }
+    return {
+        "label": "Setting Up",
+        "chip_class": "warning-chip",
+    }
+
+
 SEO_PAGE_DEFINITIONS = {
     "mt5-trading-journal": {
         "title": "MyFXJournal | MT5 Trading Journal",
@@ -2530,11 +2564,6 @@ def register_public_auth_routes(
         mt5_accounts = (
             MT5Account.query.order_by(MT5Account.created_at.desc(), MT5Account.id.desc()).all()
         )
-        pending_mt5_requests = (
-            MT5AccessRequest.query.filter_by(status=MT5AccessRequest.STATUS_PENDING)
-            .order_by(MT5AccessRequest.created_at.asc(), MT5AccessRequest.id.asc())
-            .all()
-        )
         mt5_trade_counts_by_account = {}
         trade_account_ids = sorted(
             {
@@ -2558,50 +2587,43 @@ def register_public_auth_routes(
                 account.id: trade_counts_by_trade_account.get(account.trade_account_id, 0)
                 for account in mt5_accounts
             }
-        mt5_form_users = (
-            User.query.join(TradeAccount, TradeAccount.user_id == User.id)
-            .filter(TradeAccount.account_type == "CFD")
-            .distinct()
-            .order_by(User.username.asc(), User.id.asc())
-            .all()
+        latest_request_by_trade_account_id = {}
+        request_trade_account_ids = sorted(
+            {
+                account.trade_account_id
+                for account in mt5_accounts
+                if account.trade_account_id is not None
+            }
         )
-        cfd_trade_accounts = (
-            TradeAccount.query.filter_by(account_type="CFD")
-            .order_by(
-                TradeAccount.user_id.asc(),
-                TradeAccount.is_default.desc(),
-                TradeAccount.name.asc(),
-                TradeAccount.id.asc(),
+        if request_trade_account_ids:
+            request_rows = (
+                MT5AccessRequest.query.filter(
+                    MT5AccessRequest.trade_account_id.in_(request_trade_account_ids)
+                )
+                .order_by(MT5AccessRequest.created_at.desc(), MT5AccessRequest.id.desc())
+                .all()
             )
-            .all()
-        )
-        mt5_trade_accounts_by_user = {}
-        for trade_account in cfd_trade_accounts:
-            mt5_trade_accounts_by_user.setdefault(str(trade_account.user_id), []).append(
-                {
-                    "id": trade_account.id,
-                    "label": (
-                        f"{trade_account.name} "
-                        f"({'Default' if trade_account.is_default else 'Secondary'}) "
-                        f"[ID: {trade_account.id}]"
-                    ),
-                }
+            for request_row in request_rows:
+                latest_request_by_trade_account_id.setdefault(
+                    request_row.trade_account_id,
+                    request_row,
+                )
+        mt5_statuses_by_account_id = {}
+        for account in mt5_accounts:
+            request_row = None
+            if account.trade_account_id is not None:
+                request_row = latest_request_by_trade_account_id.get(account.trade_account_id)
+            mt5_statuses_by_account_id[account.id] = _build_admin_mt5_status(
+                account=account,
+                request_row=request_row,
             )
         orphaned_mt5_count = sum(1 for account in mt5_accounts if account.is_orphaned)
-        mt5_accounts_by_trade_account_id = {
-            account.trade_account_id: account
-            for account in mt5_accounts
-            if account.trade_account_id is not None
-        }
         return render_admin_page(
             admin_user=admin_user,
             section="mt5",
             mt5_accounts=mt5_accounts,
-            pending_mt5_requests=pending_mt5_requests,
-            mt5_accounts_by_trade_account_id=mt5_accounts_by_trade_account_id,
             mt5_trade_counts_by_account=mt5_trade_counts_by_account,
-            mt5_form_users=mt5_form_users,
-            mt5_trade_accounts_by_user=mt5_trade_accounts_by_user,
+            mt5_statuses_by_account_id=mt5_statuses_by_account_id,
             orphaned_mt5_count=orphaned_mt5_count,
         )
 

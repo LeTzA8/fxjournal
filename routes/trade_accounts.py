@@ -4,7 +4,7 @@ from flask import Blueprint, current_app, flash, jsonify, redirect, render_templ
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, OperationalError
 
-from auth_account import send_email_placeholder
+from auth_account import build_external_url, send_email_placeholder
 from extensions import limiter
 from helpers.core import (
     build_mt5_access_state,
@@ -94,8 +94,9 @@ def _send_mt5_submission_admin_email(*, request_row, account, mt5_account):
         )
 
 
-def _send_mt5_submission_user_email(*, user):
+def _send_mt5_submission_user_email(*, user, account):
     try:
+        dashboard_url = build_external_url(url_for("dashboard.home"))
         send_email_placeholder(
             user.email,
             "We received your MT5 sync request",
@@ -103,6 +104,13 @@ def _send_mt5_submission_user_email(*, user):
                 f"Hi {user.username}, we received your MT5 sync request. "
                 "We'll notify you by email when your MT5 sync is ready. "
                 "This usually takes 1-2 business days."
+            ),
+            html_body=render_template(
+                "emails/mt5-request-received.html",
+                name=user.username,
+                account_name=account.name,
+                dashboard_url=dashboard_url,
+                logo_url=build_external_url("/static/site-logo.png"),
             ),
         )
     except Exception as exc:
@@ -222,6 +230,10 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
                 status=MT5AccessRequest.STATUS_PENDING,
             )
             db.session.add(request_row)
+        elif request_row.status != MT5AccessRequest.STATUS_PENDING:
+            request_row.status = MT5AccessRequest.STATUS_PENDING
+            request_row.reviewed_at = None
+            request_row.reviewed_by_user_id = None
 
         if request_note:
             request_row.request_note = request_note
@@ -270,13 +282,9 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
         account=account,
         mt5_account=mt5_account,
     )
-    _send_mt5_submission_user_email(user=user)
+    _send_mt5_submission_user_email(user=user, account=account)
 
-    status_label = (
-        "Setup Pending"
-        if request_row.status == MT5AccessRequest.STATUS_APPROVED
-        else "Pending Review"
-    )
+    status_label = "Setup Pending"
     return _build_mt5_request_response(
         ok=True,
         message=MT5_REQUEST_SUCCESS_MESSAGE,
@@ -470,17 +478,6 @@ def update_trade_account(trade_account_pubkey):
 @login_required
 def request_mt5_access(trade_account_pubkey=None):
     return _submit_mt5_sync_request(trade_account_pubkey=trade_account_pubkey)
-
-
-@bp.route("/dashboard/mt5/submit-details", methods=["POST"])
-@limiter.limit(
-    "3 per minute;20 per day",
-    methods=["POST"],
-    error_message="Too many MT5 detail submissions. Please wait and try again later.",
-)
-@login_required
-def submit_mt5_details():
-    return _submit_mt5_sync_request()
 
 
 @bp.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/delete", methods=["POST"])
@@ -757,7 +754,6 @@ def trade_accounts():
         total_ai_review_count=total_ai_review_count,
         active_trade_account=active_trade_account,
         pending_mt5_requests_by_trade_account=mt5_access_state["pending_requests_by_trade_account"],
-        approved_mt5_requests_by_trade_account=mt5_access_state["approved_requests_by_trade_account"],
         linked_mt5_trade_account_ids=mt5_access_state["linked_mt5_trade_account_ids"],
         active_mt5_trade_account_ids=mt5_access_state["active_mt5_trade_account_ids"],
     )

@@ -1069,7 +1069,7 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
             note = "MT5 details are already on file for this account."
         elif is_linked and pending_request is not None:
             status = "pending"
-            status_label = "Pending Review"
+            status_label = "Setup Pending"
             note = (
                 "Request received. We'll notify you by email when your MT5 sync is ready. "
                 "This usually takes 1-2 business days."
@@ -1081,22 +1081,10 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
                 "MT5 details are saved. The remaining onboarding steps will be completed from admin "
                 "before sync becomes active."
             )
-        elif approved_request is not None:
-            status = "approved"
-            status_label = "Approved"
-            reviewed_at = approved_request.reviewed_at.strftime("%Y-%m-%d %H:%M UTC") if approved_request.reviewed_at else None
-            note = (
-                f"Approved {reviewed_at}. Finish your MT5 sync request in this panel."
-                if reviewed_at
-                else "Approved. Finish your MT5 sync request in this panel."
-            )
-        elif pending_request is not None:
+        elif pending_request is not None or approved_request is not None:
             status = "pending"
-            status_label = "Pending Review"
-            requested_at = pending_request.created_at.strftime("%Y-%m-%d %H:%M UTC") if pending_request.created_at else "recently"
-            note = (
-                f"Requested {requested_at}. You can still submit your MT5 details in this panel so admin has everything in one place."
-            )
+            status_label = "Submit Details"
+            note = "Submit your read-only MT5 details here so we can review the request and finish setup."
         else:
             status = "requestable"
             status_label = "Not Requested"
@@ -1303,10 +1291,6 @@ def home():
         show_whats_next_banner=show_whats_next_banner,
         weekly_ai_min_closed_trades=MIN_CLOSED_TRADES_FOR_ADVICE,
         mt5_cfd_accounts=mt5_sections["mt5_cfd_accounts"],
-        requestable_mt5_accounts=mt5_access_state["requestable_mt5_accounts"],
-        approved_mt5_accounts=mt5_access_state["approved_mt5_accounts"],
-        pending_mt5_requests_by_trade_account=mt5_access_state["pending_requests_by_trade_account"],
-        approved_mt5_requests_by_trade_account=mt5_access_state["approved_requests_by_trade_account"],
         linked_mt5_trade_account_ids=mt5_access_state["linked_mt5_trade_account_ids"],
         mt5_selected_row=mt5_sections["mt5_selected_row"],
         mt5_selected_account=mt5_sections["mt5_selected_account"],
@@ -1411,4 +1395,3 @@ def analytics():
         has_any_trades=bool((analytics_payload.get("summary") or {}).get("total_trades")),
         small_sample_min_trades=SMALL_SAMPLE_MIN_TRADES,
     )
-

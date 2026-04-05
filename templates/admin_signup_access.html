@@ -403,6 +403,18 @@
         color: color-mix(in srgb, var(--bad) 82%, white 18%);
     }
 
+    .chip.warning-chip {
+        border-color: color-mix(in srgb, #f59e0b 48%, var(--border));
+        background: color-mix(in srgb, #f59e0b 16%, var(--surface));
+        color: color-mix(in srgb, #f59e0b 84%, white 16%);
+    }
+
+    .chip.requested-chip {
+        border-color: color-mix(in srgb, #8b5cf6 48%, var(--border));
+        background: color-mix(in srgb, #8b5cf6 16%, var(--surface));
+        color: color-mix(in srgb, #8b5cf6 84%, white 16%);
+    }
+
     .chip.root-chip {
         border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
         background: color-mix(in srgb, var(--accent) 14%, var(--surface));
@@ -788,91 +800,6 @@
         </section>
         {% elif section == "mt5" %}
         <section class="panel-grid admin-main-grid admin-mt5-layout">
-            <article class="panel spotlight-panel">
-                <div class="panel-head">
-                    <h2>Pending MT5 Requests</h2>
-                    <span class="soft">{{ pending_mt5_requests|length }} pending</span>
-                </div>
-                <p class="helper-note">Approve or reject MT5 requests here. Account number, server, consent, and encrypted investor password are now saved when the user submits the dashboard form.</p>
-                {% if pending_mt5_requests %}
-                <div class="pending-list">
-                    {% for request_row in pending_mt5_requests %}
-                    {% set submitted_mt5_account = mt5_accounts_by_trade_account_id.get(request_row.trade_account_id) %}
-                    <article class="pending-card">
-                        <div class="pending-meta">
-                            <p class="pending-name">
-                                {{ request_row.user.username if request_row.user else "Unknown User" }}
-                                {% if request_row.trade_account %}
-                                for {{ request_row.trade_account.name }}
-                                {% endif %}
-                            </p>
-                            <p class="pending-line">{{ request_row.user.email if request_row.user else "User record unavailable" }}</p>
-                            <p class="pending-line">User ID: {{ request_row.user_id }}</p>
-                            <p class="pending-line">Trade Account ID: {{ request_row.trade_account_id }}</p>
-                            <p class="pending-line">Requested: {{ request_row.created_at.strftime("%Y-%m-%d %H:%M UTC") if request_row.created_at else "-" }}</p>
-                            <p class="pending-line">Note: {{ request_row.request_note or "Not provided." }}</p>
-                            {% if submitted_mt5_account %}
-                            <p class="pending-line">MT5 Account: {{ submitted_mt5_account.account_number }}</p>
-                            <p class="pending-line">Server: {{ submitted_mt5_account.server }}</p>
-                            <p class="pending-line">Consent: {{ submitted_mt5_account.mt5_consent_accepted_at.strftime("%Y-%m-%d %H:%M UTC") if submitted_mt5_account.mt5_consent_accepted_at else "Not recorded" }}</p>
-                            {% else %}
-                            <p class="pending-line">MT5 Details: Not submitted yet</p>
-                            {% endif %}
-                        </div>
-                        <div class="inline-actions">
-                            <form action="{{ url_for('admin_mt5_approve_request', request_id=request_row.id) }}" method="post">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="submit-btn">Approve</button>
-                            </form>
-                            <form action="{{ url_for('admin_mt5_reject_request', request_id=request_row.id) }}" method="post">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="ghost-btn danger-btn">Reject</button>
-                            </form>
-                        </div>
-                    </article>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <p class="helper-note">No pending MT5 access requests right now.</p>
-                {% endif %}
-            </article>
-
-            <article class="panel create-code-panel">
-                <div class="panel-head">
-                    <h2>Add MT5 Account</h2>
-                    <span class="soft">Root Admin Only</span>
-                </div>
-                <form action="{{ url_for('admin_mt5_create_account') }}" method="post" class="code-form" data-themed-validation>
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                    <label for="user_id">User</label>
-                    <select id="user_id" name="user_id" required>
-                        <option value="">Select a user</option>
-                        {% for user in mt5_form_users %}
-                        <option value="{{ user.id }}">{{ user.username }} ({{ user.email }}) [ID: {{ user.id }}]</option>
-                        {% endfor %}
-                    </select>
-
-                    <label for="trade_account_id">Trade Account</label>
-                    <select id="trade_account_id" name="trade_account_id" required disabled>
-                        <option value="">Select a user first</option>
-                    </select>
-                    <p class="helper-note">Only CFD trade accounts appear here.</p>
-
-                    <label for="account_number">MT5 Account Number</label>
-                    <input id="account_number" name="account_number" type="text" maxlength="50" required>
-
-                    <label for="investor_password">Investor Password (Read-Only Only)</label>
-                    <input id="investor_password" name="investor_password" type="password" required>
-                    <p class="helper-note">Use investor/view-only credentials here, never a master password or any credential that can place trades or withdraw funds.</p>
-
-                    <label for="server">Server</label>
-                    <input id="server" name="server" type="text" maxlength="100" required>
-
-                    <button type="submit" class="submit-btn">Add MT5 Account</button>
-                </form>
-            </article>
-
             <article class="panel codes-panel mt5-accounts-panel">
                 <div class="panel-head">
                     <h2>MT5 Accounts</h2>
@@ -880,6 +807,7 @@
                         {{ mt5_accounts|length }} total{% if orphaned_mt5_count %}, {{ orphaned_mt5_count }} cleanup-only{% endif %}
                     </span>
                 </div>
+                <p class="helper-note">Users now submit the full MT5 sync request from the dashboard. Use this table to monitor submitted accounts, queue setup, trigger syncs, or clean up old records.</p>
                 {% if mt5_accounts %}
                 <div class="table-shell admin-table-shell">
                     <table class="admin-table">
@@ -897,6 +825,7 @@
                             {% for account in mt5_accounts %}
                             {% set trade_count = mt5_trade_counts_by_account.get(account.id, 0) %}
                             {% set is_orphaned = account.is_orphaned %}
+                            {% set status_meta = mt5_statuses_by_account_id.get(account.id, {"label": "Setting Up", "chip_class": "warning-chip"}) %}
                             <tr>
                                 <td>
                                     <div class="user-cell">
@@ -926,13 +855,9 @@
                                     </div>
                                 </td>
                                 <td>
-                                    {% if is_orphaned %}
-                                    <span class="chip default">Cleanup Pending</span>
-                                    {% else %}
-                                    <span class="chip {{ 'success-chip' if account.is_active else 'danger-chip' }}">
-                                        {{ "Active" if account.is_active else "Inactive" }}
+                                    <span class="chip {{ status_meta.chip_class }}">
+                                        {{ status_meta.label }}
                                     </span>
-                                    {% endif %}
                                 </td>
                                 <td>{{ account.last_synced_at.strftime("%Y-%m-%d %H:%M UTC") if account.last_synced_at else "Never" }}</td>
                                 <td class="actions-cell">
@@ -966,43 +891,6 @@
                 {% endif %}
             </article>
         </section>
-        <script>
-            (function() {
-                const userSelect = document.getElementById("user_id");
-                const tradeAccountSelect = document.getElementById("trade_account_id");
-                if (!userSelect || !tradeAccountSelect) {
-                    return;
-                }
-
-                const tradeAccountsByUser = {{ mt5_trade_accounts_by_user|tojson }};
-
-                function renderTradeAccounts() {
-                    const userId = userSelect.value;
-                    const tradeAccounts = tradeAccountsByUser[userId] || [];
-
-                    tradeAccountSelect.innerHTML = "";
-
-                    const placeholder = document.createElement("option");
-                    placeholder.value = "";
-                    placeholder.textContent = userId
-                        ? (tradeAccounts.length ? "Select a trade account" : "No CFD trade accounts for this user")
-                        : "Select a user first";
-                    tradeAccountSelect.appendChild(placeholder);
-
-                    tradeAccountSelect.disabled = !userId || tradeAccounts.length === 0;
-
-                    tradeAccounts.forEach(function(account) {
-                        const option = document.createElement("option");
-                        option.value = String(account.id);
-                        option.textContent = account.label;
-                        tradeAccountSelect.appendChild(option);
-                    });
-                }
-
-                userSelect.addEventListener("change", renderTradeAccounts);
-                renderTradeAccounts();
-            })();
-        </script>
         {% else %}
         <section class="panel-grid admin-main-grid">
             <article class="panel create-code-panel">

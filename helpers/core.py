@@ -513,30 +513,11 @@ def build_mt5_access_state(user_id, trade_accounts=None):
                     request_row,
                 )
 
-    cfd_trade_accounts = [
-        account
-        for account in account_rows
-        if normalize_account_type(account.account_type) == "CFD"
-    ]
-    requestable_mt5_accounts = []
-    approved_mt5_accounts = []
-    for account in cfd_trade_accounts:
-        if account.id in linked_mt5_trade_account_ids:
-            continue
-        if account.id in pending_requests_by_trade_account:
-            continue
-        if account.id in approved_requests_by_trade_account:
-            approved_mt5_accounts.append(account)
-            continue
-        requestable_mt5_accounts.append(account)
-
     return {
         "pending_requests_by_trade_account": pending_requests_by_trade_account,
         "approved_requests_by_trade_account": approved_requests_by_trade_account,
         "linked_mt5_trade_account_ids": linked_mt5_trade_account_ids,
         "active_mt5_trade_account_ids": active_mt5_trade_account_ids,
-        "requestable_mt5_accounts": requestable_mt5_accounts,
-        "approved_mt5_accounts": approved_mt5_accounts,
     }
 
 

@@ -156,6 +156,9 @@ def test_user_can_submit_mt5_sync_request_and_send_confirmation_emails(app_ctx, 
     assert "Request Account" in admin_email["text_body"]
     assert "70018881" in admin_email["text_body"]
     assert "We received your MT5 sync request" == user_email["subject"]
+    assert user_email["html_body"] is not None
+    assert "MT5 request received" in user_email["html_body"]
+    assert "Request Account" in user_email["html_body"]
     response_text = html.unescape(response.get_data(as_text=True))
     assert "Request received. We'll notify you by email when your MT5 sync is ready." in response_text
 
@@ -187,7 +190,7 @@ def test_mt5_sync_request_returns_json_without_redirect(app_ctx, client, monkeyp
 
     assert response.status_code == 200
     assert payload["ok"] is True
-    assert payload["status_label"] == "Pending Review"
+    assert payload["status_label"] == "Setup Pending"
     assert payload["account_name"] == "JSON Account"
     assert "Request received." in payload["message"]
 
@@ -524,12 +527,46 @@ def test_dashboard_home_treats_inactive_mt5_details_as_setup_pending_not_active_
 
     assert response.status_code == 200
     assert b'data-dashboard-state="state-1"' in response.data
+    assert b'data-current-stage="3"' in response.data
     assert b"Setup Pending" in response.data
+    assert b"Submit Details" in response.data
+    assert b"Request Submitted" in response.data
+    assert b"Setting Up" in response.data
+    assert b"Sync Active" in response.data
     assert b"remaining onboarding steps will be completed from admin" in response.data
     assert b"Connect MT5 for automatic sync on this account." in response.data
     assert b'id="trade-journal"' not in response.data
     assert b"Weekly AI Review" in response.data
     assert b"Session Performance" not in response.data
+
+
+def test_dashboard_home_treats_legacy_approved_request_as_direct_submit_flow(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _stub_weekly_ai_state(monkeypatch)
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-legacy-approved",
+        email="mt5-legacy-approved@example.com",
+        account_name="Legacy Approved Account",
+    )
+    _log_in_user(client, user, trade_account)
+    db.session.add(
+        MT5AccessRequest(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            status=MT5AccessRequest.STATUS_APPROVED,
+            request_note="Ready for details.",
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b"Submit Details" in response.data
+    assert b"Submit the full MT5 form here so we can review this account and finish setup." not in response.data
+    assert b"Approval is already in place for this account." not in response.data
+    assert b"APPROVED" not in response.data
 
 
 def test_dashboard_home_prompts_switch_when_active_account_is_not_cfd(app_ctx, client, monkeypatch):
@@ -559,7 +596,7 @@ def test_dashboard_home_prompts_switch_when_active_account_is_not_cfd(app_ctx, c
     assert b"Request MT5 Sync" not in response.data
 
 
-def test_user_can_submit_mt5_details_after_approval(app_ctx, client, monkeypatch):
+def test_legacy_approved_request_can_be_completed_via_direct_mt5_submission(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
 
     user, trade_account = _create_user_with_account(
@@ -579,20 +616,22 @@ def test_user_can_submit_mt5_details_after_approval(app_ctx, client, monkeypatch
     db.session.commit()
 
     response = client.post(
-        "/dashboard/mt5/submit-details",
-        data={
-            "trade_account_pubkey": trade_account.pubkey,
-            "account_number": "70010001",
-            "server": "Broker-Live",
-            "investor_password": "investor-pass",
-            "mt5_sync_consent": "on",
-        },
+        "/dashboard/mt5/request-access",
+        data=_single_step_mt5_payload(
+            trade_account,
+            account_number="70010001",
+            server="Broker-Live",
+        ),
         follow_redirects=True,
     )
 
+    request_row = MT5AccessRequest.query.filter_by(trade_account_id=trade_account.id).one()
     mt5_account = MT5Account.query.filter_by(trade_account_id=trade_account.id).one()
 
     assert response.status_code == 200
+    assert request_row.status == MT5AccessRequest.STATUS_PENDING
+    assert request_row.reviewed_at is None
+    assert request_row.reviewed_by_user_id is None
     assert mt5_account.user_id == user.id
     assert mt5_account.account_number == "70010001"
     assert mt5_account.server == "Broker-Live"
@@ -602,7 +641,7 @@ def test_user_can_submit_mt5_details_after_approval(app_ctx, client, monkeypatch
     assert mt5_account.mt5_consent_accepted_at is not None
     assert mt5_account.mt5_consent_version == LEGAL_LAST_UPDATED
     assert b"Setup Pending" in response.data
-    assert b"remaining onboarding steps will be completed from admin" in response.data
+    assert b"Request received. We&#39;ll notify you by email when your MT5 sync is ready." in response.data
 
 
 def test_mt5_request_can_start_without_prior_approval(app_ctx, client, monkeypatch):
@@ -724,18 +763,17 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
 
     assert response.status_code == 200
     assert b"MT5 Request Pending" in response.data
-    assert b"MT5 Approved" in response.data
     assert b"MT5 Setup Pending" in response.data
     assert b"Manage MT5 requests from the dashboard card instead of per-account forms." in response.data
     assert b"Open Dashboard MT5 Access" in response.data
-    assert b"Finish the full MT5 sync form from the dashboard card" in response.data
+    assert b"Finish the full MT5 sync form from the dashboard card" not in response.data
     assert b"Admin is completing the remaining setup before sync becomes active." in response.data
     assert b"Request MT5 Sync Access" not in response.data
 
 
-def test_admin_mt5_page_shows_pending_requests_and_supports_review(app_ctx, client):
+def test_admin_mt5_page_shows_submitted_accounts_without_legacy_request_panels(app_ctx, client):
     os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode("utf-8")
-    root_user, _ = _log_in_root_admin(
+    _root_user, _ = _log_in_root_admin(
         client,
         email="mt5-request-root@example.com",
         username="mt5-request-root",
@@ -792,38 +830,124 @@ def test_admin_mt5_page_shows_pending_requests_and_supports_review(app_ctx, clie
     db.session.commit()
 
     list_response = client.get("/dashboard/admin/access/mt5")
-    approve_response = client.post(
-        f"/dashboard/admin/access/mt5/requests/{first_request.id}/approve",
-        data={},
-        follow_redirects=True,
-    )
-    reject_response = client.post(
-        f"/dashboard/admin/access/mt5/requests/{second_request.id}/reject",
-        data={},
-        follow_redirects=True,
-    )
-    db.session.expire_all()
-
-    approved_request = db.session.get(MT5AccessRequest, first_request.id)
-    rejected_request = db.session.get(MT5AccessRequest, second_request.id)
-
     assert list_response.status_code == 200
-    assert b"Pending MT5 Requests" in list_response.data
+    assert b"Pending MT5 Requests" not in list_response.data
+    assert b"Add MT5 Account" not in list_response.data
+    assert b"monitor submitted accounts" in list_response.data
+    assert b"Approve or reject MT5 requests here." not in list_response.data
     assert b"First Review Account" in list_response.data
     assert b"Second Review Account" in list_response.data
-    assert b"Note: Please approve this one." in list_response.data
-    assert b"MT5 Account: 77110001" in list_response.data
-    assert b"Server: Broker-Server-One" in list_response.data
-    assert approve_response.status_code == 200
-    assert reject_response.status_code == 200
-    assert approved_request.status == MT5AccessRequest.STATUS_APPROVED
-    assert rejected_request.status == MT5AccessRequest.STATUS_REJECTED
-    assert approved_request.reviewed_by_user_id == root_user.id
-    assert rejected_request.reviewed_by_user_id == root_user.id
-    assert approved_request.reviewed_at is not None
-    assert rejected_request.reviewed_at is not None
+    assert b"77110001" in list_response.data
+    assert b"Broker-Server-One" in list_response.data
     assert MT5Account.query.filter_by(trade_account_id=first_account.id).count() == 1
-    assert MT5Account.query.filter_by(trade_account_id=second_account.id).count() == 0
+    assert MT5Account.query.filter_by(trade_account_id=second_account.id).count() == 1
+
+
+def test_admin_mt5_page_shows_requested_setting_up_active_and_inactive_statuses(app_ctx, client):
+    os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode("utf-8")
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-status-root@example.com",
+        username="mt5-status-root",
+    )
+
+    status_user, requested_account = _create_user_with_account(
+        username="mt5-status-user",
+        email="mt5-status-user@example.com",
+        account_name="Requested Account",
+    )
+    setting_up_account = TradeAccount(
+        user_id=status_user.id,
+        name="Setting Up Account",
+        account_type="CFD",
+        is_default=False,
+    )
+    active_account = TradeAccount(
+        user_id=status_user.id,
+        name="Active Account",
+        account_type="CFD",
+        is_default=False,
+    )
+    inactive_account = TradeAccount(
+        user_id=status_user.id,
+        name="Inactive Account",
+        account_type="CFD",
+        is_default=False,
+    )
+    db.session.add_all([setting_up_account, active_account, inactive_account])
+    db.session.commit()
+
+    db.session.add(
+        MT5AccessRequest(
+            user_id=status_user.id,
+            trade_account_id=requested_account.id,
+            status=MT5AccessRequest.STATUS_PENDING,
+        )
+    )
+    db.session.add(
+        MT5AccessRequest(
+            user_id=status_user.id,
+            trade_account_id=setting_up_account.id,
+            status=MT5AccessRequest.STATUS_APPROVED,
+        )
+    )
+    db.session.add_all(
+        [
+            MT5Account(
+                user_id=status_user.id,
+                trade_account_id=requested_account.id,
+                account_number="88110001",
+                investor_password_encrypted=encrypt_password("investor-pass"),
+                server="Broker-Requested",
+                is_active=False,
+            ),
+            MT5Account(
+                user_id=status_user.id,
+                trade_account_id=setting_up_account.id,
+                account_number="88110002",
+                investor_password_encrypted=encrypt_password("investor-pass"),
+                server="Broker-Setting-Up",
+                is_active=False,
+            ),
+            MT5Account(
+                user_id=status_user.id,
+                trade_account_id=active_account.id,
+                account_number="88110003",
+                investor_password_encrypted=encrypt_password("investor-pass"),
+                server="Broker-Active",
+                terminal_path=r"C:\MT5 User Terminals\active\terminal64.exe",
+                appdata_hash="ACTIVEHASH123",
+                is_active=True,
+            ),
+            MT5Account(
+                user_id=status_user.id,
+                trade_account_id=inactive_account.id,
+                account_number="88110004",
+                investor_password_encrypted=encrypt_password("investor-pass"),
+                server="Broker-Inactive",
+                terminal_path=r"C:\MT5 User Terminals\inactive\terminal64.exe",
+                appdata_hash="INACTIVEHASH456",
+                is_active=False,
+            ),
+        ]
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard/admin/access/mt5")
+
+    assert response.status_code == 200
+    assert b"Requested Account" in response.data
+    assert b"Setting Up Account" in response.data
+    assert b"Active Account" in response.data
+    assert b"Inactive Account" in response.data
+    assert b"requested-chip" in response.data
+    assert b"warning-chip" in response.data
+    assert b"success-chip" in response.data
+    assert b"danger-chip" in response.data
+    assert b"Requested" in response.data
+    assert b"Setting Up" in response.data
+    assert b"Active" in response.data
+    assert b"Inactive" in response.data
 
 
 def test_non_root_user_cannot_review_mt5_access_requests(app_ctx, client):

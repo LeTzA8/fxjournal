@@ -10,6 +10,7 @@
     const passwordInput = form.querySelector("#mt5_investor_password");
     const passwordToggle = form.querySelector("[data-mt5-password-toggle]");
     const formShell = document.querySelector("[data-mt5-form-shell]");
+    const progressTrack = document.querySelector("[data-mt5-progress]");
     const summaryPill = document.querySelector("[data-mt5-status-pill]");
     const summaryCopy = document.querySelector("[data-mt5-panel-copy]");
     const softLabel = document.querySelector("#mt5-access .soft");
@@ -41,14 +42,33 @@
         submitButton.textContent = isSubmitting ? "Saving..." : defaultSubmitText;
     };
 
-    const updateStatusPill = (node, label) => {
+    const updateProgressTrack = (node, stage) => {
+        if (!node) {
+            return;
+        }
+        node.dataset.currentStage = String(stage);
+        node.querySelectorAll("[data-mt5-progress-step]").forEach((stepNode) => {
+            const stepNumber = Number(stepNode.getAttribute("data-mt5-progress-step"));
+            stepNode.classList.remove("is-complete", "is-current", "is-upcoming");
+            stepNode.removeAttribute("aria-current");
+            if (stepNumber < stage) {
+                stepNode.classList.add("is-complete");
+                return;
+            }
+            if (stepNumber === stage) {
+                stepNode.classList.add("is-current");
+                stepNode.setAttribute("aria-current", "step");
+                return;
+            }
+            stepNode.classList.add("is-upcoming");
+        });
+    };
+
+    const updateStatusText = (node, label) => {
         if (!node || !label) {
             return;
         }
         node.textContent = label;
-        const nextToneClass = label === "Setup Pending" ? "is-submitted" : "is-pending";
-        node.classList.remove("is-idle", "is-approved", "is-pending", "is-submitted");
-        node.classList.add(nextToneClass);
     };
 
     const buildSuccessCard = (message, accountName) => {
@@ -126,7 +146,8 @@
                 return;
             }
 
-            updateStatusPill(summaryPill, payload.status_label);
+            updateStatusText(summaryPill, payload.status_label);
+            updateProgressTrack(progressTrack, 2);
             if (summaryCopy && payload.status_note) {
                 summaryCopy.textContent = payload.status_note;
             }

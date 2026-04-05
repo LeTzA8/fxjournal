@@ -441,13 +441,11 @@
                             {% if mt5_selected_status == "linked" %}
                             Connected
                             {% elif mt5_selected_row and mt5_selected_row.is_linked and mt5_selected_status == "pending" %}
-                            Pending Review
+                            Setup Pending
                             {% elif mt5_selected_row and mt5_selected_row.is_linked %}
                             Setup Pending
-                            {% elif mt5_selected_status in ("requestable", "approved", "pending") %}
+                            {% elif mt5_selected_status in ("requestable", "pending") %}
                             Request MT5 Sync
-                            {% elif mt5_selected_status == "pending" %}
-                            Pending Review
                             {% else %}
                             Manual Onboarding
                             {% endif %}
@@ -455,10 +453,26 @@
                     </div>
 
                     {% if mt5_selected_row %}
+                    {% if mt5_selected_status == "linked" %}
+                    {% set mt5_progress_stage = 4 %}
+                    {% elif mt5_selected_row.is_linked and mt5_selected_status == "pending" %}
+                    {% set mt5_progress_stage = 2 %}
+                    {% elif mt5_selected_row.is_linked %}
+                    {% set mt5_progress_stage = 3 %}
+                    {% else %}
+                    {% set mt5_progress_stage = 1 %}
+                    {% endif %}
                     <div class="mt5-workflow-summary">
-                        <span class="mt5-status-pill{% if mt5_selected_status == 'linked' %} is-linked{% elif mt5_selected_status == 'pending' %} is-pending{% elif mt5_selected_status == 'approved' %} is-approved{% elif mt5_selected_status == 'submitted' %} is-submitted{% else %} is-idle{% endif %}" data-mt5-status-pill>
-                            {{ mt5_selected_row.status_label }}
-                        </span>
+                        <ol class="mt5-progress-track" data-mt5-progress data-current-stage="{{ mt5_progress_stage }}" aria-label="MT5 sync progress">
+                            {% for progress_label in ["Submit Details", "Request Submitted", "Setting Up", "Sync Active"] %}
+                            {% set progress_step = loop.index %}
+                            <li class="mt5-progress-step{% if progress_step == 1 %} is-entry{% endif %}{% if progress_step < mt5_progress_stage %} is-complete{% elif progress_step == mt5_progress_stage %} is-current{% else %} is-upcoming{% endif %}" data-mt5-progress-step="{{ progress_step }}"{% if progress_step == mt5_progress_stage %} aria-current="step"{% endif %}>
+                                <span class="mt5-progress-dot" aria-hidden="true"></span>
+                                <span class="mt5-progress-label">{{ progress_label }}</span>
+                            </li>
+                            {% endfor %}
+                        </ol>
+                        <span class="sr-only" data-mt5-status-pill>{{ mt5_selected_row.status_label }}</span>
                         <p class="mt5-panel-copy" data-mt5-panel-copy>{{ mt5_selected_row.note }}</p>
                     </div>
                     {% endif %}
@@ -467,12 +481,8 @@
                     <p class="dashboard-guidance-copy dashboard-guidance-copy-mt5">Connect MT5 for automatic sync{% if is_state_one %} on this account{% endif %}.</p>
                     {% endif %}
 
-                    {% if mt5_selected_account and mt5_selected_row and not mt5_selected_row.is_linked and mt5_selected_status in ("requestable", "approved", "pending") %}
-                    {% if mt5_selected_status == "pending" %}
-                    <p class="mt5-panel-copy">You already have an MT5 request in review for this account. Finish the full form here so admin has everything in one place.</p>
-                    {% elif mt5_selected_status == "approved" %}
-                    <p class="mt5-panel-copy">Approval is already in place for this account. Finish the full form here so admin can complete setup.</p>
-                    {% else %}
+                    {% if mt5_selected_account and mt5_selected_row and not mt5_selected_row.is_linked and mt5_selected_status in ("requestable", "pending") %}
+                    {% if mt5_selected_status != "pending" %}
                     <p class="mt5-panel-copy">Submit one form and admin will handle the remaining MT5 setup from there. Use investor/read-only credentials only, never a trading or master password.</p>
                     {% endif %}
                     <div class="mt5-form-shell{% if show_mt5_guidance %} guided-focus-panel{% endif %}{% if is_state_one %} guided-focus-panel-pulse{% endif %}" data-mt5-form-shell>
@@ -547,7 +557,7 @@
                             <button type="submit" class="submit-btn" data-mt5-submit disabled>Request MT5 Sync</button>
                         </form>
                     </div>
-                    <p class="mt5-card-footnote">Your investor password is encrypted before storage and kept only for approved MT5 sync setup.</p>
+                    <p class="mt5-card-footnote">Your investor password is encrypted before storage and kept only for MT5 sync review and setup.</p>
                     {% elif mt5_selected_status == "pending" and mt5_selected_account %}
                     <p class="mt5-card-empty">Request received. We'll notify you by email when your MT5 sync is ready. This usually takes 1-2 business days.</p>
                     <div class="mt5-selected-account-card">
@@ -1975,12 +1985,118 @@
         gap: 0.45rem;
     }
 
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
     .mt5-panel-copy {
         margin: 0;
         font-size: 0.78rem;
         line-height: 1.45;
         color: color-mix(in srgb, var(--muted) 88%, var(--ink));
         overflow-wrap: anywhere;
+    }
+
+    .mt5-progress-track {
+        list-style: none;
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.6rem;
+        margin: 0;
+        padding: 0;
+        min-width: 0;
+    }
+
+    .mt5-progress-step {
+        position: relative;
+        display: grid;
+        justify-items: center;
+        gap: 0.36rem;
+        text-align: center;
+        min-width: 0;
+    }
+
+    .mt5-progress-step::before {
+        content: "";
+        position: absolute;
+        top: 0.38rem;
+        left: calc(-50% + 0.78rem);
+        width: calc(100% - 1.56rem);
+        height: 2px;
+        background: color-mix(in srgb, var(--border) 88%, transparent);
+        z-index: 0;
+    }
+
+    .mt5-progress-step:first-child::before {
+        display: none;
+    }
+
+    .mt5-progress-dot {
+        width: 0.78rem;
+        height: 0.78rem;
+        border-radius: 999px;
+        border: 2px solid color-mix(in srgb, var(--border) 90%, transparent);
+        background: color-mix(in srgb, var(--surface) 98%, transparent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--card) 96%, transparent);
+        z-index: 1;
+        transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+    }
+
+    .mt5-progress-label {
+        font-size: 0.62rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        line-height: 1.35;
+        color: color-mix(in srgb, var(--muted) 82%, var(--ink));
+        overflow-wrap: anywhere;
+    }
+
+    .mt5-progress-step.is-complete::before,
+    .mt5-progress-step.is-current::before {
+        background: color-mix(in srgb, var(--accent) 42%, var(--border));
+    }
+
+    .mt5-progress-step.is-complete .mt5-progress-dot {
+        border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
+        background: color-mix(in srgb, var(--accent) 78%, white 22%);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+    }
+
+    .mt5-progress-step.is-current .mt5-progress-dot {
+        border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
+        background: color-mix(in srgb, var(--accent) 20%, var(--card));
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+    }
+
+    .mt5-progress-step.is-entry.is-complete .mt5-progress-dot {
+        border-color: color-mix(in srgb, var(--chart-stroke-start) 64%, var(--border));
+        background: color-mix(in srgb, var(--chart-stroke-start) 78%, white 22%);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--chart-stroke-start) 16%, transparent);
+    }
+
+    .mt5-progress-step.is-entry.is-current .mt5-progress-dot {
+        border-color: color-mix(in srgb, var(--chart-stroke-start) 74%, var(--border));
+        background: color-mix(in srgb, var(--chart-stroke-start) 18%, var(--card));
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--chart-stroke-start) 16%, transparent);
+    }
+
+    .mt5-progress-step.is-complete .mt5-progress-label,
+    .mt5-progress-step.is-current .mt5-progress-label {
+        color: color-mix(in srgb, var(--accent) 78%, white 22%);
+    }
+
+    .mt5-progress-step.is-entry.is-complete .mt5-progress-label,
+    .mt5-progress-step.is-entry.is-current .mt5-progress-label {
+        color: color-mix(in srgb, var(--chart-stroke-start) 78%, white 22%);
     }
 
     .mt5-overview-panel-empty {
@@ -2913,8 +3029,12 @@
         .panel-head { flex-wrap: wrap;
             align-items: flex-start; }
 
-        .mt5-status-pill {
-            max-width: 100%;
+        .mt5-progress-track {
+            gap: 0.35rem;
+        }
+
+        .mt5-progress-label {
+            font-size: 0.56rem;
         }
 
         .mt5-card-consent {
