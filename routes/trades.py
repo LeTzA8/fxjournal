@@ -12,6 +12,7 @@ from helpers.core import (
     build_trade_duplicate_key,
     build_normalized_trade_insert_batch,
     build_unique_trade_pubkey,
+    queue_bundle_review_if_split_candidates,
     format_local_datetime_input,
     get_active_trade_account_for_user,
     get_display_timezone_name,
@@ -771,6 +772,15 @@ def import_trade_file():
         db.session.add_all(insert_batch)
         db.session.commit()
         _invalidate_trade_caches(user_id, active_trade_account.id)
+        if queue_bundle_review_if_split_candidates(
+            user_id=user_id,
+            trade_account_id=active_trade_account.id,
+        ):
+            flash(
+                "Possible split fills detected. Use Bundle Review on the dashboard to confirm them "
+                "so stats and weekly review stay accurate.",
+                "info",
+            )
         if existing_import_count == 0:
             session["first_import_nudge"] = {
                 "imported_count": len(insert_batch),

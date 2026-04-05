@@ -4,6 +4,7 @@ import json
 
 import ai_service
 from ai_service import (
+    WEEKLY_DASHBOARD_KIND,
     build_dashboard_advice_messages,
     build_dashboard_review_display,
     build_profile_instructions,
@@ -1034,6 +1035,8 @@ def test_build_trade_payload_flags_calm_self_report_mismatch_when_behaviour_is_e
     assert emotional_index["signals"]["heuristic_revenge_trade_count"] == 1
     assert emotional_index["signals"]["revenge_trade_count"] == 1
     assert emotional_index["signals"]["heuristic_reactive_trade_count"] == 1
+    assert emotional_index["signals"]["confirmed_reactive_trade_count"] == 1
+    assert emotional_index["signals"]["reactive_trade_count"] == 2
     assert emotional_index["components"]["confirmed_reactive_points"] == 1.25
     assert emotional_index["components"]["revenge_points"] == 2.25
 
@@ -1184,6 +1187,88 @@ def test_build_trade_payload_historical_context_excludes_review_period(app_ctx):
     assert payload["historical_context"]["window_end_utc"] == "2026-03-10T00:00:00Z"
     assert payload["historical_context"]["summary"]["total_trades"] == 1
     assert payload["historical_context"]["summary"]["closed_trades"] == 1
+    assert "expectancy" in payload["historical_context"]["summary"]
+    assert payload["historical_context"]["summary"]["expectancy"] is not None
+
+    pt = payload["performance_trends"]
+    assert pt["comparison_basis"] == "reviewed_period_vs_prior_pre_period_history"
+    assert pt["win_rate_current"] is not None
+    assert pt["win_rate_historical"] is not None
+    assert pt["expectancy_current"] is not None
+    assert pt["expectancy_historical"] is not None
+    assert "ei_trend" in pt
+
+
+def test_build_trade_payload_ei_trend_from_prior_stored_reviews(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-ei-trend-user",
+        email="ai-ei-trend@example.com",
+    )
+    period_old = datetime(2026, 2, 1, 0, 0, 0)
+    period_new = datetime(2026, 3, 10, 0, 0, 0)
+    db.session.add(
+        AIGeneratedResponse(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            kind=WEEKLY_DASHBOARD_KIND,
+            period_start_utc=period_old,
+            generated_at=period_old,
+            response_text="ok",
+            payload_json=json.dumps({"emotional_index": {"score": 6.0}}),
+        )
+    )
+    db.session.add_all(
+        [
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="EURUSD",
+                side="BUY",
+                entry_price=1.1000,
+                exit_price=1.1010,
+                lot_size=1.0,
+                pnl=50.0,
+                opened_at=datetime(2026, 3, 10, 12, 0, 0),
+                closed_at=datetime(2026, 3, 10, 13, 0, 0),
+            ),
+        ]
+    )
+    db.session.commit()
+
+    payload = build_trade_payload(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        period_start_utc=period_new,
+        period_end_utc=datetime(2026, 3, 11, 0, 0, 0),
+        closed_trades_only=True,
+    )
+    assert payload["performance_trends"]["ei_trend"] == "improving"
+
+
+def test_format_payload_for_prompt_includes_performance_trends_section():
+    payload = {
+        "generated_at": "2026-03-12T12:00:00Z",
+        "period_start_utc": "2026-03-10T00:00:00Z",
+        "period_end_utc": "2026-03-11T00:00:00Z",
+        "notes_coverage": 0.0,
+        "emotional_index": None,
+        "performance_trends": {
+            "comparison_basis": "reviewed_period_vs_prior_pre_period_history",
+            "prior_history_window_days": 90,
+            "win_rate_current": 55.0,
+            "win_rate_historical": 50.0,
+            "expectancy_current": 12.5,
+            "expectancy_historical": 10.0,
+            "ei_trend": "flat",
+        },
+        "summary": {"total_trades": 0, "closed_trades": 0, "open_trades": 0},
+        "historical_context": {},
+        "trades": [],
+    }
+    text = format_payload_for_prompt(payload)
+    assert "PERFORMANCE_TRENDS" in text
+    assert "win_rate_current" in text
+    assert "historical_expectancy" in text or "expectancy_historical" in text
 
 
 def test_maybe_generate_weekly_dashboard_advice_returns_skip_reason_for_no_trades(app_ctx, monkeypatch):

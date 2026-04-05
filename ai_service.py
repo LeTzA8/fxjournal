@@ -838,6 +838,7 @@ def _build_historical_context(
             "total_trades": summary.get("total_trades", 0),
             "closed_trades": summary.get("closed_trades", 0),
             "win_rate": _round_metric(summary.get("win_rate")),
+            "expectancy": _round_metric(summary.get("expectancy")),
             "net_pnl": _round_metric(summary.get("net_pnl")),
             "max_drawdown": _round_metric(summary.get("max_drawdown")),
         },
@@ -1162,6 +1163,67 @@ def build_trade_payload(
             }
         )
 
+    historical_ctx = _build_historical_context(
+        user_id=user_id,
+        trade_account_id=trade_account_id,
+        period_start_utc=period_start_utc,
+        period_end_utc=period_end_utc,
+        closed_trades_only=closed_trades_only,
+    )
+    historical_summary = (historical_ctx or {}).get("summary") or {}
+
+    ei_trend_direction = None
+    if period_start_utc is not None:
+        try:
+            past_reviews = (
+                AIGeneratedResponse.query.filter_by(
+                    user_id=user_id,
+                    trade_account_id=trade_account_id,
+                    kind=WEEKLY_DASHBOARD_KIND,
+                )
+                .filter(AIGeneratedResponse.period_start_utc < period_start_utc)
+                .order_by(AIGeneratedResponse.period_start_utc.desc())
+                .limit(3)
+                .all()
+            )
+            past_ei_scores = []
+            for row in past_reviews:
+                try:
+                    stored = json.loads(row.payload_json or "")
+                    score = stored.get("emotional_index", {}).get("score")
+                    if score is not None:
+                        past_ei_scores.append(float(score))
+                except (TypeError, ValueError):
+                    pass
+            current_ei_score = (emotional_index or {}).get("score")
+            if current_ei_score is not None:
+                current_ei_score = float(current_ei_score)
+            all_ei_scores = (
+                [current_ei_score] if current_ei_score is not None else []
+            ) + past_ei_scores
+            if len(all_ei_scores) >= 2:
+                recent = all_ei_scores[0]
+                older_avg = sum(all_ei_scores[1:]) / len(all_ei_scores[1:])
+                delta = recent - older_avg
+                if abs(delta) < 0.3:
+                    ei_trend_direction = "flat"
+                elif delta < 0:
+                    ei_trend_direction = "improving"
+                else:
+                    ei_trend_direction = "declining"
+        except Exception:
+            ei_trend_direction = None
+
+    performance_trends = {
+        "comparison_basis": "reviewed_period_vs_prior_pre_period_history",
+        "prior_history_window_days": (historical_ctx or {}).get("window_days"),
+        "win_rate_current": _round_metric(analytics["summary"].get("win_rate")),
+        "win_rate_historical": historical_summary.get("win_rate"),
+        "expectancy_current": _round_metric(analytics["summary"].get("expectancy")),
+        "expectancy_historical": historical_summary.get("expectancy"),
+        "ei_trend": ei_trend_direction,
+    }
+
     payload = {
         "generated_at": format_utc_timestamp(utcnow_naive()),
         "period_start_utc": format_utc_timestamp(period_start_utc),
@@ -1175,13 +1237,8 @@ def build_trade_payload(
         "user_profile": _serialize_user_profile(user_profile),
         "weekly_checkin": _serialize_weekly_checkin(weekly_checkin),
         "emotional_index": emotional_index,
-        "historical_context": _build_historical_context(
-            user_id=user_id,
-            trade_account_id=trade_account_id,
-            period_start_utc=period_start_utc,
-            period_end_utc=period_end_utc,
-            closed_trades_only=closed_trades_only,
-        ),
+        "performance_trends": performance_trends,
+        "historical_context": historical_ctx,
         "summary": {
             "total_trades": analytics["summary"]["total_trades"],
             "closed_trades": analytics["summary"]["closed_trades"],
@@ -1415,6 +1472,33 @@ def format_payload_for_prompt(payload):
             ]
         )
 
+    performance_trends = payload.get("performance_trends") or {}
+    if any(
+        performance_trends.get(key) is not None
+        for key in (
+            "win_rate_current",
+            "win_rate_historical",
+            "expectancy_current",
+            "expectancy_historical",
+            "ei_trend",
+            "prior_history_window_days",
+        )
+    ):
+        lines.extend(
+            [
+                "",
+                "PERFORMANCE_TRENDS",
+                "- scope_note: these compare the completed review period to prior account history before that period (see comparison_basis and prior_history_window_days), not the dashboard four-week rolling panel",
+                f"- comparison_basis: {performance_trends.get('comparison_basis') or '-'}",
+                f"- prior_history_window_days: {performance_trends.get('prior_history_window_days') if performance_trends.get('prior_history_window_days') is not None else '-'}",
+                f"- win_rate_current: {_format_percent(performance_trends.get('win_rate_current'))}",
+                f"- win_rate_historical: {_format_percent(performance_trends.get('win_rate_historical'))}",
+                f"- expectancy_current: {_format_signed_currency(performance_trends.get('expectancy_current'))}",
+                f"- expectancy_historical: {_format_signed_currency(performance_trends.get('expectancy_historical'))}",
+                f"- ei_trend: {performance_trends.get('ei_trend') or '-'}",
+            ]
+        )
+
     lines.extend(
         [
             "",
@@ -1461,6 +1545,7 @@ def format_payload_for_prompt(payload):
             f"- historical_total_trades: {(historical_context.get('summary') or {}).get('total_trades', 0)}",
             f"- historical_closed_trades: {(historical_context.get('summary') or {}).get('closed_trades', 0)}",
             f"- historical_win_rate: {_format_percent((historical_context.get('summary') or {}).get('win_rate'))}",
+            f"- historical_expectancy: {_format_signed_currency((historical_context.get('summary') or {}).get('expectancy'))}",
             f"- historical_net_pnl: {_format_signed_currency((historical_context.get('summary') or {}).get('net_pnl'))}",
             f"- historical_max_drawdown_amount: {_format_currency_magnitude((historical_context.get('summary') or {}).get('max_drawdown'))}",
             "",

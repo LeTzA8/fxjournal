@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from ai_service import (
     MIN_CLOSED_TRADES_FOR_ADVICE,
+    WEEKLY_DASHBOARD_KIND,
     build_dashboard_review_display,
     get_latest_trade_week_period,
     get_latest_weekly_dashboard_advice,
@@ -35,8 +36,9 @@ from helpers.core import (
     is_trade_running,
 )
 from helpers.trade_analysis import detect_outliers
+from helpers.trends import trend_direction_ei_scores, trend_direction_expectancy_weeks, trend_direction_win_rate_weeks
 from helpers.utils import login_required, utcnow_naive
-from models import Trade, UserProfile, WeeklyCheckin, db
+from models import AIGeneratedResponse, Trade, UserProfile, WeeklyCheckin, db
 from trading import (
     SMALL_SAMPLE_MIN_TRADES,
     build_rr_summary,
@@ -436,63 +438,6 @@ def _load_user_trades(user_id, active_trade_account):
         return []
 
 
-def _count_closed_trades_for_period(user_id, trade_account_id, period):
-    if trade_account_id is None or period is None:
-        return 0
-    try:
-        return (
-            Trade.query.filter_by(
-                user_id=user_id,
-                trade_account_id=trade_account_id,
-            )
-            .filter(Trade.closed_at.isnot(None))
-            .filter(Trade.closed_at >= period["period_start_utc"])
-            .filter(Trade.closed_at < period["period_end_utc"])
-            .count()
-        )
-    except OperationalError:
-        db.session.rollback()
-        return 0
-
-
-def _get_weekly_checkin_banner_state(user_id, active_trade_account):
-    account_id = getattr(active_trade_account, "id", None)
-    if account_id is None:
-        return {
-            "show_weekly_checkin_banner": False,
-            "weekly_checkin_was_skipped": False,
-            "weekly_checkin_closed_trade_count": 0,
-        }
-
-    period = get_weekly_dashboard_period(now_utc=utcnow_naive())
-    closed_trade_count = _count_closed_trades_for_period(user_id, account_id, period)
-    if closed_trade_count <= 0:
-        return {
-            "show_weekly_checkin_banner": False,
-            "weekly_checkin_was_skipped": False,
-            "weekly_checkin_closed_trade_count": 0,
-        }
-
-    try:
-        existing_checkin = WeeklyCheckin.query.filter_by(
-            user_id=user_id,
-            trade_account_id=account_id,
-            week_start_utc=period["period_start_utc"],
-        ).first()
-    except OperationalError:
-        db.session.rollback()
-        existing_checkin = None
-        closed_trade_count = 0
-
-    checkin_is_complete = is_weekly_checkin_complete(existing_checkin)
-
-    return {
-        "show_weekly_checkin_banner": not checkin_is_complete and closed_trade_count > 0,
-        "weekly_checkin_was_skipped": existing_checkin is not None and not checkin_is_complete,
-        "weekly_checkin_closed_trade_count": closed_trade_count,
-    }
-
-
 def _get_review_workflow_banner_state(user_id, active_trade_account, user_trades):
     account_id = getattr(active_trade_account, "id", None)
     if account_id is None:
@@ -795,6 +740,92 @@ def _summarize_week(records, start_local, end_local=None):
         "win_rate": (wins / trade_count * 100.0) if trade_count else None,
         "net_pnl": net_pnl,
         "week_sample_is_reliable": trade_count >= SMALL_SAMPLE_MIN_TRADES,
+    }
+
+
+def _build_performance_trends(closed_records, now_local, min_trades_per_week=3):
+    """
+    Win rate and expectancy trend over the last four completed weeks (Mon–Mon, local).
+    Direction is None when there is not enough non-null weekly data.
+    """
+    week_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
+        days=now_local.weekday()
+    )
+
+    weeks = []
+    for i in range(1, 5):
+        start = week_start - timedelta(weeks=i)
+        end = week_start - timedelta(weeks=i - 1)
+        week_records = [
+            r
+            for r in closed_records
+            if (r.get("realized_at_local") or r.get("opened_at_local")) is not None
+            and start <= (r.get("realized_at_local") or r.get("opened_at_local")) < end
+        ]
+        count = len(week_records)
+        if count < min_trades_per_week:
+            weeks.append(None)
+            continue
+        wins = sum(1 for r in week_records if (r.get("pnl") or 0) > 0)
+        net_pnl = sum((r.get("pnl") or 0) for r in week_records)
+        weeks.append(
+            {
+                "win_rate": wins / count * 100.0,
+                "expectancy": net_pnl / count,
+                "count": count,
+            }
+        )
+
+    win_rates = [w["win_rate"] if w else None for w in weeks]
+    expectancies = [w["expectancy"] if w else None for w in weeks]
+    usable_weeks = sum(1 for w in weeks if w is not None)
+
+    return {
+        "win_rate_trend": trend_direction_win_rate_weeks(win_rates),
+        "expectancy_trend": trend_direction_expectancy_weeks(expectancies),
+        "weeks_available": usable_weeks,
+        "current_win_rate": weeks[0]["win_rate"] if weeks[0] else None,
+        "current_expectancy": weeks[0]["expectancy"] if weeks[0] else None,
+    }
+
+
+def _build_ei_trend(user_id, trade_account_id):
+    """Trend from stored weekly dashboard AI payloads (emotional_index.score); lower is better."""
+    if user_id is None:
+        return {"ei_trend": None, "current_ei_score": None}
+
+    reviews = (
+        AIGeneratedResponse.query.filter_by(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            kind=WEEKLY_DASHBOARD_KIND,
+        )
+        .order_by(AIGeneratedResponse.period_start_utc.desc())
+        .limit(4)
+        .all()
+    )
+
+    scores = []
+    for review in reviews:
+        try:
+            payload = json.loads(review.payload_json or "")
+            score = payload.get("emotional_index", {}).get("score")
+            if score is not None:
+                scores.append(float(score))
+            else:
+                scores.append(None)
+        except (TypeError, ValueError):
+            scores.append(None)
+
+    current_ei_score = None
+    for entry in scores:
+        if entry is not None:
+            current_ei_score = entry
+            break
+
+    return {
+        "ei_trend": trend_direction_ei_scores(scores),
+        "current_ei_score": current_ei_score,
     }
 
 
@@ -1224,6 +1255,9 @@ def home():
     has_ai_review = weekly_ai_state["weekly_ai_review"] is not None
     show_whats_next_banner = not (has_any_trades and has_ai_review)
 
+    performance_trends = _build_performance_trends(closed_records, now_local)
+    ei_trend_data = _build_ei_trend(user_id, active_trade_account_id)
+
     return render_template(
         "index.html",
         title="MyFXJournal | Dashboard",
@@ -1241,6 +1275,8 @@ def home():
         current_week_stats=current_week_stats,
         previous_week_stats=previous_week_stats,
         week_on_week_insight=week_on_week_insight,
+        performance_trends=performance_trends,
+        ei_trend=ei_trend_data,
         chart_points=chart_points,
         weekly_ai_review=weekly_ai_state["weekly_ai_review"],
         weekly_ai_review_text=weekly_ai_review_text,
@@ -1373,5 +1409,6 @@ def analytics():
         active_trade_account=active_trade_account,
         rr_summary=rr_summary,
         has_any_trades=bool((analytics_payload.get("summary") or {}).get("total_trades")),
+        small_sample_min_trades=SMALL_SAMPLE_MIN_TRADES,
     )
 

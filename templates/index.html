@@ -111,6 +111,150 @@
             justify-content: flex-start;
         }
     }
+
+    /* Rolling trends: shown below KPI metrics (hero column), above trades table */
+    .trend-panel-hero {
+        margin-top: 0.65rem;
+        padding: 0.78rem 0.95rem;
+        border-color: color-mix(in srgb, var(--border) 78%, var(--accent) 14%);
+        background:
+            linear-gradient(
+                145deg,
+                color-mix(in srgb, var(--card) 98%, transparent),
+                color-mix(in srgb, var(--surface) 94%, transparent)
+            );
+    }
+
+    .trend-panel-hero .trend-panel__list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem 1.35rem;
+        align-items: center;
+    }
+
+    .trend-panel-hero .trend-panel__item {
+        flex: 1 1 auto;
+        min-width: min(100%, 9.5rem);
+    }
+
+    /* Left column (below MT5): stack rows; rail is narrower than hero metrics */
+    .trend-panel-hero--left {
+        margin-top: 0;
+    }
+
+    .trend-panel-hero--left .trend-panel__list {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+
+    .trend-panel-hero--left .trend-panel__item {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .trend-panel {
+        margin-top: 0.85rem;
+        padding-top: 0.75rem;
+        border-top: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    }
+
+    .trend-panel__title {
+        margin: 0 0 0.5rem;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .trend-panel__kicker {
+        margin: -0.25rem 0 0.55rem;
+        font-size: 0.78rem;
+        line-height: 1.35;
+    }
+
+    .trend-panel__list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 0.45rem;
+    }
+
+    .trend-panel__item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        font-size: 0.88rem;
+    }
+
+    .trend-panel__label {
+        min-width: 5.2rem;
+        color: var(--muted);
+        font-weight: 600;
+    }
+
+    .trend-panel__label--help .help-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+    }
+
+    .trend-panel__label--help .help-label-text {
+        font-weight: 600;
+        color: var(--muted);
+    }
+
+    /* Narrow rail: left-anchored bubble so centered tooltips do not clip off-screen */
+    .trend-panel__label--help .help-tooltip-bubble--trend-tight {
+        left: 0;
+        right: auto;
+        width: max-content;
+        max-width: min(17.5rem, calc(100vw - 2rem));
+        transform: translate(0, -0.22rem);
+    }
+
+    .trend-panel__label--help .help-tooltip:hover .help-tooltip-bubble--trend-tight,
+    .trend-panel__label--help .help-tooltip:focus-within .help-tooltip-bubble--trend-tight {
+        transform: translate(0, 0);
+    }
+
+    .trend-panel__label--help .help-tooltip-bubble--trend-tight::before {
+        left: 0.55rem;
+        transform: translateX(0) rotate(45deg);
+    }
+
+    .trend-panel__arrow {
+        font-size: 1.05rem;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .trend-panel__arrow--improving {
+        color: color-mix(in srgb, var(--good) 88%, var(--ink));
+    }
+
+    .trend-panel__arrow--flat {
+        color: color-mix(in srgb, var(--muted) 92%, var(--ink));
+    }
+
+    .trend-panel__arrow--declining {
+        color: color-mix(in srgb, var(--bad) 88%, var(--ink));
+    }
+
+    .trend-panel__direction {
+        font-weight: 600;
+        color: var(--ink);
+    }
+
+    .trend-panel__note {
+        margin: 0.55rem 0 0;
+        font-size: 0.78rem;
+        color: var(--muted);
+        line-height: 1.4;
+    }
 </style>
 {% endblock %}
 
@@ -125,9 +269,9 @@
             <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a></div>
             <div class="head-row">
                 <div>
-                    <h1>Trading Performance Dashboard</h1>
+                    <h1>Trading dashboard</h1>
                     <p class="welcome">Welcome, {{ username }}.</p>
-                    <p class="subtitle">Track consistency, review execution, and spot consistency over time early.</p>
+                    <p class="subtitle">{% if active_trade_account %}Account <strong>{{ active_trade_account.name }}</strong> — {% endif %}weekly AI review, the check-in loop when it is due, and the trades behind the headline stats.</p>
                 </div>
                 <div class="head-actions">
                     <a href="{{ url_for('dashboard.analytics') }}" class="trades-btn">Analytics</a>
@@ -454,6 +598,72 @@
                         <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Open Trade Accounts</a>
                     </div>
                 </article>
+                {% endif %}
+                {% if not is_state_one %}
+                {% set has_any_trend = (
+                    performance_trends.win_rate_trend or
+                    performance_trends.expectancy_trend or
+                    ei_trend.ei_trend
+                ) %}
+                {% if has_any_trend %}
+                <article class="panel trend-panel-hero trend-panel-hero--left" aria-label="Rolling performance trends">
+                    <h4 class="trend-panel__title">Rolling trends</h4>
+                    <p class="trend-panel__kicker soft">Last four completed weeks · closed trades and weekly reviews</p>
+                    <ul class="trend-panel__list">
+                        {% if performance_trends.win_rate_trend %}
+                        <li class="trend-panel__item">
+                            <span class="trend-panel__label">Win rate</span>
+                            <span class="trend-panel__arrow trend-panel__arrow--{{ performance_trends.win_rate_trend }}">
+                                {% if performance_trends.win_rate_trend == "improving" %}↑
+                                {% elif performance_trends.win_rate_trend == "declining" %}↓
+                                {% else %}→{% endif %}
+                            </span>
+                            <span class="trend-panel__direction">{{ performance_trends.win_rate_trend | capitalize }}</span>
+                        </li>
+                        {% endif %}
+                        {% if performance_trends.expectancy_trend %}
+                        <li class="trend-panel__item">
+                            <span class="trend-panel__label">Expectancy</span>
+                            <span class="trend-panel__arrow trend-panel__arrow--{{ performance_trends.expectancy_trend }}">
+                                {% if performance_trends.expectancy_trend == "improving" %}↑
+                                {% elif performance_trends.expectancy_trend == "declining" %}↓
+                                {% else %}→{% endif %}
+                            </span>
+                            <span class="trend-panel__direction">{{ performance_trends.expectancy_trend | capitalize }}</span>
+                        </li>
+                        {% endif %}
+                        {% if ei_trend.ei_trend %}
+                        <li class="trend-panel__item">
+                            <span class="trend-panel__label trend-panel__label--help">
+                                <span class="help-label">
+                                    <span class="help-label-text">Behaviour</span>
+                                    <span class="help-tooltip">
+                                        <button
+                                            type="button"
+                                            class="help-tooltip-button"
+                                            aria-label="Explain rolling behaviour trend"
+                                            aria-describedby="dashboard-rolling-behaviour-trend-tooltip"
+                                        >?</button>
+                                        <span id="dashboard-rolling-behaviour-trend-tooltip" class="help-tooltip-bubble help-tooltip-bubble--trend-tight" role="tooltip">
+                                            From your recent weekly AI reviews (trades and check-in). We only show direction—calmer or more strained—not scores. Improving: steadier. Declining: more pressure.
+                                        </span>
+                                    </span>
+                                </span>
+                            </span>
+                            <span class="trend-panel__arrow trend-panel__arrow--{{ ei_trend.ei_trend }}">
+                                {% if ei_trend.ei_trend == "improving" %}↑
+                                {% elif ei_trend.ei_trend == "declining" %}↓
+                                {% else %}→{% endif %}
+                            </span>
+                            <span class="trend-panel__direction">{{ ei_trend.ei_trend | capitalize }}</span>
+                        </li>
+                        {% endif %}
+                    </ul>
+                    {% if (performance_trends.win_rate_trend or performance_trends.expectancy_trend) and performance_trends.weeks_available < 2 %}
+                    <p class="trend-panel__note">More weeks needed for reliable trend data.</p>
+                    {% endif %}
+                </article>
+                {% endif %}
                 {% endif %}
             </div>
 
@@ -801,7 +1011,7 @@
                             </p>
                         </article>
                         <article class="week-card">
-                            <p class="week-card-label">Opened Previous Week</p>
+                            <p class="week-card-label">Realized Previous Week</p>
                             <p class="week-card-value {% if previous_week_stats.net_pnl > 0 %}good{% elif previous_week_stats.net_pnl < 0 %}bad{% endif %}">
                                 {% if previous_week_stats.net_pnl > 0 %}+{% endif %}${{ '%.2f'|format(previous_week_stats.net_pnl) }}
                             </p>

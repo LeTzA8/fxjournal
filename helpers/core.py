@@ -882,6 +882,46 @@ def update_trade_profile(profile, name, short_description=None):
     return version
 
 
+def queue_bundle_review_if_split_candidates(*, user_id, trade_account_id):
+    """
+    If closed trades on the account look like split-fill / same-setup pairs, set
+    bundle_review_requested_at so the dashboard can prompt historical bundle review.
+
+    Intended after bulk ingest (file import, MT5 sync) once trades are committed.
+
+    Returns True when bundle_review_requested_at was updated.
+    """
+    from helpers.trade_analysis import detect_outliers
+
+    if user_id is None or trade_account_id is None:
+        return False
+    try:
+        closed_trades = (
+            Trade.query.filter_by(user_id=user_id, trade_account_id=trade_account_id)
+            .filter(Trade.closed_at.isnot(None))
+            .order_by(Trade.closed_at.desc(), Trade.id.desc())
+            .all()
+        )
+    except OperationalError:
+        db.session.rollback()
+        return False
+
+    outliers = detect_outliers(closed_trades)
+    if not outliers.get("bundle_candidates"):
+        return False
+
+    account = db.session.get(TradeAccount, trade_account_id)
+    if account is None or account.user_id != user_id:
+        return False
+    account.bundle_review_requested_at = utcnow_naive()
+    try:
+        db.session.commit()
+    except OperationalError:
+        db.session.rollback()
+        return False
+    return True
+
+
 def delete_users_with_related_data(user_ids):
     normalized_ids = sorted({int(uid) for uid in user_ids if uid is not None})
     if not normalized_ids:

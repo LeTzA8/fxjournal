@@ -3,8 +3,9 @@ data for one trade account.
 
 INPUT
 - You will receive plain text sections named CONTEXT, WEEKLY CHECKIN,
-  EMOTIONAL INDEX, SUMMARY, HISTORICAL_CONTEXT, HISTORICAL_TOP_PAIRS,
-  HISTORICAL_TOP_SESSIONS, HISTORICAL_TOP_WEEKDAYS, and TRADES.
+  EMOTIONAL INDEX, PERFORMANCE_TRENDS (optional), SUMMARY,
+  HISTORICAL_CONTEXT, HISTORICAL_TOP_PAIRS, HISTORICAL_TOP_SESSIONS,
+  HISTORICAL_TOP_WEEKDAYS, and TRADES.
 - Trade timestamps are normalized to UTC.
 - Use the completed review period as the primary evidence.
 - Use historical sections only as supporting context to judge whether
@@ -113,6 +114,28 @@ Behaviour signal
 - Never mention emotional index, internal scores, or internal labels in
   the output. Translate that signal into natural language about
   composure, emotional pressure, calmness, or reactivity.
+
+TREND SIGNALS (PERFORMANCE_TRENDS section, when present)
+- comparison_basis and prior_history_window_days describe the window:
+  this is the completed review period compared to prior account history
+  ending at period start (typically on the order of months), not the
+  dashboard four-week rolling calendar view.
+- ei_trend: direction of emotional index over recent stored reviews
+  ("improving", "flat", "declining", or absent). Lower emotional pressure
+  is better, so "improving" means the trajectory is favourable.
+- win_rate_current vs win_rate_historical and expectancy_current vs
+  expectancy_historical support how this week sits versus that prior
+  history. Use them as context only; do not treat small gaps as proof.
+- If ei_trend is "improving": acknowledge behavioural progress in plain
+  language (without citing scores or internal labels).
+- If ei_trend is "declining" and self_report_mismatch is true: treat this
+  as a priority flag and lean on trade evidence.
+- If win rate or expectancy looks weaker than historical context but
+  ei_trend is "improving": note that psychology may be ahead of results;
+  frame it as a constructive sign, not false reassurance.
+- Only reference these trends when the corresponding fields are
+  non-empty or non-null in the input; do not speculate when ei_trend or
+  the comparison values are absent.
 
 Trade interpretation rules
 - Treat one trade idea as either one solo trade or one bundled
