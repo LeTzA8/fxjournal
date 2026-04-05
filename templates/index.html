@@ -1,5 +1,7 @@
 ﻿{% extends "base.html" %}
 
+{% from "_behavior_badges.html" import render_behavior_badges %}
+
 {% block head_extra %}
 <style>
     .onboarding-banner,
@@ -270,8 +272,9 @@
             <div class="head-row">
                 <div>
                     <h1>Trading dashboard</h1>
+                    <p class="dash-primary-story">This week at a glance, your journal, and the weekly review — open Analytics when you want the full closed-trade breakdown.</p>
                     <p class="welcome">Welcome, {{ username }}.</p>
-                    <p class="subtitle">{% if active_trade_account %}Account <strong>{{ active_trade_account.name }}</strong> — {% endif %}weekly AI review, the check-in loop when it is due, and the trades behind the headline stats.</p>
+                    <p class="subtitle">{% if active_trade_account %}Account <strong>{{ active_trade_account.name }}</strong> — {% endif %}AI review, check-in when due, and headline stats from your active book.</p>
                 </div>
                 <div class="head-actions">
                     <a href="{{ url_for('dashboard.analytics') }}" class="trades-btn">Analytics</a>
@@ -354,7 +357,7 @@
                     </p>
                 </article>
             </div>
-            <div class="journey-actions{% if is_state_one %} guided-focus-panel guided-focus-panel-pulse{% endif %}">
+            <div class="journey-actions{% if is_state_one %} guided-focus-panel{% endif %}">
                 <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">{% if is_state_one %}Import or Add Your First Trade{% else %}Import or Add Trades{% endif %}</a>
                 <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
                 {% if has_closed_trades %}
@@ -485,7 +488,7 @@
                     {% if mt5_selected_status != "pending" %}
                     <p class="mt5-panel-copy">Submit one form and admin will handle the remaining MT5 setup from there. Use investor/read-only credentials only, never a trading or master password.</p>
                     {% endif %}
-                    <div class="mt5-form-shell{% if show_mt5_guidance %} guided-focus-panel{% endif %}{% if is_state_one %} guided-focus-panel-pulse{% endif %}" data-mt5-form-shell>
+                    <div class="mt5-form-shell{% if show_mt5_guidance %} guided-focus-panel{% endif %}" data-mt5-form-shell>
                         <form
                             action="{{ url_for('trade_accounts.request_mt5_access') }}"
                             method="post"
@@ -581,12 +584,12 @@
                     </div>
                     {% elif mt5_cfd_accounts and not mt5_selected_account %}
                     <p class="mt5-card-empty">Switch your active dashboard account to a CFD trade account to view or manage its MT5 sync status here.</p>
-                    <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}{% if is_state_one %} guided-focus-panel-pulse{% endif %}">
+                    <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
                         <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Open Trade Accounts</a>
                     </div>
                     {% else %}
                     <p class="mt5-card-empty">Create a CFD trade account first, then request MT5 sync access here.</p>
-                    <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}{% if is_state_one %} guided-focus-panel-pulse{% endif %}">
+                    <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
                         <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Open Trade Accounts</a>
                     </div>
                     {% endif %}
@@ -604,7 +607,7 @@
                     <p class="dashboard-guidance-copy dashboard-guidance-copy-mt5">Connect MT5 for automatic sync{% if is_state_one %} after you add the right account{% endif %}.</p>
                     {% endif %}
                     <p class="mt5-card-empty">You will see the setup flow here as soon as you have a CFD trade account available.</p>
-                    <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}{% if is_state_one %} guided-focus-panel-pulse{% endif %}">
+                    <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
                         <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Open Trade Accounts</a>
                     </div>
                 </article>
@@ -773,7 +776,10 @@
                     </p>
                     <p class="metric-note">
                         {% if has_closed_trades %}
-                        Based on {{ closed_trade_count }} closed trades
+                        Based on {{ closed_trade_count }} closed trade{% if closed_trade_count != 1 %}s{% endif %}
+                        {% if win_rate_is_limited_sample %}
+                        — win rate is most reliable with around {{ small_sample_min_trades }}+ closed trades.
+                        {% endif %}
                         {% elif has_any_trades %}
                         Unlocks after your first closed trade with realized PnL.
                         {% else %}
@@ -863,6 +869,7 @@
                     <div class="panel-head">
                         <div class="panel-title-wrap">
                             <h2>Trades</h2>
+                            <p class="panel-title-hint soft">Click a row to open details. The opened time is also a link.</p>
                         </div>
                         <a href="{{ url_for('trades.trades') }}" class="trades-btn">Open Trades</a>
                     </div>
@@ -914,9 +921,10 @@
                     </div>
                     <div class="table-shell">
                         <table>
+                            <caption class="sr-only">Recent trades for your active account. Select a row or the opened time link to view the full trade record.</caption>
                             <thead>
                                 <tr>
-                                    <th>Date</th>
+                                    <th>Opened</th>
                                     <th>Symbol</th>
                                     <th>Strategy</th>
                                     <th>Side</th>
@@ -927,27 +935,41 @@
                             <tbody>
                                 {% if recent_trades %}
                                 {% for trade in recent_trades %}
-                                {% set row_classes = [] %}
+                                {% set row_classes = ["trade-log-row"] %}
                                 {% if trade.is_running %}{% set _ = row_classes.append("running-trade") %}{% endif %}
                                 {% if trade.bundle_pubkey %}{% set _ = row_classes.append("bundle-row") %}{% endif %}
+                                {% set trade_detail_href = url_for('trades.trade_detail', trade_pubkey=trade.trade_pubkey) if trade.trade_pubkey else '' %}
                                 <tr
                                     {% if trade.trade_id %}id="trade-row-{{ trade.trade_id }}"{% endif %}
-                                    {% if row_classes %}class="{{ row_classes|join(' ') }}"{% endif %}
+                                    class="{{ row_classes|join(' ') }}"
+                                    {% if trade_detail_href %}data-trade-detail-url="{{ trade_detail_href }}"{% endif %}
                                     data-trade-id="{{ trade.trade_id or '' }}"
                                     data-symbol="{{ trade.symbol }}"
                                     data-strategy="{{ trade.trade_profile_label }}"
                                     data-side="{{ trade.side }}"
                                     data-date="{{ trade.date_value }}"
+                                    data-opened-at="{{ trade.opened_at_value }}"
                                     data-pnl="{{ trade.pnl if trade.pnl is not none else '' }}"
                                     data-session="{{ trade.session_label }}"
                                     data-bundle="{{ trade.bundle_pubkey or '' }}"
                                 >
-                                    <td>{{ trade.date }}</td>
-                                    <td>
-                                        {{ trade.symbol }}
-                                        {% if trade.bundle_pubkey %}
-                                        <span class="bundle-pill" title="Bundled Entry">Bundled</span>
+                                    <td class="trade-opened-cell">
+                                        {% if trade_detail_href %}
+                                        <a class="trade-opened-link" href="{{ trade_detail_href }}">{{ trade.date }}</a>
+                                        {% else %}
+                                        {{ trade.date }}
                                         {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="trade-symbol-cell">
+                                            <span>{{ trade.symbol }}</span>
+                                            <span class="trade-inline-badges">
+                                                {% if trade.bundle_pubkey %}
+                                                <span class="bundle-pill" title="Bundled Entry">Bundled</span>
+                                                {% endif %}
+                                                {{ render_behavior_badges(trade.behavior_badges) }}
+                                            </span>
+                                        </div>
                                     </td>
                                     <td>{{ trade.trade_profile_label }}</td>
                                     <td>
@@ -963,11 +985,11 @@
                                         {% elif trade.pnl is none %}
                                         <span class="muted">-</span>
                                         {% elif trade.pnl > 0 %}
-                                        <span class="good">+{{ '%.2f'|format(trade.pnl) }}</span>
+                                        <span class="good">+{{ trim_decimal(trade.pnl, 2) }}</span>
                                         {% elif trade.pnl < 0 %}
-                                        <span class="bad">{{ '%.2f'|format(trade.pnl) }}</span>
+                                        <span class="bad">{{ trim_decimal(trade.pnl, 2) }}</span>
                                         {% else %}
-                                        <span class="muted">0.00</span>
+                                        <span class="muted">0</span>
                                         {% endif %}
                                     </td>
                                     <td>{{ trade.session_label }}</td>
@@ -1224,12 +1246,15 @@
     .dash-content[data-dashboard-state="state-1"] > .workflow-banner {
         order: 4;
     }
-    .dash-head { margin-bottom: 1rem;
-        padding: 1rem 1.05rem 1.02rem;
+    .dash-head { margin-bottom: 1.05rem;
+        margin-inline: auto;
+        padding: 1.18rem 1.35rem 1.22rem;
         border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         border-radius: 18px;
         background: color-mix(in srgb, var(--card) 97%, transparent);
-        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.16); }
+        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.16);
+        max-width: min(var(--app-hero-max-width, 52rem), 100%);
+        width: 100%; }
 
     .crumb { font-size: 0.78rem;
         text-transform: uppercase;
@@ -1248,13 +1273,22 @@
         gap: 1rem; }
 
     h1 { margin: 0;
-        font-size: clamp(1.35rem, 2.3vw, 2rem); }
+        font-size: clamp(1.42rem, 2.55vw, 2.15rem); }
 
-    .subtitle { margin: 0.42rem 0 0;
-        max-width: 58ch;
+    .dash-primary-story {
+        margin: 0.45rem 0 0;
+        max-width: 68ch;
+        font-size: 0.98rem;
+        font-weight: 650;
+        line-height: 1.52;
+        color: color-mix(in srgb, var(--ink) 88%, var(--muted));
+    }
+
+    .subtitle { margin: 0.48rem 0 0;
+        max-width: 68ch;
         color: color-mix(in srgb, var(--muted) 84%, var(--ink));
         font-size: 0.98rem;
-        line-height: 1.5; }
+        line-height: 1.52; }
 
     .welcome { margin: 0.45rem 0 0; font-size: 0.95rem;
         font-weight: 800;
@@ -1263,6 +1297,12 @@
     .panel-title-wrap { display: grid;
         gap: 0.18rem;
         min-width: 0; }
+
+    .panel-title-hint { margin: 0;
+        font-size: 0.76rem;
+        font-weight: 500;
+        line-height: 1.38;
+        max-width: 46ch; }
 
     .panel-account-note { margin: 0;
         font-size: 0.76rem;
@@ -2498,6 +2538,40 @@
 
     .trade-log table { min-width: 560px; }
 
+    .trade-log tbody tr[data-trade-detail-url] { cursor: pointer; }
+
+    .trade-log tbody tr[data-trade-detail-url]:hover td {
+        background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+    }
+
+    .trade-log tbody tr.bundle-row[data-trade-detail-url]:hover td {
+        background: color-mix(in srgb, var(--bundle-accent, var(--accent)) 18%, var(--surface));
+    }
+
+    .trade-log tbody tr.running-trade[data-trade-detail-url]:hover td {
+        background: color-mix(in srgb, var(--good) 16%, var(--surface));
+    }
+
+    .trade-opened-link {
+        color: inherit;
+        font-weight: 650;
+        text-decoration: none;
+    }
+
+    .trade-opened-link:visited {
+        color: inherit;
+    }
+
+    .trade-opened-link:hover {
+        color: color-mix(in srgb, var(--accent) 82%, var(--ink));
+    }
+
+    .trade-opened-link:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--accent) 70%, var(--ink));
+        outline-offset: 2px;
+        border-radius: 3px;
+    }
+
     th,
     td { text-align: left;
         padding: 0.52rem 0.45rem;
@@ -2623,7 +2697,6 @@
         display: inline-flex;
         align-items: center;
         gap: 0.3rem;
-        margin-left: 0.42rem;
         padding: 0.12rem 0.46rem;
         border-radius: 999px;
         border: 1px solid color-mix(in srgb, var(--bundle-accent, var(--muted)) 46%, var(--border));

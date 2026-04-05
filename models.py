@@ -237,6 +237,16 @@ class TradeAccount(db.Model):
     is_default = db.Column(db.Boolean, nullable=False, default=False)
     bundle_review_requested_at = db.Column(db.DateTime, nullable=True)
     bundle_review_completed_at = db.Column(db.DateTime, nullable=True)
+    default_trade_profile_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trade_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    default_trade_profile = db.relationship(
+        "TradeProfile",
+        foreign_keys=[default_trade_profile_id],
+    )
     trades = db.relationship(
         "Trade",
         backref="trade_account",

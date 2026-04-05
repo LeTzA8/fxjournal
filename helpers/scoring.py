@@ -217,13 +217,151 @@ def _build_bucket_points(
     }
 
 
-def compute_emotional_index(*, trades, weekly_checkin):
-    merged_trades = merge_bundled_trades(trades)
+def _prepare_closed_trade_signal_inputs(trades):
     closed_trades = [
         trade
-        for trade in merged_trades
+        for trade in trades
         if getattr(trade, "closed_at", None) is not None
     ]
+    annotations = build_trade_annotations(closed_trades)
+
+    lot_sizes = []
+    durations = []
+    for trade in closed_trades:
+        try:
+            lot_size = float(getattr(trade, "lot_size", None))
+        except (TypeError, ValueError):
+            lot_size = None
+        if lot_size is not None:
+            lot_sizes.append(lot_size)
+
+        duration_minutes = _get_trade_duration_minutes(trade)
+        if duration_minutes is not None and not is_extremely_long_duration_minutes(duration_minutes):
+            durations.append(duration_minutes)
+
+    return {
+        "closed_trades": closed_trades,
+        "annotations": annotations,
+        "median_lot_size": statistics.median(lot_sizes) if lot_sizes else None,
+        "median_duration_minutes": statistics.median(durations) if durations else None,
+    }
+
+
+def build_trade_behavior_signal_map(trades):
+    prepared = _prepare_closed_trade_signal_inputs(trades)
+    annotations = prepared["annotations"]
+    median_lot_size = prepared["median_lot_size"]
+    median_duration_minutes = prepared["median_duration_minutes"]
+
+    signal_map = {}
+    for trade in trades:
+        identity = get_trade_identity(trade)
+        trade_is_closed = getattr(trade, "closed_at", None) is not None
+        annotation = annotations.get(identity, {}) if trade_is_closed else {}
+        trade_pnl = resolve_net_pnl(trade) if trade_is_closed else None
+        duration_minutes = _get_trade_duration_minutes(trade) if trade_is_closed else None
+        closed_before_sl = _get_closed_before_sl(trade, trade_pnl) if trade_is_closed else None
+        outlier_size = _get_outlier_size_flag(trade, median_lot_size) if trade_is_closed else False
+        heuristic_corrective_strength = (
+            _normalize_signal_strength(
+                _score_heuristic_corrective_signal(
+                    annotation=annotation,
+                    trade_pnl=trade_pnl,
+                    duration_minutes=duration_minutes,
+                    median_duration_minutes=median_duration_minutes,
+                    closed_before_sl=closed_before_sl,
+                    outlier_size=outlier_size,
+                ),
+                CORRECTIVE_HEURISTIC_SEVERITY_MAX,
+            )
+            if trade_is_closed
+            else 0.0
+        )
+        quick_cutoff_minutes = 15.0
+        if median_duration_minutes and median_duration_minutes > 0:
+            quick_cutoff_minutes = max(10.0, median_duration_minutes * 0.4)
+        quick_duration = bool(
+            trade_is_closed
+            and duration_minutes is not None
+            and duration_minutes <= quick_cutoff_minutes
+        )
+
+        confirmed = {
+            "revenge": bool(getattr(trade, "is_revenge", False)),
+            "reactive": bool(getattr(trade, "is_reactive", False)),
+            "corrective": bool(getattr(trade, "is_corrective", False)),
+        }
+        has_any_confirmed = any(confirmed.values())
+        suppress_possible = bool(
+            has_any_confirmed
+            or getattr(trade, "bundle_pubkey", None)
+            or annotation.get("possible_split_order")
+        )
+        possible = {
+            "revenge": bool(
+                trade_is_closed
+                and not suppress_possible
+                and annotation.get("is_potential_revenge")
+            ),
+            "reactive": bool(
+                trade_is_closed
+                and not suppress_possible
+                and annotation.get("is_potential_reactive")
+            ),
+            "corrective": bool(
+                trade_is_closed
+                and not suppress_possible
+                and heuristic_corrective_strength > 0
+            ),
+        }
+
+        signal_map[identity] = {
+            "is_closed": trade_is_closed,
+            "confirmed": confirmed,
+            "possible": possible,
+            "strength": {
+                "revenge": (
+                    _normalize_signal_strength(
+                        annotation.get("revenge_signal_strength"),
+                        REVENGE_HEURISTIC_SEVERITY_MAX,
+                    )
+                    if possible["revenge"]
+                    else 0.0
+                ),
+                "reactive": (
+                    _normalize_signal_strength(
+                        annotation.get("reactive_signal_strength"),
+                        REACTIVE_HEURISTIC_SEVERITY_MAX,
+                    )
+                    if possible["reactive"]
+                    else 0.0
+                ),
+                "corrective": heuristic_corrective_strength if possible["corrective"] else 0.0,
+            },
+            "context": {
+                "is_post_loss_trade": bool(annotation.get("is_post_loss_trade")),
+                "is_post_loss_same_symbol_trade": bool(annotation.get("is_post_loss_same_symbol_trade")),
+                "same_symbol_reentry": bool(annotation.get("same_symbol_reentry")),
+                "same_trade_idea_reentry": bool(annotation.get("same_trade_idea_reentry")),
+                "minutes_since_prev_close": annotation.get("minutes_since_prev_close"),
+                "minutes_since_prev_symbol_close": annotation.get("minutes_since_prev_symbol_close"),
+                "size_vs_prev_trade": annotation.get("size_vs_prev_trade"),
+                "size_vs_prev_symbol_trade": annotation.get("size_vs_prev_symbol_trade"),
+                "loss_streak_before_trade": annotation.get("loss_streak_before_trade") or 0,
+                "closed_before_sl": closed_before_sl,
+                "quick_duration": quick_duration,
+                "outlier_size": outlier_size,
+                "possible_split_order": bool(annotation.get("possible_split_order")),
+            },
+        }
+
+    return signal_map
+
+
+def compute_emotional_index(*, trades, weekly_checkin):
+    merged_trades = merge_bundled_trades(trades)
+    prepared = _prepare_closed_trade_signal_inputs(merged_trades)
+    closed_trades = prepared["closed_trades"]
     if weekly_checkin is None and not closed_trades:
         return None
 
@@ -248,23 +386,9 @@ def compute_emotional_index(*, trades, weekly_checkin):
         )
     )
 
-    annotations = build_trade_annotations(closed_trades)
-    lot_sizes = []
-    durations = []
-    for trade in closed_trades:
-        try:
-            lot_size = float(getattr(trade, "lot_size", None))
-        except (TypeError, ValueError):
-            lot_size = None
-        if lot_size is not None:
-            lot_sizes.append(lot_size)
-
-        duration_minutes = _get_trade_duration_minutes(trade)
-        if duration_minutes is not None and not is_extremely_long_duration_minutes(duration_minutes):
-            durations.append(duration_minutes)
-
-    median_lot_size = statistics.median(lot_sizes) if lot_sizes else None
-    median_duration_minutes = statistics.median(durations) if durations else None
+    annotations = prepared["annotations"]
+    median_lot_size = prepared["median_lot_size"]
+    median_duration_minutes = prepared["median_duration_minutes"]
 
     heuristic_revenge_trade_count = 0
     heuristic_reactive_trade_count = 0

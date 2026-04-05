@@ -420,6 +420,21 @@
     }
 
     const tbody = table.querySelector("tbody");
+    tbody.addEventListener("click", (event) => {
+        const target = event.target;
+        if (target.closest("a, button, input, select, textarea, label")) {
+            return;
+        }
+        const row = target.closest("tr[data-trade-detail-url]");
+        if (!row || row.classList.contains("empty-row") || row.classList.contains("no-match-row")) {
+            return;
+        }
+        const url = row.dataset.tradeDetailUrl;
+        if (url) {
+            window.location.assign(url);
+        }
+    });
+
     const rows = Array.from(tbody.querySelectorAll("tr:not(.empty-row)"));
     if (!rows.length) {
         return;
@@ -554,6 +569,10 @@
 
     const getSortValue = (row, type) => {
         if (type === "date") {
+            const openedMs = toDateMs(row.dataset.openedAt);
+            if (openedMs !== null) {
+                return openedMs;
+            }
             return toDateMs(row.dataset.date) ?? -Infinity;
         }
         if (type === "pnl") {
@@ -681,6 +700,32 @@
 
     if (sortSelect) {
         sortSelect.addEventListener("change", applyAll);
+    }
+
+    const journalParsed = tradeFiltersShared.parseJournalFilterQuery();
+    if (journalParsed && filterField) {
+        const fieldName = journalParsed.filterKey === "pair" ? "symbol" : "session";
+        filterField.value = fieldName;
+        updateValueControl();
+        const targetSelect = valueSelects[fieldName];
+        if (targetSelect) {
+            const want =
+                journalParsed.filterKey === "pair"
+                    ? tradeFiltersShared.toUpper(journalParsed.value)
+                    : journalParsed.value;
+            const opts = Array.from(targetSelect.options);
+            const exact = opts.find((opt) => opt.value === want);
+            const folded = opts.find(
+                (opt) =>
+                    opt.value &&
+                    want &&
+                    String(opt.value).toLowerCase() === String(want).toLowerCase(),
+            );
+            const pick = exact || folded;
+            if (pick) {
+                targetSelect.value = pick.value;
+            }
+        }
     }
 
     updateValueControl();

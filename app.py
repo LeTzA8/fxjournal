@@ -34,6 +34,7 @@ from helpers.legal import LEGAL_LAST_UPDATED
 from extensions import limiter, oauth
 from routes import all_blueprints, mt5_internal_bp
 from helpers.utils import env_bool, env_int, utcnow_naive
+from trading import format_trade_price, format_trade_size, trim_decimal_string
 
 load_dotenv()
 
@@ -138,6 +139,11 @@ csrf.exempt(mt5_internal_bp)
 # For production, set RATELIMIT_STORAGE_URI to Redis for shared counters.
 app.config.setdefault("RATELIMIT_STORAGE_URI", os.getenv("RATELIMIT_STORAGE_URI", "memory://"))
 limiter.init_app(app)
+
+app.add_template_global(format_trade_price, "format_trade_price")
+app.add_template_global(format_trade_size, "format_trade_size")
+app.add_template_global(trim_decimal_string, "trim_decimal")
+
 if oauth is not None:
     oauth.init_app(app)
     if app.config["GOOGLE_CLIENT_ID"] and app.config["GOOGLE_CLIENT_SECRET"]:

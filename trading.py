@@ -389,6 +389,17 @@ def _trim_decimal_text(text):
     return text.rstrip("0").rstrip(".")
 
 
+def trim_decimal_string(value, max_places=8):
+    """Format a number then strip trailing zeros (for templates and display)."""
+    if value is None:
+        return ""
+    try:
+        places = max(0, min(int(max_places), 16))
+        return _trim_decimal_text(f"{float(value):.{places}f}")
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def format_trade_price(value, symbol, instrument_type="CFD", contract_code=None):
     if value is None:
         return "-"
@@ -398,23 +409,24 @@ def format_trade_price(value, symbol, instrument_type="CFD", contract_code=None)
     if account_type == "FUTURES":
         spec = get_futures_symbol_spec(symbol=symbol, contract_code=contract_code)
         decimals = _decimal_places(spec["tick_size"]) if spec and spec["tick_size"] > 0 else 2
-        return f"{numeric_value:.{decimals}f}"
+        text = f"{numeric_value:.{decimals}f}"
+    else:
+        sym = canonicalize_symbol(symbol, "CFD")
+        spec = _load_cfd_symbol_map().get(sym)
+        if spec is not None and spec["pip_size"] is not None:
+            decimals = _decimal_places(spec["pip_size"])
+            text = f"{numeric_value:.{decimals}f}"
+        else:
+            crypto_decimals = CRYPTO_CFD_PRICE_DECIMALS.get(sym)
+            if crypto_decimals is not None:
+                text = f"{numeric_value:.{crypto_decimals}f}"
+            elif is_fx_pair(sym):
+                decimals = 3 if sym.endswith("JPY") else 5
+                text = f"{numeric_value:.{decimals}f}"
+            else:
+                text = f"{numeric_value:.2f}"
 
-    sym = canonicalize_symbol(symbol, "CFD")
-    spec = _load_cfd_symbol_map().get(sym)
-    if spec is not None and spec["pip_size"] is not None:
-        decimals = _decimal_places(spec["pip_size"])
-        return f"{numeric_value:.{decimals}f}"
-
-    crypto_decimals = CRYPTO_CFD_PRICE_DECIMALS.get(sym)
-    if crypto_decimals is not None:
-        return f"{numeric_value:.{crypto_decimals}f}"
-
-    if is_fx_pair(sym):
-        decimals = 3 if sym.endswith("JPY") else 5
-        return f"{numeric_value:.{decimals}f}"
-
-    return _trim_decimal_text(f"{numeric_value:.2f}")
+    return _trim_decimal_text(text)
 
 
 def format_trade_size(value, account_type):

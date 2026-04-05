@@ -39,6 +39,9 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='tab-logo.png', v='1') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='tab-logo.png', v='1') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='tab-logo.png', v='1') }}">
+    {% if is_app_layout %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app_pages.css', v='12') }}">
+    {% endif %}
     <script type="application/ld+json">
         {
             "@context": "https://schema.org",
@@ -163,6 +166,7 @@
         }
 
         body.app-layout {
+            --app-hero-max-width: 52rem;
             background:
                 radial-gradient(circle at top, color-mix(in srgb, var(--accent) 12%, transparent), transparent 32%),
                 radial-gradient(circle at 82% 8%, var(--app-bg-accent-spot), transparent 20%),
@@ -234,14 +238,24 @@
         .js-reveal-pending .login-card,
         .js-reveal-pending .card,
         .js-reveal-pending .landing-reveal,
-        .js-reveal-pending [data-reveal] {
+        .js-reveal-pending [data-reveal],
+        .js-reveal-pending .kpi-section,
+        .js-reveal-pending .analytics-breakdown-disclosure,
+        .js-reveal-pending .empty-step-card {
             opacity: 0;
             transform: translateY(24px) scale(0.988);
             filter: blur(8px);
         }
 
+        .js-reveal-pending [data-reveal-skip] {
+            opacity: 1;
+            transform: none;
+            filter: none;
+        }
+
         .metric.is-visible,
-        .panel.is-visible {
+        .panel.is-visible,
+        .kpi-section.is-visible {
             animation: panel-breathe 14s ease-in-out 1.1s infinite;
         }
 @keyframes page-enter {
@@ -1066,12 +1080,15 @@
         }
 
         body.app-layout .dash-head {
-            margin-bottom: 1rem;
-            padding: 1rem 1.05rem 1.02rem;
+            margin-bottom: 1.05rem;
+            margin-inline: auto;
+            padding: 1.18rem 1.35rem 1.22rem;
             border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
             border-radius: 18px;
             background: color-mix(in srgb, var(--card) 98%, transparent);
             box-shadow: 0 18px 38px rgba(2, 6, 23, 0.24);
+            max-width: min(var(--app-hero-max-width, 52rem), 100%);
+            width: 100%;
         }
 
         body.app-layout .head-row {
@@ -1083,7 +1100,7 @@
 
         body.app-layout h1 {
             margin: 0;
-            font-size: clamp(1.35rem, 2.3vw, 2rem);
+            font-size: clamp(1.42rem, 2.55vw, 2.15rem);
             color: var(--ink);
         }
 
@@ -1846,6 +1863,100 @@
             color: color-mix(in srgb, var(--bad) 88%, white 12%);
         }
 
+        body.app-layout .trade-symbol-cell,
+        body.auth-layout .trade-symbol-cell,
+        body.landing-layout .trade-symbol-cell {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.38rem;
+        }
+
+        body.app-layout .trade-inline-badges,
+        body.auth-layout .trade-inline-badges,
+        body.landing-layout .trade-inline-badges,
+        body.app-layout .behavior-badge-list,
+        body.auth-layout .behavior-badge-list,
+        body.landing-layout .behavior-badge-list {
+            display: inline-flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.34rem;
+        }
+
+        body.app-layout .bundle-pill,
+        body.auth-layout .bundle-pill,
+        body.landing-layout .bundle-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.12rem 0.46rem;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--bundle-accent, var(--muted)) 46%, var(--border));
+            background: color-mix(in srgb, var(--bundle-accent, var(--muted)) 12%, var(--card));
+            color: color-mix(in srgb, var(--bundle-accent, var(--ink)) 72%, var(--ink));
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            line-height: 1;
+            white-space: nowrap;
+        }
+
+        body.app-layout .behavior-badge,
+        body.auth-layout .behavior-badge,
+        body.landing-layout .behavior-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 1.45rem;
+            padding: 0.14rem 0.48rem;
+            border-radius: 999px;
+            border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+            background: color-mix(in srgb, var(--surface) 78%, transparent);
+            color: var(--ink);
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            line-height: 1;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        body.app-layout .behavior-badge--revenge,
+        body.auth-layout .behavior-badge--revenge,
+        body.landing-layout .behavior-badge--revenge {
+            border-color: color-mix(in srgb, var(--bad) 44%, var(--border));
+            color: color-mix(in srgb, var(--bad) 88%, white 12%);
+        }
+
+        body.app-layout .behavior-badge--reactive,
+        body.auth-layout .behavior-badge--reactive,
+        body.landing-layout .behavior-badge--reactive {
+            border-color: color-mix(in srgb, var(--warning-border) 58%, var(--border));
+            color: color-mix(in srgb, var(--warning-border) 88%, var(--ink) 12%);
+        }
+
+        body.app-layout .behavior-badge--corrective,
+        body.auth-layout .behavior-badge--corrective,
+        body.landing-layout .behavior-badge--corrective {
+            border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
+            color: color-mix(in srgb, var(--accent) 74%, var(--ink) 26%);
+        }
+
+        body.app-layout .behavior-badge--confirmed,
+        body.auth-layout .behavior-badge--confirmed,
+        body.landing-layout .behavior-badge--confirmed {
+            background: color-mix(in srgb, currentColor 10%, var(--surface));
+        }
+
+        body.app-layout .behavior-badge--possible,
+        body.auth-layout .behavior-badge--possible,
+        body.landing-layout .behavior-badge--possible {
+            border-style: dashed;
+            background: color-mix(in srgb, currentColor 4%, var(--surface));
+            color: color-mix(in srgb, currentColor 88%, var(--muted) 12%);
+        }
+
         body.app-layout .submit-btn,
         body.app-layout .trades-btn,
         body.app-layout .new-trade-btn,
@@ -2186,35 +2297,56 @@
             <nav class="site-nav" aria-label="Primary">
                 <a
                     href="{{ url_for('dashboard.home') }}"
-                    class="site-nav-link{% if request.endpoint == 'home' %} active{% endif %}"
+                    class="site-nav-link{% if request.endpoint == 'dashboard.home' %} active{% endif %}"
                 >Dashboard</a>
                 <div class="site-nav-group">
                     <a
                         href="{{ url_for('trades.trades') }}"
-                        class="site-nav-link site-nav-group-toggle{% if request.endpoint in ['trades', 'manage_trades', 'new_trade', 'trade_detail', 'edit_trade', 'trade_accounts', 'strategies', 'edit_strategy', 'archive_strategy'] %} active{% endif %}"
+                        class="site-nav-link site-nav-group-toggle{% if request.endpoint in [
+                            'trades.trades',
+                            'trades.manage_trades',
+                            'trades.new_trade',
+                            'trades.trade_detail',
+                            'trades.edit_trade',
+                            'trades.bundle_review',
+                            'trade_accounts.trade_accounts',
+                            'trade_profiles.strategies',
+                            'trade_profiles.edit_strategy',
+                            'trade_profiles.archive_strategy',
+                        ] %} active{% endif %}"
                     >Trades</a>
                     <div class="site-nav-group-menu" role="menu" aria-label="Trades navigation">
                         <a
                             href="{{ url_for('trades.trades') }}"
-                            class="site-nav-link site-nav-sublink{% if request.endpoint in ['trades', 'new_trade', 'trade_detail', 'edit_trade'] %} active{% endif %}"
+                            class="site-nav-link site-nav-sublink{% if request.endpoint in [
+                                'trades.trades',
+                                'trades.new_trade',
+                                'trades.trade_detail',
+                                'trades.edit_trade',
+                                'trades.bundle_review',
+                            ] %} active{% endif %}"
                         >All Trades</a>
                         <a
                             href="{{ url_for('trades.manage_trades') }}"
-                            class="site-nav-link site-nav-sublink{% if request.endpoint == 'manage_trades' %} active{% endif %}"
+                            class="site-nav-link site-nav-sublink{% if request.endpoint == 'trades.manage_trades' %} active{% endif %}"
                         >Trade Management</a>
                         <a
                             href="{{ url_for('trade_accounts.trade_accounts') }}"
-                            class="site-nav-link site-nav-sublink{% if request.endpoint == 'trade_accounts' %} active{% endif %}"
+                            class="site-nav-link site-nav-sublink{% if request.endpoint == 'trade_accounts.trade_accounts' %} active{% endif %}"
                         >Trade Accounts</a>
                         <a
                             href="{{ url_for('trade_profiles.strategies') }}"
-                            class="site-nav-link site-nav-sublink{% if request.endpoint in ['strategies', 'edit_strategy', 'archive_strategy'] %} active{% endif %}"
+                            class="site-nav-link site-nav-sublink{% if request.endpoint in [
+                                'trade_profiles.strategies',
+                                'trade_profiles.edit_strategy',
+                                'trade_profiles.archive_strategy',
+                            ] %} active{% endif %}"
                         >Strategies</a>
                     </div>
                 </div>
                 <a
                     href="{{ url_for('dashboard.analytics') }}"
-                    class="site-nav-link{% if request.endpoint == 'analytics' %} active{% endif %}"
+                    class="site-nav-link{% if request.endpoint == 'dashboard.analytics' %} active{% endif %}"
                 >Analytics</a>
                 {% if is_admin_user %}
                 <a
@@ -2224,7 +2356,7 @@
                 {% endif %}
                 <a
                     href="{{ url_for('contact.contact') }}"
-                    class="site-nav-link{% if request.endpoint == 'contact' %} active{% endif %}"
+                    class="site-nav-link{% if request.endpoint == 'contact.contact' %} active{% endif %}"
                 >Contact</a>
             </nav>
             <div class="site-header-actions">

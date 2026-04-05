@@ -4,7 +4,11 @@ from io import BytesIO
 
 from openpyxl import Workbook
 
-from helpers.core import build_normalized_trade_insert_batch, build_trade_import_dedupe_key
+from helpers.core import (
+    build_normalized_trade_insert_batch,
+    build_trade_import_dedupe_key,
+    create_trade_profile,
+)
 from models import TradeAccount, User, db
 from trading import parse_mt5_xlsx_stream, parse_tradovate_csv_stream
 
@@ -282,3 +286,104 @@ def test_build_normalized_trade_insert_batch_uses_default_system_note_when_impor
 
     assert trade.trade_note is None
     assert trade.system_trade_note == "Imported from MT5 Positions"
+
+
+def test_build_normalized_trade_insert_batch_applies_account_default_strategy(app_ctx):
+    user = User(
+        username="import-default-strategy-user",
+        email="import-default-strategy@example.com",
+        password="hashed-password",
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    profile, version = create_trade_profile(user.id, "Default Playbook", "Test")
+    db.session.commit()
+
+    trade_account = TradeAccount(
+        user_id=user.id,
+        name="Imported CFD",
+        account_type="CFD",
+        is_default=True,
+        default_trade_profile_id=profile.id,
+    )
+    db.session.add(trade_account)
+    db.session.commit()
+
+    batch_result = build_normalized_trade_insert_batch(
+        user_id=user.id,
+        trade_account=trade_account,
+        rows=[
+            {
+                "symbol": "EURUSD",
+                "side": "BUY",
+                "entry_price": 1.1000,
+                "exit_price": 1.1010,
+                "lot_size": 1.0,
+                "pnl": 100.0,
+                "opened_at": datetime(2026, 3, 10, 9, 0, 0),
+                "closed_at": datetime(2026, 3, 10, 10, 0, 0),
+                "mt5_position": "123456",
+                "trade_note": "",
+            }
+        ],
+        import_signature="mt5_20260310_100000_abcd1234",
+        default_system_trade_note="Imported from MT5 Positions",
+    )
+
+    trade = batch_result["insert_batch"][0]
+    assert trade.trade_profile_id == profile.id
+    assert trade.trade_profile_version_id == version.id
+
+
+def test_build_normalized_trade_insert_batch_skips_default_strategy_from_other_user(app_ctx):
+    owner = User(
+        username="import-bad-default-owner",
+        email="import-bad-default-owner@example.com",
+        password="hashed-password",
+    )
+    other = User(
+        username="import-bad-default-other",
+        email="import-bad-default-other@example.com",
+        password="hashed-password",
+    )
+    db.session.add_all([owner, other])
+    db.session.flush()
+
+    foreign_profile, _ = create_trade_profile(other.id, "Other user playbook", None)
+    db.session.commit()
+
+    trade_account = TradeAccount(
+        user_id=owner.id,
+        name="Imported CFD",
+        account_type="CFD",
+        is_default=True,
+        default_trade_profile_id=foreign_profile.id,
+    )
+    db.session.add(trade_account)
+    db.session.commit()
+
+    batch_result = build_normalized_trade_insert_batch(
+        user_id=owner.id,
+        trade_account=trade_account,
+        rows=[
+            {
+                "symbol": "EURUSD",
+                "side": "BUY",
+                "entry_price": 1.1000,
+                "exit_price": 1.1010,
+                "lot_size": 1.0,
+                "pnl": 100.0,
+                "opened_at": datetime(2026, 3, 10, 9, 0, 0),
+                "closed_at": datetime(2026, 3, 10, 10, 0, 0),
+                "mt5_position": "223456",
+                "trade_note": "",
+            }
+        ],
+        import_signature="mt5_20260310_100000_abcd1234",
+        default_system_trade_note="Imported from MT5 Positions",
+    )
+
+    trade = batch_result["insert_batch"][0]
+    assert trade.trade_profile_id is None
+    assert trade.trade_profile_version_id is None

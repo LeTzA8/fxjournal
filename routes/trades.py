@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from extensions import limiter
 from celery_workers.cache import CacheUnavailableError, invalidate
+from helpers.behavior_labels import build_trade_behavior_badge_map
 from helpers.core import (
     assign_trade_profile_to_trade,
     build_trade_duplicate_key,
@@ -24,7 +25,7 @@ from helpers.core import (
     parse_local_datetime_input,
     resolve_trade_profile_form_state,
 )
-from helpers.trade_analysis import detect_outliers
+from helpers.trade_analysis import detect_outliers, get_trade_identity
 from models import Trade, db
 from trading import (
     calculate_trade_net_pnl,
@@ -80,6 +81,27 @@ def _calculate_trade_risk_reward(target_price, entry_price, stop_loss, side=None
 
 def _calculate_trade_net_pnl(trade_pnl, commission=None, swap=None):
     return calculate_trade_net_pnl(trade_pnl, commission, swap)
+
+
+def _build_trade_entry_context(user_id, trade):
+    trade_account = trade.trade_account or get_active_trade_account_for_user(user_id)
+    profile_form_state = resolve_trade_profile_form_state(user_id, trade=trade)
+    return {
+        "username": session.get("username", "User"),
+        "active_trade_account_name": trade_account.name,
+        "symbol_options": get_symbol_options(trade_account.account_type, trade.symbol),
+        "account_type": normalize_account_type(trade_account.account_type),
+        "size_label": get_trade_size_label(trade_account.account_type),
+        "trade": trade,
+        "opened_at_value": format_local_datetime_input(trade.opened_at),
+        "closed_at_value": format_local_datetime_input(trade.closed_at),
+        "trade_is_running": is_trade_running(trade),
+        "analytics_timezone": get_display_timezone_name(),
+        "trade_profile_options": profile_form_state["trade_profile_options"],
+        "selected_trade_profile_pubkey": profile_form_state[
+            "selected_trade_profile_pubkey"
+        ],
+    }
 
 
 def _validate_trade_submission(
@@ -258,6 +280,7 @@ def render_trades_page(*, manage_mode=False):
     trade_rows = []
     size_label = get_trade_size_label(active_trade_account.account_type)
     timezone_name = get_display_timezone_name()
+    behavior_badge_map = build_trade_behavior_badge_map(user_trades)
     for trade in user_trades:
         trade_is_running = is_trade_running(trade)
         trade_account_type = get_trade_account_type(trade)
@@ -324,6 +347,7 @@ def render_trades_page(*, manage_mode=False):
                 "is_reactive": bool(getattr(trade, "is_reactive", False)),
                 "is_corrective": bool(getattr(trade, "is_corrective", False)),
                 "bundle_pubkey": getattr(trade, "bundle_pubkey", None),
+                "behavior_badges": behavior_badge_map.get(get_trade_identity(trade), []),
             }
         )
 
@@ -638,6 +662,7 @@ def new_trade():
         account_type=normalize_account_type(active_trade_account.account_type),
         size_label=get_trade_size_label(active_trade_account.account_type),
         trade=None,
+        trade_display_symbol="",
         form_action=url_for("trades.new_trade"),
         form_mode="new",
         opened_at_value="",
@@ -932,18 +957,18 @@ def trade_detail(trade_pubkey):
         trade.swap,
     )
     trade_account_type = get_trade_account_type(trade)
-    trade_is_running = is_trade_running(trade)
     timezone_name = get_display_timezone_name()
     opened_at_local = to_display_timezone(trade.opened_at, timezone_name)
     closed_at_local = to_display_timezone(trade.closed_at, timezone_name)
     trade_profile = getattr(trade, "trade_profile", None)
     trade_profile_version = getattr(trade, "trade_profile_version", None)
 
+    base = _build_trade_entry_context(user_id, trade)
     return render_template(
-        "trade_detail.html",
+        "trade_entry.html",
         title="MyFXJournal | Trade Detail",
-        username=session.get("username", "User"),
-        trade=trade,
+        form_mode="view",
+        form_action="",
         trade_display_symbol=format_trade_symbol(trade),
         trade_pnl=trade_pnl,
         trade_net_pnl=trade_net_pnl,
@@ -953,9 +978,6 @@ def trade_detail(trade_pubkey):
         show_trade_ticks=trade_account_type == "FUTURES",
         planned_rr=planned_rr,
         actual_rr=actual_rr,
-        trade_is_running=trade_is_running,
-        trade_account_type=trade_account_type,
-        trade_size_label=get_trade_size_label(trade_account_type),
         trade_opened_at_label=opened_at_local.strftime("%d %b %Y %H:%M")
         if opened_at_local
         else "-",
@@ -964,19 +986,6 @@ def trade_detail(trade_pubkey):
         else "-",
         trade_source_timezone=trade.source_timezone or "Unknown",
         has_trade_source_timezone=bool(trade.source_timezone),
-        analytics_timezone=timezone_name,
-        trade_profile_name=(
-            trade_profile_version.name
-            if trade_profile_version is not None
-            else (trade_profile.name if trade_profile is not None else "-")
-        ),
-        has_trade_profile=trade_profile_version is not None or trade_profile is not None,
-        trade_profile_version_label=(
-            f"v{trade_profile_version.version_number}"
-            if trade_profile_version is not None
-            else "-"
-        ),
-        has_trade_profile_version=trade_profile_version is not None,
         trade_profile_description=(
             trade_profile_version.short_description
             if trade_profile_version is not None
@@ -986,6 +995,7 @@ def trade_detail(trade_pubkey):
         has_trade_profile_description=bool(
             trade_profile_version is not None and trade_profile_version.short_description
         ),
+        **base,
     )
 
 
@@ -1137,27 +1147,55 @@ def edit_trade(trade_pubkey):
         _invalidate_trade_caches(user_id, trade_account.id)
         return redirect(url_for("trades.trades"))
 
-    profile_form_state = resolve_trade_profile_form_state(user_id, trade=trade)
-
+    trade_account_type = get_trade_account_type(trade)
+    trade_pnl = resolve_pnl(trade)
+    trade_pips = resolve_pips(trade)
+    trade_ticks = resolve_ticks(trade)
+    planned_rr = _calculate_trade_risk_reward(
+        trade.take_profit,
+        trade.entry_price,
+        trade.stop_loss,
+        trade.side,
+    )
+    actual_rr = _calculate_trade_risk_reward(
+        trade.exit_price,
+        trade.entry_price,
+        trade.stop_loss,
+        trade.side,
+        signed=True,
+    )
+    trade_net_pnl = _calculate_trade_net_pnl(
+        trade_pnl,
+        trade.commission,
+        trade.swap,
+    )
+    timezone_name = get_display_timezone_name()
+    opened_at_local = to_display_timezone(trade.opened_at, timezone_name)
+    closed_at_local = to_display_timezone(trade.closed_at, timezone_name)
+    trade_opened_at_label = (
+        opened_at_local.strftime("%d %b %Y %H:%M") if opened_at_local else "-"
+    )
+    trade_closed_at_label = (
+        closed_at_local.strftime("%d %b %Y %H:%M") if closed_at_local else "-"
+    )
+    base = _build_trade_entry_context(user_id, trade)
     return render_template(
         "trade_entry.html",
         title="MyFXJournal | Edit Trade",
-        username=session.get("username", "User"),
-        active_trade_account_name=trade_account.name,
-        symbol_options=get_symbol_options(trade_account.account_type, trade.symbol),
-        account_type=normalize_account_type(trade_account.account_type),
-        size_label=get_trade_size_label(trade_account.account_type),
-        trade=trade,
         form_action=url_for("trades.edit_trade", trade_pubkey=trade.pubkey),
         form_mode="edit",
-        opened_at_value=format_local_datetime_input(trade.opened_at),
-        closed_at_value=format_local_datetime_input(trade.closed_at),
-        trade_is_running=is_trade_running(trade),
-        analytics_timezone=get_display_timezone_name(),
-        trade_profile_options=profile_form_state["trade_profile_options"],
-        selected_trade_profile_pubkey=profile_form_state[
-            "selected_trade_profile_pubkey"
-        ],
+        trade_display_symbol=format_trade_symbol(trade),
+        trade_pnl=trade_pnl,
+        trade_net_pnl=trade_net_pnl,
+        trade_pips=trade_pips,
+        trade_ticks=trade_ticks,
+        show_trade_pips=trade_account_type != "FUTURES",
+        show_trade_ticks=trade_account_type == "FUTURES",
+        planned_rr=planned_rr,
+        actual_rr=actual_rr,
+        trade_opened_at_label=trade_opened_at_label,
+        trade_closed_at_label=trade_closed_at_label,
+        **base,
     )
 
 

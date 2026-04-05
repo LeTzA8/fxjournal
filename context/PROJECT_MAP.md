@@ -47,7 +47,7 @@ Stable system blueprint.
 - Trade CRUD and imports:
   `routes/trades.py`, `trading.py`
 - Trade accounts and MT5 user flow:
-  `routes/trade_accounts.py`
+  `routes/trade_accounts.py` (optional `default_trade_profile_id` for import/MT5-sync tagging)
 - Account and trader profile:
   `routes/account.py`
 - Trade profiles / strategies:
@@ -68,11 +68,11 @@ Stable system blueprint.
 - Emotional index and scoring:
   `helpers/scoring.py`, `helpers/trade_analysis.py`
 - Trade forms / table / detail:
-  `routes/trades.py`, `templates/trades.html`, `templates/trade_entry.html`, `templates/trade_detail.html`, `tests/test_trades_routes.py`
+  `routes/trades.py`, `templates/trades.html`, `templates/trade_entry.html`, `tests/test_trades_routes.py`
 - Import pipeline / trade math:
   `routes/trades.py`, `trading.py`, `tests/test_trading_import.py`, `tests/test_trading_math.py`
 - Analytics page:
-  `routes/dashboard.py`, `templates/analytics.html`, `static/js/analytics_page.js`, `tests/test_trades_routes.py`
+  `routes/dashboard.py`, `templates/analytics.html`, `static/js/analytics_page.js`, `static/js/trade_filters_shared.js` (journal deep links), `tests/test_trades_routes.py`
 - Trade accounts / MT5 request-access:
   `routes/trade_accounts.py`, `templates/trade_accounts.html`, `static/js/mt5_request_form.js`, `tests/test_mt5_access_requests.py`, `tests/test_mt5_ready_email.py`
 - Admin MT5 actions:

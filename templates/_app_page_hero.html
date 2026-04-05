@@ -1,0 +1,38 @@
+{# Shared hero for Trades-area settings pages (Analytics-style hierarchy). Use with {% call %} for action links. #}
+{% macro app_page_hero(title, eyebrow=None, primary_story=None, hero_copy=None, chips=None, extra_class=None) -%}
+<header class="app-page-hero panel{% if extra_class %} {{ extra_class }}{% endif %}" role="banner">
+    <div class="app-page-hero-row">
+        <div class="app-page-hero-text">
+            {% if eyebrow %}
+            <p class="app-page-eyebrow">{{ eyebrow }}</p>
+            {% endif %}
+            <h1 class="app-page-title">{{ title }}</h1>
+            {% if primary_story %}
+            <p class="app-page-primary-story">{{ primary_story }}</p>
+            {% endif %}
+            {% if hero_copy %}
+            <p class="app-page-hero-copy">{{ hero_copy }}</p>
+            {% endif %}
+        </div>
+        {% if chips or caller %}
+        <div class="app-page-hero-right">
+            {% if chips %}
+            <div class="app-page-hero-meta" role="group" aria-label="Page context">
+                {% for chip in chips %}
+                <div class="app-page-meta-chip">
+                    <span>{{ chip.label }}</span>
+                    <strong>{{ chip.value }}</strong>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if caller %}
+            <div class="app-page-hero-actions">
+                {{ caller() }}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</header>
+{%- endmacro %}

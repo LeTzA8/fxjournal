@@ -108,6 +108,7 @@
     const externalIdInput = document.getElementById("tradeAccountDialogExternalId");
     const sizeInput = document.getElementById("tradeAccountDialogSize");
     const typeInput = document.getElementById("tradeAccountDialogType");
+    const defaultStrategySelect = document.getElementById("tradeAccountDialogDefaultStrategy");
     const editorButtons = Array.from(document.querySelectorAll("[data-open-trade-account-editor]"));
 
     if (
@@ -125,6 +126,7 @@
         externalIdInput &&
         sizeInput &&
         typeInput &&
+        defaultStrategySelect &&
         editorButtons.length
     ) {
         let activeEditorTrigger = null;
@@ -141,6 +143,7 @@
             defaultRow.hidden = false;
             defaultInput.checked = false;
             typeInput.value = "CFD";
+            defaultStrategySelect.value = "";
         };
 
         const openEditor = (trigger) => {
@@ -161,6 +164,8 @@
                 externalIdInput.value = trigger.dataset.editorExternalId || "";
                 sizeInput.value = trigger.dataset.editorAccountSize || "";
                 typeInput.value = trigger.dataset.editorAccountType || "CFD";
+                defaultStrategySelect.value =
+                    trigger.dataset.editorDefaultTradeProfilePubkey || "";
             }
 
             editorDialog.showModal();

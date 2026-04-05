@@ -69,16 +69,21 @@ def test_manual_trade_detail_shows_rr_and_split_fees(app_ctx, client):
     detail_response = client.get(f"/dashboard/trades/{trade.pubkey}")
 
     assert detail_response.status_code == 200
-    assert b'<label for="planned_rr">Planned RR</label>' in detail_response.data
-    assert b'value="2.0R"' in detail_response.data
-    assert b'<label for="actual_rr">Actual RR</label>' in detail_response.data
+    assert b'for="planned_rr"' in detail_response.data
+    assert b"Planned RR" in detail_response.data
+    assert b'value="2R"' in detail_response.data
+    assert b'for="actual_rr"' in detail_response.data
+    assert b"Actual RR" in detail_response.data
     assert b'value="1.4R"' in detail_response.data
-    assert b'<label for="commission">Commission</label>' in detail_response.data
-    assert b'value="-3.50"' in detail_response.data
-    assert b'<label for="swap">Swap</label>' in detail_response.data
-    assert b'value="-0.80"' in detail_response.data
-    assert b'<label for="net_pnl">Net PnL</label>' in detail_response.data
-    assert b'value="135.70"' in detail_response.data
+    assert b'for="commission"' in detail_response.data
+    assert b"Commission" in detail_response.data
+    assert b'value="-3.5"' in detail_response.data
+    assert b'for="swap"' in detail_response.data
+    assert b"Swap" in detail_response.data
+    assert b'value="-0.8"' in detail_response.data
+    assert b'for="net_pnl"' in detail_response.data
+    assert b"Net PnL" in detail_response.data
+    assert b'value="135.7"' in detail_response.data
 
 
 def test_trade_detail_treats_closed_timestamp_trade_as_closed(app_ctx, client):
@@ -136,9 +141,11 @@ def test_trade_detail_shows_import_note_separately(app_ctx, client):
     detail_response = client.get(f"/dashboard/trades/{trade.pubkey}")
 
     assert detail_response.status_code == 200
-    assert b'<label for="trade_note">Trade Note</label>' in detail_response.data
+    assert b'for="trade_note"' in detail_response.data
+    assert b"Trade Note" in detail_response.data
     assert b"User note stays here." in detail_response.data
-    assert b'<label for="system_trade_note">Import Note</label>' in detail_response.data
+    assert b'for="system_trade_note"' in detail_response.data
+    assert b"Import Note" in detail_response.data
     assert b"Imported from MT5 Positions" in detail_response.data
 
 
@@ -189,12 +196,14 @@ def test_trade_detail_shows_only_relevant_movement_metric_by_account_type(app_ct
     futures_response = client.get(f"/dashboard/trades/{futures_trade.pubkey}")
 
     assert cfd_response.status_code == 200
-    assert b'<label for="pips">Pips</label>' in cfd_response.data
-    assert b'<label for="ticks">Ticks</label>' not in cfd_response.data
+    assert b'for="pips"' in cfd_response.data
+    assert b"Pips" in cfd_response.data
+    assert b'for="ticks"' not in cfd_response.data
 
     assert futures_response.status_code == 200
-    assert b'<label for="ticks">Ticks</label>' in futures_response.data
-    assert b'<label for="pips">Pips</label>' not in futures_response.data
+    assert b'for="ticks"' in futures_response.data
+    assert b"Ticks" in futures_response.data
+    assert b'for="pips"' not in futures_response.data
 
 
 def test_trade_list_and_detail_show_trade_flags(app_ctx, client):
@@ -233,12 +242,73 @@ def test_trade_list_and_detail_show_trade_flags(app_ctx, client):
     assert b'title="Bundled Entry"' in list_response.data
     assert b'data-bundle="bundle-flag-test"' in list_response.data
     assert b">Bundled</span>" in list_response.data
+    assert b">Revenge</span>" in list_response.data
+    assert b">Reactive</span>" in list_response.data
+    assert b">Corrective</span>" in list_response.data
     assert detail_response.status_code == 200
-    assert b'<label for="trade_flags">Trade Flags</label>' in detail_response.data
+    assert b'for="trade_flags"' in detail_response.data
+    assert b"Trade Flags" in detail_response.data
     assert b"Revenge" in detail_response.data
     assert b"Corrective" in detail_response.data
     assert b"Reactive" in detail_response.data
     assert b"Bundled Entry" in detail_response.data
+
+
+def test_trade_list_shows_possible_behavior_badges(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-possible-flags-user",
+        email="trade-possible-flags@example.com",
+    )
+
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.0980,
+            lot_size=1.0,
+            pnl=-50.0,
+            opened_at=datetime(2026, 3, 10, 8, 0, 0),
+            closed_at=datetime(2026, 3, 10, 8, 20, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0985,
+            exit_price=1.0975,
+            lot_size=1.5,
+            pnl=-20.0,
+            opened_at=datetime(2026, 3, 10, 8, 35, 0),
+            closed_at=datetime(2026, 3, 10, 8, 50, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="GBPUSD",
+            side="SELL",
+            entry_price=1.2500,
+            exit_price=1.2520,
+            stop_loss=1.2550,
+            lot_size=0.4,
+            pnl=-10.0,
+            opened_at=datetime(2026, 3, 10, 10, 0, 0),
+            closed_at=datetime(2026, 3, 10, 10, 5, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    response = client.get("/dashboard/trades")
+
+    assert response.status_code == 200
+    assert b">Possible Revenge</span>" in response.data
+    assert b">Possible Reactive</span>" in response.data
+    assert b">Possible Corrective</span>" in response.data
 
 
 def test_bundle_review_confirms_historical_bundle(app_ctx, client):
@@ -510,3 +580,116 @@ def test_analytics_page_shows_rr_empty_state_below_three_trades(app_ctx, client)
     assert b"56%" in response.data
     assert b"Early RR read only. The numbers are live, but wait for at least 3 valid trades before trusting the pattern." in response.data
     assert b"Need 3 minimum for a reliable read." in response.data
+
+
+def test_analytics_page_shows_behavior_signal_panels(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="analytics-behavior-user",
+        email="analytics-behavior@example.com",
+    )
+
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.0980,
+            lot_size=1.0,
+            pnl=-50.0,
+            opened_at=datetime(2026, 3, 10, 8, 0, 0),
+            closed_at=datetime(2026, 3, 10, 8, 20, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0985,
+            exit_price=1.0975,
+            lot_size=1.5,
+            pnl=-20.0,
+            opened_at=datetime(2026, 3, 10, 8, 35, 0),
+            closed_at=datetime(2026, 3, 10, 8, 50, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="GBPUSD",
+            side="SELL",
+            entry_price=1.2500,
+            exit_price=1.2520,
+            stop_loss=1.2550,
+            lot_size=0.4,
+            pnl=-10.0,
+            opened_at=datetime(2026, 3, 10, 10, 0, 0),
+            closed_at=datetime(2026, 3, 10, 10, 5, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    response = client.get("/dashboard/analytics")
+
+    assert response.status_code == 200
+    assert b"Behavior Signals" in response.data
+    assert b"High-Signal Trades" in response.data
+    assert b"Top focus: Revenge" in response.data
+    assert b">Possible Revenge</span>" in response.data
+    assert b">Possible Reactive</span>" in response.data
+    assert b">Possible Corrective</span>" in response.data
+
+
+def test_analytics_shows_grouped_kpis_and_breakdown_disclosure(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="analytics-layout-user",
+        email="analytics-layout@example.com",
+    )
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1,
+            exit_price=1.11,
+            lot_size=1.0,
+            pnl=10.0,
+            closed_at=datetime(2026, 3, 10, 10, 0, 0),
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard/analytics")
+    assert response.status_code == 200
+    assert b"Session, pair, and weekday breakdowns" in response.data
+    assert b"At a glance" in response.data
+    assert b"Net PnL (realized)" in response.data
+
+
+def test_trades_list_accepts_journal_filter_query_param(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trades-query-user",
+        email="trades-query@example.com",
+    )
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1,
+            exit_price=1.11,
+            lot_size=1.0,
+            pnl=10.0,
+            closed_at=datetime(2026, 3, 10, 10, 0, 0),
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard/trades?pair=EURUSD")
+    assert response.status_code == 200

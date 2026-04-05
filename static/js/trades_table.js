@@ -43,6 +43,7 @@
     const deleteImportBatchAcknowledge = document.getElementById("deleteImportBatchAcknowledge");
     const cancelDeleteImportBatch = document.getElementById("cancelDeleteImportBatch");
     const tradeCheckboxes = Array.from(document.querySelectorAll(".trade-select"));
+    let shiftClickAnchorVisibleIndex = null;
 
     const table = document.querySelector(".trade-log table");
     if (!table) {
@@ -243,6 +244,7 @@
         });
 
         noMatchRow.classList.toggle("hidden-row", visibleCount !== 0);
+        shiftClickAnchorVisibleIndex = null;
         syncBulkDeleteState();
     };
 
@@ -287,12 +289,60 @@
                     checkbox.checked = selectVisibleTrades.checked;
                 }
             });
+            shiftClickAnchorVisibleIndex = null;
             syncBulkDeleteState();
         });
     }
 
     tradeCheckboxes.forEach((checkbox) => {
-        checkbox.addEventListener("change", syncBulkDeleteState);
+        // Range select must use mousedown: by "click", many browsers have already toggled
+        // the checkbox, so !checkbox.checked was wrong and the range flipped/cleared oddly.
+        checkbox.addEventListener("mousedown", (event) => {
+            if (!selectVisibleTrades || event.button !== 0) {
+                return;
+            }
+            if (!event.shiftKey || shiftClickAnchorVisibleIndex === null) {
+                return;
+            }
+            event.preventDefault();
+            const visibleRows = visibleTradeRows();
+            const row = checkbox.closest("tr");
+            const idx = visibleRows.indexOf(row);
+            if (idx === -1) {
+                return;
+            }
+            const wantChecked = !checkbox.checked;
+            const start = Math.min(shiftClickAnchorVisibleIndex, idx);
+            const end = Math.max(shiftClickAnchorVisibleIndex, idx);
+            for (let i = start; i <= end; i += 1) {
+                const cb = visibleRows[i].querySelector(".trade-select");
+                if (cb) {
+                    cb.checked = wantChecked;
+                }
+            }
+            shiftClickAnchorVisibleIndex = idx;
+            syncBulkDeleteState();
+        });
+        checkbox.addEventListener("click", (event) => {
+            if (!selectVisibleTrades) {
+                return;
+            }
+            if (event.shiftKey && shiftClickAnchorVisibleIndex !== null) {
+                event.preventDefault();
+            }
+        });
+        checkbox.addEventListener("change", () => {
+            if (!selectVisibleTrades) {
+                return;
+            }
+            const visibleRows = visibleTradeRows();
+            const row = checkbox.closest("tr");
+            const idx = visibleRows.indexOf(row);
+            if (idx !== -1) {
+                shiftClickAnchorVisibleIndex = idx;
+            }
+            syncBulkDeleteState();
+        });
     });
 
     const populateDeleteDialog = () => {
@@ -429,6 +479,32 @@
                 event.preventDefault();
             }
         });
+    }
+
+    const journalParsed = tradeFiltersShared.parseJournalFilterQuery();
+    if (journalParsed && filterField) {
+        const fieldName = journalParsed.filterKey === "pair" ? "pair" : "session";
+        filterField.value = fieldName;
+        updateValueControl();
+        const targetSelect = valueSelects[fieldName];
+        if (targetSelect) {
+            const want =
+                journalParsed.filterKey === "pair"
+                    ? tradeFiltersShared.toUpper(journalParsed.value)
+                    : journalParsed.value;
+            const opts = Array.from(targetSelect.options);
+            const exact = opts.find((opt) => opt.value === want);
+            const folded = opts.find(
+                (opt) =>
+                    opt.value &&
+                    want &&
+                    String(opt.value).toLowerCase() === String(want).toLowerCase(),
+            );
+            const pick = exact || folded;
+            if (pick) {
+                targetSelect.value = pick.value;
+            }
+        }
     }
 
     updateValueControl();

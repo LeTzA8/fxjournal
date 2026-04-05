@@ -51,10 +51,29 @@
         return normalize(row.dataset[config.datasetKey]) === normalize(rawValue);
     };
 
+    const parseJournalFilterQuery = (search) => {
+        try {
+            const raw = typeof search === "string" ? search : window.location.search || "";
+            const params = new URLSearchParams(raw.startsWith("?") || raw === "" ? raw : `?${raw}`);
+            const pair = (params.get("pair") || params.get("symbol") || "").trim();
+            const sess = (params.get("session") || "").trim();
+            if (pair) {
+                return { filterKey: "pair", value: pair };
+            }
+            if (sess) {
+                return { filterKey: "session", value: sess };
+            }
+        } catch (_) {
+            /* ignore */
+        }
+        return null;
+    };
+
     window.FXJTradeFiltersShared = {
         toUpper,
         populateSelects,
         updateValueControl,
         rowMatchesFilter,
+        parseJournalFilterQuery,
     };
 })();

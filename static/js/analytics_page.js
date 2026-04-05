@@ -385,21 +385,41 @@
     };
 
     renderEquityChart();
-    renderBarChart("weekdayChart", weekdayData, {
-        value: (item) => item.win_rate ?? 0,
-        min: 0,
-        max: 100,
-        baseline: 50,
-        label: (item) => item.label || item.name?.slice(0, 3) || "",
-        caption: (item) => item.count ? `${Number(item.win_rate ?? 0).toFixed(0)}%` : "0",
-    });
-    renderBarChart("sessionChart", sessionData, {
-        value: (item) => item.net_pnl ?? 0,
-        label: (item) => item.name || "",
-        labelLines: (item) => String(item.name || "").split(" / "),
-        labelFontSize: 9,
-        labelLineHeight: 10,
-        bottomPad: 48,
-        caption: (item) => `$${Number(item.net_pnl ?? 0) > 0 ? "+" : ""}${Number(item.net_pnl ?? 0).toFixed(0)}`,
-    });
+
+    const renderBreakdownBarCharts = () => {
+        renderBarChart("weekdayChart", weekdayData, {
+            value: (item) => item.win_rate ?? 0,
+            min: 0,
+            max: 100,
+            baseline: 50,
+            label: (item) => item.label || item.name?.slice(0, 3) || "",
+            caption: (item) => item.count ? `${Number(item.win_rate ?? 0).toFixed(0)}%` : "0",
+        });
+        renderBarChart("sessionChart", sessionData, {
+            value: (item) => item.net_pnl ?? 0,
+            label: (item) => item.name || "",
+            labelLines: (item) => String(item.name || "").split(" / "),
+            labelFontSize: 9,
+            labelLineHeight: 10,
+            bottomPad: 48,
+            caption: (item) => `$${Number(item.net_pnl ?? 0) > 0 ? "+" : ""}${Number(item.net_pnl ?? 0).toFixed(0)}`,
+        });
+        window.requestAnimationFrame(() => {
+            window.dispatchEvent(new Event("resize"));
+        });
+    };
+
+    const breakdownDetails = document.querySelector("[data-analytics-breakdown]");
+    if (breakdownDetails) {
+        if (breakdownDetails.open) {
+            renderBreakdownBarCharts();
+        }
+        breakdownDetails.addEventListener("toggle", () => {
+            if (breakdownDetails.open) {
+                renderBreakdownBarCharts();
+            }
+        });
+    } else {
+        renderBreakdownBarCharts();
+    }
 })();

@@ -275,7 +275,7 @@ def test_dashboard_home_marks_running_trade_rows(app_ctx, client, monkeypatch):
     response = client.get("/dashboard")
 
     assert response.status_code == 200
-    assert b'class="running-trade"' in response.data
+    assert b"running-trade" in response.data
     assert b"Running" in response.data
 
 
@@ -318,6 +318,114 @@ def test_dashboard_home_marks_bundled_recent_trade_rows(app_ctx, client, monkeyp
     assert response.status_code == 200
     assert b'data-bundle="bundle-dashboard-test"' in response.data
     assert b">Bundled</span>" in response.data
+
+
+def test_dashboard_recent_trade_rows_link_to_trade_detail(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-trade-row-link-user",
+        email="dashboard-trade-row-link@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.085,
+        exit_price=1.091,
+        lot_size=0.01,
+        pnl=60.0,
+        opened_at=datetime(2026, 3, 22, 8, 0, 0),
+        closed_at=datetime(2026, 3, 22, 10, 0, 0),
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b"data-trade-detail-url=" in response.data
+    assert f'/dashboard/trades/{trade.pubkey}"'.encode() in response.data
+    assert b"trade-opened-link" in response.data
+
+
+def test_dashboard_home_shows_possible_behavior_badges_in_recent_trades(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-behavior-badges-user",
+        email="dashboard-behavior-badges@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.0980,
+            lot_size=1.0,
+            pnl=-50.0,
+            opened_at=datetime(2026, 3, 22, 8, 0, 0),
+            closed_at=datetime(2026, 3, 22, 8, 20, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0985,
+            exit_price=1.0975,
+            lot_size=1.5,
+            pnl=-20.0,
+            opened_at=datetime(2026, 3, 22, 8, 35, 0),
+            closed_at=datetime(2026, 3, 22, 8, 50, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="GBPUSD",
+            side="SELL",
+            entry_price=1.2500,
+            exit_price=1.2520,
+            stop_loss=1.2550,
+            lot_size=0.4,
+            pnl=-10.0,
+            opened_at=datetime(2026, 3, 22, 10, 0, 0),
+            closed_at=datetime(2026, 3, 22, 10, 5, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b">Possible Revenge</span>" in response.data
+    assert b">Possible Reactive</span>" in response.data
+    assert b">Possible Corrective</span>" in response.data
 
 
 def test_dashboard_home_does_not_mark_closed_timestamp_trade_as_running(app_ctx, client, monkeypatch):
@@ -662,6 +770,37 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
     assert display["rule"]["segments"] == [
         {"type": "text", "text": display["rule"]["text"]},
     ]
+
+
+def test_rewrite_review_text_refs_drops_stray_clitic_after_brackets_and_labels():
+    """Model sometimes emits '[B1]d' or 'B1 d' before 'trade'; avoid a lone 'd' after the pill."""
+    lookup = {
+        "B1": {
+            "ref": "B1",
+            "type": "bundle",
+            "bundle_key": "bundle-key",
+            "inline_label": "GBPUSD bundle",
+            "label": "GBPUSD bundle | 31 Mar 2026 (Tue)",
+            "tone": "bad",
+        }
+    }
+    out = dashboard_routes._rewrite_review_text_refs(
+        "The B1 d trade was the lone loss.",
+        lookup,
+    )
+    assert out == "The GBPUSD bundle trade was the lone loss."
+
+    out_bracket = dashboard_routes._rewrite_review_text_refs(
+        "The [B1]d trade was the lone loss.",
+        lookup,
+    )
+    assert out_bracket == "The trade was the lone loss."
+
+    out_day = dashboard_routes._rewrite_review_text_refs(
+        "The [B1] day trade was fine.",
+        lookup,
+    )
+    assert out_day == "The day trade was fine."
 
 
 def test_weekly_ai_review_display_autocites_unique_symbol_mentions():

@@ -222,6 +222,10 @@ def build_normalized_trade_insert_batch(
     validation_skipped = 0
     duplicate_count = 0
 
+    default_trade_profile_id, default_trade_profile_version_id = (
+        resolve_import_default_trade_profile_ids(user_id, trade_account)
+    )
+
     existing_positions = set()
     import_positions = set()
     existing_trade_keys = set()
@@ -439,6 +443,8 @@ def build_normalized_trade_insert_batch(
                 closed_at=closed_at,
                 trade_note=None,
                 system_trade_note=system_trade_note_text or default_system_trade_note,
+                trade_profile_id=default_trade_profile_id,
+                trade_profile_version_id=default_trade_profile_version_id,
             )
         )
 
@@ -451,12 +457,32 @@ def build_normalized_trade_insert_batch(
     }
 
 
-def get_user_trade_accounts(user_id):
-    return (
-        TradeAccount.query.filter_by(user_id=user_id)
-        .order_by(TradeAccount.is_default.desc(), TradeAccount.id.asc())
-        .all()
-    )
+def get_user_trade_accounts(user_id, *, eager_load_default_trade_profile=False):
+    query = TradeAccount.query.filter_by(user_id=user_id)
+    if eager_load_default_trade_profile:
+        query = query.options(selectinload(TradeAccount.default_trade_profile))
+    return query.order_by(
+        TradeAccount.is_default.desc(), TradeAccount.id.asc()
+    ).all()
+
+
+def resolve_import_default_trade_profile_ids(user_id, trade_account):
+    """
+    When set and valid, return (trade_profile_id, trade_profile_version_id) for
+    newly inserted import/sync trades. Otherwise (None, None).
+    """
+    raw_id = getattr(trade_account, "default_trade_profile_id", None)
+    if not raw_id:
+        return None, None
+    profile = TradeProfile.query.filter_by(
+        id=raw_id, user_id=user_id, is_archived=False
+    ).first()
+    if profile is None:
+        return None, None
+    version = get_trade_profile_version_snapshot(profile)
+    if version is None:
+        return None, None
+    return profile.id, version.id
 
 
 def build_mt5_access_state(user_id, trade_accounts=None):

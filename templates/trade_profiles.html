@@ -1,22 +1,34 @@
 {% extends "base.html" %}
 
+{% from "_app_page_hero.html" import app_page_hero %}
+
 {% block content %}
+<div class="strategies-page">
 <section class="dash-wrap">
     <div class="dash-content">
-        <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a> / Strategies</div>
-            <div class="head-row">
-                <div>
-                    <h1>Strategies</h1>
-                    <p class="welcome">Welcome, {{ username }}.</p>
-                    <p class="subtitle">Create and version the strategies you want to attach to trades.</p>
-                </div>
-                <div class="head-actions">
-                    <a class="ghost-link" href="{{ url_for('trades.trades') }}">Back to Trades</a>
-                    <a class="ghost-link" href="{{ url_for('account.account') }}">Account</a>
-                </div>
-            </div>
-        </header>
+        {{ app_page_hero(
+            "Strategies",
+            eyebrow="Setup library",
+            primary_story="Name and version the setups you attach to trades so analytics and weekly review can speak in your language.",
+            hero_copy="Edits save as a new version; archives stay on past trades for honest history.",
+            extra_class="app-page-hero--settings-hub",
+        ) }}
+
+        <section class="app-hub-summary" aria-label="Strategies overview">
+            <p class="app-hub-summary-lead">
+                <strong>{{ trade_profiles|length }}</strong>
+                {% if trade_profiles|length == 1 %}strategy{% else %}strategies{% endif %}
+                in your library
+                {% if active_trade_account %}
+                for <strong>{{ active_trade_account.name }}</strong>.
+                {% else %}
+                <span class="app-hub-summary-warn">—select an active account in the header so tagging targets the right book.</span>
+                {% endif %}
+            </p>
+            <p class="app-hub-summary-hint">
+                Tag trades and imports with these names so session splits, analytics, and the weekly review reuse your wording instead of generic labels.
+            </p>
+        </section>
 
         <section
             class="profile-grid"
@@ -28,6 +40,7 @@
                     <h2>Strategy Library</h2>
                     <span class="soft">{{ trade_profiles|length }} strategies</span>
                 </div>
+                {% if trade_profiles %}
                 <div class="profile-list">
                     {% for profile in trade_profiles %}
                     {% set version = profile_versions.get(profile.id) %}
@@ -65,18 +78,30 @@
                         </div>
                         <p class="profile-description">{{ version.short_description if version and version.short_description else "No description added yet. Include the setup idea, trigger, or rules you want to remember when tagging trades." }}</p>
                     </article>
-                    {% else %}
-                    <p class="empty-copy">No strategies yet. Create your first one from the action panel, then attach it to trades so you can review performance by setup instead of memory.</p>
                     {% endfor %}
                 </div>
+                {% else %}
+                <div class="app-guided-empty" role="status">
+                    <p class="app-guided-empty-kicker">Start here</p>
+                    <h3 class="app-guided-empty-title">Create your first strategy</h3>
+                    <p class="app-guided-empty-text">
+                        Strategies are tags you apply on the trade log and in imports. Add a short name plus a one-paragraph playbook so future-you remembers what “NY sweep” or “Asia liquidity” meant.
+                    </p>
+                </div>
+                {% endif %}
             </article>
 
             <article class="panel profile-action-panel">
                 <div class="panel-head">
-                    <h2>Strategy Actions</h2>
-                    <span class="soft">Popup Forms</span>
+                    <h2>Quick actions</h2>
+                    <span class="soft">Create</span>
                 </div>
-                <p class="empty-copy">Start with the setup name and a short description of the entry model, confirmation, or execution rules you want to track. Open create or edit only when you need it.</p>
+                <p class="empty-copy">Open the form when you are ready to add a setup. Edit and archive stay on each card in the library.</p>
+                <ul class="app-hub-tips" aria-label="Strategy tips">
+                    <li>Use a short, memorable name plus a one-paragraph playbook you will still understand months later.</li>
+                    <li>Archiving keeps history on past trades; it does not remove labels already stored on those rows.</li>
+                    <li>Attach strategies from the trade log or while cleaning imports so coaching stays specific to how you trade.</li>
+                </ul>
                 <div class="profile-action-stack">
                     <button
                         type="button"
@@ -89,7 +114,6 @@
                     >
                         New Strategy
                     </button>
-                    <p class="empty-copy">Edit and archive actions stay on each strategy card so the page stays focused on the library itself.</p>
                 </div>
             </article>
         </section>
@@ -158,127 +182,7 @@
         </form>
     </div>
 </dialog>
-
-<style>
-    .action-dialog .confirm-dialog-shell {
-        border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
-    }
-
-    .panel {
-        border-radius: 14px;
-        padding: 0.9rem;
-        min-width: 0;
-    }
-
-    h2 {
-        margin: 0;
-        font-size: 1rem;
-    }
-
-    .profile-grid { display: grid;
-        grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
-        gap: 0.8rem; }
-
-    .profile-list-panel,
-    .profile-action-panel {
-        overflow: hidden;
-    }
-
-    .profile-list,
-    .profile-form,
-    .profile-action-stack { display: grid;
-        gap: 0.75rem; }
-
-    .profile-card { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-        border-radius: 14px;
-        padding: 0.85rem;
-        background: color-mix(in srgb, var(--surface) 95%, transparent); }
-
-    .profile-card.is-editing { border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
-        box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent); }
-
-    .profile-card-head { display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 0.75rem; }
-
-    .profile-card h3 { margin: 0 0 0.2rem;
-        font-size: 0.96rem; }
-
-    .profile-meta,
-    .profile-description,
-    .empty-copy { margin: 0; }
-
-    .profile-meta { font-size: 0.78rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--muted); }
-
-    .profile-description,
-    .empty-copy { font-size: 0.9rem;
-        line-height: 1.5; }
-
-    .profile-card-actions { display: flex;
-        align-items: center;
-        gap: 0.45rem;
-        flex-wrap: wrap; }
-
-    .edit-link,
-    .archive-btn { display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 36px;
-        border-radius: 10px;
-        padding: 0.4rem 0.7rem;
-        font-size: 0.76rem;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        text-decoration: none; }
-
-    .edit-link { border: 1px solid color-mix(in srgb, var(--accent) 44%, var(--border)); }
-
-    .archive-btn { border: 1px solid color-mix(in srgb, var(--bad) 42%, var(--border));
-        background: color-mix(in srgb, var(--bad) 10%, var(--card));
-        color: color-mix(in srgb, var(--bad) 84%, white 16%);
-        cursor: pointer; }
-
-    .profile-form label { font-size: 0.82rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em; }
-
-    .profile-form input,
-    .profile-form textarea { width: 100%;
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 0.68rem 0.75rem;
-        font: inherit;
-        color: var(--ink);
-        background: var(--surface); }
-
-    .profile-form input::placeholder,
-    .profile-form textarea::placeholder {
-        color: var(--muted);
-    }
-
-    .profile-form textarea { resize: vertical;
-        min-height: 150px; }
-
-    .profile-alert { margin: 0 0 0.75rem;
-        border-radius: 10px;
-        padding: 0.65rem 0.8rem;
-        font-weight: 700; }
-
-    .profile-alert.success { border: 1px solid color-mix(in srgb, var(--good) 36%, var(--border)); }
-    .profile-alert.error { border: 1px solid color-mix(in srgb, var(--bad) 36%, var(--border)); }
-    .profile-alert.info { border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border)); }
-
-    @media (max-width: 900px) {
-        .profile-grid { grid-template-columns: 1fr; }
-    }
-</style>
+</div>
 {% endblock %}
 
 {% block page_scripts %}

@@ -1,0 +1,12 @@
+{% macro render_behavior_badges(behavior_badges) -%}
+{% if behavior_badges %}
+<span class="behavior-badge-list">
+    {% for badge in behavior_badges %}
+    <span
+        class="behavior-badge behavior-badge--{{ badge.key }} behavior-badge--{{ badge.state }}"
+        title="{{ badge.title }}"
+    >{{ badge.label }}</span>
+    {% endfor %}
+</span>
+{% endif %}
+{%- endmacro %}

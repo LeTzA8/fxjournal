@@ -1,22 +1,33 @@
 {% extends "base.html" %}
 
+{% from "_app_page_hero.html" import app_page_hero %}
+
 {% block content %}
+<div class="trade-accounts-page">
 <section class="dash-wrap">
     <div class="dash-content">
-        <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a> / Trade Accounts</div>
-            <div class="head-row">
-                <div>
-                    <h1>Trade Accounts</h1>
-                    <p class="welcome">Welcome, {{ username }}.</p>
-                    <p class="subtitle">Manage your account list here, then switch quickly from Trades.</p>
-                </div>
-                <div class="head-actions">
-                    <a class="ghost-link" href="{{ url_for('trades.trades') }}">Back to Trades</a>
-                    <a class="ghost-link" href="{{ url_for('dashboard.home') }}">Dashboard</a>
-                </div>
-            </div>
-        </header>
+        {{ app_page_hero(
+            "Trade accounts",
+            eyebrow="Account scope",
+            primary_story="Each account keeps its own trade book, imports, and analytics. Switch the active account from the header or here.",
+            hero_copy="MT5 linking and sync requests are coordinated from the dashboard MT5 card for CFD accounts.",
+            extra_class="app-page-hero--settings-hub",
+        ) }}
+
+        <section class="app-hub-summary" aria-label="Accounts overview">
+            <p class="app-hub-summary-lead">
+                <strong>{{ account_rows|length }}</strong>
+                trade account{% if account_rows|length != 1 %}s{% endif %} on file.
+                {% if active_trade_account %}
+                Active book: <strong>{{ active_trade_account.name }}</strong>.
+                {% else %}
+                <span class="app-hub-summary-warn">No active account selected—choose one from the header or a card below.</span>
+                {% endif %}
+            </p>
+            <p class="app-hub-summary-hint">
+                One row per broker, challenge, or funded program keeps PnL and weekly review scoped. The account marked Default receives new file imports when the file does not target a specific book. Optionally set a default strategy per account so MT5 sync and imports tag new rows automatically.
+            </p>
+        </section>
 
         <section
             class="panel-grid"
@@ -53,6 +64,11 @@
                                 {% else %}
                                 <p class="account-meta">No external account ID</p>
                                 {% endif %}
+                                {% if trade_account.default_trade_profile %}
+                                <p class="account-meta">Imports &amp; MT5 sync: <strong>{{ trade_account.default_trade_profile.name }}</strong></p>
+                                {% else %}
+                                <p class="account-meta soft">Imports &amp; MT5 sync: no default strategy</p>
+                                {% endif %}
                             </div>
                             <div class="chip-wrap">
                                 {% if active_trade_account and trade_account.id == active_trade_account.id %}
@@ -81,32 +97,32 @@
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
                                 <input type="hidden" name="next" value="{{ current_page_path }}">
-                                <button type="submit" class="ghost-btn">Switch</button>
+                                <button type="submit" class="ghost-btn account-btn-priority">Switch</button>
                             </form>
                             {% else %}
                             <form action="{{ url_for('trade_accounts.switch_trade_account') }}" method="post" class="switch-account-form" hidden>
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
                                 <input type="hidden" name="next" value="{{ current_page_path }}">
-                                <button type="submit" class="ghost-btn">Switch</button>
+                                <button type="submit" class="ghost-btn account-btn-priority">Switch</button>
                             </form>
                             {% endif %}
                             {% if not trade_account.is_default %}
                             <form action="{{ url_for('trade_accounts.set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="default-account-form">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
-                                <button type="submit" class="ghost-btn">Set Default</button>
+                                <button type="submit" class="ghost-btn account-btn-priority">Set Default</button>
                             </form>
                             {% else %}
                             <form action="{{ url_for('trade_accounts.set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="default-account-form" hidden>
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
-                                <button type="submit" class="ghost-btn">Set Default</button>
+                                <button type="submit" class="ghost-btn account-btn-priority">Set Default</button>
                             </form>
                             {% endif %}
                             <a
                                 href="{{ url_for('trade_accounts.trade_accounts', edit=trade_account.pubkey) }}"
-                                class="ghost-link btn-link"
+                                class="ghost-link btn-link account-btn-edit"
                                 data-open-trade-account-editor
                                 data-editor-mode="edit"
                                 data-editor-account-pubkey="{{ trade_account.pubkey }}"
@@ -114,6 +130,7 @@
                                 data-editor-external-id="{{ trade_account.external_account_id or '' }}"
                                 data-editor-account-size="{% if trade_account.account_size is not none %}{{ '%.2f'|format(trade_account.account_size) }}{% endif %}"
                                 data-editor-account-type="{{ trade_account.account_type }}"
+                                data-editor-default-trade-profile-pubkey="{{ trade_account.default_trade_profile.pubkey if trade_account.default_trade_profile else '' }}"
                                 aria-haspopup="dialog"
                                 aria-controls="tradeAccountEditorDialog"
                             >Edit</a>
@@ -162,17 +179,28 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <p class="helper-note">No trade accounts yet. Create your first one from the actions panel, then set it as your working account for trades, imports, and analytics.</p>
+                <div class="app-guided-empty" role="status">
+                    <p class="app-guided-empty-kicker">What's next</p>
+                    <h3 class="app-guided-empty-title">Add your first trade account</h3>
+                    <p class="app-guided-empty-text">
+                        Accounts separate prop challenges, live cash, and demos so PnL and reviews never get mixed. Create one below, then set it active from the card or the site header.
+                    </p>
+                </div>
                 {% endif %}
             </article>
 
             <article class="panel action-panel">
                 <div class="panel-head">
-                    <h2>Account Actions</h2>
-                    <span class="soft">Popup Forms</span>
+                    <h2>Account actions</h2>
+                    <span class="soft">Create &amp; reset</span>
                 </div>
                 <p id="tradeAccountAlert" class="account-alert" role="status" hidden></p>
                 <p class="helper-note">Keep the page focused on the account list. Open create, edit, or delete flows only when you need them.</p>
+                <ul class="app-hub-tips" aria-label="Account tips">
+                    <li><strong>Switch</strong> changes which book the dashboard, journal, and analytics read from.</li>
+                    <li><strong>Default</strong> is the fallback target for imports that do not name an account.</li>
+                    <li>MT5 sync is requested once per CFD account from the dashboard card, not from this list.</li>
+                </ul>
 
                 <div class="action-stack">
                     <button
@@ -266,6 +294,15 @@
                 <option value="{{ option }}" {% if option == "CFD" %}selected{% endif %}>{{ "Futures" if option == "FUTURES" else "CFD" }}</option>
                 {% endfor %}
             </select>
+
+            <label for="tradeAccountDialogDefaultStrategy">Default strategy for imports &amp; MT5 sync (optional)</label>
+            <select id="tradeAccountDialogDefaultStrategy" name="default_trade_profile_pubkey">
+                <option value="">None — new imports stay without a strategy until you assign one</option>
+                {% for profile in trade_profile_options %}
+                <option value="{{ profile.pubkey }}">{{ profile.name }}</option>
+                {% endfor %}
+            </select>
+            <p class="helper-note dialog-field-hint">Only affects newly imported or MT5-synced trades on this account. Manual trades still use the strategy field on the trade form.</p>
 
             <label id="tradeAccountDialogDefaultRow" class="toggle-row" for="tradeAccountDialogDefault">
                 <input id="tradeAccountDialogDefault" name="set_as_default" type="checkbox" value="1">
@@ -369,178 +406,7 @@
     </div>
 </dialog>
 
-<style>
-
-    .account-alert { border-radius: 10px;
-        padding: 0.68rem 0.78rem;
-        font-size: 0.82rem;
-        font-weight: 700; }
-    .action-dialog .confirm-dialog-shell { border-color: color-mix(in srgb, var(--accent) 24%, var(--border)); }
-
-    .panel-grid { display: grid;
-        grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
-        gap: 0.8rem;
-        align-items: start; }
-
-    .panel { border-radius: 14px;
-        padding: 0.9rem;
-    }
-
-    .action-panel,
-    .action-stack { display: grid;
-        gap: 0.7rem; }
-
-    h2 { margin: 0;
-        font-size: 1rem; }
-
-    .account-list { display: grid;
-        gap: 0.58rem; }
-
-    .account-card { border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-        border-radius: 12px;
-        padding: 0.66rem;
-        background: color-mix(in srgb, var(--surface) 95%, transparent);
-        display: grid;
-        gap: 0.56rem; }
-
-    .account-card.active { border-color: color-mix(in srgb, var(--good) 58%, var(--border));
-        background: color-mix(in srgb, var(--good) 12%, var(--card));
-        box-shadow: 0 0 0 2px color-mix(in srgb, var(--good) 18%, transparent); }
-
-    .account-card.active .account-name { color: color-mix(in srgb, var(--good) 72%, var(--ink)); }
-
-    .account-card-head { display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 0.7rem;
-        flex-wrap: wrap; }
-
-    .account-name { margin: 0;
-        font-size: 0.92rem;
-        font-weight: 800; }
-
-    .account-meta { margin: 0.2rem 0 0;
-        font-size: 0.78rem; }
-
-    .chip-wrap { display: inline-flex;
-        align-items: center;
-        gap: 0.35rem;
-        flex-wrap: wrap; }
-
-    .chip { border: 1px solid color-mix(in srgb, var(--good) 44%, var(--border));
-        border-radius: 999px;
-        padding: 0.24rem 0.52rem;
-        font-size: 0.68rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-        background: color-mix(in srgb, var(--good) 16%, transparent);
-        color: color-mix(in srgb, var(--good) 74%, var(--ink)); }
-
-    .chip.default { border-color: var(--warning-border);
-        background: var(--warning-bg);
-        color: var(--warning-ink); }
-
-    .inline-actions { display: inline-flex;
-        align-items: center;
-        gap: 0.45rem;
-        flex-wrap: wrap; }
-
-    .mt5-request-block { display: grid;
-        gap: 0.45rem;
-        padding-top: 0.2rem;
-        border-top: 1px solid color-mix(in srgb, var(--border) 82%, transparent); }
-
-    .mt5-request-title { font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.03em; }
-
-    .mt5-request-form { display: grid;
-        gap: 0.45rem; }
-
-    .mt5-request-form label { font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em; }
-
-    .mt5-request-form textarea { border-radius: 10px;
-        padding: 0.58rem 0.66rem;
-        font: inherit;
-        resize: vertical;
-        min-height: 3.5rem; }
-
-    .create-form { display: grid;
-        gap: 0.62rem; }
-
-    .create-form label { font-size: 0.78rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em; }
-
-    .create-form input[type="text"],
-    .create-form input[type="number"],
-    .create-form select { border-radius: 10px;
-        padding: 0.58rem 0.66rem;
-        font: inherit; }
-
-    .toggle-row { display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        font-size: 0.78rem;
-        text-transform: none !important;
-        letter-spacing: 0 !important; }
-
-    .toggle-row input { width: auto; }
-
-    .submit-btn { padding: 0.5rem 0.8rem;
-        font-weight: 700;
-        font-size: 0.78rem;
-        letter-spacing: 0.03em;
-        text-transform: uppercase; }
-
-    .ghost-btn {
-        padding: 0.46rem 0.72rem;
-        font-weight: 700;
-        font-size: 0.74rem;
-        letter-spacing: 0.03em;
-        text-transform: uppercase; }
-
-    .danger-zone { display: grid;
-        gap: 0.62rem; }
-
-    .btn-link { border-radius: 10px;
-        padding: 0.46rem 0.72rem;
-        font-size: 0.74rem;
-        font-weight: 700;
-        letter-spacing: 0.03em;
-        text-transform: uppercase; }
-
-    .dialog-actions { justify-content: flex-end; }
-
-    .section-divider { border: 0;
-        border-top: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-        margin: 0.9rem 0 0.8rem; }
-
-    .helper-note { margin: 0;
-        font-size: 0.8rem; }
-
-    @media (max-width: 1120px) {
-        .panel-grid {
-            grid-template-columns: 1fr;
-        }
-    }
-
-    @media (max-width: 700px) {
-        .dash-wrap { padding: 0.9rem; }
-
-        .head-row { flex-direction: column;
-            align-items: flex-start; }
-
-        .head-actions { width: 100%;
-            flex-wrap: wrap; }
-
-    }
-</style>
+</div>
 {% endblock %}
 
 {% block page_scripts %}

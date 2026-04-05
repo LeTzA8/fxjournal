@@ -1,7 +1,23 @@
 (function () {
-    const revealTargets = Array.from(
-        document.querySelectorAll(".metric, .panel, .login-card, .card, .landing-reveal, [data-reveal]")
-    ).filter((el, index, items) => items.indexOf(el) === index);
+    const revealCandidates = document.querySelectorAll(
+        [
+            ".metric",
+            ".panel",
+            ".login-card",
+            ".card",
+            ".landing-reveal",
+            "[data-reveal]",
+            ".kpi-section",
+            ".analytics-breakdown-disclosure",
+            ".empty-step-card",
+        ].join(", ")
+    );
+    const revealTargets = Array.from(revealCandidates).filter((el) => {
+        if (el.hasAttribute("data-reveal-skip")) {
+            return false;
+        }
+        return true;
+    }).filter((el, index, items) => items.indexOf(el) === index);
     if (!revealTargets.length) {
         return;
     }
@@ -12,9 +28,13 @@
         el.closest("[data-reveal-scope]") ||
         el.closest("tbody") ||
         el.closest(".metric-grid") ||
+        el.closest(".kpi-sections") ||
         el.closest(".kpi-grid") ||
+        el.closest(".empty-step-grid") ||
+        el.closest(".ai-hero-grid") ||
         el.closest(".panel-grid") ||
         el.closest(".analytics-grid") ||
+        el.closest(".analytics-content") ||
         el.closest(".auth-shell") ||
         el.closest("main") ||
         document.body;

@@ -27,6 +27,7 @@ from celery_workers.cache import (
     set_ai_status,
     set_cached,
 )
+from helpers.behavior_labels import build_trade_behavior_analytics, build_trade_behavior_badge_map
 from helpers.core import (
     build_mt5_access_state,
     get_active_trade_account_for_user,
@@ -35,7 +36,7 @@ from helpers.core import (
     is_weekly_checkin_complete,
     is_trade_running,
 )
-from helpers.trade_analysis import detect_outliers
+from helpers.trade_analysis import detect_outliers, get_trade_identity
 from helpers.trends import trend_direction_ei_scores, trend_direction_expectancy_weeks, trend_direction_win_rate_weeks
 from helpers.utils import login_required, utcnow_naive
 from models import AIGeneratedResponse, Trade, UserProfile, WeeklyCheckin, db
@@ -67,7 +68,7 @@ WEEKLY_AI_UNAVAILABLE_MESSAGE = (
 )
 WEEKLY_AI_PROMPT_FILENAME = "dashboard_advice.txt"
 DASHBOARD_CACHE_PREFIX = "dashboard_v3"
-ANALYTICS_CACHE_PREFIX = "analytics_v3"
+ANALYTICS_CACHE_PREFIX = "analytics_v5"
 RR_SUMMARY_CACHE_PREFIX = "rr_summary_v5"
 
 
@@ -151,6 +152,39 @@ def _build_weekly_review_citation_lookup(payload_json, timezone_name):
     return lookup
 
 
+_STRAY_CLITIC_AFTER_LABEL_SUFFIX = (
+    r"\s+[ds]\s+"
+    r"(?=trade|trades|loss|losses|win|wins|winner|losers?|idea|ideas|setup|setups|"
+    r"entry|entries|exit|exits|position|positions|scalp|runner)\b"
+)
+
+
+def _strip_stray_possessive_after_review_labels(text, citation_lookup):
+    """Remove a lone d/s after an inline label (e.g. 'B1 d trade' -> label + ' trade')."""
+    normalized = str(text or "")
+    if not normalized or not citation_lookup:
+        return normalized
+
+    seen = set()
+    for citation in citation_lookup.values():
+        if not isinstance(citation, dict):
+            continue
+        label = str(citation.get("inline_label") or "").strip()
+        if not label:
+            continue
+        key = label.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+
+        normalized = re.sub(
+            rf"(?i){re.escape(label)}{_STRAY_CLITIC_AFTER_LABEL_SUFFIX}",
+            f"{label} ",
+            normalized,
+        )
+    return normalized
+
+
 def _rewrite_review_text_refs(text, citation_lookup):
     normalized = str(text or "").strip()
     if not normalized or not citation_lookup:
@@ -161,8 +195,13 @@ def _rewrite_review_text_refs(text, citation_lookup):
         return normalized
 
     ref_pattern = "|".join(re.escape(ref) for ref in sorted(ref_codes, key=len, reverse=True))
+    # Consume optional clitic glued to the closing bracket (e.g. "[B1]d trade" from a missing
+    # apostrophe before "trade") so we do not leave a stray "d"/"s" in the sentence.
+    bracket_close = (
+        rf"\s*[\)\]\}}](?:['\u2019']?[ds](?=\s|[,.;:!?]|$))?"
+    )
     normalized = re.sub(
-        rf"\s*[\(\[\{{]\s*(?:{ref_pattern})(?:\s*,\s*(?:{ref_pattern}))*\s*[\)\]\}}]",
+        rf"\s*[\(\[\{{]\s*(?:{ref_pattern})(?:\s*,\s*(?:{ref_pattern}))*{bracket_close}",
         "",
         normalized,
         flags=re.IGNORECASE,
@@ -181,6 +220,7 @@ def _rewrite_review_text_refs(text, citation_lookup):
         normalized,
         flags=re.IGNORECASE,
     )
+    normalized = _strip_stray_possessive_after_review_labels(normalized, citation_lookup)
     normalized = re.sub(r"\s{2,}", " ", normalized)
     normalized = re.sub(r"\s+([,.;:!?])", r"\1", normalized)
     return normalized.strip()
@@ -625,10 +665,13 @@ def _deserialize_dashboard_cache_payload(payload):
 def _serialize_summary_trade(record):
     if not record:
         return None
+    trade = record.get("trade")
+    pubkey = (getattr(trade, "pubkey", None) or "").strip() if trade is not None else ""
     return {
         "pnl": record.get("pnl"),
         "symbol": record.get("symbol"),
         "opened_label": record.get("opened_label"),
+        "trade_pubkey": pubkey,
     }
 
 
@@ -648,6 +691,7 @@ def _serialize_analytics_payload(analytics):
         "session_stats": analytics.get("session_stats") or [],
         "session_has_reliable_pattern": analytics.get("session_has_reliable_pattern", False),
         "week_label": analytics.get("week_label") or "",
+        "behavior": analytics.get("behavior") or {},
     }
 
 
@@ -704,6 +748,10 @@ def _build_cached_analytics_payload(user_id, active_trade_account, user_trades, 
         user_trades,
         display_timezone_name=timezone_name,
         account_size=active_trade_account.account_size if active_trade_account else None,
+    )
+    analytics["behavior"] = build_trade_behavior_analytics(
+        user_trades,
+        timezone_name=timezone_name,
     )
     payload = _serialize_analytics_payload(analytics)
     _set_cached_payload(ANALYTICS_CACHE_PREFIX, user_id, getattr(active_trade_account, "id", None), payload)
@@ -1152,6 +1200,7 @@ def home():
     closed_trade_count = len(closed_records)
     session_stats = dashboard_analytics["session_stats"]
     chart_points = dashboard_analytics["chart_points"]
+    behavior_badge_map = build_trade_behavior_badge_map(user_trades)
 
     now_local = to_display_timezone(utcnow_naive(), timezone_name)
     trades_this_month = sum(
@@ -1168,18 +1217,21 @@ def home():
         pnl_value = resolve_net_pnl(trade)
         opened_local = to_display_timezone(trade.opened_at, timezone_name)
         trade_date = (
-            f"{opened_local.strftime('%d %b %Y')} ({opened_local.strftime('%a')})"
+            f"{opened_local.strftime('%d %b %Y')} ({opened_local.strftime('%a')}) · {opened_local.strftime('%H:%M')}"
             if opened_local
             else "-"
         )
         trade_date_value = opened_local.strftime("%Y-%m-%d") if opened_local else ""
+        opened_at_value = opened_local.isoformat() if opened_local else ""
         trade_profile = getattr(trade, "trade_profile", None)
         trade_profile_version = getattr(trade, "trade_profile_version", None)
         recent_trades.append(
             {
                 "trade_id": getattr(trade, "id", None),
+                "trade_pubkey": getattr(trade, "pubkey", None) or "",
                 "date": trade_date,
                 "date_value": trade_date_value,
+                "opened_at_value": opened_at_value,
                 "symbol": format_trade_symbol(trade),
                 "trade_profile_label": (
                     trade_profile_version.name
@@ -1191,6 +1243,7 @@ def home():
                 "session_label": classify_trading_session(trade.opened_at) if trade.opened_at else "-",
                 "is_running": trade_is_running,
                 "bundle_pubkey": getattr(trade, "bundle_pubkey", None),
+                "behavior_badges": behavior_badge_map.get(get_trade_identity(trade), []),
             }
         )
 
@@ -1290,6 +1343,9 @@ def home():
         has_ai_review=has_ai_review,
         show_whats_next_banner=show_whats_next_banner,
         weekly_ai_min_closed_trades=MIN_CLOSED_TRADES_FOR_ADVICE,
+        small_sample_min_trades=SMALL_SAMPLE_MIN_TRADES,
+        win_rate_is_limited_sample=has_closed_trades
+        and closed_trade_count < SMALL_SAMPLE_MIN_TRADES,
         mt5_cfd_accounts=mt5_sections["mt5_cfd_accounts"],
         linked_mt5_trade_account_ids=mt5_access_state["linked_mt5_trade_account_ids"],
         mt5_selected_row=mt5_sections["mt5_selected_row"],
@@ -1376,12 +1432,21 @@ def analytics():
             "closed_before_sl_count",
             0,
         )
+        analytics_payload.setdefault("behavior", {})
 
     if rr_summary is None:
         rr_summary = _build_cached_rr_summary(
             user_id,
             active_trade_account,
             user_trades,
+        )
+
+    if not analytics_payload.get("behavior"):
+        if user_trades is None:
+            user_trades = _load_user_trades(user_id, active_trade_account)
+        analytics_payload["behavior"] = build_trade_behavior_analytics(
+            user_trades,
+            timezone_name=timezone_name,
         )
 
     return render_template(

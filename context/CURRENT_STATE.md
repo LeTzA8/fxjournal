@@ -6,6 +6,7 @@ Short-term operational memory.
 
 ## Current Focus
 
+- Trades hub UX: shared app-page hero, `static/css/app_pages.css`, corrected nav `request.endpoint` names, scoped trades CSS under `.trades-page`
 - MT5 request/setup flow polish
 - Dashboard MT5 state and weekly AI display
 - Test coverage around MT5 request/admin paths and ready-email behavior
@@ -20,7 +21,9 @@ Short-term operational memory.
 - Dashboard MT5 messaging, rolling performance/behaviour trend panel, and weekly AI presentation work in `routes/dashboard.py`, `templates/index.html`, and `helpers/trends.py`
 - Worker/admin MT5 flow work in `auth_account.py`, `helpers/core.py`, and `celery_workers/mt5_setup.py`
 - After file import or MT5 sync, `queue_bundle_review_if_split_candidates` in `helpers/core.py` may set `bundle_review_requested_at` when `detect_outliers` finds split candidates (`routes/trades.py`, `routes/mt5_internal.py`, `tests/test_bundle_review_queue.py`)
-- Dashboard copy and week-on-week label fixes, removal of unused `_get_weekly_checkin_banner_state` / `_count_closed_trades_for_period` in `routes/dashboard.py`; analytics small-sample callout, RR panel moved above weekday/equity/overview in layout, hero copy tweak (`templates/index.html`, `templates/analytics.html`)
+- Optional per trade account: `default_trade_profile_id` on `TradeAccount` (null by default) tags **new** import/MT5-sync rows via `resolve_import_default_trade_profile_ids` + `build_normalized_trade_insert_batch` (`migrations/versions/20260405_0037_trade_account_default_strategy.py`, Trade Accounts dialog + `trade_accounts_page.js`, `tests/test_trading_import.py`)
+- App layout: centered narrow hero band (`--app-hero-max-width` on `body.app-layout`, `dash-head`, `app-page-hero`, `analytics-hero`) with full-width panels below
+- Dashboard and analytics UX pass: grouped KPI sections (at-a-glance net PnL + edge + execution), collapsible session/pair/weekday breakdowns with chart render on open, trade and journal deep links from analytics, `?pair=` / `?session=` auto-filter on dashboard and trades tables (`trade_filters_shared.js`, `dashboard_page.js`, `trades_table.js`), dashboard primary-story line and small-sample win-rate note, calmer onboarding (pulse animation removed), analytics cache prefix bump to `analytics_v5` (`routes/dashboard.py`, `helpers/behavior_labels.py`, templates, tests)
 - AI role/taste guidance refinement in `context/ROLES.md`, `AGENTS.md`, and `CLAUDE.md`
 - Public acquisition messaging polish across `auth_account.py`, `templates/landing.html`, `templates/seo_page.html`, `templates/register.html`, `templates/login.html`, and `templates/base.html`
 - Second-pass landing/auth copy tightening for clearer review-first positioning and lower perceived signup friction

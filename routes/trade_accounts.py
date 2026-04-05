@@ -13,6 +13,8 @@ from helpers.core import (
     get_safe_internal_next,
     get_user_trade_account_by_pubkey,
     get_user_trade_accounts,
+    get_user_trade_profile_by_pubkey,
+    get_user_trade_profiles,
     normalize_trade_account_name,
     parse_trade_account_size,
     resolve_active_trade_account,
@@ -370,6 +372,19 @@ def create_trade_account():
         for account in existing_accounts:
             account.is_default = False
 
+    default_profile_pubkey = request.form.get(
+        "default_trade_profile_pubkey", ""
+    ).strip()
+    default_trade_profile_id = None
+    if default_profile_pubkey:
+        default_profile = get_user_trade_profile_by_pubkey(
+            user_id, default_profile_pubkey
+        )
+        if default_profile is None:
+            flash("That default strategy was not found.", "error")
+            return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+        default_trade_profile_id = default_profile.id
+
     new_account = TradeAccount(
         pubkey=build_unique_trade_account_pubkey(),
         user_id=user_id,
@@ -378,6 +393,7 @@ def create_trade_account():
         account_size=account_size,
         account_type=account_type,
         is_default=is_default,
+        default_trade_profile_id=default_trade_profile_id,
     )
     db.session.add(new_account)
     db.session.commit()
@@ -458,6 +474,20 @@ def update_trade_account(trade_account_pubkey):
             ):
                 flash("That external account ID is already linked.", "error")
                 return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+
+    default_profile_pubkey = request.form.get(
+        "default_trade_profile_pubkey", ""
+    ).strip()
+    if not default_profile_pubkey:
+        account.default_trade_profile_id = None
+    else:
+        default_profile = get_user_trade_profile_by_pubkey(
+            user_id, default_profile_pubkey
+        )
+        if default_profile is None:
+            flash("That default strategy was not found.", "error")
+            return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+        account.default_trade_profile_id = default_profile.id
 
     account.name = account_name
     account.external_account_id = external_account_id or None
@@ -695,7 +725,9 @@ def delete_all_trade_accounts():
 def trade_accounts():
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)
-    account_rows = get_user_trade_accounts(user_id)
+    account_rows = get_user_trade_accounts(
+        user_id, eager_load_default_trade_profile=True
+    )
     account_trade_counts = dict(
         db.session.query(Trade.trade_account_id, func.count(Trade.id))
         .filter_by(user_id=user_id)
@@ -756,4 +788,5 @@ def trade_accounts():
         pending_mt5_requests_by_trade_account=mt5_access_state["pending_requests_by_trade_account"],
         linked_mt5_trade_account_ids=mt5_access_state["linked_mt5_trade_account_ids"],
         active_mt5_trade_account_ids=mt5_access_state["active_mt5_trade_account_ids"],
+        trade_profile_options=get_user_trade_profiles(user_id),
     )
