@@ -51,6 +51,14 @@
                                 <p class="profile-meta">v{{ profile.current_version_number }}</p>
                             </div>
                             <div class="profile-card-actions">
+                                {% if active_trade_account and active_trade_account.default_trade_profile_id == profile.id %}
+                                <span class="chip default">Default for {{ active_trade_account.name }}</span>
+                                {% elif active_trade_account %}
+                                <form action="{{ url_for('trade_profiles.set_default_strategy_for_active_account', profile_pubkey=profile.pubkey) }}" method="post">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="ghost-btn">Set Default for Active Account</button>
+                                </form>
+                                {% endif %}
                                 {% set version_description = version.short_description if version and version.short_description else "" %}
                                 <a
                                     href="{{ url_for('trade_profiles.strategies', edit=profile.pubkey) }}"

@@ -2,6 +2,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from helpers.core import (
+    get_active_trade_account_for_user,
     get_user_trade_profiles,
     get_user_trade_profile_by_pubkey,
     get_trade_profile_version_snapshot,
@@ -80,6 +81,30 @@ def edit_strategy(profile_pubkey):
         db.session.rollback()
         flash("Could not update the strategy right now. Please try again.", "error")
         return redirect(url_for("trade_profiles.strategies", edit=profile.pubkey))
+
+
+@bp.route("/dashboard/strategies/<string:profile_pubkey>/set-default", methods=["POST"])
+@bp.route("/dashboard/trade-profiles/<string:profile_pubkey>/set-default", methods=["POST"])
+@login_required
+def set_default_strategy_for_active_account(profile_pubkey):
+    user_id = session["user_id"]
+    profile = get_user_trade_profile_by_pubkey(user_id, profile_pubkey)
+    if profile is None:
+        flash("Strategy not found.", "error")
+        return redirect(url_for("trade_profiles.strategies"))
+
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    if active_trade_account is None:
+        flash("No active trade account is selected.", "error")
+        return redirect(url_for("trade_profiles.strategies"))
+
+    active_trade_account.default_trade_profile_id = profile.id
+    db.session.commit()
+    flash(
+        f"Default strategy for '{active_trade_account.name}' set to '{profile.name}'.",
+        "success",
+    )
+    return redirect(url_for("trade_profiles.strategies"))
 
 
 @bp.route("/dashboard/strategies/<string:profile_pubkey>/archive", methods=["POST"])
