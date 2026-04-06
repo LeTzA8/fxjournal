@@ -56,13 +56,13 @@
                                 {% elif active_trade_account %}
                                 <form action="{{ url_for('trade_profiles.set_default_strategy_for_active_account', profile_pubkey=profile.pubkey) }}" method="post">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <button type="submit" class="ghost-btn">Set Default for Active Account</button>
+                                    <button type="submit" class="profile-action-btn">Set Default</button>
                                 </form>
                                 {% endif %}
                                 {% set version_description = version.short_description if version and version.short_description else "" %}
                                 <a
                                     href="{{ url_for('trade_profiles.strategies', edit=profile.pubkey) }}"
-                                    class="edit-link"
+                                    class="profile-action-btn"
                                     data-open-strategy-editor
                                     data-editor-mode="edit"
                                     data-editor-profile-pubkey="{{ profile.pubkey }}"
@@ -73,7 +73,7 @@
                                 >Edit</a>
                                 <button
                                     type="button"
-                                    class="archive-btn"
+                                    class="profile-action-btn profile-action-btn--danger"
                                     data-open-archive-strategy-dialog
                                     data-archive-profile-pubkey="{{ profile.pubkey }}"
                                     data-archive-profile-name="{{ profile.name }}"
@@ -84,7 +84,6 @@
                                 </button>
                             </div>
                         </div>
-                        <p class="profile-description">{{ version.short_description if version and version.short_description else "No description added yet. Include the setup idea, trigger, or rules you want to remember when tagging trades." }}</p>
                     </article>
                     {% endfor %}
                 </div>

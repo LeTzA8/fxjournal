@@ -346,30 +346,38 @@ body.app-layout .strategies-page .profile-card-actions {
     flex-wrap: wrap;
 }
 
-body.app-layout .strategies-page .edit-link,
-body.app-layout .strategies-page .archive-btn {
+body.app-layout .strategies-page .profile-action-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 36px;
-    border-radius: 10px;
-    padding: 0.4rem 0.7rem;
-    font-size: 0.76rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    min-height: 32px;
+    border-radius: 8px;
+    padding: 0.34rem 0.58rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.015em;
     text-decoration: none;
-}
-
-body.app-layout .strategies-page .edit-link {
-    border: 1px solid color-mix(in srgb, var(--accent) 44%, var(--border));
-}
-
-body.app-layout .strategies-page .archive-btn {
-    border: 1px solid color-mix(in srgb, var(--bad) 42%, var(--border));
-    background: color-mix(in srgb, var(--bad) 10%, var(--card));
-    color: color-mix(in srgb, var(--bad) 84%, white 16%);
+    border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    color: var(--ink);
     cursor: pointer;
+}
+
+body.app-layout .strategies-page .profile-action-btn:hover,
+body.app-layout .strategies-page .profile-action-btn:focus-visible {
+    border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+body.app-layout .strategies-page .profile-action-btn--danger {
+    border-color: color-mix(in srgb, var(--bad) 30%, var(--border));
+    color: color-mix(in srgb, var(--bad) 74%, white 26%);
+}
+
+body.app-layout .strategies-page .profile-action-btn--danger:hover,
+body.app-layout .strategies-page .profile-action-btn--danger:focus-visible {
+    border-color: color-mix(in srgb, var(--bad) 46%, var(--border));
+    background: color-mix(in srgb, var(--bad) 10%, var(--surface));
 }
 
 body.app-layout .strategies-page .profile-form label {
@@ -470,7 +478,13 @@ body.app-layout .trade-accounts-page .account-card {
     gap: 0.42rem;
 }
 
-body.app-layout .trade-accounts-page .account-btn-priority {
+body.app-layout .trade-accounts-page .account-btn-switch {
+    border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    color: color-mix(in srgb, var(--accent) 76%, var(--ink));
+}
+
+body.app-layout .trade-accounts-page .account-btn-default {
     border-color: color-mix(in srgb, var(--good) 48%, var(--border));
     background: color-mix(in srgb, var(--good) 10%, var(--card));
     color: color-mix(in srgb, var(--good) 78%, var(--ink));

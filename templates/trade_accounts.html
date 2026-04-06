@@ -97,27 +97,27 @@
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
                                 <input type="hidden" name="next" value="{{ current_page_path }}">
-                                <button type="submit" class="ghost-btn account-btn-priority">Switch</button>
+                                <button type="submit" class="ghost-btn account-btn-switch">Switch</button>
                             </form>
                             {% else %}
                             <form action="{{ url_for('trade_accounts.switch_trade_account') }}" method="post" class="switch-account-form" hidden>
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
                                 <input type="hidden" name="next" value="{{ current_page_path }}">
-                                <button type="submit" class="ghost-btn account-btn-priority">Switch</button>
+                                <button type="submit" class="ghost-btn account-btn-switch">Switch</button>
                             </form>
                             {% endif %}
                             {% if not trade_account.is_default %}
                             <form action="{{ url_for('trade_accounts.set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="default-account-form">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
-                                <button type="submit" class="ghost-btn account-btn-priority">Set Default</button>
+                                <button type="submit" class="ghost-btn account-btn-default">Set Default</button>
                             </form>
                             {% else %}
                             <form action="{{ url_for('trade_accounts.set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="default-account-form" hidden>
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
-                                <button type="submit" class="ghost-btn account-btn-priority">Set Default</button>
+                                <button type="submit" class="ghost-btn account-btn-default">Set Default</button>
                             </form>
                             {% endif %}
                             <a
