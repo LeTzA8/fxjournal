@@ -7,7 +7,12 @@ from types import SimpleNamespace
 import pytest
 from cryptography.fernet import Fernet
 
-from celery_workers.mt5_sync import aggregate_deals_to_trades, _positions_to_open_trades, sync_mt5_account
+from celery_workers.mt5_sync import (
+    _adjust_mt5_unix_epoch,
+    aggregate_deals_to_trades,
+    _positions_to_open_trades,
+    sync_mt5_account,
+)
 from celery_app import celery
 from helpers.core import delete_users_with_related_data
 from helpers.utils import decrypt_password, encrypt_password
@@ -84,6 +89,13 @@ def _deal(**overrides):
     }
     payload.update(overrides)
     return SimpleNamespace(**payload)
+
+
+def test_mt5_bar_epoch_adjustment_matches_deal_timestamp_normalization():
+    """fetch_trade_bars applies the same offset as deal ingest so bars align with opened_at/closed_at."""
+    raw = 1_717_200_000
+    assert int(_adjust_mt5_unix_epoch(raw, offset_minutes=120)) == raw - 7200
+    assert int(_adjust_mt5_unix_epoch(raw, offset_minutes=-60)) == raw + 3600
 
 
 def test_aggregate_deals_to_trades_closes_position_with_multiple_exit_deals():

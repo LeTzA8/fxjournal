@@ -719,6 +719,7 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
         end_dt = now_utc
 
     bars = []
+    mt5_server_delta_minutes = 0
     with _MT5_API_SESSION_LOCK:
         if not mt5.initialize(**init_kwargs):
             raise RuntimeError(f"MT5 init failed during bar fetch: {mt5.last_error()}")
@@ -733,8 +734,14 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             raw_bars = mt5.copy_rates_range(symbol, tf_constant, start_dt_shifted, end_dt_shifted)
             if raw_bars is not None and len(raw_bars) > 0:
                 for bar in raw_bars:
+                    # Same epoch skew as deal times: raw bar["time"] is broker/server-oriented; subtract
+                    # probe delta so stored Unix matches UTC used by trade.opened_at / closed_at and the chart.
+                    bar_open_utc = _adjust_mt5_unix_epoch(
+                        int(bar["time"]),
+                        offset_minutes=mt5_server_delta_minutes,
+                    )
                     bars.append({
-                        "time": int(bar["time"]),
+                        "time": int(bar_open_utc),
                         "open": float(bar["open"]),
                         "high": float(bar["high"]),
                         "low": float(bar["low"]),
@@ -756,6 +763,7 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             ("M5 context", f"{pre_entry_m5_bars} pre / {post_exit_m5_bars} post bars"),
             ("Stored TF", "M5"),
             ("Bars Fetched", len(bars)),
+            ("MT5-UTC Delta (min)", mt5_server_delta_minutes),
             ("Window (UTC)", f"{start_dt.isoformat()} -> {end_dt.isoformat()}"),
             ("Duration", duration_label(fetch_started_at, fetch_finished_at)),
         ],

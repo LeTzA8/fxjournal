@@ -14,6 +14,7 @@ Short-term operational memory.
 ## Active Areas
 
 - MT5 timestamp interpretation tightened: MT5 sync marks explicit UTC epoch interpretation and logs VM timezone context, while MT5 file imports no longer assume timezone for naive timestamps (`trading.py`, `routes/mt5_internal.py`, `celery_workers/mt5_sync.py`, `templates/trade_entry.html`, `tests/test_trading_import.py`)
+- MT5 `copy_rates_range` bar `time` values are normalized with the same `_adjust_mt5_unix_epoch` delta as deal times before persisting to `trade_bars`, so chart candles line up with entry/exit markers (re-backfill after deploy if bars were stored raw)
 - Closed MT5 trade detail includes Lightweight Charts with admin-gated chart API, 5m/15m toggle (M15 aggregated from stored M5), price-scale labels for entry/exit/SL/TP; entry, exit, SL, and TP are full-width `createPriceLine`s (entry and exit solid, SL/TP dashed), plus entry/exit arrow markers, while SL/TP stay full-width `createPriceLine` references; bar fetch uses a wide M5 window before/after the trade (~12h pre / ~6h post) so setup context is visible (`templates/trade_entry.html`, `static/js/trade_chart.js`, `static/css/app_pages.css`, `routes/trades.py`, `celery_workers/mt5_sync.py`)
 - MT5 request flow work in `routes/trade_accounts.py`, `templates/trade_accounts.html`, and `static/js/mt5_request_form.js`
 - MT5 receipt confirmation now uses the shared HTML email pattern in `routes/trade_accounts.py` and `templates/emails/mt5-request-received.html`
