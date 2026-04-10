@@ -817,6 +817,14 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="ghost-btn">Recalibrate all trade times</button>
                     </form>
+                    <form
+                        action="{{ url_for('admin_mt5_clear_all_trade_bars') }}"
+                        method="post"
+                        onsubmit="return confirm('Delete ALL stored MT5 chart bars for every user and trade? Trade records are kept; charts show pending until you backfill again.');"
+                    >
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="ghost-btn danger-btn">Clear all chart bars</button>
+                    </form>
                 </div>
                 {% if mt5_accounts %}
                 <div class="table-shell admin-table-shell">

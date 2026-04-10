@@ -1407,6 +1407,55 @@ def test_admin_mt5_manual_trigger_sync_queues_full_history_for_active_account(ap
     assert sync_captured["kwargs"] == {"full_history": True, "trigger_source": "manual"}
 
 
+def test_admin_clear_all_trade_bars_removes_rows_keeps_trades(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    root_user, trade_account = _log_in_root_admin(
+        client,
+        email="root-clear-bars@example.com",
+        username="root-clear-bars",
+    )
+    trade = Trade(
+        user_id=root_user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1,
+        exit_price=1.101,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 9, 0, 0),
+        closed_at=datetime(2026, 4, 10, 10, 0, 0),
+        mt5_position="clear-bars-pos",
+    )
+    db.session.add(trade)
+    db.session.commit()
+    db.session.add(
+        TradeBars(
+            trade_id=trade.id,
+            timeframe="M5",
+            bar_time=1_700_000_000,
+            open=1.1,
+            high=1.11,
+            low=1.09,
+            close=1.105,
+            tick_volume=10,
+        )
+    )
+    db.session.commit()
+    assert TradeBars.query.count() >= 1
+
+    response = client.post(
+        "/dashboard/admin/access/mt5/clear-all-trade-bars",
+        data={},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    db.session.expire_all()
+    assert TradeBars.query.count() == 0
+    assert db.session.get(Trade, trade.id) is not None
+
+
 def test_admin_mt5_create_persists_inactive_account_when_setup_queue_fails(app_ctx, client, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)

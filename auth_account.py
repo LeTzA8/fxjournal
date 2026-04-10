@@ -18,6 +18,7 @@ from models import (
     SignupCode,
     Trade,
     TradeAccount,
+    TradeBars,
     User,
     UserProfile,
     db,
@@ -3042,6 +3043,33 @@ def register_public_auth_routes(
             (
                 f"Queued full-history MT5 sync with timestamp recalibration for {len(eligible)} account(s). "
                 "Runs on the worker; use Backfill Bars per account if trade charts need refreshing."
+            ),
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/mt5/clear-all-trade-bars", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_clear_all_trade_bars():
+        try:
+            deleted = TradeBars.query.delete(synchronize_session=False)
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            current_app.logger.warning(
+                "Admin clear-all-trade-bars failed: %s",
+                sanitize_error_message(exc),
+            )
+            return build_admin_redirect(
+                "mt5",
+                "Could not clear stored chart bars. Check logs and try again.",
+                "error",
+            )
+        current_app.logger.info("Admin cleared all trade_bars (%s rows)", deleted)
+        return build_admin_redirect(
+            "mt5",
+            (
+                f"Removed all stored chart bars ({deleted} row{'s' if deleted != 1 else ''}). "
+                "Use Backfill Bars per MT5 account to refetch from the broker."
             ),
             "success",
         )
