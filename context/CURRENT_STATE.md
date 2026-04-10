@@ -13,6 +13,7 @@ Short-term operational memory.
 
 ## Active Areas
 
+- MT5 timestamp interpretation tightened: MT5 sync marks explicit UTC epoch interpretation and logs VM timezone context, while MT5 file imports no longer assume timezone for naive timestamps (`trading.py`, `routes/mt5_internal.py`, `celery_workers/mt5_sync.py`, `templates/trade_entry.html`, `tests/test_trading_import.py`)
 - MT5 request flow work in `routes/trade_accounts.py`, `templates/trade_accounts.html`, and `static/js/mt5_request_form.js`
 - MT5 receipt confirmation now uses the shared HTML email pattern in `routes/trade_accounts.py` and `templates/emails/mt5-request-received.html`
 - Admin MT5 tab now focuses on submitted MT5 accounts and setup actions instead of legacy request-review/manual-add panels (`auth_account.py`, `templates/admin_signup_access.html`)
@@ -20,6 +21,7 @@ Short-term operational memory.
 - Admin MT5 table now uses explicit workflow statuses: Requested, Setting Up, Active, Inactive, while preserving Cleanup Pending for orphaned records
 - Dashboard MT5 messaging, rolling performance/behaviour trend panel, and weekly AI presentation work in `routes/dashboard.py`, `templates/index.html`, and `helpers/trends.py`
 - Worker/admin MT5 flow work in `auth_account.py`, `helpers/core.py`, and `celery_workers/mt5_setup.py`
+- MT5 sync diagnostics improved: internal ingest now logs explicit skip-reason counters and sync worker warns when a run is all-skipped (`routes/mt5_internal.py`, `celery_workers/mt5_sync.py`)
 - After file import or MT5 sync, `queue_bundle_review_if_split_candidates` in `helpers/core.py` may set `bundle_review_requested_at` when `detect_outliers` finds split candidates (`routes/trades.py`, `routes/mt5_internal.py`, `tests/test_bundle_review_queue.py`)
 - Optional per trade account: `default_trade_profile_id` on `TradeAccount` (null by default) tags **new** import/MT5-sync rows via `resolve_import_default_trade_profile_ids` + `build_normalized_trade_insert_batch` (`migrations/versions/20260405_0037_trade_account_default_strategy.py`, Trade Accounts dialog + `trade_accounts_page.js`, `tests/test_trading_import.py`)
 - Strategies page quick action can set the active trade account default strategy directly from a strategy card (`routes/trade_profiles.py`, `templates/trade_profiles.html`, `tests/test_trade_profiles_routes.py`)

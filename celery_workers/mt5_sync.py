@@ -11,6 +11,7 @@ import uuid
 import requests
 
 from celery_app import celery
+from trading import MT5_DEFAULT_SOURCE_TIMEZONE_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,18 @@ def _to_utc_iso(timestamp_value):
     return datetime.fromtimestamp(timestamp_value, tz=timezone.utc).isoformat(timespec="seconds")
 
 
+def _vm_timezone_context():
+    now_local = datetime.now().astimezone()
+    tz_value = now_local.tzinfo
+    tz_name = getattr(tz_value, "key", None) or str(tz_value or "").strip() or "unknown"
+    offset = now_local.utcoffset()
+    offset_minutes = int(offset.total_seconds() // 60) if offset is not None else None
+    return {
+        "vm_timezone_name": tz_name,
+        "vm_utc_offset_minutes": offset_minutes,
+    }
+
+
 def _deal_float_value(deal, field_name, default=0.0):
     try:
         return float(getattr(deal, field_name, default) or default)
@@ -141,7 +154,8 @@ def _positions_to_open_trades(positions, *, position_type_buy=0):
                 "closed_at": None,
                 "mt5_position": str(pos_id),
                 "trade_note": str(getattr(pos, "comment", "") or "").strip() or None,
-                "source_timezone": "UTC",
+                "source_timezone": MT5_DEFAULT_SOURCE_TIMEZONE_NAME,
+                "timestamp_interpretation": "mt5_epoch_utc",
                 "is_open": True,
             }
         )
@@ -197,7 +211,8 @@ def aggregate_deals_to_trades(
                         "closed_at": _to_utc_iso(getattr(latest_exit_deal, "time", None)),
                         "mt5_position": str(position_id),
                         "trade_note": str(getattr(latest_exit_deal, "comment", "") or "").strip() or None,
-                        "source_timezone": "UTC",
+                        "source_timezone": MT5_DEFAULT_SOURCE_TIMEZONE_NAME,
+                        "timestamp_interpretation": "mt5_epoch_utc",
                         "is_open": False,
                     }
                 )
@@ -229,7 +244,8 @@ def aggregate_deals_to_trades(
                     "closed_at": _to_utc_iso(getattr(latest_exit_deal, "time", None)),
                     "mt5_position": str(position_id),
                     "trade_note": str(getattr(latest_exit_deal, "comment", "") or "").strip() or None,
-                    "source_timezone": "UTC",
+                    "source_timezone": MT5_DEFAULT_SOURCE_TIMEZONE_NAME,
+                    "timestamp_interpretation": "mt5_epoch_utc",
                     "is_open": False,
                 }
             )
@@ -251,7 +267,8 @@ def aggregate_deals_to_trades(
                     "closed_at": None,
                     "mt5_position": str(position_id),
                     "trade_note": str(getattr(entry_deal, "comment", "") or "").strip() or None,
-                    "source_timezone": "UTC",
+                    "source_timezone": MT5_DEFAULT_SOURCE_TIMEZONE_NAME,
+                    "timestamp_interpretation": "mt5_epoch_utc",
                     "is_open": True,
                 }
             )
@@ -392,6 +409,7 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                 else:
                     from_date = datetime.now(timezone.utc) - timedelta(days=7)
                 to_date = datetime.now(timezone.utc)
+                vm_timing_context = _vm_timezone_context()
                 _log_ascii_table(
                     "MT5 Sync Context",
                     [
@@ -403,6 +421,8 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                         ("Equity", mt5_equity),
                         ("Trigger", trigger_label),
                         ("Mode", sync_mode),
+                        ("VM Timezone", vm_timing_context.get("vm_timezone_name")),
+                        ("VM UTC Offset (min)", vm_timing_context.get("vm_utc_offset_minutes")),
                         ("Window", f"{from_date.isoformat()} -> {to_date.isoformat()}"),
                     ],
                 )
@@ -445,6 +465,7 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
             json={
                 "mt5_account_id": mt5_account_id,
                 "trades": trades,
+                "timing_context": vm_timing_context,
             },
             headers={
                 "X-Sync-Secret": sync_secret,
@@ -472,6 +493,21 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                 ("Errors", result.get("errors")),
             ],
         )
+        if int(result.get("skipped") or 0) > 0 and int(result.get("saved") or 0) == 0 and int(result.get("updated") or 0) == 0:
+            logger.warning(
+                (
+                    "MT5 sync produced only skipped rows. task_id=%s mt5_account_id=%s trade_account_id=%s "
+                    "trigger=%s mode=%s raw_deals=%s aggregated_trades=%s skipped=%s"
+                ),
+                task_id,
+                mt5_account_id,
+                trade_account_id,
+                trigger_label,
+                sync_mode,
+                raw_deal_count,
+                aggregated_trade_count,
+                result.get("skipped"),
+            )
         return result
     except Exception as exc:
         sync_finished_at = sync_finished_at or datetime.now(timezone.utc)

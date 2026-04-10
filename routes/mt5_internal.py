@@ -1,6 +1,6 @@
 import os
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
 
@@ -8,7 +8,7 @@ from celery_workers.cache import CacheUnavailableError, invalidate
 from helpers.core import build_normalized_trade_insert_batch, queue_bundle_review_if_split_candidates
 from helpers.utils import utcnow_naive
 from models import MT5Account, Trade, db
-from trading import parse_float_value, parse_mt5_position_value, parse_source_datetime_value
+from trading import get_timezone, parse_float_value, parse_mt5_position_value, parse_source_datetime_value
 
 bp = Blueprint("mt5_internal", __name__)
 
@@ -46,15 +46,16 @@ def _normalize_sync_trade_rows(raw_rows):
             invalid_rows += 1
             continue
 
-        source_timezone_name = str(row.get("source_timezone") or "UTC").strip() or "UTC"
+        source_timezone_name = str(row.get("source_timezone") or "").strip() or None
+        source_timezone = get_timezone(source_timezone_name) if source_timezone_name else None
         opened_at, opened_source_timezone = parse_source_datetime_value(
             row.get("opened_at"),
-            timezone.utc,
+            source_timezone,
             source_timezone_name,
         )
         closed_at, closed_source_timezone = parse_source_datetime_value(
             row.get("closed_at"),
-            timezone.utc,
+            source_timezone,
             source_timezone_name,
         )
         raw_is_open = row.get("is_open")
@@ -118,6 +119,13 @@ def sync_mt5_trades():
     normalized_rows, invalid_rows = _normalize_sync_trade_rows(raw_rows)
 
     try:
+        skip_reason_counts = {
+            "close_only_without_existing_open": 0,
+            "existing_already_closed_or_no_state_change": 0,
+            "batch_duplicate_mt5_position": 0,
+            "batch_validation_skipped": 0,
+            "batch_symbol_validation_failed": 0,
+        }
         incoming_positions = {
             _normalize_mt5_position_key(row.get("mt5_position"))
             for row in normalized_rows
@@ -157,6 +165,7 @@ def sync_mt5_trades():
             )
             if existing_trade is None:
                 if is_close_only_row:
+                    skip_reason_counts["close_only_without_existing_open"] += 1
                     skipped_count += 1
                     continue
                 rows_to_insert.append(row)
@@ -194,6 +203,7 @@ def sync_mt5_trades():
                 updated_count += 1
                 continue
 
+            skip_reason_counts["existing_already_closed_or_no_state_change"] += 1
             skipped_count += 1
 
         batch_result = build_normalized_trade_insert_batch(
@@ -204,17 +214,38 @@ def sync_mt5_trades():
             use_import_dedupe_key=False,
             dedupe_by_mt5_position_only=True,
             default_system_trade_note="Auto-imported via MT5 sync",
-            fallback_source_timezone="UTC",
+            fallback_source_timezone=None,
         )
         insert_batch = batch_result["insert_batch"]
         saved_count = len(insert_batch)
         skipped_count += batch_result["duplicate_count"]
         error_count += batch_result["validation_skipped"]
+        skip_reason_counts["batch_duplicate_mt5_position"] += int(batch_result["duplicate_count"] or 0)
+        skip_reason_counts["batch_validation_skipped"] += int(batch_result["validation_skipped"] or 0)
+        skip_reason_counts["batch_symbol_validation_failed"] += len(batch_result["failed_symbols"] or [])
 
         if insert_batch:
             db.session.add_all(insert_batch)
         account.last_synced_at = utcnow_naive()
         db.session.commit()
+        current_app.logger.info(
+            (
+                "MT5 internal sync summary mt5_account_id=%s user_id=%s trade_account_id=%s "
+                "incoming_rows=%s normalized_rows=%s incoming_positions=%s saved=%s updated=%s skipped=%s errors=%s "
+                "skip_reasons=%s"
+            ),
+            mt5_account_id,
+            account.user_id,
+            account.trade_account_id,
+            len(raw_rows),
+            len(normalized_rows),
+            len(incoming_positions),
+            saved_count,
+            updated_count,
+            skipped_count,
+            error_count,
+            skip_reason_counts,
+        )
         if saved_count or updated_count:
             try:
                 invalidate(user_id=account.user_id, trade_account_id=account.trade_account_id)

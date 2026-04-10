@@ -451,7 +451,7 @@
                     {% if account_type == "FUTURES" %}
                     Tradovate timestamps default to <strong>America/Chicago</strong> unless the file provides explicit timezone data.
                     {% else %}
-                    MT5 timestamps default to <strong>GMT+2</strong> unless the file provides explicit timezone data.
+                    MT5 file timestamps are only interpreted when timezone data is explicit; otherwise use MT5 sync for canonical UTC timing.
                     {% endif %}
                 </p>
                 <form action="{{ url_for('trades.import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook" }}">

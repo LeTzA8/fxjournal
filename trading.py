@@ -91,12 +91,14 @@ MT5_COLUMN_ALIASES = {
 MT5_SECTION_TITLES = {"positions", "orders", "deals", "results"}
 ACCOUNT_TYPE_CHOICES = ("CFD", "FUTURES")
 FUTURES_MONTH_CODES = frozenset({"F", "G", "H", "J", "K", "M", "N", "Q", "U", "V", "X", "Z"})
-MT5_DEFAULT_SOURCE_TIMEZONE_NAME = "GMT+2"
-MT5_DEFAULT_SOURCE_TIMEZONE = timezone(timedelta(hours=2), name=MT5_DEFAULT_SOURCE_TIMEZONE_NAME)
+MT5_DEFAULT_SOURCE_TIMEZONE_NAME = "UTC"
+MT5_DEFAULT_SOURCE_TIMEZONE = timezone.utc
 
 
 def utcnow_naive():
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 try:
     TRADOVATE_DEFAULT_SOURCE_TIMEZONE_NAME = "America/Chicago"
     TRADOVATE_DEFAULT_SOURCE_TIMEZONE = ZoneInfo(TRADOVATE_DEFAULT_SOURCE_TIMEZONE_NAME)
@@ -674,6 +676,9 @@ def parse_source_datetime_value(value, default_source_timezone, default_timezone
             describe_timezone_for_storage(parsed_value.tzinfo, default_timezone_name),
         )
 
+    if default_source_timezone is None:
+        return None, default_timezone_name
+
     return (
         convert_source_datetime_to_utc_naive(parsed_value, default_source_timezone),
         default_timezone_name,
@@ -795,7 +800,6 @@ def parse_mt5_rows(rows):
     parsed = []
     skipped = 0
     total = 0
-
     for row_idx in range(header_idx + 1, len(rows)):
         row = rows[row_idx]
         texts = row_texts(row)
@@ -828,19 +832,15 @@ def parse_mt5_rows(rows):
         swap = swap_raw
         opened_at, opened_source_timezone = parse_source_datetime_value(
             col("opened_at"),
-            MT5_DEFAULT_SOURCE_TIMEZONE,
-            MT5_DEFAULT_SOURCE_TIMEZONE_NAME,
+            None,
+            None,
         )
         closed_at, closed_source_timezone = parse_source_datetime_value(
             col("closed_at"),
-            MT5_DEFAULT_SOURCE_TIMEZONE,
-            MT5_DEFAULT_SOURCE_TIMEZONE_NAME,
+            None,
+            None,
         )
-        source_timezone = (
-            opened_source_timezone
-            or closed_source_timezone
-            or MT5_DEFAULT_SOURCE_TIMEZONE_NAME
-        )
+        source_timezone = opened_source_timezone or closed_source_timezone
 
         if not symbol or not side or lot_size is None or entry_price is None:
             skipped += 1

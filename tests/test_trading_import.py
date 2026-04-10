@@ -116,6 +116,92 @@ def test_parse_mt5_xlsx_separates_commission_and_swap():
     assert parsed[0]["swap"] == -0.8
 
 
+def test_parse_mt5_xlsx_uses_explicit_timezone_offsets():
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["Positions"])
+    sheet.append(
+        [
+            "Position",
+            "Symbol",
+            "Type",
+            "Volume",
+            "Open Price",
+            "Close Price",
+            "Time",
+            "Close Time",
+        ]
+    )
+    sheet.append(
+        [
+            112233,
+            "EURUSD",
+            "buy",
+            1.0,
+            1.10000,
+            1.10100,
+            "2026-03-10T09:00:00+02:00",
+            "2026-03-10T11:00:00+02:00",
+        ]
+    )
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+
+    parsed, total, skipped = parse_mt5_xlsx_stream(buffer)
+
+    assert total == 1
+    assert skipped == 0
+    assert len(parsed) == 1
+    assert parsed[0]["opened_at"] == datetime(2026, 3, 10, 7, 0, 0)
+    assert parsed[0]["closed_at"] == datetime(2026, 3, 10, 9, 0, 0)
+    assert parsed[0]["source_timezone"] == "UTC+02:00"
+
+
+def test_parse_mt5_xlsx_does_not_assume_timezone_for_naive_timestamps():
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["Positions"])
+    sheet.append(
+        [
+            "Position",
+            "Symbol",
+            "Type",
+            "Volume",
+            "Open Price",
+            "Close Price",
+            "Time",
+            "Close Time",
+        ]
+    )
+    sheet.append(
+        [
+            221133,
+            "EURUSD",
+            "buy",
+            1.0,
+            1.10000,
+            1.10100,
+            "2026-03-10 09:00:00",
+            "2026-03-10 11:00:00",
+        ]
+    )
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0)
+
+    parsed, total, skipped = parse_mt5_xlsx_stream(buffer)
+
+    assert total == 1
+    assert skipped == 0
+    assert len(parsed) == 1
+    assert parsed[0]["opened_at"] is None
+    assert parsed[0]["closed_at"] is None
+    assert parsed[0]["source_timezone"] is None
+
+
 def test_parse_tradovate_csv_single_trade():
     """
     Fixed CSV:
