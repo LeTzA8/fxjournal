@@ -641,7 +641,8 @@ def test_dashboard_prompt_uses_exit_price_language():
 
     assert "OUTPUT FORMAT" in prompt_text
     assert "Key Takeaways" in prompt_text
-    assert 'End with one final standalone line prefixed exactly with "Rule:".' in prompt_text
+    assert 'One line prefixed exactly with "Improve this week:"' in prompt_text
+    assert 'One line prefixed exactly with "You\'re already strong at:"' in prompt_text
     assert "These are candidate insight buckets, not a checklist." in prompt_text
     assert "A bucket can contribute zero, one, or more bullets depending on the" in prompt_text
     assert "The only heading allowed in the output is Key Takeaways." in prompt_text
@@ -668,10 +669,9 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Do not invent staged-entry lessons like" in prompt_text
     assert "Overnight holding alone is not a mistake." in prompt_text
 
-    assert "RULE WRITING" in prompt_text
-    assert 'Do not prescribe a fixed cooldown like' in prompt_text
-    assert "The rule can either protect a strength or correct a weakness," in prompt_text
-    assert 'Do not create a blanket "never hold overnight" rule from one winning' in prompt_text
+    assert "IMPROVEMENT AND STRENGTH WRITING" in prompt_text
+    assert 'Do not prescribe a fixed cooldown unless repeated same-session' in prompt_text
+    assert "If the week was all losses, the improvement must be constructive and" in prompt_text
 
     assert "TONE" in prompt_text
     assert "Overall tone should be encouraging, grounded, and honest." in prompt_text
@@ -688,13 +688,13 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Use only these optional plain-text section labels in the response:" not in prompt_text
 
 
-def test_normalize_dashboard_advice_text_fixes_rule_prefix_variants():
-    text = "Key Takeaways\n- Supported insight.\n\u00e2\u2020' Rule: Keep risk fixed."
+def test_normalize_dashboard_advice_text_fixes_improvement_prefix_variants():
+    text = "Key Takeaways\n- Supported insight.\n\u2192 Improve this week: Keep risk fixed."
 
     normalized = normalize_dashboard_advice_text(text)
 
-    assert normalized.endswith("Rule: Keep risk fixed.")
-    assert "\u00e2\u2020'" not in normalized
+    assert "Improve this week: Keep risk fixed." in normalized
+    assert "\u2192 Improve this week:" not in normalized
 
 
 def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, monkeypatch):

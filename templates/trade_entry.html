@@ -105,6 +105,23 @@
                     {% endif %}
                     <p class="trade-hero-meta soft">{{ active_trade_account_name }} · {{ "Futures" if account_type == "FUTURES" else "CFD" }} · {{ analytics_timezone }}</p>
                 </div>
+                {% if is_admin_user and trade.mt5_position and not trade_is_running %}
+                <div class="trade-chart-panel" id="tradeChartPanel">
+                    <div class="trade-chart-head">
+                        <h3 class="trade-chart-title">Price chart</h3>
+                        <span class="trade-chart-tf soft" id="tradeChartTf"></span>
+                    </div>
+                    <div class="trade-chart-body">
+                        <div id="tradeChartContainer" class="trade-chart-container"></div>
+                        <p class="trade-chart-status soft" id="tradeChartStatus">Loading chart data&hellip;</p>
+                    </div>
+                </div>
+                <script>
+                    window.__TRADE_CHART_DATA_URL__ = "{{ url_for('trades.trade_chart_data', trade_pubkey=trade.pubkey) }}";
+                </script>
+                <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+                <script src="{{ url_for('static', filename='js/trade_chart.js') }}"></script>
+                {% endif %}
                 {% elif form_mode == 'edit' and trade %}
                 <div class="trade-hero trade-hero--pills" aria-live="polite">
                     <div class="trade-hero-pill-row">

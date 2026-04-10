@@ -1304,3 +1304,51 @@ body.app-layout .trade-accounts-page .helper-note {
             opacity: 0;
         }
     }
+
+/* --- Trade detail chart panel --- */
+.trade-chart-panel {
+    margin: 0.15rem 0 1rem;
+    border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--card) 94%, transparent);
+    padding: 0.68rem 0.75rem 0.75rem;
+}
+
+.trade-chart-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-bottom: 0.5rem;
+}
+
+.trade-chart-title {
+    margin: 0;
+    font-size: 0.86rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.trade-chart-tf {
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.trade-chart-container {
+    height: 320px;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.trade-chart-status {
+    margin: 0.55rem 0 0;
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
+
+.trade-chart-panel[data-chart-unavailable] {
+    display: none;
+}

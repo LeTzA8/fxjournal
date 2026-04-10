@@ -870,6 +870,10 @@
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="submit-btn" {% if not account.is_active or is_orphaned %}disabled aria-disabled="true"{% if is_orphaned %} title="Cleanup-only MT5 records cannot be synced."{% endif %}{% endif %}>Trigger Sync</button>
                                         </form>
+                                        <form action="{{ url_for('admin_mt5_backfill_bars', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Queue bar backfill for all closed trades on this account? This may dispatch many tasks.');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="ghost-btn" {% if not account.is_active or is_orphaned %}disabled aria-disabled="true" title="Cannot backfill bars for inactive or cleanup-only accounts."{% endif %}>Backfill Bars</button>
+                                        </form>
                                         <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button

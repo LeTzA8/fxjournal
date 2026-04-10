@@ -2986,6 +2986,51 @@ def register_public_auth_routes(
             "success",
         )
 
+    @app.route("/dashboard/admin/access/mt5/<int:mt5_account_id>/backfill-bars", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_backfill_bars(mt5_account_id):
+        account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        if account.is_orphaned:
+            return build_admin_redirect("mt5", "That MT5 record is cleanup-only. Cannot backfill bars.", "error")
+        if not account.is_active:
+            return build_admin_redirect("mt5", "That MT5 account is inactive. Cannot backfill bars.", "error")
+
+        closed_trades = (
+            Trade.query.filter_by(
+                user_id=account.user_id,
+                trade_account_id=account.trade_account_id,
+            )
+            .filter(Trade.closed_at.isnot(None), Trade.mt5_position.isnot(None))
+            .order_by(Trade.closed_at.desc(), Trade.id.desc())
+            .all()
+        )
+
+        if not closed_trades:
+            return build_admin_redirect("mt5", "No closed MT5 trades found to backfill bars for.", "info")
+
+        try:
+            from celery_workers.mt5_sync import fetch_trade_bars
+            queued = 0
+            for trade in closed_trades:
+                fetch_trade_bars.apply_async(
+                    args=[mt5_account_id, trade.id],
+                    queue="mt5_sync",
+                )
+                queued += 1
+        except Exception as exc:
+            current_app.logger.warning(
+                "Bar backfill dispatch failed for mt5_account_id=%s: %s",
+                mt5_account_id,
+                sanitize_error_message(exc),
+            )
+            return build_admin_redirect("mt5", "Bar backfill could not be queued. Please try again.", "error")
+
+        return build_admin_redirect(
+            "mt5",
+            f"Queued bar backfill for {queued} closed trade{'s' if queued != 1 else ''} on account {account.account_number}.",
+            "success",
+        )
+
     @app.route("/dashboard/admin/access/mt5/requests/<int:request_id>/approve", methods=["POST"])
     @root_admin_required
     def admin_mt5_approve_request(request_id):

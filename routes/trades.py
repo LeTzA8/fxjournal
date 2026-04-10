@@ -26,7 +26,8 @@ from helpers.core import (
     resolve_trade_profile_form_state,
 )
 from helpers.trade_analysis import detect_outliers, get_trade_identity
-from models import Trade, db
+from auth_account import user_has_admin_access
+from models import Trade, TradeBars, User, db
 from trading import (
     calculate_trade_net_pnl,
     build_import_signature,
@@ -1303,6 +1304,60 @@ def bundle_review_complete():
     db.session.commit()
     flash("Bundle review marked as complete.", "info")
     return redirect(url_for("dashboard.home"))
+
+
+@bp.route("/api/trades/<string:trade_pubkey>/chart-data")
+@login_required
+def trade_chart_data(trade_pubkey):
+    user_id = session["user_id"]
+    user = db.session.get(User, user_id)
+    if not user_has_admin_access(user):
+        return current_app.response_class(status=404)
+    trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
+
+    if not trade.mt5_position or trade.closed_at is None:
+        return current_app.response_class(
+            response='{"status":"unavailable"}',
+            status=200,
+            mimetype="application/json",
+        )
+
+    bars_rows = (
+        TradeBars.query.filter_by(trade_id=trade.id)
+        .order_by(TradeBars.bar_time.asc())
+        .all()
+    )
+
+    if not bars_rows:
+        return current_app.response_class(
+            response='{"status":"pending"}',
+            status=200,
+            mimetype="application/json",
+        )
+
+    from flask import jsonify
+    bars = [
+        {"time": b.bar_time, "open": b.open, "high": b.high, "low": b.low, "close": b.close}
+        for b in bars_rows
+    ]
+
+    entry_time = int(trade.opened_at.timestamp()) if trade.opened_at else None
+    exit_time = int(trade.closed_at.timestamp()) if trade.closed_at else None
+
+    return jsonify({
+        "status": "ready",
+        "timeframe": bars_rows[0].timeframe,
+        "bars": bars,
+        "markers": {
+            "entry_price": trade.entry_price,
+            "exit_price": trade.exit_price,
+            "stop_loss": trade.stop_loss,
+            "take_profit": trade.take_profit,
+            "entry_time": entry_time,
+            "exit_time": exit_time,
+            "side": trade.side,
+        },
+    })
 
 
 @bp.route("/dashboard/trades/<string:trade_pubkey>/delete", methods=["POST"])

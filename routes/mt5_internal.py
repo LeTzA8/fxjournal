@@ -7,7 +7,7 @@ from flask import Blueprint, current_app, jsonify, request
 from celery_workers.cache import CacheUnavailableError, invalidate
 from helpers.core import build_normalized_trade_insert_batch, queue_bundle_review_if_split_candidates
 from helpers.utils import utcnow_naive
-from models import MT5Account, Trade, db
+from models import MT5Account, Trade, TradeBars, db
 from trading import get_timezone, parse_float_value, parse_mt5_position_value, parse_source_datetime_value
 
 bp = Blueprint("mt5_internal", __name__)
@@ -158,6 +158,7 @@ def sync_mt5_trades():
         updated_count = 0
         skipped_count = 0
         error_count = invalid_rows
+        newly_closed_trade_ids = []
 
         for row in normalized_rows:
             mt5_position = _normalize_mt5_position_key(row.get("mt5_position"))
@@ -218,6 +219,7 @@ def sync_mt5_trades():
                 if row.get("system_trade_note"):
                     existing_trade.system_trade_note = row.get("system_trade_note")
                 updated_count += 1
+                newly_closed_trade_ids.append(existing_trade.id)
                 continue
 
             skip_reason_counts["existing_already_closed_or_no_state_change"] += 1
@@ -316,6 +318,26 @@ def sync_mt5_trades():
                     mt5_account_id,
                     exc,
                 )
+
+        # Dispatch bar fetch for newly closed trades (updated existing + new inserts with closed_at)
+        bar_fetch_trade_ids = list(newly_closed_trade_ids)
+        for trade in insert_batch:
+            if trade.closed_at is not None and trade.id is not None:
+                bar_fetch_trade_ids.append(trade.id)
+        if bar_fetch_trade_ids:
+            try:
+                from celery_workers.mt5_sync import fetch_trade_bars
+                for trade_id in bar_fetch_trade_ids:
+                    fetch_trade_bars.apply_async(
+                        args=[mt5_account_id, trade_id],
+                        queue="mt5_sync",
+                    )
+            except Exception as exc:
+                current_app.logger.warning(
+                    "Bar fetch dispatch failed after MT5 sync for mt5_account_id=%s: %s",
+                    mt5_account_id,
+                    exc,
+                )
         response_payload = {
             "saved": saved_count,
             "updated": updated_count,
@@ -335,3 +357,68 @@ def sync_mt5_trades():
             exc_info=exc,
         )
         return jsonify({"saved": 0, "updated": 0, "skipped": 0, "errors": len(raw_rows) + invalid_rows}), 500
+
+
+@bp.route("/api/internal/mt5/trade-bars", methods=["POST"])
+def ingest_trade_bars():
+    sync_secret = os.getenv("MT5_SYNC_SECRET", "").strip()
+    header_secret = request.headers.get("X-Sync-Secret", "").strip()
+    if not sync_secret or not secrets.compare_digest(header_secret, sync_secret):
+        return jsonify({"error": "forbidden"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        mt5_account_id = int(payload.get("mt5_account_id"))
+        trade_id = int(payload.get("trade_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid mt5_account_id or trade_id"}), 400
+
+    timeframe = str(payload.get("timeframe") or "").strip()
+    if not timeframe:
+        return jsonify({"error": "timeframe required"}), 400
+
+    bars = payload.get("bars")
+    if not isinstance(bars, list):
+        return jsonify({"error": "bars must be a list"}), 400
+
+    account = MT5Account.query.filter_by(id=mt5_account_id).first()
+    if account is None:
+        return jsonify({"error": "mt5 account not found"}), 404
+
+    trade = Trade.query.filter_by(id=trade_id).first()
+    if trade is None:
+        return jsonify({"error": "trade not found"}), 404
+
+    if trade.user_id != account.user_id:
+        return jsonify({"error": "trade does not belong to this account's user"}), 403
+
+    try:
+        TradeBars.query.filter_by(trade_id=trade_id, timeframe=timeframe).delete()
+        now = utcnow_naive()
+        bar_rows = [
+            TradeBars(
+                trade_id=trade_id,
+                timeframe=timeframe,
+                bar_time=int(bar["time"]),
+                open=float(bar["open"]),
+                high=float(bar["high"]),
+                low=float(bar["low"]),
+                close=float(bar["close"]),
+                tick_volume=bar.get("tick_volume"),
+                fetched_at=now,
+            )
+            for bar in bars
+            if isinstance(bar, dict) and bar.get("time") is not None
+        ]
+        db.session.add_all(bar_rows)
+        db.session.commit()
+        return jsonify({"saved": len(bar_rows), "timeframe": timeframe})
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "trade-bars ingest failed for trade_id=%s mt5_account_id=%s: %s",
+            trade_id,
+            mt5_account_id,
+            exc,
+        )
+        return jsonify({"error": "internal error"}), 500

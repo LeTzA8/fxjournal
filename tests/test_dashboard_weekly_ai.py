@@ -655,7 +655,7 @@ def test_load_user_trades_preloads_trade_profile_relationships(app_ctx, client):
     assert loaded_trades[0].trade_profile_version.name == "Trend Pullback v1"
 
 
-def test_dashboard_home_normalizes_broken_rule_prefix_in_weekly_ai_review(app_ctx, client, monkeypatch):
+def test_dashboard_home_normalizes_broken_improvement_prefix_in_weekly_ai_review(app_ctx, client, monkeypatch):
     _user, _trade_account = _create_logged_in_user(
         client,
         username="dashboard-ai-review-user",
@@ -665,7 +665,7 @@ def test_dashboard_home_normalizes_broken_rule_prefix_in_weekly_ai_review(app_ct
     review = type(
         "Review",
         (),
-        {"response_text": "Key Takeaways\n- Supported insight.\n\u00e2\u2020' Rule: Keep risk fixed."},
+        {"response_text": "Key Takeaways\n- Supported insight.\n\u2192 Improve this week: Keep risk fixed."},
     )()
 
     monkeypatch.setattr(
@@ -684,8 +684,8 @@ def test_dashboard_home_normalizes_broken_rule_prefix_in_weekly_ai_review(app_ct
     response_text = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert "Rule: Keep risk fixed." in response_text
-    assert "\u00e2\u2020'" not in response_text
+    assert "Improve this week: Keep risk fixed." in response_text
+    assert "\u2192 Improve this week:" not in response_text
 
 
 def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
@@ -710,9 +710,13 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
                             "refs": ["B1"],
                         },
                     ],
-                    "rule": {
-                        "text": "Rule: Use the same filter that made T1 clean before adding back into B1.",
-                        "refs": ["T1", "B1"],
+                    "improvement": {
+                        "text": "Improve this week: Use the same filter that made T1 clean before adding back into B1.",
+                        "refs": [],
+                    },
+                    "strength": {
+                        "text": "You're already strong at: Treating T1 entries as single setups rather than layering early.",
+                        "refs": [],
                     },
                 }
             ),
@@ -764,11 +768,14 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
     assert display["takeaways"][1]["segments"][0]["type"] == "citation"
     assert display["takeaways"][1]["segments"][0]["label"] == "GBPUSD bundle | 02 Apr 2026 (Thu)"
     assert display["takeaways"][1]["segments"][0]["tone"] == "bad"
-    assert "XAUUSD" in display["rule"]["text"]
-    assert "GBPUSD bundle" in display["rule"]["text"]
-    assert display["rule"]["citations"] == []
-    assert display["rule"]["segments"] == [
-        {"type": "text", "text": display["rule"]["text"]},
+    assert "T1" not in display["improvement"]["text"]
+    assert display["improvement"]["citations"] == []
+    assert display["improvement"]["segments"] == [
+        {"type": "text", "text": display["improvement"]["text"]},
+    ]
+    assert display["strength"]["citations"] == []
+    assert display["strength"]["segments"] == [
+        {"type": "text", "text": display["strength"]["text"]},
     ]
 
 
@@ -821,8 +828,12 @@ def test_weekly_ai_review_display_autocites_unique_symbol_mentions():
                             "refs": [],
                         }
                     ],
-                    "rule": {
-                        "text": "Rule: Keep the same confirmation standard on split entries next week.",
+                    "improvement": {
+                        "text": "Improve this week: Keep the same confirmation standard on split entries next week.",
+                        "refs": [],
+                    },
+                    "strength": {
+                        "text": "You're already strong at: Maintaining consistent sizing across continuation ideas.",
                         "refs": [],
                     },
                 }
@@ -861,8 +872,11 @@ def test_weekly_ai_review_display_autocites_unique_symbol_mentions():
     assert display["summary"]["segments"][0]["tone"] == "good"
     assert display["takeaways"][0]["segments"][0]["type"] == "citation"
     assert display["takeaways"][0]["segments"][0]["label"] == "EURCHF | 03 Apr 2026 (Fri)"
-    assert display["rule"]["segments"] == [
-        {"type": "text", "text": display["rule"]["text"]},
+    assert display["improvement"]["segments"] == [
+        {"type": "text", "text": display["improvement"]["text"]},
+    ]
+    assert display["strength"]["segments"] == [
+        {"type": "text", "text": display["strength"]["text"]},
     ]
 
 

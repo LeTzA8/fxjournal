@@ -9,8 +9,8 @@
         {{ app_page_hero(
             "Strategies",
             eyebrow="Setup library",
-            primary_story="Name and version the setups you attach to trades so analytics and weekly review can speak in your language.",
-            hero_copy="Edits save as a new version; archives stay on past trades for honest history.",
+            primary_story="Name and version setups you attach to trades so analytics and weekly review use your language.",
+            hero_copy="Edits create a new version. Archives keep past trade history intact.",
             extra_class="app-page-hero--settings-hub",
         ) }}
 
@@ -26,7 +26,7 @@
                 {% endif %}
             </p>
             <p class="app-hub-summary-hint">
-                Tag trades and imports with these names so session splits, analytics, and the weekly review reuse your wording instead of generic labels.
+                Tag trades and imports so analytics and weekly review use your setup names, not generic labels.
             </p>
         </section>
 
@@ -37,7 +37,7 @@
         >
             <article class="panel profile-list-panel">
                 <div class="panel-head">
-                    <h2>Strategy Library</h2>
+                    <h2>📚 Strategy Library</h2>
                     <span class="soft">{{ trade_profiles|length }} strategies</span>
                 </div>
                 {% if trade_profiles %}
@@ -92,7 +92,7 @@
                     <p class="app-guided-empty-kicker">Start here</p>
                     <h3 class="app-guided-empty-title">Create your first strategy</h3>
                     <p class="app-guided-empty-text">
-                        Strategies are tags you apply on the trade log and in imports. Add a short name plus a one-paragraph playbook so future-you remembers what “NY sweep” or “Asia liquidity” meant.
+                        Strategies are tags used in the trade log and imports. Add a short name and a brief playbook note.
                     </p>
                 </div>
                 {% endif %}
@@ -100,14 +100,14 @@
 
             <article class="panel profile-action-panel">
                 <div class="panel-head">
-                    <h2>Quick actions</h2>
+                    <h2>⚡ Quick actions</h2>
                     <span class="soft">Create</span>
                 </div>
-                <p class="empty-copy">Open the form when you are ready to add a setup. Edit and archive stay on each card in the library.</p>
+                <p class="empty-copy">Use this form to add setups. Edit and archive stay on each library card.</p>
                 <ul class="app-hub-tips" aria-label="Strategy tips">
-                    <li>Use a short, memorable name plus a one-paragraph playbook you will still understand months later.</li>
-                    <li>Archiving keeps history on past trades; it does not remove labels already stored on those rows.</li>
-                    <li>Attach strategies from the trade log or while cleaning imports so coaching stays specific to how you trade.</li>
+                    <li>Use short, memorable names with a brief playbook note.</li>
+                    <li>Archiving keeps past trade labels and version history.</li>
+                    <li>Tag from trade log/import cleanup to keep coaching specific.</li>
                 </ul>
                 <div class="profile-action-stack">
                     <button
@@ -133,7 +133,7 @@
             <h2 id="strategyEditorTitle">New Strategy</h2>
             <span id="strategyEditorMode" class="soft">Version 1</span>
         </div>
-        <p id="strategyEditorHelp" class="empty-copy">Start with the setup name and a short description of the entry model, confirmation, or execution rules you want to track.</p>
+        <p id="strategyEditorHelp" class="empty-copy">Add a setup name and short rules you want to track.</p>
         <form
             id="strategyEditorForm"
             action="{{ url_for('trade_profiles.strategies') }}"
@@ -174,7 +174,7 @@
             <h2 id="archiveStrategyTitle">Archive Strategy</h2>
             <span class="soft">Keep History</span>
         </div>
-        <p id="archiveStrategyLead" class="empty-copy">Archive this strategy to remove it from the active library while keeping its past trade tags and versions intact.</p>
+        <p id="archiveStrategyLead" class="empty-copy">Archive to remove from the active library while keeping past tags and versions.</p>
         <form
             id="archiveStrategyForm"
             method="post"

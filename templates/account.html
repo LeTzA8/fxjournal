@@ -351,26 +351,47 @@
     h2 { margin: 0;
         font-size: 1rem; }
 
-    .profile-list { margin: 0;
-        display: grid;
-        gap: 0.55rem; }
+    .profile-panel dl.profile-list {
+        margin: 0;
+        display: block;
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 55%, transparent);
+        overflow: hidden;
+    }
 
-    .profile-row { display: flex;
-        align-items: center;
+    .profile-panel .profile-row {
+        display: flex;
+        align-items: baseline;
         justify-content: space-between;
-        gap: 0.8rem;
-        border: 1px solid var(--surface-border-strong); border-radius: 10px;
-        padding: 0.56rem 0.68rem; }
+        gap: 1rem;
+        padding: 0.62rem 0.78rem;
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    }
 
-    .profile-row dt { margin: 0; font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        font-weight: 700; }
+    .profile-panel .profile-row:last-child {
+        border-bottom: none;
+    }
 
-    .profile-row dd { margin: 0; font-size: 0.88rem;
-        font-weight: 700;
+    .profile-panel .profile-row dt {
+        margin: 0;
+        flex: 0 1 auto;
+        min-width: 0;
+        font-size: 0.82rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        color: var(--muted);
+    }
+
+    .profile-panel .profile-row dd {
+        margin: 0;
+        flex: 0 1 auto;
         text-align: right;
-        overflow-wrap: anywhere; }
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--ink);
+        overflow-wrap: anywhere;
+    }
 
     .profile-summary { margin-top: 0; }
 
@@ -504,10 +525,16 @@
 
         .form-actions { flex-wrap: wrap; }
 
-        .profile-row { flex-direction: column;
-            align-items: flex-start; }
+        .profile-panel .profile-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.22rem;
+        }
 
-        .profile-row dd { text-align: left; } }
+        .profile-panel .profile-row dd {
+            text-align: left;
+        }
+    }
 </style>
 
 {% endblock %}

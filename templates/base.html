@@ -751,7 +751,7 @@
             display: inline-flex;
             align-items: center;
             min-width: 0;
-            max-width: min(360px, 100%);
+            max-width: min(440px, 100%);
         }
 
         .site-account-disclosure {
@@ -802,10 +802,12 @@
         }
 
         .site-account-bar-copy {
-            display: inline-flex;
+            display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.62rem;
             min-width: 0;
+            flex: 1 1 0%;
+            overflow: hidden;
         }
 
         .site-account-bar-label {
@@ -822,20 +824,23 @@
             color: var(--muted);
             overflow-wrap: anywhere;
             white-space: nowrap;
+            flex: 0 0 auto;
         }
 
         .site-account-summary-row {
-            display: inline-flex;
+            display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.62rem;
             flex-wrap: nowrap;
             min-width: 0;
+            flex: 1 1 auto;
+            overflow: hidden;
         }
 
         .site-account-summary-name {
-            display: inline-flex;
-            align-items: center;
-            max-width: 100%;
+            display: block;
+            min-width: 0;
+            flex: 1 1 0%;
             min-height: 28px;
             padding: 0.24rem 0.52rem;
             border-radius: 999px;
@@ -844,7 +849,7 @@
             color: var(--ink);
             font-size: 0.78rem;
             font-weight: 800;
-            line-height: 1;
+            line-height: 1.25;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -1233,8 +1238,18 @@
             .site-brand { grid-area: brand; }
             .site-nav {
                 grid-area: nav;
-                justify-content: center;
+                justify-content: flex-start;
                 width: 100%;
+                overflow-x: auto;
+                overflow-y: hidden;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: thin;
+                padding-bottom: 0.08rem;
+            }
+
+            .site-nav-link,
+            .site-nav-group {
+                flex: 0 0 auto;
             }
 
             .site-header-actions {
@@ -1242,6 +1257,12 @@
                 justify-self: stretch;
                 width: 100%;
                 justify-content: flex-start;
+                flex-wrap: wrap;
+            }
+
+            .site-header-actions > * {
+                min-width: 0;
+                max-width: 100%;
             }
 
             .site-header-account {
@@ -1269,12 +1290,23 @@
                 min-width: 0;
             }
 
+            .site-account-summary-row {
+                width: 100%;
+                grid-template-columns: minmax(0, 1fr);
+            }
+
             .site-account-bar-label {
                 display: inline-flex;
             }
 
             .site-account-bar-meta {
                 white-space: normal;
+                overflow-wrap: anywhere;
+            }
+
+            .site-account-summary-name {
+                width: 100%;
+                max-width: 100%;
             }
 
             .site-account-bar-controls {
@@ -2367,7 +2399,7 @@
                             <div class="site-account-bar-copy">
                                 <span class="site-account-bar-label">Trade Account</span>
                                 <div class="site-account-summary-row">
-                                    <span class="site-account-summary-name">{{ active_trade_account.name }}</span>
+                                    <span class="site-account-summary-name" title="{{ active_trade_account.name }}">{{ active_trade_account.name }}</span>
                                     <span class="site-account-bar-meta">
                                         {{ "Default" if active_trade_account.is_default else "Secondary" }}
                                         |
@@ -2429,7 +2461,7 @@
                         <div class="site-account-bar-copy">
                             <span class="site-account-bar-label">Trade Account</span>
                             <div class="site-account-summary-row">
-                                <span class="site-account-summary-name">{{ active_trade_account.name }}</span>
+                                <span class="site-account-summary-name" title="{{ active_trade_account.name }}">{{ active_trade_account.name }}</span>
                                 <span class="site-account-bar-meta">
                                     {{ "Default" if active_trade_account.is_default else "Secondary" }}
                                     |
@@ -2482,7 +2514,7 @@
                         <div class="site-account-bar-copy">
                             <span class="site-account-bar-label">Trade Account</span>
                             <div class="site-account-summary-row">
-                                <span class="site-account-summary-name">{{ active_trade_account.name }}</span>
+                                <span class="site-account-summary-name" title="{{ active_trade_account.name }}">{{ active_trade_account.name }}</span>
                                 <span class="site-account-bar-meta">
                                     {{ "Default" if active_trade_account.is_default else "Secondary" }}
                         •

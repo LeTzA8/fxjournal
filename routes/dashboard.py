@@ -53,18 +53,17 @@ from trading import (
 bp = Blueprint("dashboard", __name__)
 
 DEFAULT_WEEKLY_AI_EMPTY_MESSAGE = (
-    "Your weekly AI review will appear once this account has an eligible trade week. "
-    "It uses the most recent completed week with trades on the active account."
+    "Your weekly AI review appears after an eligible trade week on this account."
 )
 WEEKLY_AI_GENERATING_MESSAGE = (
-    "Your weekly AI review is being generated - check back in a moment."
+    "Generating your weekly AI review. Check back shortly."
 )
-WEEKLY_AI_NO_TRADES_MESSAGE = "No trades this week. Add closed trades to generate your AI review."
+WEEKLY_AI_NO_TRADES_MESSAGE = "No trades this week. Add closed trades to generate a review."
 WEEKLY_AI_TOO_FEW_TRADES_MESSAGE = (
-    "This week has limited trade data, so the AI review will stay cautious and avoid overconfident conclusions."
+    "Limited trade data this week, so the review will stay cautious."
 )
 WEEKLY_AI_UNAVAILABLE_MESSAGE = (
-    "Weekly AI review is temporarily unavailable. Please try again in a little while."
+    "Weekly AI review is temporarily unavailable. Please try again shortly."
 )
 WEEKLY_AI_PROMPT_FILENAME = "dashboard_advice.txt"
 DASHBOARD_CACHE_PREFIX = "dashboard_v3"
@@ -441,15 +440,21 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
         )
         takeaways.append(takeaway)
 
-    rule = dict(display.get("rule") or {})
-    rule["text"] = _rewrite_review_text_refs(rule.get("text"), citation_lookup)
-    rule["citations"] = []
-    rule["segments"] = [{"type": "text", "text": rule.get("text")}] if rule.get("text") else []
+    improvement = dict(display.get("improvement") or {})
+    improvement["text"] = _rewrite_review_text_refs(improvement.get("text"), citation_lookup)
+    improvement["citations"] = []
+    improvement["segments"] = [{"type": "text", "text": improvement.get("text")}] if improvement.get("text") else []
+
+    strength = dict(display.get("strength") or {})
+    strength["text"] = _rewrite_review_text_refs(strength.get("text"), citation_lookup)
+    strength["citations"] = []
+    strength["segments"] = [{"type": "text", "text": strength.get("text")}] if strength.get("text") else []
 
     return {
         "summary": summary,
         "takeaways": takeaways,
-        "rule": rule,
+        "improvement": improvement,
+        "strength": strength,
         "has_citations": bool(
             summary.get("citations")
             or any(item.get("citations") for item in takeaways)

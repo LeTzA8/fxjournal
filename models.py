@@ -395,6 +395,42 @@ class Trade(db.Model):
             passive_deletes=True,
         ),
     )
+    trade_bars = db.relationship(
+        "TradeBars",
+        backref="trade",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class TradeBars(db.Model):
+    __tablename__ = "trade_bars"
+    __table_args__ = (
+        db.Index("ix_trade_bars_trade_id", "trade_id"),
+        db.Index(
+            "uq_trade_bars_trade_timeframe_bartime",
+            "trade_id",
+            "timeframe",
+            "bar_time",
+            unique=True,
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    trade_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trades.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    timeframe = db.Column(db.String(8), nullable=False)
+    bar_time = db.Column(db.Integer, nullable=False)  # Unix epoch UTC
+    open = db.Column(db.Float, nullable=False)
+    high = db.Column(db.Float, nullable=False)
+    low = db.Column(db.Float, nullable=False)
+    close = db.Column(db.Float, nullable=False)
+    tick_volume = db.Column(db.Integer, nullable=True)
+    fetched_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
 
 
 class MT5Account(db.Model):

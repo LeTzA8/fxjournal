@@ -14,16 +14,20 @@ Short-term operational memory.
 ## Active Areas
 
 - MT5 timestamp interpretation tightened: MT5 sync marks explicit UTC epoch interpretation and logs VM timezone context, while MT5 file imports no longer assume timezone for naive timestamps (`trading.py`, `routes/mt5_internal.py`, `celery_workers/mt5_sync.py`, `templates/trade_entry.html`, `tests/test_trading_import.py`)
+- Closed MT5 trade detail now includes Lightweight Charts candlestick panel wiring with admin-gated chart-data fetch and dedicated chart panel styling in shared app-page CSS (`templates/trade_entry.html`, `static/js/trade_chart.js`, `static/css/app_pages.css`)
 - MT5 request flow work in `routes/trade_accounts.py`, `templates/trade_accounts.html`, and `static/js/mt5_request_form.js`
 - MT5 receipt confirmation now uses the shared HTML email pattern in `routes/trade_accounts.py` and `templates/emails/mt5-request-received.html`
 - Admin MT5 tab now focuses on submitted MT5 accounts and setup actions instead of legacy request-review/manual-add panels (`auth_account.py`, `templates/admin_signup_access.html`)
 - Legacy MT5 `approved before details` path is being removed so dashboard/trade-account states now stay aligned with the one-step submit-then-review flow
 - Admin MT5 table now uses explicit workflow statuses: Requested, Setting Up, Active, Inactive, while preserving Cleanup Pending for orphaned records
 - Dashboard MT5 messaging, rolling performance/behaviour trend panel, and weekly AI presentation work in `routes/dashboard.py`, `templates/index.html`, and `helpers/trends.py`
+- Weekly AI hero now drafts a split review layout: larger left narrative panel (summary + takeaways) with two right-side micro-panels for one actionable improvement and one strength to reinforce (`templates/index.html`)
+- Light emoji prefixes on major section titles only (dashboard MT5/trades, analytics KPI bands, trade accounts, strategies, trades table); account settings headings stay plain with a calmer single-border overview list (`templates/account.html`)
 - Worker/admin MT5 flow work in `auth_account.py`, `helpers/core.py`, and `celery_workers/mt5_setup.py`
 - MT5 sync diagnostics improved: internal ingest now logs explicit skip-reason counters and sync worker warns when a run is all-skipped (`routes/mt5_internal.py`, `celery_workers/mt5_sync.py`)
 - MT5 rolling/full-history sync now shifts the `history_deals_get` request window into broker/server time before normalizing returned deal timestamps back to UTC, to avoid recent MT5 deals arriving 1-3 hours late on non-UTC brokers (`celery_workers/mt5_sync.py`, `tests/test_mt5_sync.py`)
 - Celery worker logging now uses a shared ASCII-table formatter across MT5 sync, MT5 setup/cleanup, weekly AI generation, and weekly checkin cleanup so task logs read as consistent summaries instead of mixed plain lines (`celery_workers/logging_utils.py`, worker modules, `tests/test_celery_worker_logging.py`)
+- Celery's built-in plain `celery.app.trace` task lifecycle lines are now filtered so worker output relies on the richer FX Journal table summaries instead of duplicate `Task ... succeeded/retry/failed` lines (`celery_app.py`, `tests/test_celery_app.py`)
 - Bundle review and weekly check-in outlier cards now render trade timestamps in the user display timezone instead of raw stored UTC (`routes/trades.py`, `routes/checkin.py`, `templates/bundle_review.html`, `templates/checkin.html`, route tests)
 - After file import or MT5 sync, `queue_bundle_review_if_split_candidates` in `helpers/core.py` may set `bundle_review_requested_at` when `detect_outliers` finds split candidates (`routes/trades.py`, `routes/mt5_internal.py`, `tests/test_bundle_review_queue.py`)
 - Optional per trade account: `default_trade_profile_id` on `TradeAccount` (null by default) tags **new** import/MT5-sync rows via `resolve_import_default_trade_profile_ids` + `build_normalized_trade_insert_batch` (`migrations/versions/20260405_0037_trade_account_default_strategy.py`, Trade Accounts dialog + `trade_accounts_page.js`, `tests/test_trading_import.py`)

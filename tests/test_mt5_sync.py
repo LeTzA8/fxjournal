@@ -11,7 +11,7 @@ from celery_workers.mt5_sync import aggregate_deals_to_trades, _positions_to_ope
 from celery_app import celery
 from helpers.core import delete_users_with_related_data
 from helpers.utils import decrypt_password, encrypt_password
-from models import MT5Account, Trade, TradeAccount, User, db
+from models import MT5Account, Trade, TradeAccount, TradeBars, User, db
 
 
 def _create_user_with_account(*, username, email, account_name="Main Account"):
@@ -699,6 +699,121 @@ def test_internal_mt5_sync_saves_and_skips_duplicates(app_ctx, client, monkeypat
     assert second_trade.system_trade_note == "Auto-imported via MT5 sync"
     assert first_mt5_account.last_synced_at is not None
     assert second_mt5_account.last_synced_at is not None
+
+
+def test_internal_mt5_trade_bars_requires_shared_secret(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="trade-bars-secret-user",
+        email="trade-bars-secret@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="91919191",
+    )
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1,
+        exit_price=1.101,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 9, 0, 0),
+        closed_at=datetime(2026, 4, 10, 10, 0, 0),
+        mt5_position="919191",
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    payload = {
+        "mt5_account_id": mt5_account.id,
+        "trade_id": trade.id,
+        "timeframe": "M5",
+        "bars": [],
+    }
+    missing_secret = client.post("/api/internal/mt5/trade-bars", json=payload)
+    wrong_secret = client.post(
+        "/api/internal/mt5/trade-bars",
+        json=payload,
+        headers={"X-Sync-Secret": "wrong"},
+    )
+
+    assert missing_secret.status_code == 403
+    assert wrong_secret.status_code == 403
+
+
+def test_internal_mt5_trade_bars_replaces_existing_timeframe_rows(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="trade-bars-replace-user",
+        email="trade-bars-replace@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="82828282",
+    )
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1,
+        exit_price=1.101,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 9, 0, 0),
+        closed_at=datetime(2026, 4, 10, 10, 0, 0),
+        mt5_position="828282",
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    first_payload = {
+        "mt5_account_id": mt5_account.id,
+        "trade_id": trade.id,
+        "timeframe": "M5",
+        "bars": [
+            {"time": 1_700_000_000, "open": 1.1, "high": 1.101, "low": 1.099, "close": 1.1005, "tick_volume": 100},
+            {"time": 1_700_000_300, "open": 1.1005, "high": 1.102, "low": 1.1, "close": 1.1015, "tick_volume": 120},
+        ],
+    }
+    second_payload = {
+        "mt5_account_id": mt5_account.id,
+        "trade_id": trade.id,
+        "timeframe": "M5",
+        "bars": [
+            {"time": 1_700_000_600, "open": 1.1015, "high": 1.103, "low": 1.101, "close": 1.1025, "tick_volume": 140},
+        ],
+    }
+
+    first_response = client.post(
+        "/api/internal/mt5/trade-bars",
+        json=first_payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+    second_response = client.post(
+        "/api/internal/mt5/trade-bars",
+        json=second_payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    rows = TradeBars.query.filter_by(trade_id=trade.id, timeframe="M5").order_by(TradeBars.bar_time.asc()).all()
+
+    assert first_response.status_code == 200
+    assert first_response.get_json()["saved"] == 2
+    assert second_response.status_code == 200
+    assert second_response.get_json()["saved"] == 1
+    assert len(rows) == 1
+    assert rows[0].bar_time == 1_700_000_600
+    assert rows[0].close == pytest.approx(1.1025)
 
 
 def test_internal_mt5_sync_inserts_new_running_trade(app_ctx, client, monkeypatch):

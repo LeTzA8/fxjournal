@@ -569,6 +569,48 @@ def is_extremely_long_duration_minutes(duration_minutes):
     return duration_minutes is not None and duration_minutes > EXTREMELY_LONG_HOLD_MINUTES
 
 
+# --- Chart timeframe helpers ---
+
+_CHART_TIMEFRAME_SECONDS = {
+    "M5": 5 * 60,
+    "M15": 15 * 60,
+    "H1": 60 * 60,
+}
+
+
+def select_chart_timeframe(opened_at, closed_at):
+    """Return the best MT5 timeframe string for a trade review chart.
+
+    hold <= 12h  -> M5
+    12h < hold <= 3d -> M15
+    hold > 3d    -> H1
+    fallback     -> M15
+    """
+    if opened_at is None or closed_at is None:
+        return "M15"
+    hold_seconds = (closed_at - opened_at).total_seconds()
+    if hold_seconds <= 12 * 3600:
+        return "M5"
+    if hold_seconds <= 3 * 24 * 3600:
+        return "M15"
+    return "H1"
+
+
+def chart_timeframe_bar_seconds(timeframe):
+    """Return bar duration in seconds for a timeframe string."""
+    return _CHART_TIMEFRAME_SECONDS.get(timeframe, 15 * 60)
+
+
+def mt5_timeframe_constant(timeframe_str, mt5_module):
+    """Map a timeframe string to the matching mt5.TIMEFRAME_* constant."""
+    mapping = {
+        "M5": mt5_module.TIMEFRAME_M5,
+        "M15": mt5_module.TIMEFRAME_M15,
+        "H1": mt5_module.TIMEFRAME_H1,
+    }
+    return mapping.get(timeframe_str, mt5_module.TIMEFRAME_M15)
+
+
 def normalize_header_name(value):
     text = str(value or "").strip().lower()
     text = re.sub(r"[\s_/\\-]+", " ", text)

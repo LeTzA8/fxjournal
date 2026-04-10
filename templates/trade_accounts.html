@@ -9,8 +9,8 @@
         {{ app_page_hero(
             "Trade accounts",
             eyebrow="Account scope",
-            primary_story="Each account keeps its own trade book, imports, and analytics. Switch the active account from the header or here.",
-            hero_copy="MT5 linking and sync requests are coordinated from the dashboard MT5 card for CFD accounts.",
+            primary_story="Each account keeps its own trades, imports, and analytics. Switch active account here or from the header.",
+            hero_copy="For CFD accounts, manage MT5 sync from the dashboard MT5 card.",
             extra_class="app-page-hero--settings-hub",
         ) }}
 
@@ -25,7 +25,7 @@
                 {% endif %}
             </p>
             <p class="app-hub-summary-hint">
-                One row per broker, challenge, or funded program keeps PnL and weekly review scoped. The account marked Default receives new file imports when the file does not target a specific book. Optionally set a default strategy per account so MT5 sync and imports tag new rows automatically.
+                Keep one account per broker/challenge/fund. Default receives imports that do not name an account. Optional default strategy auto-tags MT5 sync and import rows.
             </p>
         </section>
 
@@ -37,7 +37,7 @@
         >
             <article class="panel accounts-panel">
                 <div class="panel-head">
-                    <h2>Current Accounts</h2>
+                    <h2>🗂️ Current Accounts</h2>
                     <span id="tradeAccountTotal" class="soft">{{ account_rows|length }} total</span>
                 </div>
 
@@ -170,7 +170,7 @@
                             {% endif %}
                             <p class="account-meta">You can now finish the full MT5 sync form from the dashboard card without waiting for approval first.</p>
                             {% else %}
-                            <p class="account-meta">Manage MT5 requests from the dashboard card instead of per-account forms.</p>
+                            <p class="account-meta">Manage MT5 from the dashboard card.</p>
                             <a href="{{ url_for('dashboard.home', _anchor='mt5-access') }}" class="ghost-link btn-link">Open Dashboard MT5 Access</a>
                             {% endif %}
                         </div>
@@ -191,15 +191,15 @@
 
             <article class="panel action-panel">
                 <div class="panel-head">
-                    <h2>Account actions</h2>
+                    <h2>⚙️ Account actions</h2>
                     <span class="soft">Create &amp; reset</span>
                 </div>
                 <p id="tradeAccountAlert" class="account-alert" role="status" hidden></p>
-                <p class="helper-note">Keep the page focused on the account list. Open create, edit, or delete flows only when you need them.</p>
+                <p class="helper-note">Use this page to manage the account list. Open create, edit, or delete only when needed.</p>
                 <ul class="app-hub-tips" aria-label="Account tips">
-                    <li><strong>Switch</strong> changes which book the dashboard, journal, and analytics read from.</li>
-                    <li><strong>Default</strong> is the fallback target for imports that do not name an account.</li>
-                    <li>MT5 sync is requested once per CFD account from the dashboard card, not from this list.</li>
+                    <li><strong>Switch</strong> sets which account dashboard, journal, and analytics use.</li>
+                    <li><strong>Default</strong> receives imports that do not specify an account.</li>
+                    <li>Request MT5 once per CFD account from the dashboard card.</li>
                 </ul>
 
                 <div class="action-stack">
@@ -214,12 +214,12 @@
                     >
                         New Account
                     </button>
-                    <p class="helper-note">Use one account per broker, challenge, or funded program so your stats stay separated and easier to review.</p>
+                    <p class="helper-note">Use one account per broker/challenge/fund to keep stats clean.</p>
                 </div>
 
                 <hr class="section-divider">
                 <div class="action-stack">
-                    <p class="helper-note">Edit or delete individual accounts from the card buttons. Use the global delete only when you truly want a clean reset.</p>
+                    <p class="helper-note">Edit/delete accounts from each card. Use global delete only for a full reset.</p>
                     <button
                         type="button"
                         class="ghost-btn danger-btn"
@@ -232,7 +232,7 @@
                 </div>
 
                 <hr class="section-divider">
-                <p class="helper-note">Tip: Use distinct names like <strong>Live</strong>, <strong>Demo</strong>, or <strong>Challenge</strong> for clarity.</p>
+                <p class="helper-note">Tip: use clear names like <strong>Live</strong>, <strong>Demo</strong>, or <strong>Challenge</strong>.</p>
             </article>
         </section>
     </div>
@@ -245,7 +245,7 @@
             <span id="tradeAccountEditorMode" class="soft">New</span>
         </div>
         <p id="tradeAccountEditorHelp" class="helper-note">
-            Use one account per broker, challenge, or funded program so your stats stay separated and easier to review.
+            Use one account per broker/challenge/fund to keep stats separated.
         </p>
         <form
             id="tradeAccountEditorForm"

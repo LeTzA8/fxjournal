@@ -59,11 +59,9 @@ WEEKLY_ACTIVITY_LOOKBACK_DAYS = 3
 MIN_CLOSED_TRADES_FOR_ADVICE = 3
 logger = logging.getLogger(__name__)
 
-_DASHBOARD_ADVICE_RULE_PREFIX_REPLACEMENTS = (
-    ("\u2192 Rule:", "Rule:"),
-    ("\u00e2\u2020\u2019 Rule:", "Rule:"),
-    ("\u00e2\u2020' Rule:", "Rule:"),
-    ("\u00c3\u00a2\u00e2\u20ac\u00a0\u00e2\u20ac\u2122 Rule:", "Rule:"),
+_DASHBOARD_ADVICE_PREFIX_REPLACEMENTS = (
+    ("\u2192 Improve this week:", "Improve this week:"),
+    ("\u2192 You're already strong at:", "You're already strong at:"),
 )
 REVIEW_RESPONSE_FORMAT_VERSION = "weekly_cited_review_v1"
 REVIEW_MAX_REFS_PER_ITEM = 3
@@ -81,8 +79,12 @@ Use this exact shape:
       "refs": ["T2"]
     }
   ],
-  "rule": {
-    "text": "Rule: One actionable rule line.",
+  "improvement": {
+    "text": "Improve this week: One actionable improvement line.",
+    "refs": []
+  },
+  "strength": {
+    "text": "You're already strong at: One specific strength line.",
     "refs": []
   }
 }
@@ -92,19 +94,20 @@ Rules for refs:
 - Prefer 1-2 refs per item, maximum 3.
 - Use bundle refs like B1 for bundled trade ideas and trade refs like T1 for solo trade ideas.
 - If an item is aggregate and not tied to one clear trade idea, refs may be an empty list.
-- rule.refs must always be an empty list because the rule should be generalized guidance, not a cited trade callout.
+- improvement.refs and strength.refs must always be an empty list because they are generalized guidance, not cited trade callouts.
 - If summary.text or a takeaway mentions a specific symbol or bundled trade idea, include the matching review_ref in that item's refs.
 - Do not mention a specific trade idea in summary.text or a takeaway and then leave its refs empty.
 
 Rules for text fields:
 - summary.text must stay as the single opening paragraph.
 - takeaways must contain 2-4 items, each exactly one sentence.
-- rule.text must include the "Rule:" prefix exactly once.
-- rule.text must generalize one level up from the evidence and should not mention a specific trade, bundle, exact date, or weekday.
-- Prefer behavior, execution, session, sizing, or process language in rule.text over symbol-specific wording.
-- Prefer reusable process criteria in rule.text over tactic-specific setup instructions like naming an exact candle trigger or entry pattern.
+- improvement.text must include the "Improve this week:" prefix exactly once.
+- improvement.text must generalize one level up from the evidence and should not mention a specific trade, bundle, exact date, or weekday.
+- strength.text must include the "You're already strong at:" prefix exactly once.
+- strength.text must be grounded in observed data or consistent execution from this week, not generic praise.
+- Prefer behavior, execution, session, sizing, or process language in improvement.text over symbol-specific wording.
 - Never mention review_ref aliases like T1 or B2 inside any text field.
-- Do not include any keys other than summary, takeaways, and rule.
+- Do not include any keys other than summary, takeaways, improvement, and strength.
 """.strip()
 
 
@@ -182,11 +185,13 @@ def normalize_dashboard_advice_text(value):
         return ""
 
     normalized = text
-    for broken_prefix, replacement in _DASHBOARD_ADVICE_RULE_PREFIX_REPLACEMENTS:
+    for broken_prefix, replacement in _DASHBOARD_ADVICE_PREFIX_REPLACEMENTS:
         normalized = normalized.replace(broken_prefix, replacement)
 
-    normalized = re.sub(r"(?im)^[ \t]*[-*]\s*Rule:\s*", "Rule: ", normalized)
-    normalized = re.sub(r"(?im)^[ \t]*Rule:\s*", "Rule: ", normalized)
+    normalized = re.sub(r"(?im)^[ \t]*[-*]\s*Improve this week:\s*", "Improve this week: ", normalized)
+    normalized = re.sub(r"(?im)^[ \t]*Improve this week:\s*", "Improve this week: ", normalized)
+    normalized = re.sub(r"(?im)^[ \t]*[-*]\s*You're already strong at:\s*", "You're already strong at: ", normalized)
+    normalized = re.sub(r"(?im)^[ \t]*You're already strong at:\s*", "You're already strong at: ", normalized)
     return normalized.strip()
 
 
@@ -240,13 +245,23 @@ def _normalize_review_item_text(value):
     return text.strip()
 
 
-def _normalize_review_rule_text(value):
+def _normalize_review_improvement_text(value):
     text = normalize_dashboard_advice_text(value)
     text = _normalize_review_item_text(text)
     if not text:
         return ""
-    if not text.lower().startswith("rule:"):
-        text = f"Rule: {text}"
+    if not text.lower().startswith("improve this week:"):
+        text = f"Improve this week: {text}"
+    return normalize_dashboard_advice_text(text)
+
+
+def _normalize_review_strength_text(value):
+    text = normalize_dashboard_advice_text(value)
+    text = _normalize_review_item_text(text)
+    if not text:
+        return ""
+    if not text.lower().startswith("you're already strong at:"):
+        text = f"You're already strong at: {text}"
     return normalize_dashboard_advice_text(text)
 
 
@@ -267,7 +282,8 @@ def _sanitize_review_refs(value, allowed_refs):
 def _render_review_text_from_meta(review_meta):
     summary_text = str(((review_meta or {}).get("summary") or {}).get("text") or "").strip()
     takeaways = (review_meta or {}).get("takeaways") or []
-    rule_text = str(((review_meta or {}).get("rule") or {}).get("text") or "").strip()
+    improvement_text = str(((review_meta or {}).get("improvement") or {}).get("text") or "").strip()
+    strength_text = str(((review_meta or {}).get("strength") or {}).get("text") or "").strip()
 
     lines = []
     if summary_text:
@@ -280,10 +296,14 @@ def _render_review_text_from_meta(review_meta):
             takeaway_text = str((item or {}).get("text") or "").strip()
             if takeaway_text:
                 lines.append(f"- {takeaway_text}")
-    if rule_text:
+    if improvement_text:
         if lines:
             lines.append("")
-        lines.append(_normalize_review_rule_text(rule_text))
+        lines.append(_normalize_review_improvement_text(improvement_text))
+    if strength_text:
+        if lines:
+            lines.append("")
+        lines.append(_normalize_review_strength_text(strength_text))
     return normalize_dashboard_advice_text("\n".join(lines).strip())
 
 
@@ -298,7 +318,8 @@ def build_dashboard_review_display(response_text, response_meta_json=None):
     review_meta = parse_review_response_meta(response_meta_json) or {}
     summary = review_meta.get("summary") if isinstance(review_meta.get("summary"), dict) else {}
     takeaways = review_meta.get("takeaways") if isinstance(review_meta.get("takeaways"), list) else []
-    rule = review_meta.get("rule") if isinstance(review_meta.get("rule"), dict) else {}
+    improvement = review_meta.get("improvement") if isinstance(review_meta.get("improvement"), dict) else {}
+    strength = review_meta.get("strength") if isinstance(review_meta.get("strength"), dict) else {}
 
     structured_summary = _normalize_review_item_text(summary.get("text"))
     structured_takeaways = []
@@ -315,13 +336,15 @@ def build_dashboard_review_display(response_text, response_meta_json=None):
             }
         )
 
-    structured_rule = _normalize_review_rule_text(rule.get("text"))
-    if structured_summary or structured_takeaways or structured_rule:
+    structured_improvement = _normalize_review_improvement_text(improvement.get("text"))
+    structured_strength = _normalize_review_strength_text(strength.get("text"))
+    if structured_summary or structured_takeaways or structured_improvement or structured_strength:
         summary_refs = [str(ref).strip().upper() for ref in summary.get("refs") or [] if str(ref or "").strip()]
         return {
             "summary": {"text": structured_summary, "refs": summary_refs},
             "takeaways": structured_takeaways,
-            "rule": {"text": structured_rule, "refs": []},
+            "improvement": {"text": structured_improvement, "refs": []},
+            "strength": {"text": structured_strength, "refs": []},
             "has_citations": bool(summary_refs or any(item["refs"] for item in structured_takeaways)),
         }
 
@@ -330,13 +353,15 @@ def build_dashboard_review_display(response_text, response_meta_json=None):
         return {
             "summary": {"text": "", "refs": []},
             "takeaways": [],
-            "rule": {"text": "", "refs": []},
+            "improvement": {"text": "", "refs": []},
+            "strength": {"text": "", "refs": []},
             "has_citations": False,
         }
 
     summary_text = normalized_text
     takeaway_lines = []
-    rule_text = ""
+    improvement_text = ""
+    strength_text = ""
 
     if "Key Takeaways" in normalized_text:
         summary_text, _, remainder = normalized_text.partition("Key Takeaways")
@@ -347,8 +372,11 @@ def build_dashboard_review_display(response_text, response_meta_json=None):
                 continue
             if line == "Key Takeaways":
                 continue
-            if line.startswith("Rule:"):
-                rule_text = _normalize_review_rule_text(line)
+            if line.lower().startswith("improve this week:"):
+                improvement_text = _normalize_review_improvement_text(line)
+                continue
+            if line.lower().startswith("you're already strong at:"):
+                strength_text = _normalize_review_strength_text(line)
                 continue
             takeaway_text = _normalize_review_item_text(line)
             if takeaway_text:
@@ -356,15 +384,16 @@ def build_dashboard_review_display(response_text, response_meta_json=None):
     else:
         lines = [line.strip() for line in normalized_text.splitlines() if line.strip()]
         for index, line in enumerate(lines):
-            if line.startswith("Rule:"):
-                rule_text = _normalize_review_rule_text(line)
+            if line.lower().startswith("improve this week:"):
+                improvement_text = _normalize_review_improvement_text(line)
                 summary_text = " ".join(lines[:index]).strip()
                 break
 
     return {
         "summary": {"text": summary_text, "refs": []},
         "takeaways": takeaway_lines,
-        "rule": {"text": rule_text, "refs": []},
+        "improvement": {"text": improvement_text, "refs": []},
+        "strength": {"text": strength_text, "refs": []},
         "has_citations": False,
     }
 
@@ -377,7 +406,8 @@ def _extract_structured_review(response_payload, allowed_refs):
 
     summary = loaded.get("summary") if isinstance(loaded.get("summary"), dict) else {}
     takeaways = loaded.get("takeaways") if isinstance(loaded.get("takeaways"), list) else []
-    rule = loaded.get("rule") if isinstance(loaded.get("rule"), dict) else {}
+    improvement = loaded.get("improvement") if isinstance(loaded.get("improvement"), dict) else {}
+    strength = loaded.get("strength") if isinstance(loaded.get("strength"), dict) else {}
 
     summary_text = _normalize_review_item_text(summary.get("text"))
     if not summary_text:
@@ -399,9 +429,11 @@ def _extract_structured_review(response_payload, allowed_refs):
     if not structured_takeaways:
         return None
 
-    rule_text = _normalize_review_rule_text(rule.get("text"))
-    if not rule_text:
+    improvement_text = _normalize_review_improvement_text(improvement.get("text"))
+    if not improvement_text:
         return None
+
+    strength_text = _normalize_review_strength_text(strength.get("text"))
 
     review_meta = {
         "format": REVIEW_RESPONSE_FORMAT_VERSION,
@@ -410,8 +442,12 @@ def _extract_structured_review(response_payload, allowed_refs):
             "refs": _sanitize_review_refs(summary.get("refs"), allowed_refs),
         },
         "takeaways": structured_takeaways,
-        "rule": {
-            "text": rule_text,
+        "improvement": {
+            "text": improvement_text,
+            "refs": [],
+        },
+        "strength": {
+            "text": strength_text,
             "refs": [],
         },
     }

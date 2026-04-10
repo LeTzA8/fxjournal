@@ -5,11 +5,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import importlib
 import importlib.util
+import logging
 from pathlib import Path
 
 from celery import Celery
 from celery.app.task import Task as CeleryTask
 from celery.schedules import crontab
+from celery.app import trace as celery_trace
 from dotenv import load_dotenv
 
 
@@ -36,6 +38,30 @@ def _load_runtime_env():
 _load_runtime_env()
 
 _flask_app = None
+
+
+class SuppressCeleryTraceTaskLogs(logging.Filter):
+    SUPPRESSED_MESSAGES = {
+        celery_trace.LOG_RECEIVED,
+        celery_trace.LOG_SUCCESS,
+        celery_trace.LOG_RETRY,
+        celery_trace.LOG_FAILURE,
+        celery_trace.LOG_INTERNAL_ERROR,
+        celery_trace.LOG_IGNORED,
+        celery_trace.LOG_REJECTED,
+    }
+
+    def filter(self, record):
+        return record.getMessage() not in self.SUPPRESSED_MESSAGES and record.msg not in self.SUPPRESSED_MESSAGES
+
+
+def _configure_celery_trace_logger():
+    trace_logger = logging.getLogger("celery.app.trace")
+    filter_name = SuppressCeleryTraceTaskLogs.__name__
+    for existing_filter in trace_logger.filters:
+        if existing_filter.__class__.__name__ == filter_name:
+            return
+    trace_logger.addFilter(SuppressCeleryTraceTaskLogs())
 
 
 def _resolve_redis_url():
@@ -93,6 +119,7 @@ class FlaskTask(CeleryTask):
 
 
 def _create_celery():
+    _configure_celery_trace_logger()
     broker_url, backend_url = _resolve_redis_url()
     celery_app = Celery(
         "fxjournal",
@@ -124,6 +151,7 @@ def _create_celery():
         "task_routes": {
             "celery_workers.mt5_setup.*": {"queue": "mt5_setup"},
             "celery_workers.mt5_sync.sync_mt5_account": {"queue": "mt5_sync"},
+            "celery_workers.mt5_sync.fetch_trade_bars": {"queue": "mt5_sync"},
         },
     }
     configured_pool = os.environ.get("CELERY_POOL", "").strip().lower()

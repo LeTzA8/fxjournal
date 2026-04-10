@@ -21,18 +21,14 @@
             <div>
                 <p class="eyebrow">Analytics</p>
                 <h1>Performance Analytics</h1>
-                <p class="hero-primary-story">Diagnosis view: closed-trade edge, execution vs plan, and where to drill next in your journal.</p>
-                <p class="hero-copy">Same active account and trade book as the dashboard. The dashboard stays fast for the week; this page is for deeper KPIs, RR capture, and timing splits.</p>
-                <p class="hero-help">New to journal metrics? Use the <strong>?</strong> icons on key cards for quick explanations of win rate, profit factor, expectancy, drawdown, and risk:reward.</p>
+                <p class="hero-primary-story">Deep view of edge, execution, and timing.</p>
+                <p class="hero-copy">Uses the same active account as your dashboard.</p>
+                <p class="hero-subtle-meta">Week start: {{ analytics.week_label }}</p>
             </div>
             <div class="hero-meta">
                 <div class="meta-chip">
                     <span>Timezone</span>
                     <strong>{{ analytics_timezone }}</strong>
-                </div>
-                <div class="meta-chip">
-                    <span>Week Start</span>
-                    <strong>{{ analytics.week_label }}</strong>
                 </div>
             </div>
         </header>
@@ -113,7 +109,7 @@
         {% endif %}
         <div class="kpi-sections" data-reveal-row-step="95" data-reveal-col-step="55">
             <section class="kpi-section" aria-labelledby="kpi-at-a-glance-heading">
-                <h2 id="kpi-at-a-glance-heading" class="kpi-section-heading">At a glance</h2>
+                <h2 id="kpi-at-a-glance-heading" class="kpi-section-heading">📊 At a glance</h2>
                 <div class="kpi-grid kpi-grid--4">
                     <article class="kpi-card panel" data-reveal-skip>
                         <p class="kpi-label">Net PnL (realized)</p>
@@ -144,7 +140,7 @@
                 </div>
             </section>
             <section class="kpi-section kpi-section--edge" aria-labelledby="kpi-edge-risk-heading">
-                <h2 id="kpi-edge-risk-heading" class="kpi-section-heading">Edge &amp; risk</h2>
+                <h2 id="kpi-edge-risk-heading" class="kpi-section-heading">⚖️ Edge &amp; risk</h2>
                 <div class="kpi-grid kpi-grid--4">
                     <article class="kpi-card panel" data-reveal-skip>
                         <p class="kpi-label">
@@ -233,7 +229,7 @@
                 </div>
             </section>
             <section class="kpi-section kpi-section--execution" aria-labelledby="kpi-execution-heading">
-                <h2 id="kpi-execution-heading" class="kpi-section-heading">Execution &amp; timing</h2>
+                <h2 id="kpi-execution-heading" class="kpi-section-heading">⏱️ Execution &amp; timing</h2>
                 <div class="kpi-grid kpi-grid--3">
                     <article class="kpi-card panel" data-reveal-skip>
                         <p class="kpi-label">
@@ -982,6 +978,12 @@
         line-height: 1.52;
     }
 
+    .hero-subtle-meta {
+        margin: 0.35rem 0 0;
+        font-size: 0.78rem;
+        color: color-mix(in srgb, var(--muted) 88%, var(--ink));
+    }
+
     .analytics-inline-link {
         color: color-mix(in srgb, var(--accent) 72%, var(--ink));
         font-weight: 750;
@@ -996,24 +998,22 @@
 
     .hero-meta {
         display: flex;
-        gap: 0.6rem;
+        gap: 0.45rem;
         flex-wrap: wrap;
         justify-content: flex-end;
     }
 
-    .meta-chip,
-    .soft-badge {
+    .meta-chip {
         border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
         border-radius: 999px;
         background: color-mix(in srgb, var(--surface) 68%, transparent);
-        padding: 0.6rem 0.8rem;
+        padding: 0.42rem 0.68rem;
         min-width: 0;
     }
 
-    .meta-chip span,
-    .soft-badge {
+    .meta-chip span {
         display: block;
-        font-size: 0.72rem;
+        font-size: 0.66rem;
         font-weight: 700;
         letter-spacing: 0.05em;
         text-transform: uppercase;
@@ -1022,8 +1022,8 @@
 
     .meta-chip strong {
         display: block;
-        margin-top: 0.2rem;
-        font-size: 0.92rem;
+        margin-top: 0.12rem;
+        font-size: 0.8rem;
         color: var(--ink);
     }
 
@@ -1031,7 +1031,15 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface) 68%, transparent);
+        padding: 0.6rem 0.8rem;
         min-height: 38px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
         color: var(--muted);
     }
 
@@ -1288,27 +1296,25 @@
     }
 
     .kpi-section {
-        --kpi-group-accent: var(--accent);
-        --kpi-group-tint: color-mix(in srgb, var(--accent) 9%, var(--card));
+        --kpi-group-accent: color-mix(in srgb, var(--border) 72%, var(--accent) 28%);
+        --kpi-group-tint: color-mix(in srgb, var(--surface) 94%, var(--card));
         margin: 0;
         min-width: 0;
         padding: 0.72rem 0.88rem 0.85rem 0.92rem;
         border-radius: 14px;
-        border: 1px solid color-mix(in srgb, var(--border) 80%, var(--kpi-group-accent) 20%);
-        border-left-width: 3px;
-        border-left-color: var(--kpi-group-accent);
+        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
         background: var(--kpi-group-tint);
         box-shadow: 0 8px 22px rgba(2, 6, 23, 0.08);
     }
 
     .kpi-section--edge {
-        --kpi-group-accent: color-mix(in srgb, var(--warn) 55%, var(--accent) 45%);
-        --kpi-group-tint: color-mix(in srgb, var(--warn) 11%, var(--card));
+        --kpi-group-accent: color-mix(in srgb, var(--border) 70%, var(--warn) 30%);
+        --kpi-group-tint: color-mix(in srgb, var(--surface) 94%, var(--card));
     }
 
     .kpi-section--execution {
-        --kpi-group-accent: color-mix(in srgb, var(--ink) 24%, var(--accent) 76%);
-        --kpi-group-tint: color-mix(in srgb, var(--accent) 5%, color-mix(in srgb, var(--muted) 7%, var(--card)));
+        --kpi-group-accent: color-mix(in srgb, var(--border) 76%, var(--ink) 24%);
+        --kpi-group-tint: color-mix(in srgb, var(--surface) 94%, var(--card));
     }
 
     .kpi-section-heading {
@@ -1317,7 +1323,7 @@
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: color-mix(in srgb, var(--kpi-group-accent) 44%, var(--muted));
+        color: color-mix(in srgb, var(--muted) 88%, var(--ink));
     }
 
     .kpi-grid {
@@ -1576,7 +1582,7 @@
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: color-mix(in srgb, var(--accent) 48%, var(--muted));
+        color: color-mix(in srgb, var(--muted) 86%, var(--ink));
     }
 
     .behavior-stat-value {

@@ -1,3 +1,5 @@
+import logging
+
 import os
 
 import celery_app as celery_app_module
@@ -25,3 +27,28 @@ def test_celery_routes_and_mt5_task_reliability_flags():
 
 def test_app_enables_pool_pre_ping():
     assert flask_app_module.app.config["SQLALCHEMY_ENGINE_OPTIONS"]["pool_pre_ping"] is True
+
+
+def test_celery_trace_filter_suppresses_plain_task_lifecycle_logs():
+    trace_filter = celery_app_module.SuppressCeleryTraceTaskLogs()
+    success_record = logging.LogRecord(
+        name="celery.app.trace",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg=celery_app_module.celery_trace.LOG_SUCCESS,
+        args={"name": "tasks.example", "id": "abc", "runtime": "0.1", "return_value": "{}"},
+        exc_info=None,
+    )
+    custom_record = logging.LogRecord(
+        name="celery.app.trace",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg="Process cleanup failed: %r",
+        args=("boom",),
+        exc_info=None,
+    )
+
+    assert trace_filter.filter(success_record) is False
+    assert trace_filter.filter(custom_record) is True

@@ -1,7 +1,8 @@
 from datetime import datetime
 
+import pytest
 import routes.trades as trades_routes
-from models import Trade, TradeAccount, User, db
+from models import Trade, TradeAccount, TradeBars, User, db
 
 
 def _create_logged_in_user(client, username, email):
@@ -742,3 +743,127 @@ def test_trades_list_accepts_journal_filter_query_param(app_ctx, client):
 
     response = client.get("/dashboard/trades?pair=EURUSD")
     assert response.status_code == 200
+
+
+def test_trade_chart_data_returns_unavailable_for_non_mt5_or_open_trade(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-chart-unavailable-user",
+        email="trade-chart-unavailable@example.com",
+    )
+    user.is_admin = True
+    user.email_verified = True
+    db.session.commit()
+
+    manual_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1000,
+        exit_price=1.1010,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 9, 0, 0),
+        closed_at=datetime(2026, 4, 10, 10, 0, 0),
+        mt5_position=None,
+    )
+    db.session.add(manual_trade)
+    db.session.commit()
+
+    response = client.get(f"/api/trades/{manual_trade.pubkey}/chart-data")
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "unavailable"}
+
+
+def test_trade_chart_data_returns_pending_when_mt5_trade_has_no_bars(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-chart-pending-user",
+        email="trade-chart-pending@example.com",
+    )
+    user.is_admin = True
+    user.email_verified = True
+    db.session.commit()
+
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1000,
+        exit_price=1.1010,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 9, 0, 0),
+        closed_at=datetime(2026, 4, 10, 10, 0, 0),
+        mt5_position="7770001",
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    response = client.get(f"/api/trades/{trade.pubkey}/chart-data")
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "pending"}
+
+
+def test_trade_chart_data_returns_ready_payload_when_bars_exist(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-chart-ready-user",
+        email="trade-chart-ready@example.com",
+    )
+    user.is_admin = True
+    user.email_verified = True
+    db.session.commit()
+
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1000,
+        exit_price=1.1010,
+        stop_loss=1.0980,
+        take_profit=1.1040,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 9, 0, 0),
+        closed_at=datetime(2026, 4, 10, 10, 0, 0),
+        mt5_position="7770002",
+    )
+    db.session.add(trade)
+    db.session.flush()
+    db.session.add_all(
+        [
+            TradeBars(
+                trade_id=trade.id,
+                timeframe="M5",
+                bar_time=1_700_000_000,
+                open=1.0990,
+                high=1.1010,
+                low=1.0985,
+                close=1.1005,
+                tick_volume=50,
+            ),
+            TradeBars(
+                trade_id=trade.id,
+                timeframe="M5",
+                bar_time=1_700_000_300,
+                open=1.1005,
+                high=1.1015,
+                low=1.1000,
+                close=1.1010,
+                tick_volume=52,
+            ),
+        ]
+    )
+    db.session.commit()
+
+    response = client.get(f"/api/trades/{trade.pubkey}/chart-data")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "ready"
+    assert payload["timeframe"] == "M5"
+    assert len(payload["bars"]) == 2
+    assert payload["bars"][0]["time"] == 1_700_000_000
+    assert payload["markers"]["entry_price"] == pytest.approx(1.1)
+    assert payload["markers"]["exit_price"] == pytest.approx(1.101)
+    assert payload["markers"]["side"] == "BUY"
