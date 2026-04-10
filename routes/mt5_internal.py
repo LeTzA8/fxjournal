@@ -100,6 +100,7 @@ def sync_mt5_trades():
 
     payload = request.get_json(silent=True) or {}
     include_skip_reasons = bool(payload.get("include_skip_reasons"))
+    include_skip_debug = bool(payload.get("include_skip_debug"))
     try:
         mt5_account_id = int(payload.get("mt5_account_id"))
     except (TypeError, ValueError):
@@ -127,6 +128,8 @@ def sync_mt5_trades():
             "batch_validation_skipped": 0,
             "batch_symbol_validation_failed": 0,
         }
+        skip_debug_rows = []
+        skip_debug_limit = 12
         incoming_positions = {
             _normalize_mt5_position_key(row.get("mt5_position"))
             for row in normalized_rows
@@ -167,6 +170,19 @@ def sync_mt5_trades():
             if existing_trade is None:
                 if is_close_only_row:
                     skip_reason_counts["close_only_without_existing_open"] += 1
+                    if include_skip_debug and len(skip_debug_rows) < skip_debug_limit:
+                        skip_debug_rows.append(
+                            {
+                                "mt5_position": mt5_position,
+                                "reason": "close_only_without_existing_open",
+                                "incoming_closed_at": (
+                                    row.get("closed_at").isoformat()
+                                    if row.get("closed_at") is not None
+                                    else None
+                                ),
+                                "incoming_exit_price": row.get("exit_price"),
+                            }
+                        )
                     skipped_count += 1
                     continue
                 rows_to_insert.append(row)
@@ -205,6 +221,39 @@ def sync_mt5_trades():
                 continue
 
             skip_reason_counts["existing_already_closed_or_no_state_change"] += 1
+            if include_skip_debug and len(skip_debug_rows) < skip_debug_limit:
+                skip_debug_rows.append(
+                    {
+                        "mt5_position": mt5_position,
+                        "reason": "existing_already_closed_or_no_state_change",
+                        "incoming_is_open": row.get("closed_at") is None,
+                        "incoming_opened_at": (
+                            row.get("opened_at").isoformat()
+                            if row.get("opened_at") is not None
+                            else None
+                        ),
+                        "incoming_closed_at": (
+                            row.get("closed_at").isoformat()
+                            if row.get("closed_at") is not None
+                            else None
+                        ),
+                        "incoming_entry_price": row.get("entry_price"),
+                        "incoming_exit_price": row.get("exit_price"),
+                        "existing_is_open": existing_trade.closed_at is None,
+                        "existing_opened_at": (
+                            existing_trade.opened_at.isoformat()
+                            if existing_trade.opened_at is not None
+                            else None
+                        ),
+                        "existing_closed_at": (
+                            existing_trade.closed_at.isoformat()
+                            if existing_trade.closed_at is not None
+                            else None
+                        ),
+                        "existing_entry_price": existing_trade.entry_price,
+                        "existing_exit_price": existing_trade.exit_price,
+                    }
+                )
             skipped_count += 1
 
         batch_result = build_normalized_trade_insert_batch(
@@ -275,6 +324,8 @@ def sync_mt5_trades():
         }
         if include_skip_reasons:
             response_payload["skip_reasons"] = skip_reason_counts
+        if include_skip_debug:
+            response_payload["skip_debug"] = skip_debug_rows
         return jsonify(response_payload)
     except Exception as exc:
         db.session.rollback()

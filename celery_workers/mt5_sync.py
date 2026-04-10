@@ -532,6 +532,7 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                 "mt5_server_delta_minutes": mt5_server_delta_minutes,
                 "applied_time_offset_minutes": applied_offset_minutes,
                 "include_skip_reasons": True,
+                "include_skip_debug": True,
             },
             headers={
                 "X-Sync-Secret": sync_secret,
@@ -575,6 +576,13 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                 aggregated_trade_count,
                 result.get("skipped"),
             )
+            skip_debug_rows = result.get("skip_debug") or []
+            if skip_debug_rows:
+                logger.warning(
+                    "MT5 skip debug rows (first %s): %s",
+                    len(skip_debug_rows),
+                    skip_debug_rows,
+                )
         return result
     except Exception as exc:
         sync_finished_at = sync_finished_at or datetime.now(timezone.utc)
