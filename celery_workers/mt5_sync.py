@@ -27,10 +27,17 @@ def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
     raise task.retry(exc=exc, countdown=countdown)
 
 
-def _to_utc_iso(timestamp_value, *, offset_minutes=0):
+def _adjust_mt5_unix_epoch(timestamp_value, *, offset_minutes=0):
+    """Subtract broker/server-ahead delta from raw MT5 Unix epoch (deal times)."""
     if timestamp_value is None:
         return None
-    adjusted_timestamp = float(timestamp_value) - (int(offset_minutes or 0) * 60)
+    return float(timestamp_value) - (int(offset_minutes or 0) * 60)
+
+
+def _to_utc_iso(timestamp_value, *, offset_minutes=0):
+    adjusted_timestamp = _adjust_mt5_unix_epoch(timestamp_value, offset_minutes=offset_minutes)
+    if adjusted_timestamp is None:
+        return None
     return datetime.fromtimestamp(adjusted_timestamp, tz=timezone.utc).isoformat(timespec="seconds")
 
 
@@ -38,6 +45,15 @@ def _shift_datetime_by_minutes(value, *, minutes=0):
     if value is None:
         return None
     return value + timedelta(minutes=int(minutes or 0))
+
+
+def _naive_utc_to_aware(value):
+    """Trade datetimes are naive UTC in DB; MT5 Python treats naive datetimes as *local* time."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _vm_timezone_context():
@@ -676,15 +692,15 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
         return {"skipped": "trade not closed"}
 
     symbol = trade.symbol
-    opened_at = trade.opened_at
-    closed_at = trade.closed_at
+    opened_at_utc = _naive_utc_to_aware(trade.opened_at)
+    closed_at_utc = _naive_utc_to_aware(trade.closed_at)
     # Always fetch M5; the window must be expressed in M5 bars. Using
     # select_chart_timeframe bar size here capped short trades at ~20×5m (~100m)
     # before entry — not enough context to see a typical setup.
     m5_seconds = chart_timeframe_bar_seconds("M5")
     pre_entry_m5_bars = 144  # 12h of M5 before open
     post_exit_m5_bars = 72  # 6h of M5 after close
-    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    now_utc = datetime.now(timezone.utc)
 
     investor_password = decrypt_password(account.investor_password_encrypted)
     account_number = account.account_number
@@ -695,8 +711,10 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
         init_kwargs["path"] = terminal_path
 
     # Store M5 only; M15 (and other higher TFs) are derived in the API via OHLC aggregation.
-    start_dt = opened_at - timedelta(seconds=pre_entry_m5_bars * m5_seconds)
-    end_dt = closed_at + timedelta(seconds=post_exit_m5_bars * m5_seconds)
+    # copy_rates_range: naive datetimes are interpreted as *local VM time*, not UTC — use aware UTC
+    # so the requested window matches trade.opened_at / closed_at (naive UTC in DB).
+    start_dt = opened_at_utc - timedelta(seconds=pre_entry_m5_bars * m5_seconds)
+    end_dt = closed_at_utc + timedelta(seconds=post_exit_m5_bars * m5_seconds)
     if end_dt > now_utc:
         end_dt = now_utc
 
@@ -738,7 +756,7 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             ("M5 context", f"{pre_entry_m5_bars} pre / {post_exit_m5_bars} post bars"),
             ("Stored TF", "M5"),
             ("Bars Fetched", len(bars)),
-            ("Window", f"{start_dt.isoformat()} -> {end_dt.isoformat()}"),
+            ("Window (UTC)", f"{start_dt.isoformat()} -> {end_dt.isoformat()}"),
             ("Duration", duration_label(fetch_started_at, fetch_finished_at)),
         ],
     )
