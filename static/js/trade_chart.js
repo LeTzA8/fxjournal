@@ -157,6 +157,94 @@
         return null;
     }
 
+    /** IANA zone for axis labels — matches session display timezone from API; fallback = browser. */
+    function resolveChartTimeZone(iana) {
+        if (!iana || typeof iana !== "string" || !iana.trim()) {
+            try {
+                return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+            } catch (e) {
+                return "UTC";
+            }
+        }
+        var t = iana.trim();
+        try {
+            Intl.DateTimeFormat(undefined, { timeZone: t });
+            return t;
+        } catch (e) {
+            try {
+                return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+            } catch (e2) {
+                return "UTC";
+            }
+        }
+    }
+
+    /**
+     * Format UTC bar timestamps on the time scale and crosshair using a fixed IANA zone
+     * (same wall-clock convention as the trade detail form), not the browser default alone.
+     */
+    function buildChartTimeFormatters(tzId) {
+        var TickYear = 0;
+        var TickMonth = 1;
+        var TickDay = 2;
+        var TickTimeSec = 4;
+        return {
+            tickMarkFormatter: function (time, tickMarkType, locale) {
+                var sec = typeof time === "number" ? time : NaN;
+                if (!isFinite(sec)) return null;
+                var d = new Date(sec * 1000);
+                if (isNaN(d.getTime())) return null;
+                var opts;
+                if (tickMarkType === TickYear) {
+                    opts = { timeZone: tzId, year: "numeric" };
+                } else if (tickMarkType === TickMonth) {
+                    opts = { timeZone: tzId, month: "short", year: "numeric" };
+                } else if (tickMarkType === TickDay) {
+                    opts = { timeZone: tzId, month: "short", day: "numeric" };
+                } else if (tickMarkType === TickTimeSec) {
+                    opts = {
+                        timeZone: tzId,
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                        hour12: false,
+                    };
+                } else {
+                    opts = {
+                        timeZone: tzId,
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                    };
+                }
+                try {
+                    return new Intl.DateTimeFormat(locale || undefined, opts).format(d);
+                } catch (e) {
+                    return new Intl.DateTimeFormat(undefined, opts).format(d);
+                }
+            },
+            crosshairTimeFormatter: function (time) {
+                var sec = typeof time === "number" ? time : NaN;
+                if (!isFinite(sec)) return "";
+                var d = new Date(sec * 1000);
+                if (isNaN(d.getTime())) return "";
+                try {
+                    return new Intl.DateTimeFormat(undefined, {
+                        timeZone: tzId,
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                    }).format(d);
+                } catch (e) {
+                    return "";
+                }
+            },
+        };
+    }
+
     function setTfButtonsActive(tf, available) {
         if (!tfGroup) return;
         var buttons = tfGroup.querySelectorAll("[data-trade-tf]");
@@ -183,12 +271,19 @@
         var accent = getCssVar("--accent") || "#818cf8";
 
         var chartSize = tradeChartPixelSize();
+        var tzId = resolveChartTimeZone(payload.display_timezone);
+        var timeFmt = buildChartTimeFormatters(tzId);
         var chart = LightweightCharts.createChart(container, {
             width: chartSize.width,
             height: chartSize.height,
             layout: {
                 background: { color: bg },
                 textColor: ink,
+            },
+            localization: {
+                locale: typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US",
+                dateFormat: "dd MMM 'yy",
+                timeFormatter: timeFmt.crosshairTimeFormatter,
             },
             grid: {
                 vertLines: { color: border },
@@ -205,6 +300,7 @@
                 timeVisible: true,
                 secondsVisible: false,
                 rightOffset: 0,
+                tickMarkFormatter: timeFmt.tickMarkFormatter,
                 /* fixLeftEdge + fixRightEdge together can block zoom-out when all bars are in view (LC quirk). */
                 fixLeftEdge: false,
                 fixRightEdge: false,
@@ -310,15 +406,16 @@
             });
         }
 
-        // Markers: entry + exit as arrows
+        /* Markers: larger arrows (size 2) + short labels so entry/exit read at a glance */
+        var markerSize = 2;
         if (entryT != null) {
             markers.push({
                 time: entryT,
                 position: isBuy ? "belowBar" : "aboveBar",
                 color: good,
                 shape: isBuy ? "arrowUp" : "arrowDown",
-                text: "",
-                size: 1,
+                text: "Entry",
+                size: markerSize,
             });
         }
         if (exitT != null) {
@@ -327,8 +424,8 @@
                 position: isBuy ? "aboveBar" : "belowBar",
                 color: accent,
                 shape: isBuy ? "arrowDown" : "arrowUp",
-                text: "",
-                size: 1,
+                text: "Exit",
+                size: markerSize,
             });
         }
         if (markers.length) {

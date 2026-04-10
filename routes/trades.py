@@ -1405,6 +1405,7 @@ def trade_chart_data(trade_pubkey):
         "available_timeframes": available_timeframes,
         "bars": bars,
         "markers": markers,
+        "display_timezone": get_display_timezone_name(),
     }
     if bars_derived_from_m5:
         payload["bars_source"] = "aggregated_from_m5"
