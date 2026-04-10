@@ -338,7 +338,19 @@ def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
             return None
 
         def json(self):
-            return {"saved": 0, "updated": 1, "skipped": 0, "errors": 0}
+            return {
+                "saved": 0,
+                "updated": 1,
+                "skipped": 0,
+                "errors": 0,
+                "skip_reasons": {
+                    "close_only_without_existing_open": 0,
+                    "existing_already_closed_or_no_state_change": 0,
+                    "batch_duplicate_mt5_position": 0,
+                    "batch_validation_skipped": 0,
+                    "batch_symbol_validation_failed": 0,
+                },
+            }
 
     monkeypatch.setattr("celery_workers.mt5_sync.requests.post", lambda *args, **kwargs: DummyResponse())
 
@@ -354,6 +366,7 @@ def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
     assert "Trigger" in caplog.text
     assert "Trade Rows" in caplog.text
     assert "Closed Rows" in caplog.text
+    assert "Skip Reasons" in caplog.text
     assert "Duration" in caplog.text
 
 

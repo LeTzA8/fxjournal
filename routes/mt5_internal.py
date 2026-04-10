@@ -99,6 +99,7 @@ def sync_mt5_trades():
         return jsonify({"error": "forbidden"}), 403
 
     payload = request.get_json(silent=True) or {}
+    include_skip_reasons = bool(payload.get("include_skip_reasons"))
     try:
         mt5_account_id = int(payload.get("mt5_account_id"))
     except (TypeError, ValueError):
@@ -266,14 +267,15 @@ def sync_mt5_trades():
                     mt5_account_id,
                     exc,
                 )
-        return jsonify(
-            {
-                "saved": saved_count,
-                "updated": updated_count,
-                "skipped": skipped_count,
-                "errors": error_count,
-            }
-        )
+        response_payload = {
+            "saved": saved_count,
+            "updated": updated_count,
+            "skipped": skipped_count,
+            "errors": error_count,
+        }
+        if include_skip_reasons:
+            response_payload["skip_reasons"] = skip_reason_counts
+        return jsonify(response_payload)
     except Exception as exc:
         db.session.rollback()
         current_app.logger.exception(

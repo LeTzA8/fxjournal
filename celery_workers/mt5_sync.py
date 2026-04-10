@@ -466,6 +466,7 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                 "mt5_account_id": mt5_account_id,
                 "trades": trades,
                 "timing_context": vm_timing_context,
+                "include_skip_reasons": True,
             },
             headers={
                 "X-Sync-Secret": sync_secret,
@@ -491,6 +492,7 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                 ("Updated", result.get("updated")),
                 ("Skipped", result.get("skipped")),
                 ("Errors", result.get("errors")),
+                ("Skip Reasons", result.get("skip_reasons")),
             ],
         )
         if int(result.get("skipped") or 0) > 0 and int(result.get("saved") or 0) == 0 and int(result.get("updated") or 0) == 0:
