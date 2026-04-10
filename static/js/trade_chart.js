@@ -14,6 +14,8 @@
     var currentTf = "M5";
     var resizeWired = false;
     var MAX_CHART_PRICE_DECIMALS = 6;
+    /** Bumps when chart is torn down so in-flight candle reveal animations stop. */
+    var chartRevealGeneration = 0;
 
     function tradeChartPixelSize() {
         var w = container.clientWidth;
@@ -54,10 +56,26 @@
     }
 
     function destroyChart() {
+        chartRevealGeneration += 1;
         if (chartInstance) {
             chartInstance.remove();
             chartInstance = null;
         }
+    }
+
+    function prefersReducedMotion() {
+        try {
+            return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /** Ease-in-out cubic; same family as CSS ease-in-out curves used on cards. */
+    function easeInOutCubic(t) {
+        if (t <= 0) return 0;
+        if (t >= 1) return 1;
+        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     }
 
     /** Keep wheel events on the chart (zoom) instead of scrolling the page behind it. */
@@ -333,11 +351,9 @@
             lastValueVisible: false,
         });
 
-        series.setData(payload.bars);
-
+        var bars = payload.bars;
         var m = payload.markers || {};
         var isBuy = (m.side || "").toUpperCase() === "BUY";
-        var bars = payload.bars;
         var pricePrecision = derivePricePrecision(bars, m);
         var minMove = Math.pow(10, -pricePrecision);
 
@@ -349,100 +365,128 @@
             },
         });
 
-        var markers = [];
-        var entryRaw = m.entry_time != null ? Number(m.entry_time) : null;
-        var exitRaw = m.exit_time != null ? Number(m.exit_time) : null;
-        var entryT = entryRaw != null ? barOpenContainingTime(entryRaw, bars) : null;
-        var exitT = exitRaw != null ? barOpenContainingTime(exitRaw, bars) : null;
+        function applyTradeChartDecorations() {
+            var markers = [];
+            var entryRaw = m.entry_time != null ? Number(m.entry_time) : null;
+            var exitRaw = m.exit_time != null ? Number(m.exit_time) : null;
+            var entryT = entryRaw != null ? barOpenContainingTime(entryRaw, bars) : null;
+            var exitT = exitRaw != null ? barOpenContainingTime(exitRaw, bars) : null;
 
-        if (entryT != null && exitT != null && exitRaw != null && entryRaw != null) {
-            if (exitRaw > entryRaw && exitT <= entryT) {
-                var nextExit = nextBarAfter(entryT, bars);
-                if (nextExit != null) exitT = nextExit;
+            if (entryT != null && exitT != null && exitRaw != null && entryRaw != null) {
+                if (exitRaw > entryRaw && exitT <= entryT) {
+                    var nextExit = nextBarAfter(entryT, bars);
+                    if (nextExit != null) exitT = nextExit;
+                }
             }
+
+            /* Entry / SL / TP / Exit: full-width price lines — entry & exit solid, SL & TP dashed. */
+            if (m.entry_price != null && m.entry_price !== "") {
+                series.createPriceLine({
+                    price: Number(m.entry_price),
+                    color: good,
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Solid,
+                    axisLabelVisible: true,
+                    title: "Entry " + formatAxisPrice(m.entry_price, pricePrecision),
+                });
+            }
+
+            if (m.stop_loss != null && m.stop_loss !== "") {
+                series.createPriceLine({
+                    price: Number(m.stop_loss),
+                    color: bad,
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Dashed,
+                    axisLabelVisible: true,
+                    title: "SL " + formatAxisPrice(m.stop_loss, pricePrecision),
+                });
+            }
+            if (m.take_profit != null && m.take_profit !== "") {
+                series.createPriceLine({
+                    price: Number(m.take_profit),
+                    color: good,
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Dashed,
+                    axisLabelVisible: true,
+                    title: "TP " + formatAxisPrice(m.take_profit, pricePrecision),
+                });
+            }
+            if (m.exit_price != null && m.exit_price !== "") {
+                series.createPriceLine({
+                    price: Number(m.exit_price),
+                    color: accent,
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Solid,
+                    axisLabelVisible: true,
+                    title: "Exit " + formatAxisPrice(m.exit_price, pricePrecision),
+                });
+            }
+
+            var markerSize = 2;
+            if (entryT != null) {
+                markers.push({
+                    time: entryT,
+                    position: isBuy ? "belowBar" : "aboveBar",
+                    color: good,
+                    shape: isBuy ? "arrowUp" : "arrowDown",
+                    text: "Entry",
+                    size: markerSize,
+                });
+            }
+            if (exitT != null) {
+                markers.push({
+                    time: exitT,
+                    position: isBuy ? "aboveBar" : "belowBar",
+                    color: accent,
+                    shape: isBuy ? "arrowDown" : "arrowUp",
+                    text: "Exit",
+                    size: markerSize,
+                });
+            }
+            if (markers.length) {
+                series.setMarkers(markers);
+            }
+
+            chart.timeScale().fitContent();
+            /* Start slightly zoomed in so wheel “zoom out” has headroom (fitContent alone pins max zoom-out). */
+            requestAnimationFrame(function () {
+                var ts = chart.timeScale();
+                var r = ts.getVisibleLogicalRange();
+                if (!r || !bars.length || bars.length < 10) return;
+                var span = r.to - r.from;
+                var inset = Math.min(span * 0.08, 4);
+                if (span <= inset * 2 + 0.5) return;
+                ts.setVisibleLogicalRange({ from: r.from + inset, to: r.to - inset });
+            });
         }
 
-        /* Entry / SL / TP / Exit: full-width price lines — entry & exit solid, SL & TP dashed. */
-        if (m.entry_price != null && m.entry_price !== "") {
-            series.createPriceLine({
-                price: Number(m.entry_price),
-                color: good,
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Solid,
-                axisLabelVisible: true,
-                title: "Entry " + formatAxisPrice(m.entry_price, pricePrecision),
-            });
+        /* Canvas series can’t use CSS transitions; ease-in-out drives how fast new candles appear. */
+        var revealGen = chartRevealGeneration;
+        if (prefersReducedMotion() || bars.length <= 3) {
+            series.setData(bars);
+            applyTradeChartDecorations();
+        } else {
+            var n = bars.length;
+            var durationMs = Math.min(2800, Math.max(520, 380 + n * 14));
+            var t0 = performance.now();
+            series.setData(bars.slice(0, 1));
+
+            function tickBarReveal(now) {
+                if (revealGen !== chartRevealGeneration) return;
+                var u = Math.min(1, (now - t0) / durationMs);
+                var eased = easeInOutCubic(u);
+                var count = u >= 1 ? n : Math.max(1, Math.ceil(eased * n));
+                series.setData(bars.slice(0, count));
+                if (count >= n) {
+                    applyTradeChartDecorations();
+                    return;
+                }
+                requestAnimationFrame(tickBarReveal);
+            }
+
+            requestAnimationFrame(tickBarReveal);
         }
 
-        /* SL / TP / Exit */
-        if (m.stop_loss != null && m.stop_loss !== "") {
-            series.createPriceLine({
-                price: Number(m.stop_loss),
-                color: bad,
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
-                axisLabelVisible: true,
-                title: "SL " + formatAxisPrice(m.stop_loss, pricePrecision),
-            });
-        }
-        if (m.take_profit != null && m.take_profit !== "") {
-            series.createPriceLine({
-                price: Number(m.take_profit),
-                color: good,
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
-                axisLabelVisible: true,
-                title: "TP " + formatAxisPrice(m.take_profit, pricePrecision),
-            });
-        }
-        if (m.exit_price != null && m.exit_price !== "") {
-            series.createPriceLine({
-                price: Number(m.exit_price),
-                color: accent,
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Solid,
-                axisLabelVisible: true,
-                title: "Exit " + formatAxisPrice(m.exit_price, pricePrecision),
-            });
-        }
-
-        /* Markers: larger arrows (size 2) + short labels so entry/exit read at a glance */
-        var markerSize = 2;
-        if (entryT != null) {
-            markers.push({
-                time: entryT,
-                position: isBuy ? "belowBar" : "aboveBar",
-                color: good,
-                shape: isBuy ? "arrowUp" : "arrowDown",
-                text: "Entry",
-                size: markerSize,
-            });
-        }
-        if (exitT != null) {
-            markers.push({
-                time: exitT,
-                position: isBuy ? "aboveBar" : "belowBar",
-                color: accent,
-                shape: isBuy ? "arrowDown" : "arrowUp",
-                text: "Exit",
-                size: markerSize,
-            });
-        }
-        if (markers.length) {
-            series.setMarkers(markers);
-        }
-
-        chart.timeScale().fitContent();
-        /* Start slightly zoomed in so wheel “zoom out” has headroom (fitContent alone pins max zoom-out). */
-        requestAnimationFrame(function () {
-            var ts = chart.timeScale();
-            var r = ts.getVisibleLogicalRange();
-            if (!r || !bars.length || bars.length < 10) return;
-            var span = r.to - r.from;
-            var inset = Math.min(span * 0.08, 4);
-            if (span <= inset * 2 + 0.5) return;
-            ts.setVisibleLogicalRange({ from: r.from + inset, to: r.to - inset });
-        });
         wireResizeOnce();
     }
 

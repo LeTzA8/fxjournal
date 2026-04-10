@@ -698,8 +698,9 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
     # select_chart_timeframe bar size here capped short trades at ~20×5m (~100m)
     # before entry — not enough context to see a typical setup.
     m5_seconds = chart_timeframe_bar_seconds("M5")
-    pre_entry_m5_bars = 144  # 12h of M5 before open
-    post_exit_m5_bars = 72  # 6h of M5 after close
+    # Wider window for chart context (esp. structure before entry). ~3× prior pre-window, 2× post.
+    pre_entry_m5_bars = 432  # 36h of M5 before open (was 144 / 12h)
+    post_exit_m5_bars = 144  # 12h of M5 after close (was 72 / 6h)
     now_utc = datetime.now(timezone.utc)
 
     investor_password = decrypt_password(account.investor_password_encrypted)
