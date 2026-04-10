@@ -29,11 +29,13 @@ from helpers.trade_analysis import detect_outliers, get_trade_identity
 from auth_account import user_has_admin_access
 from models import Trade, TradeBars, User, db
 from trading import (
+    aggregate_ohlc_bars,
     calculate_trade_net_pnl,
     build_import_signature,
     calc_pnl_values,
     canonicalize_symbol,
     classify_trading_session,
+    chart_timeframe_bar_seconds,
     derive_exit_price,
     detect_trade_import_profile,
     format_duration_minutes,
@@ -51,6 +53,7 @@ from trading import (
     resolve_pips,
     resolve_pnl,
     resolve_ticks,
+    ensure_utc_aware,
     to_display_timezone,
 )
 from helpers.utils import login_required, utcnow_naive
@@ -1306,6 +1309,9 @@ def bundle_review_complete():
     return redirect(url_for("dashboard.home"))
 
 
+_CHART_UI_TIMEFRAMES = ("M5", "M15")
+
+
 @bp.route("/api/trades/<string:trade_pubkey>/chart-data")
 @login_required
 def trade_chart_data(trade_pubkey):
@@ -1322,42 +1328,87 @@ def trade_chart_data(trade_pubkey):
             mimetype="application/json",
         )
 
-    bars_rows = (
-        TradeBars.query.filter_by(trade_id=trade.id)
-        .order_by(TradeBars.bar_time.asc())
-        .all()
-    )
+    from flask import jsonify
 
-    if not bars_rows:
+    any_bar = TradeBars.query.filter_by(trade_id=trade.id).first()
+    if any_bar is None:
         return current_app.response_class(
             response='{"status":"pending"}',
             status=200,
             mimetype="application/json",
         )
 
-    from flask import jsonify
-    bars = [
-        {"time": b.bar_time, "open": b.open, "high": b.high, "low": b.low, "close": b.close}
-        for b in bars_rows
-    ]
+    tf_rows = (
+        TradeBars.query.with_entities(TradeBars.timeframe)
+        .filter_by(trade_id=trade.id)
+        .distinct()
+        .all()
+    )
+    stored_ui_tfs = {row[0] for row in tf_rows if row[0] in _CHART_UI_TIMEFRAMES}
+    has_m5 = "M5" in stored_ui_tfs
+    has_m15_native = "M15" in stored_ui_tfs
+    # M15 is always offered when we have M5 (aggregated); native M15 if stored alone or with M5.
+    if has_m5:
+        available_timeframes = ["M5", "M15"]
+    elif has_m15_native:
+        available_timeframes = ["M15"]
+    else:
+        available_timeframes = sorted(stored_ui_tfs)
 
-    entry_time = int(trade.opened_at.timestamp()) if trade.opened_at else None
-    exit_time = int(trade.closed_at.timestamp()) if trade.closed_at else None
+    requested_tf = (request.args.get("timeframe") or "M5").strip().upper()
+    if requested_tf not in _CHART_UI_TIMEFRAMES:
+        requested_tf = "M5"
 
-    return jsonify({
+    bars_derived_from_m5 = False
+    bars_rows = (
+        TradeBars.query.filter_by(trade_id=trade.id, timeframe=requested_tf)
+        .order_by(TradeBars.bar_time.asc())
+        .all()
+    )
+
+    if requested_tf == "M15" and not bars_rows and has_m5:
+        m5_rows = (
+            TradeBars.query.filter_by(trade_id=trade.id, timeframe="M5")
+            .order_by(TradeBars.bar_time.asc())
+            .all()
+        )
+        m5_dicts = [
+            {"time": b.bar_time, "open": b.open, "high": b.high, "low": b.low, "close": b.close}
+            for b in m5_rows
+        ]
+        bars = aggregate_ohlc_bars(m5_dicts, chart_timeframe_bar_seconds("M15"))
+        bars_derived_from_m5 = bool(bars)
+    else:
+        bars = [
+            {"time": b.bar_time, "open": b.open, "high": b.high, "low": b.low, "close": b.close}
+            for b in bars_rows
+        ]
+
+    entry_dt_utc = ensure_utc_aware(trade.opened_at) if trade.opened_at else None
+    exit_dt_utc = ensure_utc_aware(trade.closed_at) if trade.closed_at else None
+    entry_time = int(entry_dt_utc.timestamp()) if entry_dt_utc else None
+    exit_time = int(exit_dt_utc.timestamp()) if exit_dt_utc else None
+
+    markers = {
+        "entry_price": trade.entry_price,
+        "exit_price": trade.exit_price,
+        "stop_loss": trade.stop_loss,
+        "take_profit": trade.take_profit,
+        "entry_time": entry_time,
+        "exit_time": exit_time,
+        "side": trade.side,
+    }
+
+    payload = {
         "status": "ready",
-        "timeframe": bars_rows[0].timeframe,
+        "timeframe": requested_tf,
+        "available_timeframes": available_timeframes,
         "bars": bars,
-        "markers": {
-            "entry_price": trade.entry_price,
-            "exit_price": trade.exit_price,
-            "stop_loss": trade.stop_loss,
-            "take_profit": trade.take_profit,
-            "entry_time": entry_time,
-            "exit_time": exit_time,
-            "side": trade.side,
-        },
-    })
+        "markers": markers,
+    }
+    if bars_derived_from_m5:
+        payload["bars_source"] = "aggregated_from_m5"
+    return jsonify(payload)
 
 
 @bp.route("/dashboard/trades/<string:trade_pubkey>/delete", methods=["POST"])

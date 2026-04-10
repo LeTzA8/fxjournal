@@ -2986,6 +2986,121 @@ def register_public_auth_routes(
             "success",
         )
 
+    @app.route("/dashboard/admin/access/mt5/recalibrate-trade-times", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_recalibrate_all_trade_times():
+        from sqlalchemy.orm import joinedload
+
+        accounts = (
+            MT5Account.query.options(joinedload(MT5Account.trade_account))
+            .filter(
+                MT5Account.is_active.is_(True),
+                MT5Account.user_id.isnot(None),
+                MT5Account.trade_account_id.isnot(None),
+            )
+            .all()
+        )
+        eligible = [
+            a
+            for a in accounts
+            if a.trade_account is not None
+            and str(a.trade_account.account_type or "").strip().upper() == "CFD"
+        ]
+        if not eligible:
+            return build_admin_redirect(
+                "mt5",
+                "No active CFD MT5 accounts to recalibrate trade times for.",
+                "info",
+            )
+        try:
+            from celery_workers.mt5_sync import sync_mt5_account
+
+            for account in eligible:
+                sync_mt5_account.apply_async(
+                    args=[account.id],
+                    kwargs={
+                        "full_history": True,
+                        "trigger_source": "admin_recalibrate_times",
+                        "recalibrate_trade_timestamps": True,
+                    },
+                    queue="mt5_sync",
+                )
+        except Exception as exc:
+            db.session.rollback()
+            current_app.logger.warning(
+                "MT5 recalibrate-times queue failed: %s",
+                sanitize_error_message(exc),
+            )
+            return build_admin_redirect(
+                "mt5",
+                "Recalibration could not be queued right now. Please try again shortly.",
+                "error",
+            )
+
+        return build_admin_redirect(
+            "mt5",
+            (
+                f"Queued full-history MT5 sync with timestamp recalibration for {len(eligible)} account(s). "
+                "Runs on the worker; use Backfill Bars per account if trade charts need refreshing."
+            ),
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/mt5/<int:mt5_account_id>/recalibrate-trade-times", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_recalibrate_trade_times(mt5_account_id):
+        from sqlalchemy.orm import joinedload
+
+        account = (
+            MT5Account.query.options(joinedload(MT5Account.trade_account))
+            .filter_by(id=mt5_account_id)
+            .first_or_404()
+        )
+        if account.is_orphaned:
+            return build_admin_redirect(
+                "mt5",
+                "That MT5 record is cleanup-only. Cannot recalibrate.",
+                "error",
+            )
+        if not account.is_active:
+            return build_admin_redirect("mt5", "That MT5 account is inactive.", "error")
+        if not account.trade_account or str(account.trade_account.account_type or "").strip().upper() != "CFD":
+            return build_admin_redirect(
+                "mt5",
+                "Trade time recalibration applies to CFD MT5 accounts only.",
+                "error",
+            )
+        try:
+            from celery_workers.mt5_sync import sync_mt5_account
+
+            sync_mt5_account.apply_async(
+                args=[mt5_account_id],
+                kwargs={
+                    "full_history": True,
+                    "trigger_source": "admin_recalibrate_times",
+                    "recalibrate_trade_timestamps": True,
+                },
+                queue="mt5_sync",
+            )
+        except Exception as exc:
+            db.session.rollback()
+            current_app.logger.warning(
+                "MT5 recalibrate-times queue failed for mt5_account_id=%s: %s",
+                mt5_account_id,
+                sanitize_error_message(exc),
+            )
+            return build_admin_redirect(
+                "mt5",
+                "Recalibration could not be queued right now. Please try again shortly.",
+                "error",
+            )
+
+        return build_admin_redirect(
+            "mt5",
+            f"Queued timestamp recalibration (full history) for MT5 account {account.account_number}.",
+            "success",
+        )
+
     @app.route("/dashboard/admin/access/mt5/<int:mt5_account_id>/backfill-bars", methods=["POST"])
     @root_admin_required
     def admin_mt5_backfill_bars(mt5_account_id):

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="dash-wrap">
+<section class="dash-wrap{% if form_mode in ('view', 'edit') %} trade-detail-fullbleed{% endif %}">
 
     <div class="dash-content">
         <header class="dash-head">
@@ -66,7 +66,62 @@
         </section>
         {% endif %}
 
-        <section class="panel-grid {% if form_mode == 'new' %}with-import{% endif %}">
+        <div class="trade-detail-body{% if form_mode == 'new' %} trade-detail-body--new{% endif %}">
+
+        {% if form_mode == 'view' and trade %}
+        <section class="panel trade-chart-top-panel" id="tradeChartTopPanel">
+            <div class="trade-hero trade-hero--pills" aria-live="polite">
+                <div class="trade-hero-pill-row">
+                    <span class="trade-hero-pill trade-hero-pill--symbol">{{ trade_display_symbol }}</span>
+                    {% if trade.side == "SELL" %}
+                    <span class="trade-hero-pill trade-hero-pill--side trade-hero-pill--sell">Sell</span>
+                    {% else %}
+                    <span class="trade-hero-pill trade-hero-pill--side trade-hero-pill--buy">Buy</span>
+                    {% endif %}
+                    {% if trade_is_running %}
+                    <span class="trade-hero-pill trade-hero-pill--running">Running</span>
+                    {% elif trade_net_pnl is not none %}
+                    <span class="trade-hero-pill trade-hero-pill--pnl {% if trade_net_pnl > 0 %}trade-hero-pill--pnl-pos{% elif trade_net_pnl < 0 %}trade-hero-pill--pnl-neg{% else %}trade-hero-pill--pnl-flat{% endif %}">Net {% if trade_net_pnl > 0 %}+{% endif %}{{ trim_decimal(trade_net_pnl, 2) }}</span>
+                    {% endif %}
+                </div>
+                {% if trade_opened_at_label and trade_opened_at_label != '-' %}
+                <p class="trade-hero-datetime">
+                    Opened <span class="trade-hero-datetime-value">{{ trade_opened_at_label }}</span>
+                    {% if trade_is_running %}
+                    <span class="soft"> · still open</span>
+                    {% elif trade_closed_at_label and trade_closed_at_label != '-' %}
+                    <span class="soft"> ·</span> Closed <span class="trade-hero-datetime-value">{{ trade_closed_at_label }}</span>
+                    {% endif %}
+                </p>
+                {% endif %}
+                <p class="trade-hero-meta soft">{{ active_trade_account_name }} · {{ "Futures" if account_type == "FUTURES" else "CFD" }} · {{ analytics_timezone }}</p>
+            </div>
+            {% if is_admin_user and trade.mt5_position and not trade_is_running %}
+            <div class="trade-chart-panel" id="tradeChartPanel">
+                <div class="trade-chart-head">
+                    <h3 class="trade-chart-title">Price chart</h3>
+                    <div class="trade-chart-head-right">
+                        <div class="trade-chart-tf-group" id="tradeChartTfGroup" role="group" aria-label="Chart timeframe">
+                            <button type="button" class="trade-chart-tf-btn is-active" data-trade-tf="M5" aria-pressed="true">5m</button>
+                            <button type="button" class="trade-chart-tf-btn" data-trade-tf="M15" aria-pressed="false">15m</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="trade-chart-body">
+                    <div id="tradeChartContainer" class="trade-chart-container"></div>
+                    <p class="trade-chart-status soft" id="tradeChartStatus">Loading chart data&hellip;</p>
+                </div>
+            </div>
+            <script>
+                window.__TRADE_CHART_DATA_URL__ = "{{ url_for('trades.trade_chart_data', trade_pubkey=trade.pubkey) }}";
+            </script>
+            <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+            <script src="{{ url_for('static', filename='js/trade_chart.js') }}"></script>
+            {% endif %}
+        </section>
+        {% endif %}
+
+        <section class="panel-grid trade-detail-panel-grid {% if form_mode == 'new' %}with-import{% endif %}">
             <article class="panel entry-panel trade-entry-panel">
                 <div class="panel-head trade-entry-panel-head{% if form_mode == 'view' %} trade-entry-panel-head--view{% endif %}">
                     <div class="trade-entry-panel-head-text">
@@ -78,51 +133,7 @@
                     {% endif %}
                 </div>
 
-                {% if form_mode == 'view' and trade %}
-                <div class="trade-hero trade-hero--pills" aria-live="polite">
-                    <div class="trade-hero-pill-row">
-                        <span class="trade-hero-pill trade-hero-pill--symbol">{{ trade_display_symbol }}</span>
-                        {% if trade.side == "SELL" %}
-                        <span class="trade-hero-pill trade-hero-pill--side trade-hero-pill--sell">Sell</span>
-                        {% else %}
-                        <span class="trade-hero-pill trade-hero-pill--side trade-hero-pill--buy">Buy</span>
-                        {% endif %}
-                        {% if trade_is_running %}
-                        <span class="trade-hero-pill trade-hero-pill--running">Running</span>
-                        {% elif trade_net_pnl is not none %}
-                        <span class="trade-hero-pill trade-hero-pill--pnl {% if trade_net_pnl > 0 %}trade-hero-pill--pnl-pos{% elif trade_net_pnl < 0 %}trade-hero-pill--pnl-neg{% else %}trade-hero-pill--pnl-flat{% endif %}">Net {% if trade_net_pnl > 0 %}+{% endif %}{{ trim_decimal(trade_net_pnl, 2) }}</span>
-                        {% endif %}
-                    </div>
-                    {% if trade_opened_at_label and trade_opened_at_label != '-' %}
-                    <p class="trade-hero-datetime">
-                        Opened <span class="trade-hero-datetime-value">{{ trade_opened_at_label }}</span>
-                        {% if trade_is_running %}
-                        <span class="soft"> · still open</span>
-                        {% elif trade_closed_at_label and trade_closed_at_label != '-' %}
-                        <span class="soft"> ·</span> Closed <span class="trade-hero-datetime-value">{{ trade_closed_at_label }}</span>
-                        {% endif %}
-                    </p>
-                    {% endif %}
-                    <p class="trade-hero-meta soft">{{ active_trade_account_name }} · {{ "Futures" if account_type == "FUTURES" else "CFD" }} · {{ analytics_timezone }}</p>
-                </div>
-                {% if is_admin_user and trade.mt5_position and not trade_is_running %}
-                <div class="trade-chart-panel" id="tradeChartPanel">
-                    <div class="trade-chart-head">
-                        <h3 class="trade-chart-title">Price chart</h3>
-                        <span class="trade-chart-tf soft" id="tradeChartTf"></span>
-                    </div>
-                    <div class="trade-chart-body">
-                        <div id="tradeChartContainer" class="trade-chart-container"></div>
-                        <p class="trade-chart-status soft" id="tradeChartStatus">Loading chart data&hellip;</p>
-                    </div>
-                </div>
-                <script>
-                    window.__TRADE_CHART_DATA_URL__ = "{{ url_for('trades.trade_chart_data', trade_pubkey=trade.pubkey) }}";
-                </script>
-                <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
-                <script src="{{ url_for('static', filename='js/trade_chart.js') }}"></script>
-                {% endif %}
-                {% elif form_mode == 'edit' and trade %}
+                {% if form_mode == 'edit' and trade %}
                 <div class="trade-hero trade-hero--pills" aria-live="polite">
                     <div class="trade-hero-pill-row">
                         <span class="trade-hero-pill trade-hero-pill--symbol">{{ trade_display_symbol }}</span>
@@ -164,86 +175,119 @@
 
                     <div class="trade-form-section trade-form-section--instrument">
                         <h3 class="trade-form-section-title trade-form-section-title--instrument"><span class="trade-section-emoji" aria-hidden="true">🎯</span>Instrument</h3>
-                        <label class="trade-field-label" for="symbol_display">Symbol</label>
-                        <input id="symbol_display" type="text" value="{{ trade_display_symbol }}" readonly>
-
+                        <div class="trade-fields-grid trade-fields-grid--2">
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="symbol_display">Symbol</label>
+                                <input id="symbol_display" type="text" value="{{ trade_display_symbol }}" readonly>
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="side">Side</label>
+                                <select id="side" name="side" disabled>
+                                    <option value="BUY" {% if trade and trade.side == "BUY" %}selected{% endif %}>Buy</option>
+                                    <option value="SELL" {% if trade and trade.side == "SELL" %}selected{% endif %}>Sell</option>
+                                </select>
+                            </div>
+                        </div>
                         {% if account_type == "FUTURES" %}
-                        <label class="trade-field-label" for="contract_code_display">Contract code</label>
-                        <input id="contract_code_display" type="text" value="{{ trade.contract_code if trade and trade.contract_code else '' }}" readonly>
+                        <div class="trade-field trade-field--full">
+                            <label class="trade-field-label" for="contract_code_display">Contract code</label>
+                            <input id="contract_code_display" type="text" value="{{ trade.contract_code if trade and trade.contract_code else '' }}" readonly>
+                        </div>
                         {% endif %}
-
-                        <label class="trade-field-label" for="side">Side</label>
-                        <select id="side" name="side" disabled>
-                            <option value="BUY" {% if trade and trade.side == "BUY" %}selected{% endif %}>Buy</option>
-                            <option value="SELL" {% if trade and trade.side == "SELL" %}selected{% endif %}>Sell</option>
-                        </select>
                     </div>
 
                     <div class="trade-form-section trade-form-section--execution">
                         <h3 class="trade-form-section-title trade-form-section-title--execution"><span class="trade-section-emoji" aria-hidden="true">⚡</span>Execution</h3>
-                        <label class="trade-field-label" for="entry_price">Entry price</label>
-                        <input id="entry_price" type="text" value="{% if trade and trade.entry_price is not none %}{{ format_trade_price(trade.entry_price, trade.symbol, account_type, trade.contract_code) }}{% endif %}" readonly>
-
-                        <label class="trade-field-label" for="exit_price">Exit price</label>
-                        <input id="exit_price" type="text" value="{% if trade and trade.exit_price is not none %}{{ format_trade_price(trade.exit_price, trade.symbol, account_type, trade.contract_code) }}{% elif trade_is_running %}Open{% else %}-{% endif %}" readonly>
-
-                        <label class="trade-field-label" for="lot_size">{{ size_label }}</label>
-                        <input id="lot_size" type="text" value="{% if trade and trade.lot_size is not none %}{{ format_trade_size(trade.lot_size, account_type) }}{% endif %}" readonly>
-
-                        <label class="trade-field-label" for="stop_loss">Stop loss</label>
-                        <input id="stop_loss" type="text" value="{{ format_trade_price(trade.stop_loss, trade.symbol, account_type, trade.contract_code) }}" readonly>
-
-                        <label class="trade-field-label" for="take_profit">Take profit</label>
-                        <input id="take_profit" type="text" value="{{ format_trade_price(trade.take_profit, trade.symbol, account_type, trade.contract_code) }}" readonly>
+                        <div class="trade-fields-grid trade-fields-grid--2">
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="entry_price">Entry price</label>
+                                <input id="entry_price" type="text" value="{% if trade and trade.entry_price is not none %}{{ format_trade_price(trade.entry_price, trade.symbol, account_type, trade.contract_code) }}{% endif %}" readonly>
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="exit_price">Exit price</label>
+                                <input id="exit_price" type="text" value="{% if trade and trade.exit_price is not none %}{{ format_trade_price(trade.exit_price, trade.symbol, account_type, trade.contract_code) }}{% elif trade_is_running %}Open{% else %}-{% endif %}" readonly>
+                            </div>
+                            <div class="trade-field trade-field--span-2">
+                                <label class="trade-field-label" for="lot_size">{{ size_label }}</label>
+                                <input id="lot_size" type="text" value="{% if trade and trade.lot_size is not none %}{{ format_trade_size(trade.lot_size, account_type) }}{% endif %}" readonly>
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="stop_loss">Stop loss</label>
+                                <input id="stop_loss" type="text" value="{{ format_trade_price(trade.stop_loss, trade.symbol, account_type, trade.contract_code) }}" readonly>
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="take_profit">Take profit</label>
+                                <input id="take_profit" type="text" value="{{ format_trade_price(trade.take_profit, trade.symbol, account_type, trade.contract_code) }}" readonly>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="trade-form-section trade-form-section--performance">
                         <h3 class="trade-form-section-title trade-form-section-title--performance"><span class="trade-section-emoji" aria-hidden="true">💹</span>Performance</h3>
-                        <label class="trade-field-label" for="planned_rr">Planned RR</label>
-                        <input id="planned_rr" type="text" value="{% if planned_rr is not none %}{{ trim_decimal(planned_rr, 4) }}R{% else %}-{% endif %}" readonly>
-
-                        <label class="trade-field-label" for="actual_rr">Actual RR</label>
-                        <input id="actual_rr" type="text" value="{% if actual_rr is not none %}{{ trim_decimal(actual_rr, 4) }}R{% else %}-{% endif %}" readonly>
-
-                        <label class="trade-field-label" for="pnl">PnL (Gross)</label>
-                        <input id="pnl" type="text" value="{% if trade_pnl is not none %}{{ trim_decimal(trade_pnl, 2) }}{% else %}-{% endif %}" readonly>
-
-                        {% if trade and trade.commission is not none %}
-                        <label class="trade-field-label" for="commission">Commission</label>
-                        <input id="commission" type="text" value="{{ trim_decimal(trade.commission, 2) }}" readonly>
-                        {% endif %}
-
-                        {% if trade and trade.swap is not none %}
-                        <label class="trade-field-label" for="swap">Swap</label>
-                        <input id="swap" type="text" value="{{ trim_decimal(trade.swap, 2) }}" readonly>
-                        {% endif %}
-
-                        <label class="trade-field-label" for="net_pnl">Net PnL</label>
-                        <input id="net_pnl" type="text" value="{% if trade_net_pnl is not none %}{{ trim_decimal(trade_net_pnl, 2) }}{% else %}-{% endif %}" readonly>
-
-                        {% if show_trade_pips %}
-                        <label class="trade-field-label" for="pips">Pips</label>
-                        <input id="pips" type="text" value="{% if trade_pips is not none %}{% if trade_pips > 0 %}+{% endif %}{{ trim_decimal(trade_pips, 4) }} pips{% else %}-{% endif %}" readonly>
-                        {% elif show_trade_ticks %}
-                        <label class="trade-field-label" for="ticks">Ticks</label>
-                        <input id="ticks" type="text" value="{% if trade_ticks is not none %}{% if trade_ticks > 0 %}+{% endif %}{{ trim_decimal(trade_ticks, 4) }} ticks{% else %}-{% endif %}" readonly>
-                        {% endif %}
+                        <div class="trade-fields-grid trade-fields-grid--2">
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="planned_rr">Planned RR</label>
+                                <input id="planned_rr" type="text" value="{% if planned_rr is not none %}{{ trim_decimal(planned_rr, 4) }}R{% else %}-{% endif %}" readonly>
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="actual_rr">Actual RR</label>
+                                <input id="actual_rr" type="text" value="{% if actual_rr is not none %}{{ trim_decimal(actual_rr, 4) }}R{% else %}-{% endif %}" readonly>
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="pnl">PnL (Gross)</label>
+                                <input id="pnl" type="text" value="{% if trade_pnl is not none %}{{ trim_decimal(trade_pnl, 2) }}{% else %}-{% endif %}" readonly>
+                            </div>
+                            {% if trade and trade.commission is not none %}
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="commission">Commission</label>
+                                <input id="commission" type="text" value="{{ trim_decimal(trade.commission, 2) }}" readonly>
+                            </div>
+                            {% endif %}
+                            {% if trade and trade.swap is not none %}
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="swap">Swap</label>
+                                <input id="swap" type="text" value="{{ trim_decimal(trade.swap, 2) }}" readonly>
+                            </div>
+                            {% endif %}
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="net_pnl">Net PnL</label>
+                                <input id="net_pnl" type="text" value="{% if trade_net_pnl is not none %}{{ trim_decimal(trade_net_pnl, 2) }}{% else %}-{% endif %}" readonly>
+                            </div>
+                            {% if show_trade_pips %}
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="pips">Pips</label>
+                                <input id="pips" type="text" value="{% if trade_pips is not none %}{% if trade_pips > 0 %}+{% endif %}{{ trim_decimal(trade_pips, 4) }} pips{% else %}-{% endif %}" readonly>
+                            </div>
+                            {% elif show_trade_ticks %}
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="ticks">Ticks</label>
+                                <input id="ticks" type="text" value="{% if trade_ticks is not none %}{% if trade_ticks > 0 %}+{% endif %}{{ trim_decimal(trade_ticks, 4) }} ticks{% else %}-{% endif %}" readonly>
+                            </div>
+                            {% endif %}
+                        </div>
                     </div>
 
                     <div class="trade-form-section trade-form-section--timing">
                         <h3 class="trade-form-section-title trade-form-section-title--timing"><span class="trade-section-emoji" aria-hidden="true">🕐</span>Timing</h3>
-                        <label class="trade-field-label" for="status">Status</label>
-                        <input id="status" type="text" value="{% if trade_is_running %}Running{% else %}Closed{% endif %}" readonly>
-
-                        <label class="trade-field-label" for="opened_at_display">Opened at ({{ analytics_timezone }})</label>
-                        <input id="opened_at_display" type="text" value="{{ trade_opened_at_label }}" readonly>
-
-                        <label class="trade-field-label" for="closed_at_display">Closed at ({{ analytics_timezone }})</label>
-                        <input id="closed_at_display" type="text" value="{{ trade_closed_at_label }}" readonly>
-
+                        <div class="trade-fields-grid trade-fields-grid--3">
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="status">Status</label>
+                                <input id="status" type="text" value="{% if trade_is_running %}Running{% else %}Closed{% endif %}" readonly>
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="opened_at_display">Opened at ({{ analytics_timezone }})</label>
+                                <input id="opened_at_display" type="text" value="{{ trade_opened_at_label }}" readonly>
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="closed_at_display">Closed at ({{ analytics_timezone }})</label>
+                                <input id="closed_at_display" type="text" value="{{ trade_closed_at_label }}" readonly>
+                            </div>
+                        </div>
                         {% if has_trade_source_timezone %}
-                        <label class="trade-field-label" for="source_timezone">Source timezone</label>
-                        <input id="source_timezone" type="text" value="{{ trade_source_timezone }}" readonly>
+                        <div class="trade-field trade-field--full">
+                            <label class="trade-field-label" for="source_timezone">Source timezone</label>
+                            <input id="source_timezone" type="text" value="{{ trade_source_timezone }}" readonly>
+                        </div>
                         {% endif %}
                     </div>
 
@@ -294,92 +338,124 @@
 
                     <div class="trade-form-section trade-form-section--instrument">
                         <h3 class="trade-form-section-title trade-form-section-title--instrument"><span class="trade-section-emoji" aria-hidden="true">🎯</span>Instrument &amp; status</h3>
-                        <label class="trade-field-label" for="symbol">Symbol</label>
-                        <select id="symbol" name="symbol" required>
-                            {% set selected_symbol = trade.symbol if trade else (symbol_options[0] if symbol_options else '') %}
-                            {% for symbol in symbol_options %}
-                            <option value="{{ symbol }}" {% if selected_symbol == symbol %}selected{% endif %}>{{ symbol }}</option>
-                            {% endfor %}
-                        </select>
-
+                        <div class="trade-fields-grid trade-fields-grid--2">
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="symbol">Symbol</label>
+                                <select id="symbol" name="symbol" required>
+                                    {% set selected_symbol = trade.symbol if trade else (symbol_options[0] if symbol_options else '') %}
+                                    {% for symbol in symbol_options %}
+                                    <option value="{{ symbol }}" {% if selected_symbol == symbol %}selected{% endif %}>{{ symbol }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="side">Side</label>
+                                <select id="side" name="side" required>
+                                    <option value="BUY" {% if trade and trade.side == "BUY" %}selected{% endif %}>Buy</option>
+                                    <option value="SELL" {% if trade and trade.side == "SELL" %}selected{% endif %}>Sell</option>
+                                </select>
+                            </div>
+                            <div class="trade-field trade-field--span-2">
+                                <label class="trade-field-label" for="status">Status</label>
+                                <select id="status" name="status" required>
+                                    <option value="Closed" {% if (trade and not trade_is_running) %}selected{% endif %}>Closed</option>
+                                    <option value="Running" {% if (not trade) or trade_is_running %}selected{% endif %}>Running</option>
+                                </select>
+                            </div>
+                        </div>
                         {% if account_type == "FUTURES" %}
-                        <label class="trade-field-label" for="contract_code">Contract code</label>
-                        <input id="contract_code" name="contract_code" type="text" maxlength="24" placeholder="Optional, e.g. NQH6" value="{{ trade.contract_code if trade and trade.contract_code else '' }}">
-                        <p class="field-help">Exact contract when you have it. PnL still uses the root symbol.</p>
+                        <div class="trade-field trade-field--full">
+                            <label class="trade-field-label" for="contract_code">Contract code</label>
+                            <input id="contract_code" name="contract_code" type="text" maxlength="24" placeholder="Optional, e.g. NQH6" value="{{ trade.contract_code if trade and trade.contract_code else '' }}">
+                            <p class="field-help">Exact contract when you have it. PnL still uses the root symbol.</p>
+                        </div>
                         {% endif %}
-
-                        <label class="trade-field-label" for="side">Side</label>
-                        <select id="side" name="side" required>
-                            <option value="BUY" {% if trade and trade.side == "BUY" %}selected{% endif %}>Buy</option>
-                            <option value="SELL" {% if trade and trade.side == "SELL" %}selected{% endif %}>Sell</option>
-                        </select>
-
-                        <label class="trade-field-label" for="status">Status</label>
-                        <select id="status" name="status" required>
-                            <option value="Closed" {% if (trade and not trade_is_running) %}selected{% endif %}>Closed</option>
-                            <option value="Running" {% if (not trade) or trade_is_running %}selected{% endif %}>Running</option>
-                        </select>
                     </div>
 
                     <div class="trade-form-section trade-form-section--execution">
                         <h3 class="trade-form-section-title trade-form-section-title--execution"><span class="trade-section-emoji" aria-hidden="true">⚡</span>Execution</h3>
-                        <label class="trade-field-label" for="entry_price">Entry price</label>
-                        <input id="entry_price" name="entry_price" type="number" step="0.00001" placeholder="1.08421" value="{{ trade.entry_price if trade else '' }}" required>
-
-                        <label class="trade-field-label" for="exit_price">Exit price</label>
-                        <input id="exit_price" name="exit_price" type="number" step="0.00001" placeholder="Leave blank if still open" value="{{ trade.exit_price if trade and trade.exit_price is not none else '' }}">
-
-                        <label class="trade-field-label" for="lot_size">{{ size_label }}</label>
-                        <input id="lot_size" name="lot_size" type="number" step="0.01" placeholder="0.10" value="{{ trade.lot_size if trade else '' }}" required>
-
-                        <label class="trade-field-label" for="stop_loss">Stop loss</label>
-                        <input id="stop_loss" name="stop_loss" type="number" step="0.00001" placeholder="Optional" value="{{ trade.stop_loss if trade and trade.stop_loss is not none else '' }}">
-
-                        <label class="trade-field-label" for="take_profit">Take profit</label>
-                        <input id="take_profit" name="take_profit" type="number" step="0.00001" placeholder="Optional" value="{{ trade.take_profit if trade and trade.take_profit is not none else '' }}">
+                        <div class="trade-fields-grid trade-fields-grid--2">
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="entry_price">Entry price</label>
+                                <input id="entry_price" name="entry_price" type="number" step="0.00001" placeholder="1.08421" value="{{ trade.entry_price if trade else '' }}" required>
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="exit_price">Exit price</label>
+                                <input id="exit_price" name="exit_price" type="number" step="0.00001" placeholder="Leave blank if still open" value="{{ trade.exit_price if trade and trade.exit_price is not none else '' }}">
+                            </div>
+                            <div class="trade-field trade-field--span-2">
+                                <label class="trade-field-label" for="lot_size">{{ size_label }}</label>
+                                <input id="lot_size" name="lot_size" type="number" step="0.01" placeholder="0.10" value="{{ trade.lot_size if trade else '' }}" required>
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="stop_loss">Stop loss</label>
+                                <input id="stop_loss" name="stop_loss" type="number" step="0.00001" placeholder="Optional" value="{{ trade.stop_loss if trade and trade.stop_loss is not none else '' }}">
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="take_profit">Take profit</label>
+                                <input id="take_profit" name="take_profit" type="number" step="0.00001" placeholder="Optional" value="{{ trade.take_profit if trade and trade.take_profit is not none else '' }}">
+                            </div>
+                        </div>
                     </div>
 
                     <div class="trade-form-section trade-form-section--performance">
                         <h3 class="trade-form-section-title trade-form-section-title--performance"><span class="trade-section-emoji" aria-hidden="true">💹</span>Outcome</h3>
-                        {% if form_mode == 'edit' %}
-                        <p class="field-help field-help--tight">Derived from your stops, targets, and fills. Updates when you save.</p>
-                        <label class="trade-field-label" for="planned_rr_display">Planned RR</label>
-                        <input id="planned_rr_display" class="trade-readonly-metric" type="text" tabindex="-1" value="{% if planned_rr is not none %}{{ trim_decimal(planned_rr, 4) }}R{% else %}-{% endif %}" readonly aria-readonly="true">
-
-                        <label class="trade-field-label" for="actual_rr_display">Actual RR</label>
-                        <input id="actual_rr_display" class="trade-readonly-metric" type="text" tabindex="-1" value="{% if actual_rr is not none %}{{ trim_decimal(actual_rr, 4) }}R{% else %}-{% endif %}" readonly aria-readonly="true">
-                        {% endif %}
-
-                        <label class="trade-field-label" for="pnl">PnL (gross)</label>
-                        <input id="pnl" name="pnl" type="number" step="0.01" placeholder="Optional if exit price fills it in" value="{{ trade.pnl if trade and trade.pnl is not none else '' }}">
-
-                        <label class="trade-field-label" for="commission">Commission</label>
-                        <input id="commission" name="commission" type="number" step="0.01" placeholder="e.g. -3.50" value="{{ trade.commission if trade and trade.commission is not none else '' }}">
-
-                        <label class="trade-field-label" for="swap">Swap</label>
-                        <input id="swap" name="swap" type="number" step="0.01" placeholder="e.g. -0.80" value="{{ trade.swap if trade and trade.swap is not none else '' }}">
-
-                        {% if form_mode == 'edit' %}
-                        <label class="trade-field-label" for="net_pnl_display">Net PnL</label>
-                        <input id="net_pnl_display" class="trade-readonly-metric" type="text" tabindex="-1" value="{% if trade_net_pnl is not none %}{{ trim_decimal(trade_net_pnl, 2) }}{% else %}-{% endif %}" readonly aria-readonly="true">
-
-                        {% if show_trade_pips %}
-                        <label class="trade-field-label" for="pips_display">Pips</label>
-                        <input id="pips_display" class="trade-readonly-metric" type="text" tabindex="-1" value="{% if trade_pips is not none %}{% if trade_pips > 0 %}+{% endif %}{{ trim_decimal(trade_pips, 4) }} pips{% else %}-{% endif %}" readonly aria-readonly="true">
-                        {% elif show_trade_ticks %}
-                        <label class="trade-field-label" for="ticks_display">Ticks</label>
-                        <input id="ticks_display" class="trade-readonly-metric" type="text" tabindex="-1" value="{% if trade_ticks is not none %}{% if trade_ticks > 0 %}+{% endif %}{{ trim_decimal(trade_ticks, 4) }} ticks{% else %}-{% endif %}" readonly aria-readonly="true">
-                        {% endif %}
-                        {% endif %}
+                        <div class="trade-fields-grid trade-fields-grid--2">
+                            {% if form_mode == 'edit' %}
+                            <p class="field-help field-help--tight trade-field--span-2">Derived from your stops, targets, and fills. Updates when you save.</p>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="planned_rr_display">Planned RR</label>
+                                <input id="planned_rr_display" class="trade-readonly-metric" type="text" tabindex="-1" value="{% if planned_rr is not none %}{{ trim_decimal(planned_rr, 4) }}R{% else %}-{% endif %}" readonly aria-readonly="true">
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="actual_rr_display">Actual RR</label>
+                                <input id="actual_rr_display" class="trade-readonly-metric" type="text" tabindex="-1" value="{% if actual_rr is not none %}{{ trim_decimal(actual_rr, 4) }}R{% else %}-{% endif %}" readonly aria-readonly="true">
+                            </div>
+                            {% endif %}
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="pnl">PnL (gross)</label>
+                                <input id="pnl" name="pnl" type="number" step="0.01" placeholder="Optional if exit price fills it in" value="{{ trade.pnl if trade and trade.pnl is not none else '' }}">
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="commission">Commission</label>
+                                <input id="commission" name="commission" type="number" step="0.01" placeholder="e.g. -3.50" value="{{ trade.commission if trade and trade.commission is not none else '' }}">
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="swap">Swap</label>
+                                <input id="swap" name="swap" type="number" step="0.01" placeholder="e.g. -0.80" value="{{ trade.swap if trade and trade.swap is not none else '' }}">
+                            </div>
+                            {% if form_mode == 'edit' %}
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="net_pnl_display">Net PnL</label>
+                                <input id="net_pnl_display" class="trade-readonly-metric" type="text" tabindex="-1" value="{% if trade_net_pnl is not none %}{{ trim_decimal(trade_net_pnl, 2) }}{% else %}-{% endif %}" readonly aria-readonly="true">
+                            </div>
+                            {% if show_trade_pips %}
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="pips_display">Pips</label>
+                                <input id="pips_display" class="trade-readonly-metric" type="text" tabindex="-1" value="{% if trade_pips is not none %}{% if trade_pips > 0 %}+{% endif %}{{ trim_decimal(trade_pips, 4) }} pips{% else %}-{% endif %}" readonly aria-readonly="true">
+                            </div>
+                            {% elif show_trade_ticks %}
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="ticks_display">Ticks</label>
+                                <input id="ticks_display" class="trade-readonly-metric" type="text" tabindex="-1" value="{% if trade_ticks is not none %}{% if trade_ticks > 0 %}+{% endif %}{{ trim_decimal(trade_ticks, 4) }} ticks{% else %}-{% endif %}" readonly aria-readonly="true">
+                            </div>
+                            {% endif %}
+                            {% endif %}
+                        </div>
                     </div>
 
                     <div class="trade-form-section trade-form-section--timing">
                         <h3 class="trade-form-section-title trade-form-section-title--timing"><span class="trade-section-emoji" aria-hidden="true">🕐</span>Timing</h3>
-                        <label class="trade-field-label" for="opened_at">Opened at</label>
-                        <input id="opened_at" name="opened_at" type="datetime-local" value="{{ opened_at_value }}" required>
-
-                        <label class="trade-field-label" for="closed_at">Closed at</label>
-                        <input id="closed_at" name="closed_at" type="datetime-local" value="{{ closed_at_value }}">
+                        <div class="trade-fields-grid trade-fields-grid--2">
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="opened_at">Opened at</label>
+                                <input id="opened_at" name="opened_at" type="datetime-local" value="{{ opened_at_value }}" required>
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="closed_at">Closed at</label>
+                                <input id="closed_at" name="closed_at" type="datetime-local" value="{{ closed_at_value }}">
+                            </div>
+                        </div>
                         <p class="field-help">Shown in <strong>{{ analytics_timezone }}</strong>; stored in UTC for analytics.</p>
                     </div>
 
@@ -524,10 +600,46 @@
             </article>
             {% endif %}
         </section>
+
+        </div>
     </div>
 </section>
 
 <style>
+    /* Single column: chart + form share width (avoids chart left / form centered mismatch). */
+    .trade-detail-body {
+        width: 100%;
+        max-width: min(var(--app-hero-max-width, 52rem), 100%);
+        margin-inline: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.9rem;
+        min-width: 0;
+    }
+
+    /* View / edit: use full dash width for chart + record panels (still inside dash-wrap padding). */
+    section.dash-wrap.trade-detail-fullbleed .trade-detail-body {
+        max-width: 100%;
+    }
+
+    section.dash-wrap.trade-detail-fullbleed .dash-head {
+        max-width: 100%;
+    }
+
+    .trade-detail-body--new {
+        max-width: none;
+    }
+
+    .trade-detail-body:not(.trade-detail-body--new) .trade-detail-panel-grid {
+        justify-items: stretch;
+    }
+
+    .trade-detail-body:not(.trade-detail-body--new) .trade-detail-panel-grid > .panel {
+        max-width: none;
+        width: 100%;
+    }
+
     .panel-grid { display: grid;
         grid-template-columns: 1fr;
         gap: 0.8rem;
@@ -616,6 +728,17 @@
         letter-spacing: -0.02em; }
 
     .trade-entry-panel { padding: 1rem 1.08rem 1.18rem; }
+
+    .trade-chart-top-panel {
+        width: 100%;
+        max-width: none;
+        margin-bottom: 0;
+        padding: 1rem 1.08rem 1.18rem;
+    }
+
+    .trade-chart-top-panel .trade-hero--pills {
+        margin-bottom: 0.9rem;
+    }
 
     .trade-entry-panel-head--view { display: flex;
         flex-wrap: wrap;
@@ -728,7 +851,8 @@
         line-height: 1.45;
         max-width: 52ch; }
 
-    .trade-form-section { display: grid;
+    .trade-form-section { display: flex;
+        flex-direction: column;
         gap: 0.62rem;
         margin: 0 0 1rem;
         padding: 0.92rem 1.02rem 1rem 1.05rem;
@@ -736,6 +860,107 @@
         border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
         border-left-width: 3px;
         background: color-mix(in srgb, var(--card) 65%, transparent); }
+
+    .trade-fields-grid { display: grid;
+        gap: 0.55rem 0.9rem;
+        min-width: 0;
+        width: 100%; }
+
+    .trade-fields-grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .trade-fields-grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .trade-field { display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        min-width: 0; }
+
+    .trade-field--span-2,
+    .trade-field--full { grid-column: 1 / -1; }
+
+    .trade-fields-grid > .field-help.trade-field--span-2 { margin: -0.05rem 0 0.15rem; }
+
+    @media (max-width: 719px) {
+        .trade-fields-grid--2,
+        .trade-fields-grid--3 { grid-template-columns: 1fr; }
+
+        .trade-field--span-2 { grid-column: auto; }
+    }
+
+    /* Wide screens: three top tiles (instrument / execution / outcome), then timing + journal full width. */
+    @media (min-width: 1100px) {
+        .trade-form--view,
+        .trade-form--edit {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.85rem 1rem;
+            align-items: stretch;
+        }
+
+        .trade-form--view .trade-form-section--instrument,
+        .trade-form--edit .trade-form-section--instrument { grid-column: 1;
+            grid-row: 1; }
+
+        .trade-form--view .trade-form-section--execution,
+        .trade-form--edit .trade-form-section--execution { grid-column: 2;
+            grid-row: 1; }
+
+        .trade-form--view .trade-form-section--performance,
+        .trade-form--edit .trade-form-section--performance { grid-column: 3;
+            grid-row: 1; }
+
+        .trade-form--view .trade-form-section--timing,
+        .trade-form--edit .trade-form-section--timing { grid-column: 1 / -1;
+            grid-row: 2; }
+
+        .trade-form--view .trade-form-section--journal,
+        .trade-form--edit .trade-form-section--journal { grid-column: 1 / -1;
+            grid-row: 3; }
+
+        .trade-form--view .trade-form-actions,
+        .trade-form--edit .trade-form-actions { grid-column: 1 / -1;
+            grid-row: 4; }
+
+        .trade-form--view .trade-form-section,
+        .trade-form--edit .trade-form-section { margin-bottom: 0; }
+    }
+
+    @media (min-width: 720px) and (max-width: 1099px) {
+        .trade-form--view,
+        .trade-form--edit {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.85rem 1rem;
+            align-items: stretch;
+        }
+
+        .trade-form--view .trade-form-section--instrument,
+        .trade-form--edit .trade-form-section--instrument { grid-column: 1;
+            grid-row: 1; }
+
+        .trade-form--view .trade-form-section--execution,
+        .trade-form--edit .trade-form-section--execution { grid-column: 2;
+            grid-row: 1; }
+
+        .trade-form--view .trade-form-section--performance,
+        .trade-form--edit .trade-form-section--performance { grid-column: 1 / -1;
+            grid-row: 2; }
+
+        .trade-form--view .trade-form-section--timing,
+        .trade-form--edit .trade-form-section--timing { grid-column: 1 / -1;
+            grid-row: 3; }
+
+        .trade-form--view .trade-form-section--journal,
+        .trade-form--edit .trade-form-section--journal { grid-column: 1 / -1;
+            grid-row: 4; }
+
+        .trade-form--view .trade-form-actions,
+        .trade-form--edit .trade-form-actions { grid-column: 1 / -1;
+            grid-row: 5; }
+
+        .trade-form--view .trade-form-section,
+        .trade-form--edit .trade-form-section { margin-bottom: 0; }
+    }
 
     .trade-form-section--instrument { border-left-color: color-mix(in srgb, #6eb3ff 72%, var(--border)); }
 

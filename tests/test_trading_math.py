@@ -5,6 +5,7 @@ import pytest
 
 import trading
 from trading import (
+    aggregate_ohlc_bars,
     build_rr_summary,
     build_trade_analytics,
     calc_pnl_values,
@@ -431,3 +432,18 @@ def test_build_trade_analytics_merges_bundled_trades_without_losing_fee_math():
     assert analytics["summary"]["net_pnl"] == pytest.approx(48.0)
     assert analytics["closed_records"][0]["raw_pnl"] == pytest.approx(50.0)
     assert analytics["closed_records"][0]["pnl"] == pytest.approx(48.0)
+
+
+def test_aggregate_ohlc_bars_merges_m5_into_m15_bucket():
+    m5 = [
+        {"time": 1000, "open": 1.0, "high": 1.02, "low": 0.99, "close": 1.01},
+        {"time": 1100, "open": 1.01, "high": 1.03, "low": 1.0, "close": 1.02},
+        {"time": 1200, "open": 1.02, "high": 1.04, "low": 1.01, "close": 1.03},
+    ]
+    out = aggregate_ohlc_bars(m5, 900)
+    assert len(out) == 1
+    assert out[0]["time"] == 900
+    assert out[0]["open"] == pytest.approx(1.0)
+    assert out[0]["high"] == pytest.approx(1.04)
+    assert out[0]["low"] == pytest.approx(0.99)
+    assert out[0]["close"] == pytest.approx(1.03)

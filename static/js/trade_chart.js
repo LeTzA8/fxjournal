@@ -1,14 +1,42 @@
 (function () {
     "use strict";
 
-    var dataUrl = window.__TRADE_CHART_DATA_URL__;
-    if (!dataUrl) return;
+    var baseUrl = window.__TRADE_CHART_DATA_URL__;
+    if (!baseUrl) return;
 
     var panel = document.getElementById("tradeChartPanel");
     var container = document.getElementById("tradeChartContainer");
     var statusEl = document.getElementById("tradeChartStatus");
-    var tfLabel = document.getElementById("tradeChartTf");
+    var tfGroup = document.getElementById("tradeChartTfGroup");
     if (!panel || !container) return;
+
+    var chartInstance = null;
+    var currentTf = "M5";
+    var resizeWired = false;
+    var MAX_CHART_PRICE_DECIMALS = 6;
+
+    function tradeChartPixelSize() {
+        var w = container.clientWidth;
+        var h = container.clientHeight;
+        if (!h || h < 200) h = 420;
+        return { width: w, height: Math.round(h) };
+    }
+
+    function wireResizeOnce() {
+        if (resizeWired) return;
+        resizeWired = true;
+        window.addEventListener("resize", function () {
+            if (chartInstance) {
+                var sz = tradeChartPixelSize();
+                chartInstance.applyOptions({ width: sz.width, height: sz.height });
+            }
+        });
+    }
+
+    function chartDataUrl(timeframe) {
+        var u = baseUrl.indexOf("?") >= 0 ? baseUrl + "&" : baseUrl + "?";
+        return u + "timeframe=" + encodeURIComponent(timeframe);
+    }
 
     function getCssVar(name) {
         return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -19,12 +47,132 @@
     }
 
     function setStatus(text) {
-        if (statusEl) statusEl.textContent = text;
+        if (statusEl) {
+            statusEl.style.display = "";
+            statusEl.textContent = text;
+        }
+    }
+
+    function destroyChart() {
+        if (chartInstance) {
+            chartInstance.remove();
+            chartInstance = null;
+        }
+    }
+
+    /** Keep wheel events on the chart (zoom) instead of scrolling the page behind it. */
+    function wireChartWheelCapture(chart) {
+        if (!chart || typeof chart.chartElement !== "function") return;
+        var el = chart.chartElement();
+        if (!el) return;
+        el.addEventListener(
+            "wheel",
+            function (ev) {
+                ev.preventDefault();
+            },
+            { passive: false }
+        );
+    }
+
+    function formatAxisPrice(p, precision) {
+        if (p == null || !isFinite(Number(p))) return "";
+        var n = Number(p);
+        if (precision != null && isFinite(Number(precision))) {
+            var bounded = Math.max(0, Math.min(MAX_CHART_PRICE_DECIMALS, Number(precision)));
+            return n.toFixed(bounded);
+        }
+        var a = Math.abs(n);
+        if (a >= 1000) return n.toFixed(2);
+        if (a >= 10) return n.toFixed(3);
+        return n.toFixed(5);
+    }
+
+    /**
+     * Decimal count for display — never use String(Number(x)) (float garbage → 16dp on the axis).
+     */
+    function meaningfulDecimalPlaces(raw) {
+        if (raw == null || raw === "") return 0;
+        var n = Number(raw);
+        if (!isFinite(n)) return 0;
+        var s = n.toFixed(10);
+        s = s.replace(/(\.\d*?[1-9])0+$/, "$1");
+        s = s.replace(/\.0+$/, "");
+        var dot = s.indexOf(".");
+        if (dot < 0) return 0;
+        return Math.min(s.length - dot - 1, 8);
+    }
+
+    function derivePricePrecision(bars, markers) {
+        var values = [];
+        if (bars && bars.length) {
+            for (var i = 0; i < bars.length; i++) {
+                values.push(bars[i].open, bars[i].high, bars[i].low, bars[i].close);
+            }
+        }
+        if (markers) {
+            values.push(markers.entry_price, markers.exit_price, markers.stop_loss, markers.take_profit);
+        }
+
+        var maxAbs = 0;
+        var observed = 0;
+        for (var j = 0; j < values.length; j++) {
+            var n = Number(values[j]);
+            if (!isFinite(n)) continue;
+            var a = Math.abs(n);
+            if (a > maxAbs) maxAbs = a;
+            var dp = meaningfulDecimalPlaces(values[j]);
+            if (dp > observed) observed = dp;
+        }
+
+        var baseline;
+        if (maxAbs < 20) baseline = 5;
+        else if (maxAbs < 250) baseline = 3;
+        else baseline = 2;
+
+        return Math.min(Math.max(observed, baseline), MAX_CHART_PRICE_DECIMALS);
+    }
+
+    /**
+     * Bar open time (Unix) for the candle that contains `unix` — last bar with open <= event.
+     * Avoids nearest-abs-diff, which can pin exit/entry to the wrong end of the range.
+     */
+    function barOpenContainingTime(unix, bars) {
+        if (!bars || !bars.length || unix == null) return null;
+        var t = Number(unix);
+        var best = null;
+        for (var i = 0; i < bars.length; i++) {
+            var bt = bars[i].time;
+            if (bt <= t) best = bt;
+        }
+        return best != null ? best : bars[0].time;
+    }
+
+    /** First bar open strictly after `unix`, else null. */
+    function nextBarAfter(unix, bars) {
+        if (!bars || !bars.length || unix == null) return null;
+        var t = Number(unix);
+        for (var i = 0; i < bars.length; i++) {
+            if (bars[i].time > t) return bars[i].time;
+        }
+        return null;
+    }
+
+    function setTfButtonsActive(tf, available) {
+        if (!tfGroup) return;
+        var buttons = tfGroup.querySelectorAll("[data-trade-tf]");
+        for (var i = 0; i < buttons.length; i++) {
+            var b = buttons[i];
+            var t = b.getAttribute("data-trade-tf");
+            var has = !available || !available.length || available.indexOf(t) >= 0;
+            b.classList.toggle("is-active", t === tf);
+            b.disabled = !has;
+            b.setAttribute("aria-pressed", t === tf ? "true" : "false");
+        }
     }
 
     function renderChart(payload) {
         if (statusEl) statusEl.style.display = "none";
-        if (tfLabel) tfLabel.textContent = payload.timeframe || "";
+        destroyChart();
 
         var bg = getCssVar("--card") || "#1a1a2e";
         var ink = getCssVar("--ink") || "#e8e8f0";
@@ -32,10 +180,12 @@
         var muted = getCssVar("--muted") || "#888";
         var good = getCssVar("--good") || "#4caf82";
         var bad = getCssVar("--bad") || "#e05c6a";
+        var accent = getCssVar("--accent") || "#818cf8";
 
+        var chartSize = tradeChartPixelSize();
         var chart = LightweightCharts.createChart(container, {
-            width: container.clientWidth,
-            height: 320,
+            width: chartSize.width,
+            height: chartSize.height,
             layout: {
                 background: { color: bg },
                 textColor: ink,
@@ -54,8 +204,26 @@
                 borderColor: border,
                 timeVisible: true,
                 secondsVisible: false,
+                rightOffset: 0,
+                /* fixLeftEdge + fixRightEdge together can block zoom-out when all bars are in view (LC quirk). */
+                fixLeftEdge: false,
+                fixRightEdge: false,
+            },
+            handleScroll: {
+                mouseWheel: false,
+                pressedMouseMove: true,
+                horzTouchDrag: true,
+                vertTouchDrag: false,
+            },
+            handleScale: {
+                mouseWheel: true,
+                pinch: true,
+                axisPressedMouseMove: { time: true, price: true },
+                axisDoubleClickReset: true,
             },
         });
+        chartInstance = chart;
+        wireChartWheelCapture(chart);
 
         var series = chart.addCandlestickSeries({
             upColor: good,
@@ -64,54 +232,102 @@
             borderDownColor: bad,
             wickUpColor: muted,
             wickDownColor: muted,
+            /* Hide library default “current / last close” line + scale tag; we only show trade lines */
+            priceLineVisible: false,
+            lastValueVisible: false,
         });
 
         series.setData(payload.bars);
 
         var m = payload.markers || {};
+        var isBuy = (m.side || "").toUpperCase() === "BUY";
+        var bars = payload.bars;
+        var pricePrecision = derivePricePrecision(bars, m);
+        var minMove = Math.pow(10, -pricePrecision);
 
-        // SL / TP price lines
-        if (m.stop_loss) {
+        series.applyOptions({
+            priceFormat: {
+                type: "price",
+                precision: pricePrecision,
+                minMove: minMove,
+            },
+        });
+
+        var markers = [];
+        var entryRaw = m.entry_time != null ? Number(m.entry_time) : null;
+        var exitRaw = m.exit_time != null ? Number(m.exit_time) : null;
+        var entryT = entryRaw != null ? barOpenContainingTime(entryRaw, bars) : null;
+        var exitT = exitRaw != null ? barOpenContainingTime(exitRaw, bars) : null;
+
+        if (entryT != null && exitT != null && exitRaw != null && entryRaw != null) {
+            if (exitRaw > entryRaw && exitT <= entryT) {
+                var nextExit = nextBarAfter(entryT, bars);
+                if (nextExit != null) exitT = nextExit;
+            }
+        }
+
+        /* Entry / SL / TP / Exit: full-width price lines — entry & exit solid, SL & TP dashed. */
+        if (m.entry_price != null && m.entry_price !== "") {
             series.createPriceLine({
-                price: m.stop_loss,
+                price: Number(m.entry_price),
+                color: good,
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Solid,
+                axisLabelVisible: true,
+                title: "Entry " + formatAxisPrice(m.entry_price, pricePrecision),
+            });
+        }
+
+        /* SL / TP / Exit */
+        if (m.stop_loss != null && m.stop_loss !== "") {
+            series.createPriceLine({
+                price: Number(m.stop_loss),
                 color: bad,
                 lineWidth: 1,
                 lineStyle: LightweightCharts.LineStyle.Dashed,
                 axisLabelVisible: true,
-                title: "SL",
+                title: "SL " + formatAxisPrice(m.stop_loss, pricePrecision),
             });
         }
-        if (m.take_profit) {
+        if (m.take_profit != null && m.take_profit !== "") {
             series.createPriceLine({
-                price: m.take_profit,
+                price: Number(m.take_profit),
                 color: good,
                 lineWidth: 1,
                 lineStyle: LightweightCharts.LineStyle.Dashed,
                 axisLabelVisible: true,
-                title: "TP",
+                title: "TP " + formatAxisPrice(m.take_profit, pricePrecision),
+            });
+        }
+        if (m.exit_price != null && m.exit_price !== "") {
+            series.createPriceLine({
+                price: Number(m.exit_price),
+                color: accent,
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Solid,
+                axisLabelVisible: true,
+                title: "Exit " + formatAxisPrice(m.exit_price, pricePrecision),
             });
         }
 
-        // Entry / exit markers
-        var isBuy = (m.side || "").toUpperCase() === "BUY";
-        var markers = [];
-        if (m.entry_time && m.entry_price) {
+        // Markers: entry + exit as arrows
+        if (entryT != null) {
             markers.push({
-                time: m.entry_time,
+                time: entryT,
                 position: isBuy ? "belowBar" : "aboveBar",
                 color: good,
                 shape: isBuy ? "arrowUp" : "arrowDown",
-                text: "Entry " + m.entry_price,
+                text: "",
                 size: 1,
             });
         }
-        if (m.exit_time && m.exit_price) {
+        if (exitT != null) {
             markers.push({
-                time: m.exit_time,
+                time: exitT,
                 position: isBuy ? "aboveBar" : "belowBar",
-                color: bad,
-                shape: "square",
-                text: "Exit " + m.exit_price,
+                color: accent,
+                shape: isBuy ? "arrowDown" : "arrowUp",
+                text: "",
                 size: 1,
             });
         }
@@ -120,31 +336,77 @@
         }
 
         chart.timeScale().fitContent();
+        /* Start slightly zoomed in so wheel “zoom out” has headroom (fitContent alone pins max zoom-out). */
+        requestAnimationFrame(function () {
+            var ts = chart.timeScale();
+            var r = ts.getVisibleLogicalRange();
+            if (!r || !bars.length || bars.length < 10) return;
+            var span = r.to - r.from;
+            var inset = Math.min(span * 0.08, 4);
+            if (span <= inset * 2 + 0.5) return;
+            ts.setVisibleLogicalRange({ from: r.from + inset, to: r.to - inset });
+        });
+        wireResizeOnce();
+    }
 
-        // Resize when window resizes
-        window.addEventListener("resize", function () {
-            chart.applyOptions({ width: container.clientWidth });
+    function loadTimeframe(tf) {
+        currentTf = tf;
+        setTfButtonsActive(tf, null);
+        setStatus("Loading chart…");
+        fetch(chartDataUrl(tf))
+            .then(function (res) {
+                return res.json();
+            })
+            .then(function (data) {
+                if (data.status === "unavailable") {
+                    hidePanel();
+                    return;
+                }
+                if (data.status === "pending") {
+                    setStatus("Chart data is being prepared — check back after the next sync.");
+                    return;
+                }
+                if (data.status === "ready") {
+                    var avail = data.available_timeframes || [];
+                    setTfButtonsActive(tf, avail);
+
+                    if (!data.bars || !data.bars.length) {
+                        var other = avail.filter(function (x) {
+                            return x !== tf;
+                        });
+                        if (other.length) {
+                            loadTimeframe(other[0]);
+                            return;
+                        }
+                        setStatus("No bars for this timeframe yet. Run MT5 sync to refresh.");
+                        return;
+                    }
+                    if (typeof LightweightCharts === "undefined") {
+                        setStatus("Chart library failed to load.");
+                        return;
+                    }
+                    renderChart(data);
+                    return;
+                }
+                setStatus("Could not load chart data.");
+            })
+            .catch(function () {
+                setStatus("Could not load chart data.");
+            });
+    }
+
+    if (tfGroup) {
+        tfGroup.addEventListener("click", function (ev) {
+            var btn = ev.target.closest("[data-trade-tf]");
+            if (!btn || btn.disabled) return;
+            var tf = btn.getAttribute("data-trade-tf");
+            if (!tf || tf === currentTf) return;
+            destroyChart();
+            loadTimeframe(tf);
         });
     }
 
-    fetch(dataUrl)
-        .then(function (res) { return res.json(); })
-        .then(function (data) {
-            if (data.status === "unavailable") {
-                hidePanel();
-            } else if (data.status === "pending") {
-                setStatus("Chart data is being prepared — check back after the next sync.");
-            } else if (data.status === "ready" && data.bars && data.bars.length > 0) {
-                if (typeof LightweightCharts === "undefined") {
-                    setStatus("Chart library failed to load.");
-                    return;
-                }
-                renderChart(data);
-            } else {
-                setStatus("No bar data available for this trade.");
-            }
-        })
-        .catch(function () {
-            setStatus("Could not load chart data.");
-        });
+    wireResizeOnce();
+    loadTimeframe(currentTf);
 }());
+

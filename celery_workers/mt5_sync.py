@@ -295,7 +295,13 @@ def _summarize_trade_states(trades):
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="unknown"):
+def sync_mt5_account(
+    self,
+    mt5_account_id,
+    full_history=False,
+    trigger_source="unknown",
+    recalibrate_trade_timestamps=False,
+):
     from celery_workers.cache import CacheUnavailableError, claim_lock, release_lock
 
     task_id = getattr(getattr(self, "request", None), "id", None)
@@ -504,17 +510,20 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
         if not sync_secret:
             raise RuntimeError("MT5_SYNC_SECRET is required for MT5 sync.")
 
+        sync_payload = {
+            "mt5_account_id": mt5_account_id,
+            "trades": trades,
+            "timing_context": vm_timing_context,
+            "mt5_server_delta_minutes": mt5_server_delta_minutes,
+            "applied_time_offset_minutes": applied_offset_minutes,
+            "include_skip_reasons": True,
+            "include_skip_debug": True,
+        }
+        if recalibrate_trade_timestamps:
+            sync_payload["refresh_closed_trade_timestamps"] = True
         response = requests.post(
             f"{base_url}/api/internal/mt5/sync",
-            json={
-                "mt5_account_id": mt5_account_id,
-                "trades": trades,
-                "timing_context": vm_timing_context,
-                "mt5_server_delta_minutes": mt5_server_delta_minutes,
-                "applied_time_offset_minutes": applied_offset_minutes,
-                "include_skip_reasons": True,
-                "include_skip_debug": True,
-            },
+            json=sync_payload,
             headers={
                 "X-Sync-Secret": sync_secret,
                 "Content-Type": "application/json",
@@ -540,6 +549,7 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                 ("Updated", result.get("updated")),
                 ("Skipped", result.get("skipped")),
                 ("Errors", result.get("errors")),
+                ("Timestamp Refreshes", result.get("timestamp_refreshes")),
                 ("Skip Reasons", result.get("skip_reasons")),
             ],
         )
@@ -631,7 +641,7 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
 
     from helpers.utils import decrypt_password
     from models import MT5Account, Trade, db
-    from trading import chart_timeframe_bar_seconds, mt5_timeframe_constant, select_chart_timeframe
+    from trading import chart_timeframe_bar_seconds, mt5_timeframe_constant
 
     fetch_started_at = datetime.now(timezone.utc)
 
@@ -668,14 +678,13 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
     symbol = trade.symbol
     opened_at = trade.opened_at
     closed_at = trade.closed_at
-    timeframe = select_chart_timeframe(opened_at, closed_at)
-    bar_seconds = chart_timeframe_bar_seconds(timeframe)
-    context_bars = 20
-    start_dt = opened_at - timedelta(seconds=context_bars * bar_seconds)
-    end_dt = closed_at + timedelta(seconds=context_bars * bar_seconds)
+    # Always fetch M5; the window must be expressed in M5 bars. Using
+    # select_chart_timeframe bar size here capped short trades at ~20×5m (~100m)
+    # before entry — not enough context to see a typical setup.
+    m5_seconds = chart_timeframe_bar_seconds("M5")
+    pre_entry_m5_bars = 144  # 12h of M5 before open
+    post_exit_m5_bars = 72  # 6h of M5 after close
     now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-    if end_dt > now_utc:
-        end_dt = now_utc
 
     investor_password = decrypt_password(account.investor_password_encrypted)
     account_number = account.account_number
@@ -684,6 +693,12 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
     init_kwargs = {}
     if terminal_path:
         init_kwargs["path"] = terminal_path
+
+    # Store M5 only; M15 (and other higher TFs) are derived in the API via OHLC aggregation.
+    start_dt = opened_at - timedelta(seconds=pre_entry_m5_bars * m5_seconds)
+    end_dt = closed_at + timedelta(seconds=post_exit_m5_bars * m5_seconds)
+    if end_dt > now_utc:
+        end_dt = now_utc
 
     bars = []
     with _MT5_API_SESSION_LOCK:
@@ -696,22 +711,20 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             mt5_server_delta_minutes = _probe_mt5_server_delta_minutes(mt5, preferred_symbol=symbol)
             start_dt_shifted = _shift_datetime_by_minutes(start_dt, minutes=mt5_server_delta_minutes)
             end_dt_shifted = _shift_datetime_by_minutes(end_dt, minutes=mt5_server_delta_minutes)
-
-            tf_constant = mt5_timeframe_constant(timeframe, mt5)
+            tf_constant = mt5_timeframe_constant("M5", mt5)
             raw_bars = mt5.copy_rates_range(symbol, tf_constant, start_dt_shifted, end_dt_shifted)
+            if raw_bars is not None and len(raw_bars) > 0:
+                for bar in raw_bars:
+                    bars.append({
+                        "time": int(bar["time"]),
+                        "open": float(bar["open"]),
+                        "high": float(bar["high"]),
+                        "low": float(bar["low"]),
+                        "close": float(bar["close"]),
+                        "tick_volume": int(bar["tick_volume"]) if bar["tick_volume"] is not None else None,
+                    })
         finally:
             mt5.shutdown()
-
-    if raw_bars is not None and len(raw_bars) > 0:
-        for bar in raw_bars:
-            bars.append({
-                "time": int(bar["time"]),
-                "open": float(bar["open"]),
-                "high": float(bar["high"]),
-                "low": float(bar["low"]),
-                "close": float(bar["close"]),
-                "tick_volume": int(bar["tick_volume"]) if bar["tick_volume"] is not None else None,
-            })
 
     fetch_finished_at = datetime.now(timezone.utc)
     log_ascii_table(
@@ -722,27 +735,28 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             ("MT5 Account ID", mt5_account_id),
             ("Trade ID", trade_id),
             ("Symbol", symbol),
-            ("Timeframe", timeframe),
+            ("M5 context", f"{pre_entry_m5_bars} pre / {post_exit_m5_bars} post bars"),
+            ("Stored TF", "M5"),
             ("Bars Fetched", len(bars)),
             ("Window", f"{start_dt.isoformat()} -> {end_dt.isoformat()}"),
             ("Duration", duration_label(fetch_started_at, fetch_finished_at)),
         ],
     )
 
-    if not bars:
-        return {"saved": 0, "timeframe": timeframe}
-
     base_url = os.environ.get("FLASK_API_URL", "https://myfxjournal.com").strip() or "https://myfxjournal.com"
     sync_secret = os.environ.get("MT5_SYNC_SECRET", "").strip()
     if not sync_secret:
         raise RuntimeError("MT5_SYNC_SECRET is required for bar fetch.")
+
+    if not bars:
+        return {"saved": 0, "timeframe": "M5"}
 
     response = requests.post(
         f"{base_url}/api/internal/mt5/trade-bars",
         json={
             "mt5_account_id": mt5_account_id,
             "trade_id": trade_id,
-            "timeframe": timeframe,
+            "timeframe": "M5",
             "bars": bars,
         },
         headers={

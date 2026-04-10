@@ -1902,12 +1902,13 @@
         grid-template-areas:
             "main improve"
             "main strength";
-        align-items: stretch;
+        /* Content-sized cards: avoid stretching short copy to match a tall neighbor */
+        align-items: start;
+        align-content: start;
     }
 
     .ai-review-panel-main {
         grid-area: main;
-        min-height: clamp(320px, 42vh, 460px);
     }
 
     .ai-review-panel-improvement {

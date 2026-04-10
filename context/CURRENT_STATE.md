@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-Last Updated: 2026-04-05
+Last Updated: 2026-04-11
 
 Short-term operational memory.
 
@@ -14,10 +14,10 @@ Short-term operational memory.
 ## Active Areas
 
 - MT5 timestamp interpretation tightened: MT5 sync marks explicit UTC epoch interpretation and logs VM timezone context, while MT5 file imports no longer assume timezone for naive timestamps (`trading.py`, `routes/mt5_internal.py`, `celery_workers/mt5_sync.py`, `templates/trade_entry.html`, `tests/test_trading_import.py`)
-- Closed MT5 trade detail now includes Lightweight Charts candlestick panel wiring with admin-gated chart-data fetch and dedicated chart panel styling in shared app-page CSS (`templates/trade_entry.html`, `static/js/trade_chart.js`, `static/css/app_pages.css`)
+- Closed MT5 trade detail includes Lightweight Charts with admin-gated chart API, 5m/15m toggle (M15 aggregated from stored M5), price-scale labels for entry/exit/SL/TP; entry, exit, SL, and TP are full-width `createPriceLine`s (entry and exit solid, SL/TP dashed), plus entry/exit arrow markers, while SL/TP stay full-width `createPriceLine` references; bar fetch uses a wide M5 window before/after the trade (~12h pre / ~6h post) so setup context is visible (`templates/trade_entry.html`, `static/js/trade_chart.js`, `static/css/app_pages.css`, `routes/trades.py`, `celery_workers/mt5_sync.py`)
 - MT5 request flow work in `routes/trade_accounts.py`, `templates/trade_accounts.html`, and `static/js/mt5_request_form.js`
 - MT5 receipt confirmation now uses the shared HTML email pattern in `routes/trade_accounts.py` and `templates/emails/mt5-request-received.html`
-- Admin MT5 tab now focuses on submitted MT5 accounts and setup actions instead of legacy request-review/manual-add panels (`auth_account.py`, `templates/admin_signup_access.html`)
+- Admin MT5 tab now focuses on submitted MT5 accounts and setup actions instead of legacy request-review/manual-add panels; root admin can queue **Recalibrate all trade times** or per-account **Recalibrate times** (full-history sync with `refresh_closed_trade_timestamps`) to rewrite existing MT5 trades’ `opened_at`/`closed_at` from broker deals (`auth_account.py`, `templates/admin_signup_access.html`, `routes/mt5_internal.py`, `celery_workers/mt5_sync.py`, `tests/test_mt5_sync.py`)
 - Legacy MT5 `approved before details` path is being removed so dashboard/trade-account states now stay aligned with the one-step submit-then-review flow
 - Admin MT5 table now uses explicit workflow statuses: Requested, Setting Up, Active, Inactive, while preserving Cleanup Pending for orphaned records
 - Dashboard MT5 messaging, rolling performance/behaviour trend panel, and weekly AI presentation work in `routes/dashboard.py`, `templates/index.html`, and `helpers/trends.py`

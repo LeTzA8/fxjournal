@@ -808,6 +808,16 @@
                     </span>
                 </div>
                 <p class="helper-note">Users now submit the full MT5 sync request from the dashboard. Use this table to monitor submitted accounts, queue setup, trigger syncs, or clean up old records.</p>
+                <div class="inline-actions" style="margin-bottom: 0.85rem; flex-wrap: wrap;">
+                    <form
+                        action="{{ url_for('admin_mt5_recalibrate_all_trade_times') }}"
+                        method="post"
+                        onsubmit="return confirm('Queue full-history MT5 sync for every active CFD account to refresh opened/closed times from broker deals? Runs on the worker and may take a while.');"
+                    >
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="ghost-btn">Recalibrate all trade times</button>
+                    </form>
+                </div>
                 {% if mt5_accounts %}
                 <div class="table-shell admin-table-shell">
                     <table class="admin-table">
@@ -869,6 +879,14 @@
                                         <form action="{{ url_for('admin_mt5_trigger_sync', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="submit-btn" {% if not account.is_active or is_orphaned %}disabled aria-disabled="true"{% if is_orphaned %} title="Cleanup-only MT5 records cannot be synced."{% endif %}{% endif %}>Trigger Sync</button>
+                                        </form>
+                                        <form
+                                            action="{{ url_for('admin_mt5_recalibrate_trade_times', mt5_account_id=account.id) }}"
+                                            method="post"
+                                            onsubmit="return confirm('Queue full-history sync to refresh trade open/close times from the broker for this account?');"
+                                        >
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="ghost-btn" {% if not account.is_active or is_orphaned %}disabled aria-disabled="true" title="Cannot recalibrate inactive or cleanup-only accounts."{% endif %}>Recalibrate times</button>
                                         </form>
                                         <form action="{{ url_for('admin_mt5_backfill_bars', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Queue bar backfill for all closed trades on this account? This may dispatch many tasks.');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

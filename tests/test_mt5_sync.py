@@ -701,6 +701,73 @@ def test_internal_mt5_sync_saves_and_skips_duplicates(app_ctx, client, monkeypat
     assert second_mt5_account.last_synced_at is not None
 
 
+def test_internal_mt5_sync_refresh_timestamps_updates_closed_trade(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="ts-refresh-user",
+        email="ts-refresh@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="33333333",
+    )
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.0,
+        exit_price=1.01,
+        lot_size=0.01,
+        opened_at=datetime(2026, 3, 21, 2, 0, 0),
+        closed_at=datetime(2026, 3, 21, 4, 0, 0),
+        mt5_position="99999999",
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    payload = {
+        "mt5_account_id": mt5_account.id,
+        "refresh_closed_trade_timestamps": True,
+        "trades": [
+            {
+                "symbol": "EURUSD",
+                "side": "BUY",
+                "entry_price": 1.0,
+                "exit_price": 1.01,
+                "lot_size": 0.01,
+                "pnl": 0.0,
+                "commission": 0.0,
+                "swap": 0.0,
+                "opened_at": "2026-03-21T08:00:00+00:00",
+                "closed_at": "2026-03-21T10:00:00+00:00",
+                "mt5_position": 99999999,
+                "trade_note": "",
+            }
+        ],
+    }
+    response = client.post(
+        "/api/internal/mt5/sync",
+        json=payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["saved"] == 0
+    assert body["updated"] == 0
+    assert body["skipped"] == 0
+    assert body["errors"] == 0
+    assert body.get("timestamp_refreshes") == 1
+
+    db.session.refresh(trade)
+    assert trade.opened_at == datetime(2026, 3, 21, 8, 0, 0)
+    assert trade.closed_at == datetime(2026, 3, 21, 10, 0, 0)
+
+
 def test_internal_mt5_trade_bars_requires_shared_secret(app_ctx, client, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)

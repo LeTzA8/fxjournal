@@ -1318,7 +1318,8 @@ body.app-layout .trade-accounts-page .helper-note {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.6rem;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
     margin-bottom: 0.5rem;
 }
 
@@ -1330,15 +1331,58 @@ body.app-layout .trade-accounts-page .helper-note {
     text-transform: uppercase;
 }
 
-.trade-chart-tf {
-    font-size: 0.76rem;
-    font-weight: 700;
+.trade-chart-head-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.trade-chart-tf-group {
+    display: inline-flex;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+    overflow: hidden;
+    background: color-mix(in srgb, var(--surface) 88%, var(--card));
+}
+
+.trade-chart-tf-btn {
+    margin: 0;
+    padding: 0.32rem 0.62rem;
+    font: inherit;
+    font-size: 0.72rem;
+    font-weight: 800;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+    color: color-mix(in srgb, var(--muted) 55%, var(--ink));
+    background: transparent;
+    border: none;
+    border-right: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
+}
+
+.trade-chart-tf-btn:last-child {
+    border-right: none;
+}
+
+.trade-chart-tf-btn:hover:not(:disabled) {
+    color: var(--ink);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.trade-chart-tf-btn.is-active {
+    color: var(--ink);
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+
+.trade-chart-tf-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 .trade-chart-container {
-    height: 320px;
+    height: 420px;
+    min-height: 320px;
     border-radius: 8px;
     overflow: hidden;
 }

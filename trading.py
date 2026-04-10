@@ -611,6 +611,62 @@ def mt5_timeframe_constant(timeframe_str, mt5_module):
     return mapping.get(timeframe_str, mt5_module.TIMEFRAME_M15)
 
 
+def aggregate_ohlc_bars(bars, bucket_seconds: int):
+    """Roll up finer OHLC rows into larger buckets (e.g. M5 -> M15).
+
+    Each input row is a dict (or mapping) with keys: time, open, high, low, close.
+    ``time`` is bar open as Unix seconds (UTC). Buckets use
+    ``bucket_time = (time // bucket_seconds) * bucket_seconds``.
+
+    Returns a list of dicts with the same keys, sorted by time.
+    """
+    if not bars or bucket_seconds <= 0:
+        return []
+
+    def _row(b):
+        return {
+            "time": int(b["time"]),
+            "open": float(b["open"]),
+            "high": float(b["high"]),
+            "low": float(b["low"]),
+            "close": float(b["close"]),
+        }
+
+    sorted_rows = sorted((_row(b) for b in bars), key=lambda r: r["time"])
+    out = []
+    bucket_time = None
+    group = []
+    for row in sorted_rows:
+        bt = (row["time"] // bucket_seconds) * bucket_seconds
+        if bucket_time is None:
+            bucket_time = bt
+        if bt != bucket_time:
+            out.append(
+                {
+                    "time": bucket_time,
+                    "open": group[0]["open"],
+                    "high": max(r["high"] for r in group),
+                    "low": min(r["low"] for r in group),
+                    "close": group[-1]["close"],
+                }
+            )
+            bucket_time = bt
+            group = [row]
+        else:
+            group.append(row)
+    if group:
+        out.append(
+            {
+                "time": bucket_time,
+                "open": group[0]["open"],
+                "high": max(r["high"] for r in group),
+                "low": min(r["low"] for r in group),
+                "close": group[-1]["close"],
+            }
+        )
+    return out
+
+
 def normalize_header_name(value):
     text = str(value or "").strip().lower()
     text = re.sub(r"[\s_/\\-]+", " ", text)

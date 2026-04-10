@@ -101,6 +101,7 @@ def sync_mt5_trades():
     payload = request.get_json(silent=True) or {}
     include_skip_reasons = bool(payload.get("include_skip_reasons"))
     include_skip_debug = bool(payload.get("include_skip_debug"))
+    refresh_trade_timestamps = bool(payload.get("refresh_closed_trade_timestamps"))
     try:
         mt5_account_id = int(payload.get("mt5_account_id"))
     except (TypeError, ValueError):
@@ -158,6 +159,7 @@ def sync_mt5_trades():
         updated_count = 0
         skipped_count = 0
         error_count = invalid_rows
+        timestamp_refresh_count = 0
         newly_closed_trade_ids = []
 
         for row in normalized_rows:
@@ -188,6 +190,63 @@ def sync_mt5_trades():
                     continue
                 rows_to_insert.append(row)
                 continue
+
+            if refresh_trade_timestamps:
+                row_opened = row.get("opened_at")
+                row_closed = row.get("closed_at")
+                if existing_trade.closed_at is not None:
+                    if (
+                        row_opened is not None
+                        and row_closed is not None
+                        and row_closed >= row_opened
+                    ):
+                        if (
+                            existing_trade.opened_at != row_opened
+                            or existing_trade.closed_at != row_closed
+                        ):
+                            existing_trade.opened_at = row_opened
+                            existing_trade.closed_at = row_closed
+                            timestamp_refresh_count += 1
+                    # Recalibration pass: never treat already-closed rows as generic skips.
+                    continue
+                if row_opened is not None:
+                    if existing_trade.opened_at != row_opened:
+                        existing_trade.opened_at = row_opened
+                        timestamp_refresh_count += 1
+                    if row_closed is None:
+                        continue
+                    # Open in DB but broker row includes exit — close here; do not fall through
+                    # to the normal close branch (same validations, single code path intent).
+                    closed_at = row_closed
+                    exit_price = row.get("exit_price")
+                    if (
+                        exit_price is None
+                        or exit_price <= 0
+                        or (
+                            existing_trade.opened_at is not None
+                            and closed_at < existing_trade.opened_at
+                        )
+                    ):
+                        error_count += 1
+                        continue
+                    existing_trade.exit_price = float(exit_price)
+                    existing_trade.pnl = float(row.get("pnl")) if row.get("pnl") is not None else None
+                    existing_trade.closed_at = closed_at
+                    existing_trade.commission = (
+                        float(row.get("commission"))
+                        if row.get("commission") is not None
+                        else None
+                    )
+                    existing_trade.swap = (
+                        float(row.get("swap"))
+                        if row.get("swap") is not None
+                        else None
+                    )
+                    if row.get("system_trade_note"):
+                        existing_trade.system_trade_note = row.get("system_trade_note")
+                    updated_count += 1
+                    newly_closed_trade_ids.append(existing_trade.id)
+                    continue
 
             if existing_trade.closed_at is None and row.get("closed_at") is not None:
                 closed_at = row.get("closed_at")
@@ -284,7 +343,7 @@ def sync_mt5_trades():
             (
                 "MT5 internal sync summary mt5_account_id=%s user_id=%s trade_account_id=%s "
                 "incoming_rows=%s normalized_rows=%s incoming_positions=%s saved=%s updated=%s skipped=%s errors=%s "
-                "skip_reasons=%s"
+                "timestamp_refreshes=%s skip_reasons=%s"
             ),
             mt5_account_id,
             account.user_id,
@@ -296,9 +355,10 @@ def sync_mt5_trades():
             updated_count,
             skipped_count,
             error_count,
+            timestamp_refresh_count,
             skip_reason_counts,
         )
-        if saved_count or updated_count:
+        if saved_count or updated_count or timestamp_refresh_count:
             try:
                 invalidate(user_id=account.user_id, trade_account_id=account.trade_account_id)
             except CacheUnavailableError as exc:
@@ -344,6 +404,8 @@ def sync_mt5_trades():
             "skipped": skipped_count,
             "errors": error_count,
         }
+        if timestamp_refresh_count:
+            response_payload["timestamp_refreshes"] = timestamp_refresh_count
         if include_skip_reasons:
             response_payload["skip_reasons"] = skip_reason_counts
         if include_skip_debug:

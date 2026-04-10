@@ -862,8 +862,22 @@ def test_trade_chart_data_returns_ready_payload_when_bars_exist(app_ctx, client)
     payload = response.get_json()
     assert payload["status"] == "ready"
     assert payload["timeframe"] == "M5"
+    assert payload["available_timeframes"] == ["M5", "M15"]
     assert len(payload["bars"]) == 2
     assert payload["bars"][0]["time"] == 1_700_000_000
     assert payload["markers"]["entry_price"] == pytest.approx(1.1)
     assert payload["markers"]["exit_price"] == pytest.approx(1.101)
     assert payload["markers"]["side"] == "BUY"
+
+    m15_response = client.get(f"/api/trades/{trade.pubkey}/chart-data?timeframe=M15")
+    assert m15_response.status_code == 200
+    m15_payload = m15_response.get_json()
+    assert m15_payload["status"] == "ready"
+    assert m15_payload["timeframe"] == "M15"
+    assert m15_payload["available_timeframes"] == ["M5", "M15"]
+    assert m15_payload["bars_source"] == "aggregated_from_m5"
+    assert len(m15_payload["bars"]) == 2
+    assert m15_payload["bars"][0]["open"] == pytest.approx(1.0990)
+    assert m15_payload["bars"][0]["close"] == pytest.approx(1.1005)
+    assert m15_payload["bars"][1]["open"] == pytest.approx(1.1005)
+    assert m15_payload["bars"][1]["close"] == pytest.approx(1.1010)
