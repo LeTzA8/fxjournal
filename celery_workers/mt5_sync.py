@@ -81,10 +81,11 @@ def _duration_label(started_at, finished_at):
     return f"{duration_ms / 1000:.2f}s ({duration_ms} ms)"
 
 
-def _to_utc_iso(timestamp_value):
+def _to_utc_iso(timestamp_value, *, offset_minutes=0):
     if timestamp_value is None:
         return None
-    return datetime.fromtimestamp(timestamp_value, tz=timezone.utc).isoformat(timespec="seconds")
+    adjusted_timestamp = float(timestamp_value) - (int(offset_minutes or 0) * 60)
+    return datetime.fromtimestamp(adjusted_timestamp, tz=timezone.utc).isoformat(timespec="seconds")
 
 
 def _vm_timezone_context():
@@ -125,7 +126,7 @@ def _weighted_average_price(deals):
     return weighted_total / total_volume
 
 
-def _positions_to_open_trades(positions, *, position_type_buy=0):
+def _positions_to_open_trades(positions, *, position_type_buy=0, offset_minutes=0):
     """Convert MT5 position objects (from positions_get) into open trade row dicts."""
     trades = []
     for pos in positions:
@@ -150,7 +151,7 @@ def _positions_to_open_trades(positions, *, position_type_buy=0):
                 "swap": _deal_float_value(pos, "swap"),
                 "stop_loss": sl,
                 "take_profit": tp,
-                "opened_at": _to_utc_iso(getattr(pos, "time", None)),
+                "opened_at": _to_utc_iso(getattr(pos, "time", None), offset_minutes=offset_minutes),
                 "closed_at": None,
                 "mt5_position": str(pos_id),
                 "trade_note": str(getattr(pos, "comment", "") or "").strip() or None,
@@ -169,6 +170,7 @@ def aggregate_deals_to_trades(
     entry_out=1,
     extra_exit_entries=(),
     deal_type_buy=0,
+    offset_minutes=0,
 ):
     deals = [deal for deal in deals if getattr(deal, "type", 99) <= 1]
     positions = defaultdict(list)
@@ -208,7 +210,10 @@ def aggregate_deals_to_trades(
                         "stop_loss": None,
                         "take_profit": None,
                         "opened_at": None,
-                        "closed_at": _to_utc_iso(getattr(latest_exit_deal, "time", None)),
+                        "closed_at": _to_utc_iso(
+                            getattr(latest_exit_deal, "time", None),
+                            offset_minutes=offset_minutes,
+                        ),
                         "mt5_position": str(position_id),
                         "trade_note": str(getattr(latest_exit_deal, "comment", "") or "").strip() or None,
                         "source_timezone": MT5_DEFAULT_SOURCE_TIMEZONE_NAME,
@@ -240,8 +245,14 @@ def aggregate_deals_to_trades(
                     "swap": total_swap,
                     "stop_loss": None,
                     "take_profit": None,
-                    "opened_at": _to_utc_iso(getattr(entry_deal, "time", None)),
-                    "closed_at": _to_utc_iso(getattr(latest_exit_deal, "time", None)),
+                    "opened_at": _to_utc_iso(
+                        getattr(entry_deal, "time", None),
+                        offset_minutes=offset_minutes,
+                    ),
+                    "closed_at": _to_utc_iso(
+                        getattr(latest_exit_deal, "time", None),
+                        offset_minutes=offset_minutes,
+                    ),
                     "mt5_position": str(position_id),
                     "trade_note": str(getattr(latest_exit_deal, "comment", "") or "").strip() or None,
                     "source_timezone": MT5_DEFAULT_SOURCE_TIMEZONE_NAME,
@@ -263,7 +274,10 @@ def aggregate_deals_to_trades(
                     "swap": total_swap,
                     "stop_loss": None,
                     "take_profit": None,
-                    "opened_at": _to_utc_iso(getattr(entry_deal, "time", None)),
+                    "opened_at": _to_utc_iso(
+                        getattr(entry_deal, "time", None),
+                        offset_minutes=offset_minutes,
+                    ),
                     "closed_at": None,
                     "mt5_position": str(position_id),
                     "trade_note": str(getattr(entry_deal, "comment", "") or "").strip() or None,
@@ -278,6 +292,34 @@ def aggregate_deals_to_trades(
 
 def _sync_lock_key(mt5_account_id):
     return f"mt5_sync_lock:{mt5_account_id}"
+
+
+def _probe_mt5_server_delta_minutes(mt5, *, preferred_symbol=None):
+    """
+    Estimate MT5 server clock drift relative to VM UTC using latest tick timestamp.
+    Returns minute delta where positive means MT5 clock appears ahead of UTC.
+    """
+    symbol_info_tick = getattr(mt5, "symbol_info_tick", None)
+    if not callable(symbol_info_tick):
+        return 0
+    symbol_candidates = []
+    if preferred_symbol:
+        symbol_candidates.append(str(preferred_symbol).strip())
+    if "EURUSD" not in symbol_candidates:
+        symbol_candidates.append("EURUSD")
+    for symbol in symbol_candidates:
+        if not symbol:
+            continue
+        tick = symbol_info_tick(symbol)
+        tick_time = getattr(tick, "time", None) if tick is not None else None
+        if not tick_time:
+            continue
+        now_utc = int(datetime.now(timezone.utc).timestamp())
+        delta_seconds = int(tick_time) - now_utc
+        if abs(delta_seconds) > 6 * 3600:
+            continue
+        return int(round(delta_seconds / 60))
+    return 0
 
 
 def _mask_account_number_for_log(account_number):
@@ -322,6 +364,8 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
     mt5_login = None
     mt5_balance = None
     mt5_equity = None
+    mt5_server_delta_minutes = 0
+    applied_offset_minutes = 0
     sync_started_at = None
     sync_finished_at = None
     sync_mode = "full_history" if full_history else "rolling_7d"
@@ -409,6 +453,18 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                 else:
                     from_date = datetime.now(timezone.utc) - timedelta(days=7)
                 to_date = datetime.now(timezone.utc)
+                probe_symbol = None
+                try:
+                    positions_probe = mt5.positions_get() or []
+                    if positions_probe:
+                        probe_symbol = getattr(positions_probe[0], "symbol", None)
+                except Exception:
+                    probe_symbol = None
+                mt5_server_delta_minutes = _probe_mt5_server_delta_minutes(
+                    mt5,
+                    preferred_symbol=probe_symbol,
+                )
+                applied_offset_minutes = mt5_server_delta_minutes
                 vm_timing_context = _vm_timezone_context()
                 _log_ascii_table(
                     "MT5 Sync Context",
@@ -423,6 +479,8 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                         ("Mode", sync_mode),
                         ("VM Timezone", vm_timing_context.get("vm_timezone_name")),
                         ("VM UTC Offset (min)", vm_timing_context.get("vm_utc_offset_minutes")),
+                        ("MT5-UTC Delta (min)", mt5_server_delta_minutes),
+                        ("Applied Time Offset (min)", applied_offset_minutes),
                         ("Window", f"{from_date.isoformat()} -> {to_date.isoformat()}"),
                     ],
                 )
@@ -439,6 +497,7 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                         getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
                     ),
                     deal_type_buy=deal_type_buy,
+                    offset_minutes=applied_offset_minutes,
                 )
 
                 # Supplement with currently open positions directly from the broker.
@@ -446,7 +505,11 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                 # when they were opened, so it catches trades that fall outside the
                 # history_deals_get window or whose entry deals are filtered out.
                 open_positions = mt5.positions_get() or []
-                position_trades = _positions_to_open_trades(open_positions, position_type_buy=deal_type_buy)
+                position_trades = _positions_to_open_trades(
+                    open_positions,
+                    position_type_buy=deal_type_buy,
+                    offset_minutes=applied_offset_minutes,
+                )
                 deals_positions = {t["mt5_position"] for t in trades if t.get("mt5_position")}
                 trades = trades + [t for t in position_trades if t.get("mt5_position") not in deals_positions]
             finally:
@@ -466,6 +529,8 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                 "mt5_account_id": mt5_account_id,
                 "trades": trades,
                 "timing_context": vm_timing_context,
+                "mt5_server_delta_minutes": mt5_server_delta_minutes,
+                "applied_time_offset_minutes": applied_offset_minutes,
                 "include_skip_reasons": True,
             },
             headers={
