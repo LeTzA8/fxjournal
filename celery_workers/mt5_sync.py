@@ -11,6 +11,7 @@ import uuid
 import requests
 
 from celery_app import celery
+from celery_workers.logging_utils import duration_label, log_ascii_table
 from trading import MT5_DEFAULT_SOURCE_TIMEZONE_NAME
 
 logger = logging.getLogger(__name__)
@@ -24,61 +25,6 @@ def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
     retry_number = getattr(getattr(task, "request", None), "retries", 0)
     countdown = min(base_delay * (2 ** retry_number), max_delay)
     raise task.retry(exc=exc, countdown=countdown)
-
-
-def _format_log_value(value, *, default="-", max_width=72):
-    if value is None:
-        text_value = default
-    elif isinstance(value, datetime):
-        text_value = value.isoformat(timespec="seconds")
-    elif isinstance(value, float):
-        text_value = f"{value:,.2f}"
-    else:
-        text_value = str(value).strip() or default
-    if len(text_value) <= max_width:
-        return text_value
-    return f"{text_value[: max_width - 3]}..."
-
-
-def _ascii_table(title, rows):
-    normalized_rows = [
-        (_format_log_value(label, default=""), _format_log_value(value))
-        for label, value in rows
-    ]
-    key_header = "Metric"
-    value_header = "Value"
-    key_width = max([len(key_header), *(len(label) for label, _value in normalized_rows)])
-    value_width = max([len(value_header), *(len(value) for _label, value in normalized_rows)])
-    border = f"+-{'-' * key_width}-+-{'-' * value_width}-+"
-    lines = [
-        title,
-        border,
-        f"| {key_header.ljust(key_width)} | {value_header.ljust(value_width)} |",
-        border,
-    ]
-    lines.extend(
-        f"| {label.ljust(key_width)} | {value.ljust(value_width)} |"
-        for label, value in normalized_rows
-    )
-    lines.append(border)
-    return "\n".join(lines)
-
-
-def _log_ascii_table(title, rows):
-    logger.info("\n%s", _ascii_table(title, rows))
-
-
-def _duration_ms(started_at, finished_at):
-    if started_at is None or finished_at is None:
-        return None
-    return max(int((finished_at - started_at).total_seconds() * 1000), 0)
-
-
-def _duration_label(started_at, finished_at):
-    duration_ms = _duration_ms(started_at, finished_at)
-    if duration_ms is None:
-        return None
-    return f"{duration_ms / 1000:.2f}s ({duration_ms} ms)"
 
 
 def _to_utc_iso(timestamp_value, *, offset_minutes=0):
@@ -386,10 +332,14 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
             lock_acquired = True
 
         if not lock_acquired:
-            logger.info(
-                "MT5 sync skipped because another task already holds the lock. task_id=%s mt5_account_id=%s",
-                task_id,
-                mt5_account_id,
+            log_ascii_table(
+                logger,
+                "MT5 Sync Skipped",
+                [
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("Reason", "sync already running"),
+                ],
             )
             return {"skipped": "sync already running"}
 
@@ -403,19 +353,29 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
 
         account = db.session.get(MT5Account, mt5_account_id)
         if account is None or not account.is_active:
-            logger.warning(
-                "MT5 sync skipped because account is missing or inactive. task_id=%s mt5_account_id=%s",
-                task_id,
-                mt5_account_id,
+            log_ascii_table(
+                logger,
+                "MT5 Sync Skipped",
+                [
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("Reason", "account missing or inactive"),
+                ],
+                level=logging.WARNING,
             )
             return {"error": "MT5Account not found or inactive"}
         if account.is_orphaned:
-            logger.warning(
-                "MT5 sync skipped because account is orphaned. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s",
-                task_id,
-                mt5_account_id,
-                account.user_id,
-                account.trade_account_id,
+            log_ascii_table(
+                logger,
+                "MT5 Sync Skipped",
+                [
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("User ID", account.user_id),
+                    ("Trade Account ID", account.trade_account_id),
+                    ("Reason", "account is orphaned"),
+                ],
+                level=logging.WARNING,
             )
             return {"error": "MT5Account is orphaned"}
 
@@ -482,7 +442,8 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                     minutes=applied_offset_minutes,
                 )
                 vm_timing_context = _vm_timezone_context()
-                _log_ascii_table(
+                log_ascii_table(
+                    logger,
                     "MT5 Sync Context",
                     [
                         ("Started", sync_started_at),
@@ -563,11 +524,12 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
         response.raise_for_status()
         result = response.json()
         sync_finished_at = datetime.now(timezone.utc)
-        _log_ascii_table(
+        log_ascii_table(
+            logger,
             "MT5 Sync Result",
             [
                 ("Finished", sync_finished_at),
-                ("Duration", _duration_label(sync_started_at, sync_finished_at)),
+                ("Duration", duration_label(sync_started_at, sync_finished_at)),
                 ("Trigger", trigger_label),
                 ("Mode", sync_mode),
                 ("Raw Deals", raw_deal_count),
@@ -582,35 +544,44 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
             ],
         )
         if int(result.get("skipped") or 0) > 0 and int(result.get("saved") or 0) == 0 and int(result.get("updated") or 0) == 0:
-            logger.warning(
-                (
-                    "MT5 sync produced only skipped rows. task_id=%s mt5_account_id=%s trade_account_id=%s "
-                    "trigger=%s mode=%s raw_deals=%s aggregated_trades=%s skipped=%s"
-                ),
-                task_id,
-                mt5_account_id,
-                trade_account_id,
-                trigger_label,
-                sync_mode,
-                raw_deal_count,
-                aggregated_trade_count,
-                result.get("skipped"),
+            log_ascii_table(
+                logger,
+                "MT5 Sync Warning",
+                [
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("Trade Account ID", trade_account_id),
+                    ("Trigger", trigger_label),
+                    ("Mode", sync_mode),
+                    ("Raw Deals", raw_deal_count),
+                    ("Trade Rows", aggregated_trade_count),
+                    ("Skipped", result.get("skipped")),
+                    ("Reason", "sync produced only skipped rows"),
+                ],
+                level=logging.WARNING,
             )
             skip_debug_rows = result.get("skip_debug") or []
             if skip_debug_rows:
-                logger.warning(
-                    "MT5 skip debug rows (first %s): %s",
-                    len(skip_debug_rows),
-                    skip_debug_rows,
+                log_ascii_table(
+                    logger,
+                    "MT5 Skip Debug",
+                    [
+                        ("Task ID", task_id),
+                        ("MT5 Account ID", mt5_account_id),
+                        ("Rows Logged", len(skip_debug_rows)),
+                        ("Sample", skip_debug_rows),
+                    ],
+                    level=logging.WARNING,
                 )
         return result
     except Exception as exc:
         sync_finished_at = sync_finished_at or datetime.now(timezone.utc)
-        _log_ascii_table(
+        log_ascii_table(
+            logger,
             "MT5 Sync Failed",
             [
                 ("Finished", sync_finished_at),
-                ("Duration", _duration_label(sync_started_at, sync_finished_at)),
+                ("Duration", duration_label(sync_started_at, sync_finished_at)),
                 ("Trigger", trigger_label),
                 ("Mode", sync_mode),
                 ("Trade Account", f"{trade_account_name} [ID: {trade_account_id}]"),

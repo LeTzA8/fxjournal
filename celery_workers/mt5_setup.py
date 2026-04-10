@@ -7,10 +7,14 @@ import re
 import shutil
 import subprocess
 import time
-
-from flask import current_app
+import logging
+from datetime import datetime, timezone
 
 from celery_app import celery
+from celery_workers.logging_utils import duration_label, log_ascii_table
+
+
+logger = logging.getLogger(__name__)
 
 
 MT5_BASE_PATH = (
@@ -156,6 +160,14 @@ class PermanentSetupError(RuntimeError):
     """Raised when setup is running on the wrong host or missing required local config."""
 
 
+def _mask_account_number_for_log(account_number):
+    text_value = str(account_number or "").strip()
+    if not text_value:
+        return "unknown"
+    suffix = text_value[-4:] if len(text_value) >= 4 else text_value
+    return f"...{suffix}"
+
+
 def _send_mt5_ready_email(account):
     user = getattr(account, "user", None)
     if user is None or not getattr(user, "email", None):
@@ -173,11 +185,16 @@ def _send_mt5_ready_email(account):
             ),
         )
     except Exception as exc:
-        current_app.logger.warning(
-            "MT5 ready email failed for mt5_account_id=%s user_id=%s: %s",
-            account.id,
-            user.id,
-            exc,
+        log_ascii_table(
+            logger,
+            "MT5 Ready Email Failed",
+            [
+                ("MT5 Account ID", account.id),
+                ("User ID", user.id),
+                ("Account", _mask_account_number_for_log(getattr(account, "account_number", None))),
+                ("Error", exc),
+            ],
+            level=logging.WARNING,
         )
 
 
@@ -191,6 +208,18 @@ def setup_mt5_terminal(self, mt5_account_id: int):
     from helpers.utils import decrypt_password
     from models import MT5Account, db
 
+    task_id = getattr(getattr(self, "request", None), "id", None)
+    started_at = datetime.now(timezone.utc)
+    finished_at = None
+    user_id = None
+    trade_account_id = None
+    login = None
+    server = None
+    terminal_dir = None
+    terminal_exe = None
+    was_active = None
+    appdata_hash = None
+
     try:
         if os.name != "nt":
             raise PermanentSetupError("setup_mt5_terminal requires Windows")
@@ -202,6 +231,19 @@ def setup_mt5_terminal(self, mt5_account_id: int):
 
         account = db.session.get(MT5Account, mt5_account_id)
         if account is None:
+            finished_at = datetime.now(timezone.utc)
+            log_ascii_table(
+                logger,
+                "MT5 Setup Result",
+                [
+                    ("Finished", finished_at),
+                    ("Duration", duration_label(started_at, finished_at)),
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("Status", "account missing"),
+                ],
+                level=logging.WARNING,
+            )
             return {"error": "MT5Account not found"}
         if account.is_orphaned:
             raise PermanentSetupError("setup_mt5_terminal cannot run for an orphaned MT5 account")
@@ -218,6 +260,22 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             f"mt5_{user_id}_{trade_account_id}",
         )
         terminal_exe = os.path.join(terminal_dir, "terminal64.exe")
+        log_ascii_table(
+            logger,
+            "MT5 Setup Context",
+            [
+                ("Started", started_at),
+                ("Task ID", task_id),
+                ("MT5 Account ID", mt5_account_id),
+                ("User ID", user_id),
+                ("Trade Account ID", trade_account_id),
+                ("Account", _mask_account_number_for_log(login)),
+                ("Server", server),
+                ("Base Path", MT5_BASE_PATH),
+                ("Terminal Dir", terminal_dir),
+                ("Was Active", was_active),
+            ],
+        )
 
         if not os.path.exists(terminal_dir):
             shutil.copytree(
@@ -271,6 +329,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                 shutil.copy2(src_servers, os.path.join(terminal_config, "servers.dat"))
 
             account.appdata_hash = new_hash
+            appdata_hash = new_hash
         finally:
             proc.terminate()
             proc.wait(timeout=10)
@@ -314,16 +373,86 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         if not was_active:
             _send_mt5_ready_email(account)
 
+        finished_at = datetime.now(timezone.utc)
+        log_ascii_table(
+            logger,
+            "MT5 Setup Result",
+            [
+                ("Finished", finished_at),
+                ("Duration", duration_label(started_at, finished_at)),
+                ("Task ID", task_id),
+                ("MT5 Account ID", mt5_account_id),
+                ("User ID", user_id),
+                ("Trade Account ID", trade_account_id),
+                ("Account", _mask_account_number_for_log(login)),
+                ("Server", server),
+                ("Terminal Path", terminal_exe),
+                ("AppData Hash", appdata_hash or getattr(account, "appdata_hash", None)),
+                ("Activated", not was_active),
+                ("Status", "setup complete"),
+            ],
+        )
+
         return {
             "terminal_path": terminal_exe,
             "status": "setup complete",
             "account": login,
         }
-    except PermanentSetupError:
+    except PermanentSetupError as exc:
         db.session.rollback()
+        finished_at = datetime.now(timezone.utc)
+        log_ascii_table(
+            logger,
+            "MT5 Setup Failed",
+            [
+                ("Finished", finished_at),
+                ("Duration", duration_label(started_at, finished_at)),
+                ("Task ID", task_id),
+                ("MT5 Account ID", mt5_account_id),
+                ("User ID", user_id),
+                ("Trade Account ID", trade_account_id),
+                ("Account", _mask_account_number_for_log(login)),
+                ("Server", server),
+                ("Terminal Dir", terminal_dir),
+                ("Error", exc),
+            ],
+            level=logging.ERROR,
+        )
+        logger.error(
+            "MT5 setup failed permanently. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s",
+            task_id,
+            mt5_account_id,
+            user_id,
+            trade_account_id,
+        )
         raise
     except Exception as exc:
         db.session.rollback()
+        finished_at = datetime.now(timezone.utc)
+        log_ascii_table(
+            logger,
+            "MT5 Setup Failed",
+            [
+                ("Finished", finished_at),
+                ("Duration", duration_label(started_at, finished_at)),
+                ("Task ID", task_id),
+                ("MT5 Account ID", mt5_account_id),
+                ("User ID", user_id),
+                ("Trade Account ID", trade_account_id),
+                ("Account", _mask_account_number_for_log(login)),
+                ("Server", server),
+                ("Terminal Dir", terminal_dir),
+                ("Error", exc),
+            ],
+            level=logging.ERROR,
+        )
+        logger.exception(
+            "MT5 setup failed and will retry. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s",
+            task_id,
+            mt5_account_id,
+            user_id,
+            trade_account_id,
+        )
         _retry_with_backoff(self, exc, base_delay=30, max_delay=300)
 
 
@@ -334,24 +463,80 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str):
     Runs on VM only - kills process, deletes terminal folder
     and AppData hash folder.
     """
-    if os.name != "nt":
-        return {"error": "not Windows, skipping cleanup"}
-
-    terminal_exe = terminal_path
+    task_id = getattr(getattr(self, "request", None), "id", None)
+    started_at = datetime.now(timezone.utc)
+    finished_at = None
     terminal_dir = os.path.dirname(terminal_path)
 
-    _terminate_mt5_processes(terminal_exe)
+    try:
+        if os.name != "nt":
+            finished_at = datetime.now(timezone.utc)
+            log_ascii_table(
+                logger,
+                "MT5 Cleanup Result",
+                [
+                    ("Finished", finished_at),
+                    ("Duration", duration_label(started_at, finished_at)),
+                    ("Task ID", task_id),
+                    ("Terminal Dir", terminal_dir),
+                    ("AppData Hash", appdata_hash),
+                    ("Status", "not Windows, skipping cleanup"),
+                ],
+                level=logging.WARNING,
+            )
+            return {"error": "not Windows, skipping cleanup"}
 
-    if terminal_dir and os.path.exists(terminal_dir):
-        shutil.rmtree(terminal_dir, ignore_errors=True)
+        terminal_exe = terminal_path
 
-    # Prefer the stored MT5 hash when it is valid, but fall back to origin.txt lookup.
-    appdata_folder = _resolve_cleanup_appdata_folder(terminal_dir, appdata_hash)
-    if appdata_folder and os.path.exists(appdata_folder):
-        shutil.rmtree(appdata_folder, ignore_errors=True)
+        _terminate_mt5_processes(terminal_exe)
 
-    return {
-        "terminal_dir": terminal_dir,
-        "appdata_hash": appdata_hash,
-        "status": "cleanup complete",
-    }
+        if terminal_dir and os.path.exists(terminal_dir):
+            shutil.rmtree(terminal_dir, ignore_errors=True)
+
+        # Prefer the stored MT5 hash when it is valid, but fall back to origin.txt lookup.
+        appdata_folder = _resolve_cleanup_appdata_folder(terminal_dir, appdata_hash)
+        if appdata_folder and os.path.exists(appdata_folder):
+            shutil.rmtree(appdata_folder, ignore_errors=True)
+
+        finished_at = datetime.now(timezone.utc)
+        log_ascii_table(
+            logger,
+            "MT5 Cleanup Result",
+            [
+                ("Finished", finished_at),
+                ("Duration", duration_label(started_at, finished_at)),
+                ("Task ID", task_id),
+                ("Terminal Dir", terminal_dir),
+                ("AppData Hash", appdata_hash),
+                ("AppData Folder", appdata_folder),
+                ("Status", "cleanup complete"),
+            ],
+        )
+
+        return {
+            "terminal_dir": terminal_dir,
+            "appdata_hash": appdata_hash,
+            "status": "cleanup complete",
+        }
+    except Exception as exc:
+        finished_at = datetime.now(timezone.utc)
+        log_ascii_table(
+            logger,
+            "MT5 Cleanup Failed",
+            [
+                ("Finished", finished_at),
+                ("Duration", duration_label(started_at, finished_at)),
+                ("Task ID", task_id),
+                ("Terminal Dir", terminal_dir),
+                ("AppData Hash", appdata_hash),
+                ("Error", exc),
+            ],
+            level=logging.ERROR,
+        )
+        logger.exception(
+            "MT5 cleanup failed. task_id=%s terminal_path=%s appdata_hash=%s",
+            task_id,
+            terminal_path,
+            appdata_hash,
+        )
+        raise
