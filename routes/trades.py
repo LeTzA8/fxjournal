@@ -1232,6 +1232,8 @@ def bundle_review():
         bundle_candidates=bundle_candidates,
         complete_action=url_for("trades.bundle_review_complete") if review_pending else None,
         complete_label="Done Reviewing",
+        display_timezone_name=get_display_timezone_name(),
+        to_display_timezone=to_display_timezone,
     )
 
 

@@ -88,6 +88,12 @@ def _to_utc_iso(timestamp_value, *, offset_minutes=0):
     return datetime.fromtimestamp(adjusted_timestamp, tz=timezone.utc).isoformat(timespec="seconds")
 
 
+def _shift_datetime_by_minutes(value, *, minutes=0):
+    if value is None:
+        return None
+    return value + timedelta(minutes=int(minutes or 0))
+
+
 def _vm_timezone_context():
     now_local = datetime.now().astimezone()
     tz_value = now_local.tzinfo
@@ -357,6 +363,8 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
     is_first_sync = None
     from_date = None
     to_date = None
+    mt5_from_date = None
+    mt5_to_date = None
     raw_deal_count = 0
     aggregated_trade_count = 0
     open_trade_count = 0
@@ -465,6 +473,14 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                     preferred_symbol=probe_symbol,
                 )
                 applied_offset_minutes = mt5_server_delta_minutes
+                mt5_from_date = _shift_datetime_by_minutes(
+                    from_date,
+                    minutes=applied_offset_minutes,
+                )
+                mt5_to_date = _shift_datetime_by_minutes(
+                    to_date,
+                    minutes=applied_offset_minutes,
+                )
                 vm_timing_context = _vm_timezone_context()
                 _log_ascii_table(
                     "MT5 Sync Context",
@@ -481,10 +497,14 @@ def sync_mt5_account(self, mt5_account_id, full_history=False, trigger_source="u
                         ("VM UTC Offset (min)", vm_timing_context.get("vm_utc_offset_minutes")),
                         ("MT5-UTC Delta (min)", mt5_server_delta_minutes),
                         ("Applied Time Offset (min)", applied_offset_minutes),
-                        ("Window", f"{from_date.isoformat()} -> {to_date.isoformat()}"),
+                        ("Window (UTC)", f"{from_date.isoformat()} -> {to_date.isoformat()}"),
+                        ("MT5 Request Window", f"{mt5_from_date.isoformat()} -> {mt5_to_date.isoformat()}"),
                     ],
                 )
-                deals = mt5.history_deals_get(from_date, to_date) or []
+                # MT5 history filters follow broker/server clock semantics in
+                # practice, so shift the request window into server time while
+                # continuing to normalize returned timestamps back to UTC.
+                deals = mt5.history_deals_get(mt5_from_date, mt5_to_date) or []
                 raw_deal_count = len(deals)
 
                 deal_type_buy = getattr(mt5, "DEAL_TYPE_BUY", 0)

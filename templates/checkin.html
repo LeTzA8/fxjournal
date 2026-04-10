@@ -387,7 +387,8 @@
                                     <strong>{{ "%.2f"|format(trade.lot_size or 0) }} lot</strong>
                                     <span class="outlier-trade-meta">
                                         Entry {{ "%.5f"|format(trade.entry_price or 0) }}
-                                        {% if trade.opened_at %} | {{ trade.opened_at.strftime("%a %H:%M") }}{% endif %}
+                                        {% set opened_local = to_display_timezone(trade.opened_at, display_timezone_name) %}
+                                        {% if opened_local %} | {{ opened_local.strftime("%a %H:%M") }}{% endif %}
                                     </span>
                                 </div>
                                 <span class="{% if (trade.pnl or 0) > 0 %}good{% elif (trade.pnl or 0) < 0 %}bad{% else %}muted{% endif %}">
@@ -481,12 +482,14 @@
                                 {% if candidate.trigger %}
                                 <p class="outlier-card-subtext">
                                     After {{ "%.2f"|format(candidate.trigger.pnl or 0) }} on {{ candidate.trigger.symbol }}
-                                    {% if candidate.trigger.closed_at %} | {{ candidate.trigger.closed_at.strftime("%a %H:%M") }}{% endif %}
+                                    {% set trigger_closed_local = to_display_timezone(candidate.trigger.closed_at, display_timezone_name) %}
+                                    {% if trigger_closed_local %} | {{ trigger_closed_local.strftime("%a %H:%M") }}{% endif %}
                                 </p>
                                 {% endif %}
                                 <p class="outlier-card-subtext">
                                     {{ "%.2f"|format(trade.lot_size or 0) }} lot
-                                    {% if trade.opened_at %} | Opened {{ trade.opened_at.strftime("%a %H:%M") }}{% endif %}
+                                    {% set trade_opened_local = to_display_timezone(trade.opened_at, display_timezone_name) %}
+                                    {% if trade_opened_local %} | Opened {{ trade_opened_local.strftime("%a %H:%M") }}{% endif %}
                                 </p>
                             </div>
                         </div>

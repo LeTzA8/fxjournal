@@ -330,7 +330,8 @@
                                 <strong>{{ "%.2f"|format(trade.lot_size or 0) }} lot</strong>
                                 <span class="outlier-trade-meta">
                                     Entry {{ "%.5f"|format(trade.entry_price or 0) }}
-                                    {% if trade.opened_at %} | {{ trade.opened_at.strftime("%d %b %Y %H:%M") }}{% endif %}
+                                    {% set opened_local = to_display_timezone(trade.opened_at, display_timezone_name) %}
+                                    {% if opened_local %} | {{ opened_local.strftime("%d %b %Y %H:%M") }}{% endif %}
                                 </span>
                             </div>
                             <span class="{% if (trade.pnl or 0) > 0 %}good{% elif (trade.pnl or 0) < 0 %}bad{% else %}muted{% endif %}">

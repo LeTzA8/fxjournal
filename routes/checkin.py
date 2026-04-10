@@ -8,11 +8,13 @@ from celery_workers.cache import CacheUnavailableError, invalidate
 from helpers.core import (
     build_unique_trade_pubkey,
     get_active_trade_account_for_user,
+    get_display_timezone_name,
     is_weekly_checkin_complete,
 )
 from helpers.trade_analysis import detect_outliers
 from helpers.utils import login_required, utcnow_naive
 from models import Trade, WeeklyCheckin, db
+from trading import to_display_timezone
 
 bp = Blueprint("checkin", __name__)
 
@@ -266,6 +268,8 @@ def _render_checkin_page(
         bundle_review_candidates=workflow_state["bundle_review_candidates"],
         bundle_classification_candidates=workflow_state["bundle_classification_candidates"],
         standalone_classification_candidates=workflow_state["standalone_classification_candidates"],
+        display_timezone_name=get_display_timezone_name(),
+        to_display_timezone=to_display_timezone,
     )
 
 

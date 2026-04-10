@@ -550,6 +550,56 @@ def test_checkin_unsure_classification_keeps_standalone_trade_unflagged(app_ctx,
     assert record is not None
 
 
+def test_checkin_outlier_times_render_in_display_timezone(app_ctx, client, monkeypatch):
+    fixed_now = datetime(2026, 3, 21, 12, 0, 0)
+    monkeypatch.setattr(checkin_routes, "utcnow_naive", lambda: fixed_now)
+
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="checkin-timezone-user",
+        email="checkin-timezone@example.com",
+    )
+    with client.session_transaction() as session_state:
+        session_state["display_timezone"] = "Asia/Singapore"
+
+    trades = [
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.0990,
+            lot_size=1.0,
+            pnl=-45.0,
+            opened_at=datetime(2026, 3, 17, 9, 50, 0),
+            closed_at=datetime(2026, 3, 17, 10, 15, 0),
+        ),
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.0995,
+            exit_price=1.1002,
+            lot_size=0.5,
+            pnl=22.0,
+            opened_at=datetime(2026, 3, 17, 10, 20, 0),
+            closed_at=datetime(2026, 3, 17, 10, 40, 0),
+        ),
+    ]
+    db.session.add_all(trades)
+    db.session.commit()
+
+    classification_response = client.get("/checkin")
+
+    assert classification_response.status_code == 200
+    assert b"Tue 18:15" in classification_response.data
+    assert b"Opened Tue 18:20" in classification_response.data
+    assert b"Tue 10:15" not in classification_response.data
+    assert b"Opened Tue 10:20" not in classification_response.data
+
+
 def test_detect_outliers_does_not_chain_same_pair_bundle_candidates(app_ctx, client, monkeypatch):
     fixed_now = datetime(2026, 3, 21, 12, 0, 0)
     monkeypatch.setattr(checkin_routes, "utcnow_naive", lambda: fixed_now)
