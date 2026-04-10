@@ -16,6 +16,9 @@
     var MAX_CHART_PRICE_DECIMALS = 6;
     /** Bumps when chart is torn down so in-flight candle reveal animations stop. */
     var chartRevealGeneration = 0;
+    /** From last successful chart-data response: avoids a second HTTP/DB round-trip when toggling M5/M15. */
+    var chartPrefetchByTf = null;
+    var lastChartReadyMeta = null;
 
     function tradeChartPixelSize() {
         var w = container.clientWidth;
@@ -76,6 +79,40 @@
         if (t <= 0) return 0;
         if (t >= 1) return 1;
         return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    function buildChartPayloadFromPrefetch(tf) {
+        if (!chartPrefetchByTf || !lastChartReadyMeta) return null;
+        var bars = chartPrefetchByTf[tf];
+        if (!bars || !bars.length) return null;
+        var out = {
+            status: "ready",
+            timeframe: tf,
+            available_timeframes: lastChartReadyMeta.available_timeframes,
+            bars: bars,
+            markers: lastChartReadyMeta.markers,
+            display_timezone: lastChartReadyMeta.display_timezone,
+        };
+        var srcMap = lastChartReadyMeta.prefetched_bars_source;
+        if (srcMap && srcMap[tf]) {
+            out.bars_source = srcMap[tf];
+        }
+        return out;
+    }
+
+    function rememberChartPrefetch(data) {
+        if (data && data.status === "ready" && data.prefetched_bars && typeof data.prefetched_bars === "object") {
+            chartPrefetchByTf = data.prefetched_bars;
+            lastChartReadyMeta = {
+                available_timeframes: data.available_timeframes || [],
+                markers: data.markers || {},
+                display_timezone: data.display_timezone,
+                prefetched_bars_source: data.prefetched_bars_source || null,
+            };
+        } else {
+            chartPrefetchByTf = null;
+            lastChartReadyMeta = null;
+        }
     }
 
     /** Keep wheel events on the chart (zoom) instead of scrolling the page behind it. */
@@ -500,14 +537,17 @@
             })
             .then(function (data) {
                 if (data.status === "unavailable") {
+                    rememberChartPrefetch(null);
                     hidePanel();
                     return;
                 }
                 if (data.status === "pending") {
+                    rememberChartPrefetch(null);
                     setStatus("Chart data is being prepared — check back after the next sync.");
                     return;
                 }
                 if (data.status === "ready") {
+                    rememberChartPrefetch(data);
                     var avail = data.available_timeframes || [];
                     setTfButtonsActive(tf, avail);
 
@@ -529,9 +569,11 @@
                     renderChart(data);
                     return;
                 }
+                rememberChartPrefetch(null);
                 setStatus("Could not load chart data.");
             })
             .catch(function () {
+                rememberChartPrefetch(null);
                 setStatus("Could not load chart data.");
             });
     }
@@ -542,6 +584,16 @@
             if (!btn || btn.disabled) return;
             var tf = btn.getAttribute("data-trade-tf");
             if (!tf || tf === currentTf) return;
+            var fromPrefetch = buildChartPayloadFromPrefetch(tf);
+            if (fromPrefetch) {
+                destroyChart();
+                currentTf = tf;
+                var avail = lastChartReadyMeta ? lastChartReadyMeta.available_timeframes : [];
+                setTfButtonsActive(tf, avail);
+                if (statusEl) statusEl.style.display = "none";
+                renderChart(fromPrefetch);
+                return;
+            }
             destroyChart();
             loadTimeframe(tf);
         });

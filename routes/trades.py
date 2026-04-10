@@ -1312,6 +1312,16 @@ def bundle_review_complete():
 _CHART_UI_TIMEFRAMES = ("M5", "M15")
 
 
+def _trade_bar_row_to_ohlc_dict(row):
+    return {
+        "time": row.bar_time,
+        "open": row.open,
+        "high": row.high,
+        "low": row.low,
+        "close": row.close,
+    }
+
+
 @bp.route("/api/trades/<string:trade_pubkey>/chart-data")
 @login_required
 def trade_chart_data(trade_pubkey):
@@ -1330,24 +1340,26 @@ def trade_chart_data(trade_pubkey):
 
     from flask import jsonify
 
-    any_bar = TradeBars.query.filter_by(trade_id=trade.id).first()
-    if any_bar is None:
+    # One round-trip for all cached bars (typical hundreds of rows per trade).
+    bar_rows = (
+        TradeBars.query.filter_by(trade_id=trade.id)
+        .order_by(TradeBars.timeframe.asc(), TradeBars.bar_time.asc())
+        .all()
+    )
+    if not bar_rows:
         return current_app.response_class(
             response='{"status":"pending"}',
             status=200,
             mimetype="application/json",
         )
 
-    tf_rows = (
-        TradeBars.query.with_entities(TradeBars.timeframe)
-        .filter_by(trade_id=trade.id)
-        .distinct()
-        .all()
-    )
-    stored_ui_tfs = {row[0] for row in tf_rows if row[0] in _CHART_UI_TIMEFRAMES}
+    by_tf = {}
+    for row in bar_rows:
+        by_tf.setdefault(row.timeframe, []).append(row)
+
+    stored_ui_tfs = {tf for tf in by_tf if tf in _CHART_UI_TIMEFRAMES}
     has_m5 = "M5" in stored_ui_tfs
     has_m15_native = "M15" in stored_ui_tfs
-    # M15 is always offered when we have M5 (aggregated); native M15 if stored alone or with M5.
     if has_m5:
         available_timeframes = ["M5", "M15"]
     elif has_m15_native:
@@ -1359,30 +1371,30 @@ def trade_chart_data(trade_pubkey):
     if requested_tf not in _CHART_UI_TIMEFRAMES:
         requested_tf = "M5"
 
-    bars_derived_from_m5 = False
-    bars_rows = (
-        TradeBars.query.filter_by(trade_id=trade.id, timeframe=requested_tf)
-        .order_by(TradeBars.bar_time.asc())
-        .all()
+    m5_dicts = [_trade_bar_row_to_ohlc_dict(b) for b in by_tf.get("M5", [])]
+    m15_native_dicts = [_trade_bar_row_to_ohlc_dict(b) for b in by_tf.get("M15", [])]
+    m15_from_m5 = (
+        aggregate_ohlc_bars(m5_dicts, chart_timeframe_bar_seconds("M15")) if m5_dicts else []
     )
 
-    if requested_tf == "M15" and not bars_rows and has_m5:
-        m5_rows = (
-            TradeBars.query.filter_by(trade_id=trade.id, timeframe="M5")
-            .order_by(TradeBars.bar_time.asc())
-            .all()
-        )
-        m5_dicts = [
-            {"time": b.bar_time, "open": b.open, "high": b.high, "low": b.low, "close": b.close}
-            for b in m5_rows
-        ]
-        bars = aggregate_ohlc_bars(m5_dicts, chart_timeframe_bar_seconds("M15"))
+    bars_derived_from_m5 = False
+    if requested_tf == "M15" and not m15_native_dicts and has_m5:
+        bars = m15_from_m5
         bars_derived_from_m5 = bool(bars)
+    elif requested_tf == "M15":
+        bars = m15_native_dicts
     else:
-        bars = [
-            {"time": b.bar_time, "open": b.open, "high": b.high, "low": b.low, "close": b.close}
-            for b in bars_rows
-        ]
+        bars = m5_dicts if requested_tf == "M5" else [_trade_bar_row_to_ohlc_dict(b) for b in by_tf.get(requested_tf, [])]
+
+    prefetched_bars = {}
+    prefetched_source = {}
+    if m5_dicts:
+        prefetched_bars["M5"] = m5_dicts
+    if m15_native_dicts:
+        prefetched_bars["M15"] = m15_native_dicts
+    elif m5_dicts and m15_from_m5:
+        prefetched_bars["M15"] = m15_from_m5
+        prefetched_source["M15"] = "aggregated_from_m5"
 
     entry_dt_utc = ensure_utc_aware(trade.opened_at) if trade.opened_at else None
     exit_dt_utc = ensure_utc_aware(trade.closed_at) if trade.closed_at else None
@@ -1409,6 +1421,10 @@ def trade_chart_data(trade_pubkey):
     }
     if bars_derived_from_m5:
         payload["bars_source"] = "aggregated_from_m5"
+    if len(available_timeframes) > 1 and len(prefetched_bars) > 1:
+        payload["prefetched_bars"] = prefetched_bars
+        if prefetched_source:
+            payload["prefetched_bars_source"] = prefetched_source
     return jsonify(payload)
 
 

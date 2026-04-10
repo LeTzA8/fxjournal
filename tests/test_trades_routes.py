@@ -869,6 +869,10 @@ def test_trade_chart_data_returns_ready_payload_when_bars_exist(app_ctx, client)
     assert payload["markers"]["exit_price"] == pytest.approx(1.101)
     assert payload["markers"]["side"] == "BUY"
     assert payload.get("display_timezone")
+    assert "prefetched_bars" in payload
+    assert "M5" in payload["prefetched_bars"] and "M15" in payload["prefetched_bars"]
+    assert payload["prefetched_bars_source"]["M15"] == "aggregated_from_m5"
+    assert len(payload["prefetched_bars"]["M5"]) == 2
 
     m15_response = client.get(f"/api/trades/{trade.pubkey}/chart-data?timeframe=M15")
     assert m15_response.status_code == 200
