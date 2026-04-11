@@ -56,6 +56,7 @@ $pythonExe = Resolve-PythonExe -RepoRoot $RepoRoot -PythonExe $PythonExe
 Set-Location $RepoRoot
 
 while ($true) {
+    $host.UI.RawUI.WindowTitle = "MT5 Setup Window | Starting..."
     $startedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Write-Host "[$startedAt] Starting FX Journal MT5 setup worker pool=solo concurrency=1 python=$pythonExe"
 
@@ -68,6 +69,7 @@ while ($true) {
 
     $exitCode = $LASTEXITCODE
     $stoppedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $host.UI.RawUI.WindowTitle = "MT5 Setup Window | Restarting in $RestartDelaySeconds s"
     Write-Warning "[$stoppedAt] FX Journal MT5 setup worker exited with code $exitCode. Restarting in $RestartDelaySeconds second(s)."
 
     Start-Sleep -Seconds $RestartDelaySeconds

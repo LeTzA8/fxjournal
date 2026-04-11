@@ -187,3 +187,12 @@ def release_lock(lock_key, token):
             str(token),
         )
     )
+
+
+def get_queue_depth(queue_name):
+    return int(
+        _run_redis(
+            lambda: _client().llen(str(queue_name))
+        )
+        or 0
+    )

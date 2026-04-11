@@ -66,6 +66,7 @@ if ($Concurrency -ne 1) {
 Set-Location $RepoRoot
 
 while ($true) {
+    $host.UI.RawUI.WindowTitle = "MT5 Sync Window | Starting..."
     $startedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Write-Host "[$startedAt] Starting FX Journal MT5 sync worker pool=solo concurrency=$Concurrency python=$pythonExe"
 
@@ -78,6 +79,7 @@ while ($true) {
 
     $exitCode = $LASTEXITCODE
     $stoppedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $host.UI.RawUI.WindowTitle = "MT5 Sync Window | Restarting in $RestartDelaySeconds s"
     Write-Warning "[$stoppedAt] FX Journal MT5 sync worker exited with code $exitCode. Restarting in $RestartDelaySeconds second(s)."
 
     Start-Sleep -Seconds $RestartDelaySeconds

@@ -52,3 +52,41 @@ def test_celery_trace_filter_suppresses_plain_task_lifecycle_logs():
 
     assert trace_filter.filter(success_record) is False
     assert trace_filter.filter(custom_record) is True
+
+
+def test_get_mt5_worker_window_config_detects_mt5_workers():
+    sync_config = celery_app_module._get_mt5_worker_window_config("mt5-sync@FXJOURNAL-SG")
+    setup_config = celery_app_module._get_mt5_worker_window_config("mt5-setup@FXJOURNAL-SG")
+
+    assert sync_config["worker_kind"] == "mt5_sync"
+    assert sync_config["queue_name"] == "mt5_sync"
+    assert sync_config["title_prefix"] == "MT5 Sync Window"
+    assert setup_config["worker_kind"] == "mt5_setup"
+    assert setup_config["queue_name"] == "mt5_setup"
+    assert setup_config["title_prefix"] == "MT5 Setup Window"
+
+
+def test_format_mt5_worker_window_title_for_sync_worker():
+    config = celery_app_module._get_mt5_worker_window_config("mt5-sync@test-host")
+
+    title = celery_app_module._format_mt5_worker_window_title(
+        config,
+        stats={"active_accounts": 5},
+        queue_depth=4,
+        active_tasks=1,
+    )
+
+    assert title == "MT5 Sync Window | 5 Accounts Active | 4 In Queue | 1 Running"
+
+
+def test_format_mt5_worker_window_title_for_setup_worker():
+    config = celery_app_module._get_mt5_worker_window_config("mt5-setup@test-host")
+
+    title = celery_app_module._format_mt5_worker_window_title(
+        config,
+        stats={"pending_accounts": 3},
+        queue_depth=2,
+        active_tasks=0,
+    )
+
+    assert title == "MT5 Setup Window | 3 Pending Setup | 2 In Queue | 0 Running"
