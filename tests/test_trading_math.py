@@ -216,6 +216,9 @@ def test_resolve_pips_for_standard_and_jpy_pairs():
 
 def test_crypto_and_metal_aliases_and_formatting():
     assert trading.canonicalize_symbol("BTCUSDT") == "BTCUSD"
+    assert trading.canonicalize_symbol("gold") == "XAUUSD"
+    assert trading.cfd_mt5_symbol_name_candidates("XAUUSD")[0] == "XAUUSD"
+    assert "GOLD" in trading.cfd_mt5_symbol_name_candidates("XAUUSD")
     assert trading.format_trade_price(0.12345, "DOGEUSD") == "0.12345"
     assert trading.format_trade_price(2500.125, "XAUUSD") == "2500.12"
 

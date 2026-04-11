@@ -713,6 +713,51 @@ def test_internal_mt5_sync_saves_and_skips_duplicates(app_ctx, client, monkeypat
     assert second_mt5_account.last_synced_at is not None
 
 
+def test_internal_mt5_sync_maps_gold_symbol_to_xauusd(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-gold-user",
+        email="mt5-gold@example.com",
+    )
+    mt5_account = _create_mt5_account(user_id=user.id, trade_account_id=trade_account.id)
+
+    payload = {
+        "mt5_account_id": mt5_account.id,
+        "trades": [
+            {
+                "symbol": "gold",
+                "side": "buy",
+                "entry_price": 3000.0,
+                "exit_price": 3010.0,
+                "lot_size": 0.01,
+                "pnl": 10.0,
+                "commission": -0.5,
+                "swap": 0.0,
+                "stop_loss": 2990.0,
+                "take_profit": 3020.0,
+                "opened_at": "2026-04-10T08:00:00+00:00",
+                "closed_at": "2026-04-10T10:00:00+00:00",
+                "mt5_position": 88776655,
+                "trade_note": "",
+            }
+        ],
+    }
+
+    response = client.post(
+        "/api/internal/mt5/sync",
+        json=payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"saved": 1, "updated": 0, "skipped": 0, "errors": 0}
+    trade_row = Trade.query.filter_by(trade_account_id=trade_account.id, mt5_position="88776655").one()
+    assert trade_row.symbol == "XAUUSD"
+
+
 def test_internal_mt5_sync_refresh_timestamps_updates_closed_trade(app_ctx, client, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)

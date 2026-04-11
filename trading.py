@@ -46,7 +46,7 @@ DEFAULT_CFD_SYMBOL_SPECS = (
     {"symbol": "CADCHF", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 260},
     {"symbol": "NZDCHF", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 270},
     {"symbol": "NZDCAD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 280},
-    {"symbol": "XAUUSD", "aliases": (), "contract_size": 100.0, "pip_size": None, "sort_order": 290},
+    {"symbol": "XAUUSD", "aliases": ("GOLD",), "contract_size": 100.0, "pip_size": None, "sort_order": 290},
     {"symbol": "XAGUSD", "aliases": (), "contract_size": 5000.0, "pip_size": None, "sort_order": 300},
     {"symbol": "US500", "aliases": ("SPX500", "SP500", "US500CASH", "US500INDEX"), "contract_size": 1.0, "pip_size": None, "sort_order": 310},
     {"symbol": "NAS100", "aliases": ("US100", "USTEC", "NAS100CASH", "NASDAQ100"), "contract_size": 1.0, "pip_size": None, "sort_order": 320},
@@ -348,6 +348,24 @@ def canonicalize_symbol(symbol, instrument_type="CFD"):
         return normalized
 
     return _load_cfd_alias_map().get(normalized, normalized)
+
+
+def cfd_mt5_symbol_name_candidates(canonical_symbol):
+    """
+    Broker-visible symbol strings to try for MT5 copy_rates_range / ticks.
+    Journal stores canonical CFD symbols (e.g. XAUUSD) while many MT5 servers use GOLD.
+    """
+    canon = normalize_symbol(canonical_symbol)
+    if not canon:
+        return ()
+    alias_map = _load_cfd_alias_map()
+    keys = sorted({k for k, target in alias_map.items() if target == canon})
+    if not keys:
+        return (canon,)
+    if canon in keys:
+        return (canon,) + tuple(k for k in keys if k != canon)
+    return tuple(keys)
+
 
 def get_symbol_options(instrument_type="CFD", selected_symbol=None):
     account_type = normalize_account_type(instrument_type)

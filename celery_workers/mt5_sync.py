@@ -271,8 +271,15 @@ def _probe_mt5_server_delta_minutes(mt5, *, preferred_symbol=None):
     if not callable(symbol_info_tick):
         return 0
     symbol_candidates = []
-    if preferred_symbol:
-        symbol_candidates.append(str(preferred_symbol).strip())
+    if preferred_symbol is not None:
+        if isinstance(preferred_symbol, (list, tuple)):
+            symbol_candidates.extend(
+                str(s).strip() for s in preferred_symbol if s and str(s).strip()
+            )
+        else:
+            s = str(preferred_symbol).strip()
+            if s:
+                symbol_candidates.append(s)
     if "EURUSD" not in symbol_candidates:
         symbol_candidates.append("EURUSD")
     for symbol in symbol_candidates:
@@ -657,7 +664,12 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
 
     from helpers.utils import decrypt_password
     from models import MT5Account, Trade, db
-    from trading import chart_timeframe_bar_seconds, mt5_timeframe_constant
+    from trading import (
+        cfd_mt5_symbol_name_candidates,
+        chart_timeframe_bar_seconds,
+        mt5_timeframe_constant,
+        normalize_account_type,
+    )
 
     fetch_started_at = datetime.now(timezone.utc)
 
@@ -692,6 +704,15 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
         return {"skipped": "trade not closed"}
 
     symbol = trade.symbol
+    trade_account = account.trade_account
+    account_type = normalize_account_type(
+        getattr(trade_account, "account_type", "CFD") if trade_account else "CFD"
+    )
+    mt5_symbol_names = (
+        cfd_mt5_symbol_name_candidates(symbol)
+        if account_type == "CFD"
+        else (symbol,)
+    )
     opened_at_utc = _naive_utc_to_aware(trade.opened_at)
     closed_at_utc = _naive_utc_to_aware(trade.closed_at)
     # Always fetch M5; the window must be expressed in M5 bars. Using
@@ -728,12 +749,20 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             if not mt5.login(int(account_number), password=investor_password, server=server):
                 raise RuntimeError(f"MT5 login failed during bar fetch: {mt5.last_error()}")
 
-            mt5_server_delta_minutes = _probe_mt5_server_delta_minutes(mt5, preferred_symbol=symbol)
+            mt5_server_delta_minutes = _probe_mt5_server_delta_minutes(
+                mt5, preferred_symbol=mt5_symbol_names
+            )
             start_dt_shifted = _shift_datetime_by_minutes(start_dt, minutes=mt5_server_delta_minutes)
             end_dt_shifted = _shift_datetime_by_minutes(end_dt, minutes=mt5_server_delta_minutes)
             tf_constant = mt5_timeframe_constant("M5", mt5)
-            raw_bars = mt5.copy_rates_range(symbol, tf_constant, start_dt_shifted, end_dt_shifted)
-            if raw_bars is not None and len(raw_bars) > 0:
+            raw_bars = []
+            for sym in mt5_symbol_names:
+                chunk = mt5.copy_rates_range(sym, tf_constant, start_dt_shifted, end_dt_shifted)
+                if chunk is not None and len(chunk) > 0:
+                    raw_bars = chunk
+                    symbol = sym
+                    break
+            if raw_bars:
                 for bar in raw_bars:
                     # Same epoch skew as deal times: raw bar["time"] is broker/server-oriented; subtract
                     # probe delta so stored Unix matches UTC used by trade.opened_at / closed_at and the chart.
