@@ -65,9 +65,12 @@ if ($Concurrency -ne 1) {
 
 Set-Location $RepoRoot
 
-# Full-width ASCII table values (skip reasons, etc.); Render weekly worker keeps default 72-char cap.
-if (-not $env:FXJ_ASCII_LOG_MAX_WIDTH) {
-    $env:FXJ_ASCII_LOG_MAX_WIDTH = "0"
+# Windowed consoles: stacked log lines + ~100-col wrap budget (override if needed).
+if (-not $env:FXJ_ASCII_LOG_LAYOUT) {
+    $env:FXJ_ASCII_LOG_LAYOUT = "narrow"
+}
+if (-not $env:FXJ_ASCII_LOG_LINE_MAX) {
+    $env:FXJ_ASCII_LOG_LINE_MAX = "100"
 }
 
 while ($true) {

@@ -110,6 +110,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\run_mt5_setup_worker.
 | `MT5_BASE_PATH`, `MT5_TERMINALS_DIR` | **VM** | MT5 install + per-account terminal roots |
 | `CELERY_POOL` | optional | `solo` / `threads` override |
 | `FXJ_WORKER_FILE_LOG`, `FXJ_WORKER_LOG_DIR`, `FXJ_ASCII_LOG_MAX_WIDTH` | **VM** | Logging noise and file rotation |
+| `FXJ_ASCII_LOG_LAYOUT` (`narrow` / `table`), `FXJ_ASCII_LOG_LINE_MAX` | **VM** (defaults set in `scripts/windows/run_mt5_*.ps1`) | `narrow` = one metric per line for windowed consoles; `table` = wide box (e.g. full-screen); line max ~100 |
 
 *(See `README.md` for additional optional vars; names only here.)*
 

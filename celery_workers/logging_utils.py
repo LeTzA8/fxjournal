@@ -17,6 +17,32 @@ def format_log_value(value, *, default="-", max_width=72):
     return f"{text_value[: max_width - 3]}..."
 
 
+def _resolve_log_layout():
+    """
+    narrow: one field per line — readable in short (windowed) terminals.
+    table: legacy +/- box ASCII table — wide but aligned in full-width logs.
+    Default narrow on Windows (MT5 workers); default table elsewhere (e.g. Render Linux).
+    """
+    raw = os.getenv("FXJ_ASCII_LOG_LAYOUT", "").strip().lower()
+    if raw in {"narrow", "stacked", "rows"}:
+        return "narrow"
+    if raw in {"table", "box", "ascii"}:
+        return "table"
+    return "narrow" if os.name == "nt" else "table"
+
+
+def _log_line_max():
+    """Target max line length for narrow layout (label + value on one line)."""
+    raw = os.getenv("FXJ_ASCII_LOG_LINE_MAX", "").strip()
+    if not raw:
+        return 100
+    try:
+        n = int(raw)
+    except ValueError:
+        return 100
+    return max(56, min(n, 200))
+
+
 def _ascii_table_value_max_width():
     """
     Widen the Value column for long skip-reason / JSON-ish cells (default 72).
@@ -61,8 +87,28 @@ def ascii_table(title, rows):
     return "\n".join(lines)
 
 
+def ascii_table_narrow(title, rows, *, line_max=None, label_cols=26):
+    """
+    Stacked key: value lines; each line stays within line_max so windowed consoles wrap cleanly.
+    """
+    line_max = line_max if line_max is not None else _log_line_max()
+    prefix = "  "
+    sep = ": "
+    value_max = max(24, line_max - len(prefix) - label_cols - len(sep))
+    lines = [title]
+    for label, value in rows:
+        lab = format_log_value(label, default="", max_width=label_cols)
+        val = format_log_value(value, max_width=value_max)
+        lines.append(f"{prefix}{lab}{sep}{val}")
+    return "\n".join(lines)
+
+
 def log_ascii_table(logger, title, rows, *, level=logging.INFO):
-    logger.log(level, "\n%s", ascii_table(title, rows))
+    if _resolve_log_layout() == "narrow":
+        body = ascii_table_narrow(title, rows)
+    else:
+        body = ascii_table(title, rows)
+    logger.log(level, "\n%s", body)
 
 
 def duration_ms(started_at, finished_at):

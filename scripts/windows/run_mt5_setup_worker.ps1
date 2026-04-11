@@ -55,8 +55,11 @@ $pythonExe = Resolve-PythonExe -RepoRoot $RepoRoot -PythonExe $PythonExe
 
 Set-Location $RepoRoot
 
-if (-not $env:FXJ_ASCII_LOG_MAX_WIDTH) {
-    $env:FXJ_ASCII_LOG_MAX_WIDTH = "0"
+if (-not $env:FXJ_ASCII_LOG_LAYOUT) {
+    $env:FXJ_ASCII_LOG_LAYOUT = "narrow"
+}
+if (-not $env:FXJ_ASCII_LOG_LINE_MAX) {
+    $env:FXJ_ASCII_LOG_LINE_MAX = "100"
 }
 
 while ($true) {
