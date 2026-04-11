@@ -6,6 +6,7 @@ Short-term operational memory.
 
 ## Current Focus
 
+- `context/PROJECT_MAP.md` reorganized into a MyFXJournal architecture + operations cheat sheet (Render vs Hyonix, exact start commands, env ownership); fill in plan/region/cost table when convenient
 - Trades hub UX: shared app-page hero, `static/css/app_pages.css`, corrected nav `request.endpoint` names, scoped trades CSS under `.trades-page`
 - MT5 batch-gated immediate setup flow
 - Dashboard MT5 state and weekly AI display
@@ -35,6 +36,7 @@ Short-term operational memory.
 - MT5 sync accepts broker gold symbols as XAUUSD: `GOLD` is a CFD alias for `XAUUSD` (defaults + migration `20260411_0040`), and M5 bar fetch tries alias names when `copy_rates_range` needs the server’s symbol string (`trading.py`, `celery_workers/mt5_sync_tasks.py`)
 - CFD `DEFAULT_CFD_SYMBOL_SPECS` now includes broader broker-root aliases for metals, index CFDs, and crypto (plus common suffix-stripped metal forms like `XAUUSDM`); migration `20260412_0042` merges those aliases into `CFD_Symbols` for deployed DBs (`trading.py`, `tests/test_trading_math.py`)
 - Users can disconnect MT5 sync from **Trade Accounts** and the dashboard MT5 card (`POST /dashboard/trade-accounts/mt5/unlink`): deletes `MT5Account`, clears related `MT5AccessRequest` rows, decrements batch `total_slots_claimed` when applicable, queues terminal cleanup like admin delete, and invalidates dashboard cache (`helpers/core.py`, `routes/trade_accounts.py`, `templates/trade_accounts.html`, `templates/index.html`, `tests/test_mt5_access_requests.py`)
+- MT5 rolling/beat sync: worker uses quiet one-line logs for benign idle noops; internal API supports `skip_debug_mode` (`worrisome` skips per-row debug for `existing_already_closed` only); full detail still on first/full-history sync, errors, or worrisome skips (`celery_workers/mt5_sync_tasks.py`, `routes/mt5_internal.py`)
 - MT5 sync diagnostics improved: internal ingest now logs explicit skip-reason counters and sync worker warns when a run is all-skipped (`routes/mt5_internal.py`, `celery_workers/mt5_sync_tasks.py`)
 - MT5 logging: sync worker emits a full JSON line for API `skip_reasons` / `insert_validation_reasons` (avoids ASCII-table truncation); setup worker logs milestones (base AppData, bootstrap launch, new hash, `servers.dat`, pre-verify); bar fetch logs when `copy_rates_range` returns no rates; internal API logs invalid normalized rows, successful bar ingests; admin actions log when Celery tasks are queued (`celery_workers/mt5_sync_tasks.py`, `celery_workers/mt5_setup_tasks.py`, `routes/mt5_internal.py`, `auth_account.py`); successful sync path logs one combined `MT5 Sync` ASCII table (context + API outcome + optional alert / skip_debug JSON) instead of separate Context/Result/Warning tables
 - MT5 rolling/full-history sync now shifts the `history_deals_get` request window into broker/server time before normalizing returned deal timestamps back to UTC, to avoid recent MT5 deals arriving 1-3 hours late on non-UTC brokers (`celery_workers/mt5_sync_tasks.py`, `tests/test_mt5_sync.py`)

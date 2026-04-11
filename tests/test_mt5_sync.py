@@ -385,6 +385,214 @@ def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
     assert "Duration" in caplog.text
 
 
+def test_sync_mt5_account_logs_skip_debug_after_table_not_inside_ascii_cell(app_ctx, monkeypatch, caplog):
+    """skip_debug JSON must not be embedded in the ASCII table (blows column width on VM)."""
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+    monkeypatch.setenv("FXJ_ASCII_LOG_MAX_WIDTH", "0")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-skipdbg-user",
+        email="mt5-skipdbg@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="77778888",
+    )
+    mt5_account.last_synced_at = datetime(2024, 6, 1, 12, 0, 0)
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+
+    fake_mt5 = SimpleNamespace(
+        DEAL_ENTRY_IN=0,
+        DEAL_ENTRY_OUT=1,
+        DEAL_ENTRY_INOUT=2,
+        DEAL_ENTRY_OUT_BY=3,
+        DEAL_TYPE_BUY=0,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
+        history_deals_get=lambda *args, **kwargs: [],
+        positions_get=lambda: [],
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    long_reason = "x" * 5000
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "saved": 0,
+                "updated": 0,
+                "skipped": 2,
+                "errors": 1,
+                "skip_reasons": {
+                    "close_only_without_existing_open": 0,
+                    "existing_already_closed_or_no_state_change": 0,
+                    "batch_duplicate_mt5_position": 0,
+                    "batch_validation_skipped": 1,
+                    "batch_symbol_validation_failed": 1,
+                    "incoming_close_validation_failed": 0,
+                },
+                "skip_debug": [{"reason": long_reason, "mt5_position": "1"}],
+            }
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", lambda *args, **kwargs: DummyResponse())
+
+    caplog.set_level(logging.WARNING, logger="celery_workers.mt5_sync_tasks")
+
+    sync_mt5_account.run(mt5_account.id)
+
+    table_block = caplog.text.split("MT5 Sync")[1].split("MT5 sync skip_debug")[0]
+    assert len(table_block) < 3000, "ASCII table should not contain multi-kB skip_debug cell"
+    assert "Skip debug rows (count)" in caplog.text
+    assert "MT5 sync skip_debug mt5_account_id=" in caplog.text
+    assert long_reason in caplog.text
+
+
+def test_sync_mt5_account_quiet_idle_noop_skips_ascii_table(app_ctx, monkeypatch, caplog):
+    """Rolling beat-style run with only benign skips logs one line (no big ASCII table)."""
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-noop-user",
+        email="mt5-noop@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="66667777",
+    )
+    mt5_account.last_synced_at = datetime(2024, 6, 1, 12, 0, 0)
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+
+    fake_mt5 = SimpleNamespace(
+        DEAL_ENTRY_IN=0,
+        DEAL_ENTRY_OUT=1,
+        DEAL_ENTRY_INOUT=2,
+        DEAL_ENTRY_OUT_BY=3,
+        DEAL_TYPE_BUY=0,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
+        history_deals_get=lambda *args, **kwargs: [],
+        positions_get=lambda: [],
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "saved": 0,
+                "updated": 0,
+                "skipped": 46,
+                "errors": 0,
+                "skip_reasons": {
+                    "close_only_without_existing_open": 0,
+                    "existing_already_closed_or_no_state_change": 46,
+                    "incoming_close_validation_failed": 0,
+                    "batch_duplicate_mt5_position": 0,
+                    "batch_validation_skipped": 0,
+                    "batch_symbol_validation_failed": 0,
+                },
+            }
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", lambda *args, **kwargs: DummyResponse())
+
+    caplog.set_level(logging.INFO, logger="celery_workers.mt5_sync_tasks")
+
+    sync_mt5_account.run(mt5_account.id)
+
+    assert "MT5 sync noop mt5_account_id=" in caplog.text
+    assert "skipped=46" in caplog.text
+    assert "Skip Reasons" not in caplog.text
+
+
+def test_internal_mt5_sync_worrisome_skip_debug_omits_benign_skips(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="skipdbg-w-user",
+        email="skipdbg-w@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="12121212",
+    )
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.0,
+        exit_price=1.01,
+        lot_size=0.01,
+        opened_at=datetime(2026, 3, 21, 2, 0, 0),
+        closed_at=datetime(2026, 3, 21, 4, 0, 0),
+        mt5_position="11111222",
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    payload = {
+        "mt5_account_id": mt5_account.id,
+        "include_skip_reasons": True,
+        "skip_debug_mode": "worrisome",
+        "trades": [
+            {
+                "symbol": "EURUSD",
+                "side": "buy",
+                "entry_price": 1.0,
+                "exit_price": 1.01,
+                "lot_size": 0.01,
+                "pnl": 0.0,
+                "commission": 0.0,
+                "swap": 0.0,
+                "opened_at": "2026-03-21T02:00:00+00:00",
+                "closed_at": "2026-03-21T04:00:00+00:00",
+                "mt5_position": 11111222,
+                "trade_note": "",
+            }
+        ],
+    }
+    response = client.post(
+        "/api/internal/mt5/sync",
+        json=payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["skipped"] == 1
+    assert body["skip_reasons"]["existing_already_closed_or_no_state_change"] == 1
+    assert "skip_debug" not in body
+
+
 def test_sync_mt5_account_shifts_history_window_to_mt5_server_time(app_ctx, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)

@@ -18,6 +18,33 @@ def _normalize_mt5_position_key(value):
     return text_value or None
 
 
+_SKIP_DEBUG_BENIGN_REASON = "existing_already_closed_or_no_state_change"
+
+
+def _resolve_skip_debug_mode(payload):
+    """
+    full: collect up to skip_debug_limit rows for any skip reason (legacy include_skip_debug=True).
+    worrisome: collect debug rows for non-benign skips only (rolling / beat sync default).
+    off: no per-row skip_debug payload (saves CPU and huge worker logs).
+    """
+    raw = (payload.get("skip_debug_mode") or "").strip().lower()
+    if raw in {"full", "worrisome", "off"}:
+        return raw
+    if bool(payload.get("include_skip_debug")):
+        return "full"
+    return "off"
+
+
+def _append_skip_debug_row(skip_debug_rows, skip_debug_limit, skip_debug_mode, reason_key, row_dict):
+    if skip_debug_mode == "off":
+        return
+    if skip_debug_mode == "worrisome" and reason_key == _SKIP_DEBUG_BENIGN_REASON:
+        return
+    if len(skip_debug_rows) >= skip_debug_limit:
+        return
+    skip_debug_rows.append(row_dict)
+
+
 def _prefer_existing_mt5_trade(existing_trade, candidate_trade):
     if existing_trade is None:
         return candidate_trade
@@ -100,7 +127,7 @@ def sync_mt5_trades():
 
     payload = request.get_json(silent=True) or {}
     include_skip_reasons = bool(payload.get("include_skip_reasons"))
-    include_skip_debug = bool(payload.get("include_skip_debug"))
+    skip_debug_mode = _resolve_skip_debug_mode(payload)
     refresh_trade_timestamps = bool(payload.get("refresh_closed_trade_timestamps"))
     try:
         mt5_account_id = int(payload.get("mt5_account_id"))
@@ -180,19 +207,22 @@ def sync_mt5_trades():
             if existing_trade is None:
                 if is_close_only_row:
                     skip_reason_counts["close_only_without_existing_open"] += 1
-                    if include_skip_debug and len(skip_debug_rows) < skip_debug_limit:
-                        skip_debug_rows.append(
-                            {
-                                "mt5_position": mt5_position,
-                                "reason": "close_only_without_existing_open",
-                                "incoming_closed_at": (
-                                    row.get("closed_at").isoformat()
-                                    if row.get("closed_at") is not None
-                                    else None
-                                ),
-                                "incoming_exit_price": row.get("exit_price"),
-                            }
-                        )
+                    _append_skip_debug_row(
+                        skip_debug_rows,
+                        skip_debug_limit,
+                        skip_debug_mode,
+                        "close_only_without_existing_open",
+                        {
+                            "mt5_position": mt5_position,
+                            "reason": "close_only_without_existing_open",
+                            "incoming_closed_at": (
+                                row.get("closed_at").isoformat()
+                                if row.get("closed_at") is not None
+                                else None
+                            ),
+                            "incoming_exit_price": row.get("exit_price"),
+                        },
+                    )
                     skipped_count += 1
                     continue
                 rows_to_insert.append(row)
@@ -245,23 +275,26 @@ def sync_mt5_trades():
                             closed_at,
                             existing_trade.opened_at,
                         )
-                        if include_skip_debug and len(skip_debug_rows) < skip_debug_limit:
-                            skip_debug_rows.append(
-                                {
-                                    "reason": "incoming_close_validation_failed",
-                                    "mt5_position": mt5_position,
-                                    "detail": "exit_price missing/non-positive or closed_at before opened_at",
-                                    "incoming_exit_price": exit_price,
-                                    "incoming_closed_at": closed_at.isoformat()
-                                    if closed_at is not None
-                                    else None,
-                                    "existing_opened_at": (
-                                        existing_trade.opened_at.isoformat()
-                                        if existing_trade.opened_at is not None
-                                        else None
-                                    ),
-                                }
-                            )
+                        _append_skip_debug_row(
+                            skip_debug_rows,
+                            skip_debug_limit,
+                            skip_debug_mode,
+                            "incoming_close_validation_failed",
+                            {
+                                "reason": "incoming_close_validation_failed",
+                                "mt5_position": mt5_position,
+                                "detail": "exit_price missing/non-positive or closed_at before opened_at",
+                                "incoming_exit_price": exit_price,
+                                "incoming_closed_at": closed_at.isoformat()
+                                if closed_at is not None
+                                else None,
+                                "existing_opened_at": (
+                                    existing_trade.opened_at.isoformat()
+                                    if existing_trade.opened_at is not None
+                                    else None
+                                ),
+                            },
+                        )
                         continue
                     existing_trade.exit_price = float(exit_price)
                     existing_trade.pnl = float(row.get("pnl")) if row.get("pnl") is not None else None
@@ -303,23 +336,26 @@ def sync_mt5_trades():
                         closed_at,
                         existing_trade.opened_at,
                     )
-                    if include_skip_debug and len(skip_debug_rows) < skip_debug_limit:
-                        skip_debug_rows.append(
-                            {
-                                "reason": "incoming_close_validation_failed",
-                                "mt5_position": mt5_position,
-                                "detail": "exit_price missing/non-positive or closed_at before opened_at",
-                                "incoming_exit_price": exit_price,
-                                "incoming_closed_at": closed_at.isoformat()
-                                if closed_at is not None
-                                else None,
-                                "existing_opened_at": (
-                                    existing_trade.opened_at.isoformat()
-                                    if existing_trade.opened_at is not None
-                                    else None
-                                ),
-                            }
-                        )
+                    _append_skip_debug_row(
+                        skip_debug_rows,
+                        skip_debug_limit,
+                        skip_debug_mode,
+                        "incoming_close_validation_failed",
+                        {
+                            "reason": "incoming_close_validation_failed",
+                            "mt5_position": mt5_position,
+                            "detail": "exit_price missing/non-positive or closed_at before opened_at",
+                            "incoming_exit_price": exit_price,
+                            "incoming_closed_at": closed_at.isoformat()
+                            if closed_at is not None
+                            else None,
+                            "existing_opened_at": (
+                                existing_trade.opened_at.isoformat()
+                                if existing_trade.opened_at is not None
+                                else None
+                            ),
+                        },
+                    )
                     continue
 
                 existing_trade.exit_price = float(exit_price)
@@ -341,39 +377,42 @@ def sync_mt5_trades():
                 continue
 
             skip_reason_counts["existing_already_closed_or_no_state_change"] += 1
-            if include_skip_debug and len(skip_debug_rows) < skip_debug_limit:
-                skip_debug_rows.append(
-                    {
-                        "mt5_position": mt5_position,
-                        "reason": "existing_already_closed_or_no_state_change",
-                        "incoming_is_open": row.get("closed_at") is None,
-                        "incoming_opened_at": (
-                            row.get("opened_at").isoformat()
-                            if row.get("opened_at") is not None
-                            else None
-                        ),
-                        "incoming_closed_at": (
-                            row.get("closed_at").isoformat()
-                            if row.get("closed_at") is not None
-                            else None
-                        ),
-                        "incoming_entry_price": row.get("entry_price"),
-                        "incoming_exit_price": row.get("exit_price"),
-                        "existing_is_open": existing_trade.closed_at is None,
-                        "existing_opened_at": (
-                            existing_trade.opened_at.isoformat()
-                            if existing_trade.opened_at is not None
-                            else None
-                        ),
-                        "existing_closed_at": (
-                            existing_trade.closed_at.isoformat()
-                            if existing_trade.closed_at is not None
-                            else None
-                        ),
-                        "existing_entry_price": existing_trade.entry_price,
-                        "existing_exit_price": existing_trade.exit_price,
-                    }
-                )
+            _append_skip_debug_row(
+                skip_debug_rows,
+                skip_debug_limit,
+                skip_debug_mode,
+                _SKIP_DEBUG_BENIGN_REASON,
+                {
+                    "mt5_position": mt5_position,
+                    "reason": "existing_already_closed_or_no_state_change",
+                    "incoming_is_open": row.get("closed_at") is None,
+                    "incoming_opened_at": (
+                        row.get("opened_at").isoformat()
+                        if row.get("opened_at") is not None
+                        else None
+                    ),
+                    "incoming_closed_at": (
+                        row.get("closed_at").isoformat()
+                        if row.get("closed_at") is not None
+                        else None
+                    ),
+                    "incoming_entry_price": row.get("entry_price"),
+                    "incoming_exit_price": row.get("exit_price"),
+                    "existing_is_open": existing_trade.closed_at is None,
+                    "existing_opened_at": (
+                        existing_trade.opened_at.isoformat()
+                        if existing_trade.opened_at is not None
+                        else None
+                    ),
+                    "existing_closed_at": (
+                        existing_trade.closed_at.isoformat()
+                        if existing_trade.closed_at is not None
+                        else None
+                    ),
+                    "existing_entry_price": existing_trade.entry_price,
+                    "existing_exit_price": existing_trade.exit_price,
+                },
+            )
             skipped_count += 1
 
         batch_result = build_normalized_trade_insert_batch(
@@ -467,7 +506,7 @@ def sync_mt5_trades():
             response_payload["skip_reasons"] = skip_reason_counts
             if int(batch_result.get("validation_skipped") or 0) > 0:
                 response_payload["insert_validation_reasons"] = batch_result.get("validation_reasons") or {}
-        if include_skip_debug:
+        if skip_debug_rows:
             response_payload["skip_debug"] = skip_debug_rows
         return jsonify(response_payload)
     except Exception as exc:
