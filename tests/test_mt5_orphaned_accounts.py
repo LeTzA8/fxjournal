@@ -195,14 +195,16 @@ def test_sync_all_active_mt5_accounts_skips_orphaned_accounts(app_ctx, monkeypat
 
     captured_ids = []
 
-    def _fake_apply_async(*, args, queue):
+    def _fake_apply_async(*, args, queue, kwargs=None):
         captured_ids.append((args[0], queue))
 
     monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
 
     mt5_sync_module.sync_all_active_mt5_accounts.run()
 
-    assert captured_ids == [(active_account.id, "mt5_sync")]
+    enqueued_mt5_ids = [args_id for args_id, q in captured_ids if q == "mt5_sync"]
+    assert active_account.id in enqueued_mt5_ids
+    assert orphan_account.id not in enqueued_mt5_ids
     scrubbed_account = db.session.get(MT5Account, orphan_account.id)
     assert scrubbed_account.is_orphaned is True
     assert scrubbed_account.is_cleanup_only is True

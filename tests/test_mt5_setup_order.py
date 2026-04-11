@@ -1,4 +1,5 @@
 import sys
+import uuid
 from types import SimpleNamespace
 
 from cryptography.fernet import Fernet
@@ -61,9 +62,10 @@ class FlakyInitializeMt5Module:
 
 
 def _create_user_with_account():
+    suffix = uuid.uuid4().hex[:10]
     user = User(
-        username="mt5-order-user",
-        email="mt5-order-user@example.com",
+        username=f"mt5-order-user-{suffix}",
+        email=f"mt5-order-user-{suffix}@example.com",
         password="hashed-password",
         email_verified=True,
         signup_status="approved",

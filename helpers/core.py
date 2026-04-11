@@ -6,12 +6,14 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from flask import g, request, session, url_for
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import load_only, selectinload
 
 from models import (
     MT5AccessRequest,
     MT5Account,
+    MT5SyncBatch,
     Trade,
     TradeAccount,
     TradeProfile,
@@ -490,28 +492,30 @@ def build_mt5_access_state(user_id, trade_accounts=None):
     account_ids = [account.id for account in account_rows]
     pending_requests_by_trade_account = {}
     approved_requests_by_trade_account = {}
+    mt5_accounts_by_trade_account = {}
     linked_mt5_trade_account_ids = set()
     active_mt5_trade_account_ids = set()
+    batch_state = get_mt5_sync_batch_state()
 
     if account_ids:
-        linked_mt5_trade_account_ids = {
-            trade_account_id
-            for trade_account_id, in db.session.query(MT5Account.trade_account_id)
-            .filter(
+        mt5_accounts = (
+            MT5Account.query.filter(
                 MT5Account.trade_account_id.in_(account_ids),
                 MT5Account.trade_account_id.isnot(None),
             )
+            .order_by(MT5Account.created_at.desc(), MT5Account.id.desc())
             .all()
-        }
+        )
+        for mt5_account in mt5_accounts:
+            mt5_accounts_by_trade_account.setdefault(
+                mt5_account.trade_account_id,
+                mt5_account,
+            )
+        linked_mt5_trade_account_ids = set(mt5_accounts_by_trade_account.keys())
         active_mt5_trade_account_ids = {
             trade_account_id
-            for trade_account_id, in db.session.query(MT5Account.trade_account_id)
-            .filter(
-                MT5Account.trade_account_id.in_(account_ids),
-                MT5Account.trade_account_id.isnot(None),
-                MT5Account.is_active.is_(True),
-            )
-            .all()
+            for trade_account_id, mt5_account in mt5_accounts_by_trade_account.items()
+            if bool(getattr(mt5_account, "is_active", False))
         }
         request_rows = (
             MT5AccessRequest.query.filter(
@@ -542,9 +546,165 @@ def build_mt5_access_state(user_id, trade_accounts=None):
     return {
         "pending_requests_by_trade_account": pending_requests_by_trade_account,
         "approved_requests_by_trade_account": approved_requests_by_trade_account,
+        "mt5_accounts_by_trade_account": mt5_accounts_by_trade_account,
         "linked_mt5_trade_account_ids": linked_mt5_trade_account_ids,
         "active_mt5_trade_account_ids": active_mt5_trade_account_ids,
+        "batch_state": batch_state,
     }
+
+
+def get_mt5_sync_batch_state(*, for_update=False):
+    batches_enabled = db.session.query(MT5SyncBatch.id).limit(1).first() is not None
+
+    query = (
+        MT5SyncBatch.query.filter_by(is_open=True)
+        .order_by(MT5SyncBatch.created_at.desc(), MT5SyncBatch.id.desc())
+    )
+    if for_update:
+        query = query.with_for_update()
+    active_batch = query.first()
+
+    state = {
+        "batches_enabled": batches_enabled,
+        "active_batch": active_batch,
+        "active_slots_used": 0,
+        "slots_remaining": None,
+        "can_accept_requests": not batches_enabled,
+        "status_label": "Legacy Open Access",
+        "status_message": "MT5 sync is currently using legacy open access mode.",
+        "public_badge": None,
+        "request_blocked_message": None,
+    }
+
+    if not batches_enabled:
+        return state
+
+    if active_batch is None:
+        state.update(
+            {
+                "can_accept_requests": False,
+                "status_label": "No Open Batch",
+                "status_message": "No free MT5 sync batch is open right now.",
+                "public_badge": "No free MT5 sync batch open right now",
+                "request_blocked_message": (
+                    "No free MT5 sync batch is open right now. Start with file import and check back for the next batch."
+                ),
+            }
+        )
+        return state
+
+    active_slots_used = (
+        db.session.query(func.count(MT5AccessRequest.id))
+        .filter(
+            MT5AccessRequest.batch_id == active_batch.id,
+            MT5AccessRequest.status.in_(
+                [
+                    MT5AccessRequest.STATUS_PENDING,
+                    MT5AccessRequest.STATUS_APPROVED,
+                ]
+            ),
+        )
+        .scalar()
+        or 0
+    )
+    claimed_slots = max(
+        int(active_batch.total_slots_claimed or 0),
+        int(active_slots_used),
+    )
+    slots_remaining = max(int(active_batch.capacity_total or 0) - claimed_slots, 0)
+
+    active_batch.active_slots_used = active_slots_used
+    active_batch.claimed_slots = claimed_slots
+    active_batch.slots_remaining = slots_remaining
+
+    slot_word = "slot" if slots_remaining == 1 else "slots"
+    if slots_remaining > 0:
+        state.update(
+            {
+                "active_slots_used": active_slots_used,
+                "slots_remaining": slots_remaining,
+                "can_accept_requests": True,
+                "status_label": "Batch Open",
+                "status_message": f"{slots_remaining} free MT5 sync {slot_word} left in {active_batch.name}.",
+                "public_badge": f"{slots_remaining} free MT5 sync {slot_word} left",
+            }
+        )
+        return state
+
+    state.update(
+        {
+            "active_slots_used": active_slots_used,
+            "slots_remaining": 0,
+            "can_accept_requests": False,
+            "status_label": "Batch Full",
+            "status_message": f"{active_batch.name} is full right now.",
+            "public_badge": "Current free MT5 sync batch is full",
+            "request_blocked_message": (
+                f"{active_batch.name} is full right now. Start with file import and join the next MT5 sync batch."
+            ),
+        }
+    )
+    return state
+
+
+def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
+    """
+    Remove MT5 sync for a trade account: delete MT5Account, clear MT5AccessRequest rows,
+    release batch slot counters, queue worker terminal cleanup when paths exist.
+
+    Returns (success, message) for user-facing flash text.
+    """
+    from flask import current_app
+
+    trade_account = db.session.get(TradeAccount, trade_account_id)
+    if trade_account is None or trade_account.user_id != user_id:
+        return False, "Trade account not found."
+
+    mt5_account = MT5Account.query.filter_by(
+        trade_account_id=trade_account_id,
+        user_id=user_id,
+    ).first()
+    if mt5_account is None:
+        return False, "This trade account does not have MT5 sync configured."
+    if mt5_account.is_orphaned:
+        return False, "MT5 sync is not available for this account."
+
+    if mt5_account.terminal_path and mt5_account.appdata_hash:
+        try:
+            from celery_workers.mt5_setup import cleanup_mt5_terminal
+
+            cleanup_mt5_terminal.apply_async(
+                args=[mt5_account.terminal_path, mt5_account.appdata_hash],
+                queue="mt5_setup",
+            )
+        except Exception as exc:
+            current_app.logger.warning(
+                "MT5 cleanup queue failed for user unlink mt5_account_id=%s: %s",
+                mt5_account.id,
+                sanitize_error_message(exc),
+            )
+
+    try:
+        request_rows = MT5AccessRequest.query.filter_by(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+        ).all()
+        for row in request_rows:
+            if row.batch_id is not None:
+                batch = db.session.get(MT5SyncBatch, row.batch_id)
+                if batch is not None:
+                    batch.total_slots_claimed = max(
+                        0,
+                        int(batch.total_slots_claimed or 0) - 1,
+                    )
+            db.session.delete(row)
+        db.session.delete(mt5_account)
+        db.session.commit()
+    except (OperationalError, IntegrityError):
+        db.session.rollback()
+        return False, "Could not disconnect MT5 right now. Please try again."
+
+    return True, "MT5 sync disconnected for this trade account. Your trades stay in the journal."
 
 
 def ensure_trade_account_for_user(user_id):

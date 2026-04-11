@@ -47,7 +47,7 @@ CFD_SYMBOLS = [
     ("CADCHF", "", 100000.0, 0.0001, 260, True),
     ("NZDCHF", "", 100000.0, 0.0001, 270, True),
     ("NZDCAD", "", 100000.0, 0.0001, 280, True),
-    ("XAUUSD", "", 100.0, None, 290, True),
+    ("XAUUSD", "GOLD", 100.0, None, 290, True),
     ("XAGUSD", "", 5000.0, None, 300, True),
     ("US500", "SPX500,SP500,US500CASH,US500INDEX", 1.0, None, 310, True),
     ("NAS100", "US100,USTEC,NAS100CASH,NASDAQ100", 1.0, None, 320, True),

@@ -10,6 +10,7 @@ from helpers.core import (
     build_mt5_access_state,
     build_unique_trade_account_pubkey,
     get_active_trade_account_for_user,
+    get_mt5_sync_batch_state,
     get_safe_internal_next,
     get_user_trade_account_by_pubkey,
     get_user_trade_accounts,
@@ -18,6 +19,7 @@ from helpers.core import (
     normalize_trade_account_name,
     parse_trade_account_size,
     resolve_active_trade_account,
+    unlink_mt5_sync_for_trade_account,
 )
 from helpers.legal import LEGAL_LAST_UPDATED
 from models import AIGeneratedResponse, MT5AccessRequest, MT5Account, Trade, TradeAccount, User, db
@@ -27,8 +29,7 @@ from helpers.utils import TRUE_VALUES, encrypt_password, login_required, utcnow_
 bp = Blueprint("trade_accounts", __name__)
 
 MT5_REQUEST_SUCCESS_MESSAGE = (
-    "Request received. We'll notify you by email when your MT5 sync is ready. "
-    "This usually takes 1-2 business days."
+    "MT5 setup started right away. We'll email you when your sync is ready."
 )
 
 
@@ -53,21 +54,23 @@ def _build_mt5_request_response(*, ok, message, status, status_code=200, extra=N
     return redirect(_get_mt5_access_redirect_target())
 
 
-def _send_mt5_submission_admin_email(*, request_row, account, mt5_account):
+def _send_mt5_submission_admin_email(*, request_row, account, mt5_account, setup_queued):
     feedback_to_email = os.getenv("FEEDBACK_TO_EMAIL", "").strip().lower()
     if not feedback_to_email:
         current_app.logger.warning(
-            "MT5 sync request submitted without FEEDBACK_TO_EMAIL configured: request_id=%s",
+            "MT5 sync submission saved without FEEDBACK_TO_EMAIL configured: request_id=%s",
             request_row.id,
         )
         return
 
-    email_subject = f"[FX Journal MT5 Request] {session.get('username', 'User')} requested MT5 sync"
+    email_subject = f"[MyFXJournal MT5 Sync] {session.get('username', 'User')} submitted MT5 sync details"
     email_body = (
-        "New MT5 sync request\n\n"
+        "New MT5 sync submission\n\n"
         f"Request ID: {request_row.id}\n"
         f"Submitted at: {request_row.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
         f"Request Status: {request_row.status}\n"
+        f"Batch ID: {request_row.batch_id or '-'}\n"
+        f"Setup Queued: {'yes' if setup_queued else 'no'}\n"
         f"User ID: {account.user_id}\n"
         f"Username: {session.get('username', 'User')}\n"
         f"Trade Account ID: {account.id}\n"
@@ -96,23 +99,32 @@ def _send_mt5_submission_admin_email(*, request_row, account, mt5_account):
         )
 
 
-def _send_mt5_submission_user_email(*, user, account):
+def _send_mt5_submission_user_email(*, user, account, setup_queued):
     try:
         dashboard_url = build_external_url(url_for("dashboard.home"))
+        if setup_queued:
+            subject = "Your MT5 sync setup has started"
+            text_body = (
+                f"Hi {user.username}, we saved your MT5 sync details and started setup right away. "
+                "We'll notify you by email when your MT5 sync is ready."
+            )
+        else:
+            subject = "We saved your MT5 sync details"
+            text_body = (
+                f"Hi {user.username}, we saved your MT5 sync details, but setup could not be queued right away. "
+                "Please contact support or check back from your dashboard."
+            )
         send_email_placeholder(
             user.email,
-            "We received your MT5 sync request",
-            (
-                f"Hi {user.username}, we received your MT5 sync request. "
-                "We'll notify you by email when your MT5 sync is ready. "
-                "This usually takes 1-2 business days."
-            ),
+            subject,
+            text_body,
             html_body=render_template(
                 "emails/mt5-request-received.html",
                 name=user.username,
                 account_name=account.name,
                 dashboard_url=dashboard_url,
                 logo_url=build_external_url("/static/site-logo.png"),
+                setup_queued=setup_queued,
             ),
         )
     except Exception as exc:
@@ -156,7 +168,7 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
         message = (
             "This trade account already has MT5 sync access configured."
             if existing_mt5_account.is_active
-            else "This trade account already has an MT5 sync request in progress."
+            else "This trade account already has MT5 sync setup in progress."
         )
         return _build_mt5_request_response(
             ok=False,
@@ -168,7 +180,6 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
     mt5_access_state = build_mt5_access_state(user_id, [account])
     pending_request = mt5_access_state["pending_requests_by_trade_account"].get(account.id)
     approved_request = mt5_access_state["approved_requests_by_trade_account"].get(account.id)
-    request_row = pending_request or approved_request
 
     request_note = (request.form.get("request_note") or request.form.get("broker_name") or "").strip()
     account_number = (request.form.get("account_number") or "").strip()
@@ -186,7 +197,7 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
     if len(request_note) > 500:
         return _build_mt5_request_response(
             ok=False,
-            message="MT5 request note must be 500 characters or less.",
+            message="MT5 setup note must be 500 characters or less.",
             status="error",
             status_code=400,
         )
@@ -225,14 +236,41 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
         )
 
     try:
-        if request_row is None:
-            request_row = MT5AccessRequest(
-                user_id=user_id,
-                trade_account_id=account.id,
-                status=MT5AccessRequest.STATUS_PENDING,
-            )
-            db.session.add(request_row)
-        elif request_row.status != MT5AccessRequest.STATUS_PENDING:
+        batch_state = get_mt5_sync_batch_state(for_update=True)
+        request_row = pending_request or approved_request
+
+        if batch_state["batches_enabled"]:
+            active_batch = batch_state["active_batch"]
+            if request_row is None or request_row.batch_id is None:
+                if not batch_state["can_accept_requests"] or active_batch is None:
+                    return _build_mt5_request_response(
+                        ok=False,
+                        message=batch_state["request_blocked_message"]
+                        or "No free MT5 sync batch is open right now. Start with file import and check back later.",
+                        status="error",
+                        status_code=409,
+                    )
+                if request_row is None:
+                    request_row = MT5AccessRequest(
+                        user_id=user_id,
+                        trade_account_id=account.id,
+                        status=MT5AccessRequest.STATUS_PENDING,
+                        batch_id=active_batch.id,
+                    )
+                    db.session.add(request_row)
+                else:
+                    request_row.batch_id = active_batch.id
+                active_batch.total_slots_claimed = int(active_batch.total_slots_claimed or 0) + 1
+        else:
+            if request_row is None:
+                request_row = MT5AccessRequest(
+                    user_id=user_id,
+                    trade_account_id=account.id,
+                    status=MT5AccessRequest.STATUS_PENDING,
+                )
+                db.session.add(request_row)
+
+        if request_row.status != MT5AccessRequest.STATUS_PENDING:
             request_row.status = MT5AccessRequest.STATUS_PENDING
             request_row.reviewed_at = None
             request_row.reviewed_by_user_id = None
@@ -266,7 +304,7 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
         db.session.rollback()
         return _build_mt5_request_response(
             ok=False,
-            message="This trade account already has an MT5 sync request in progress.",
+            message="This trade account already has MT5 sync setup in progress.",
             status="error",
             status_code=409,
         )
@@ -274,27 +312,54 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
         db.session.rollback()
         return _build_mt5_request_response(
             ok=False,
-            message="Could not save your MT5 sync request right now. Please try again.",
+            message="Could not save your MT5 sync setup right now. Please try again.",
             status="error",
             status_code=503,
+        )
+
+    queue_message = MT5_REQUEST_SUCCESS_MESSAGE
+    setup_queued = False
+    try:
+        from celery_workers.mt5_setup import setup_mt5_terminal
+
+        setup_mt5_terminal.apply_async(
+            args=[mt5_account.id],
+            queue="mt5_setup",
+        )
+        setup_queued = True
+    except Exception as exc:
+        current_app.logger.warning(
+            "MT5 setup queue failed after submission for mt5_account_id=%s: %s",
+            mt5_account.id,
+            exc,
+        )
+        queue_message = (
+            "MT5 details saved, but setup could not be queued right now. "
+            "Please contact support or retry from admin."
         )
 
     _send_mt5_submission_admin_email(
         request_row=request_row,
         account=account,
         mt5_account=mt5_account,
+        setup_queued=setup_queued,
     )
-    _send_mt5_submission_user_email(user=user, account=account)
+    _send_mt5_submission_user_email(
+        user=user,
+        account=account,
+        setup_queued=setup_queued,
+    )
 
-    status_label = "Setup Pending"
+    status_label = "Setup Queued" if setup_queued else "Saved"
     return _build_mt5_request_response(
         ok=True,
-        message=MT5_REQUEST_SUCCESS_MESSAGE,
+        message=queue_message,
         status="success",
         extra={
             "account_name": account.name,
             "status_label": status_label,
-            "status_note": MT5_REQUEST_SUCCESS_MESSAGE,
+            "status_note": queue_message,
+            "progress_stage": 2 if setup_queued else 1,
         },
     )
 
@@ -498,12 +563,51 @@ def update_trade_account(trade_account_pubkey):
     return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
 
 
+@bp.route("/dashboard/trade-accounts/mt5/unlink", methods=["POST"])
+@limiter.limit(
+    "12 per hour",
+    methods=["POST"],
+    error_message="Too many MT5 disconnect attempts. Please wait and try again.",
+)
+@login_required
+def unlink_mt5_sync():
+    user_id = session["user_id"]
+    pubkey = (request.form.get("trade_account_pubkey") or "").strip()
+    if not pubkey:
+        flash("Choose a trade account to disconnect.", "error")
+        return redirect(url_for("trade_accounts.trade_accounts"))
+    account = get_user_trade_account_by_pubkey(user_id, pubkey)
+    if not account:
+        flash("Trade account not found.", "error")
+        return redirect(url_for("trade_accounts.trade_accounts"))
+    if normalize_account_type(account.account_type) != "CFD":
+        flash("MT5 sync applies to CFD trade accounts only.", "error")
+        return redirect(url_for("trade_accounts.trade_accounts"))
+
+    ok, message = unlink_mt5_sync_for_trade_account(
+        user_id=user_id,
+        trade_account_id=account.id,
+    )
+    if not ok:
+        flash(message, "error")
+        return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+
+    flash(message, "success")
+    try:
+        from celery_workers.cache import CacheUnavailableError, invalidate
+
+        invalidate(user_id=user_id, trade_account_id=account.id)
+    except CacheUnavailableError:
+        pass
+    return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
+
+
 @bp.route("/dashboard/mt5/request-access", methods=["POST"])
 @bp.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/request-mt5-access", methods=["POST"])
 @limiter.limit(
     "3 per minute;20 per day",
     methods=["POST"],
-    error_message="Too many MT5 access requests. Please wait and try again later.",
+    error_message="Too many MT5 sync setup attempts. Please wait and try again later.",
 )
 @login_required
 def request_mt5_access(trade_account_pubkey=None):
@@ -786,6 +890,8 @@ def trade_accounts():
         total_ai_review_count=total_ai_review_count,
         active_trade_account=active_trade_account,
         pending_mt5_requests_by_trade_account=mt5_access_state["pending_requests_by_trade_account"],
+        approved_mt5_requests_by_trade_account=mt5_access_state["approved_requests_by_trade_account"],
+        mt5_accounts_by_trade_account=mt5_access_state["mt5_accounts_by_trade_account"],
         linked_mt5_trade_account_ids=mt5_access_state["linked_mt5_trade_account_ids"],
         active_mt5_trade_account_ids=mt5_access_state["active_mt5_trade_account_ids"],
         trade_profile_options=get_user_trade_profiles(user_id),

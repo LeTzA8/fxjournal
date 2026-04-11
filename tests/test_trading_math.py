@@ -214,9 +214,23 @@ def test_resolve_pips_for_standard_and_jpy_pairs():
     assert resolve_pips(usdjpy_trade) == pytest.approx(100.0)
 
 
+def test_default_cfd_aliases_have_unique_normalized_keys():
+    seen = {}
+    for spec in trading.DEFAULT_CFD_SYMBOL_SPECS:
+        sym = spec["symbol"]
+        for raw in (sym,) + tuple(spec.get("aliases") or ()):
+            key = trading.normalize_symbol(raw)
+            if not key:
+                continue
+            assert key not in seen or seen[key] == sym, (key, seen.get(key), sym)
+            seen[key] = sym
+
+
 def test_crypto_and_metal_aliases_and_formatting():
     assert trading.canonicalize_symbol("BTCUSDT") == "BTCUSD"
     assert trading.canonicalize_symbol("gold") == "XAUUSD"
+    assert trading.canonicalize_symbol("SILVER") == "XAGUSD"
+    assert trading.canonicalize_symbol("XAU") == "XAUUSD"
     assert trading.cfd_mt5_symbol_name_candidates("XAUUSD")[0] == "XAUUSD"
     assert "GOLD" in trading.cfd_mt5_symbol_name_candidates("XAUUSD")
     assert trading.format_trade_price(0.12345, "DOGEUSD") == "0.12345"

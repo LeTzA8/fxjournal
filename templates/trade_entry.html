@@ -24,7 +24,7 @@
                         {% elif form_mode == 'edit' %}
                         Sections follow how you think through a trade: setup, execution, outcome, timing, then journal.
                         {% else %}
-                        Use this when a trade is not in your import file, or you need a one-off manual row.
+                        Recommended first win is the import panel on the right. Use this when a trade is not in your file, or you need one quick manual row.
                         {% endif %}
                     </p>
                 </div>
@@ -96,7 +96,7 @@
                 {% endif %}
                 <p class="trade-hero-meta soft">{{ active_trade_account_name }} · {{ "Futures" if account_type == "FUTURES" else "CFD" }} · {{ analytics_timezone }}</p>
             </div>
-            {% if is_admin_user and trade.mt5_position and not trade_is_running %}
+            {% if trade.mt5_position and not trade_is_running %}
             <div class="trade-chart-panel" id="tradeChartPanel">
                 <div class="trade-chart-head">
                     <h3 class="trade-chart-title">Price chart</h3>
@@ -530,8 +530,8 @@
                                     {% else %}
                                     <li>Open the <strong>Toolbox</strong> window in MetaTrader 5 (<strong>Ctrl+T</strong>).</li>
                                     <li>In the <strong>History</strong> tab, right-click inside the table.</li>
-                                    <li>Select <strong>Report</strong>.</li>
-                                    <li>Choose <strong>Open XML (MS Office Excel 2007)</strong>.</li>
+                                    <li>Select <strong>Report</strong>, then choose the Excel <strong>.xlsx</strong> option.</li>
+                                    <li>In MT5 this may be labeled <strong>Open XML (MS Office Excel 2007)</strong>.</li>
                                     <li>Save the file, then upload it here.</li>
                                     {% endif %}
                                 </ol>
@@ -540,13 +540,13 @@
                         <span class="soft">{% if account_type == "FUTURES" %}CSV Upload{% else %}XLSX Upload{% endif %}</span>
                     </div>
                 </div>
-                <p class="field-help">
-                    {% if account_type == "FUTURES" %}
-                    Tradovate timestamps default to <strong>America/Chicago</strong> unless the file provides explicit timezone data.
-                    {% else %}
-                    MT5 file timestamps are only interpreted when timezone data is explicit; otherwise use MT5 sync for canonical UTC timing.
-                    {% endif %}
-                </p>
+                    <p class="field-help">
+                        {% if account_type == "FUTURES" %}
+                        Tradovate timestamps default to <strong>America/Chicago</strong> unless the file provides explicit timezone data.
+                        {% else %}
+                        MT5 file import is the fastest first step. If the workbook omits timezone data, optional MT5 sync becomes the canonical source later.
+                        {% endif %}
+                    </p>
                 <form action="{{ url_for('trades.import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook" }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label for="mt5_file">{% if account_type == "FUTURES" %}Tradovate Performance File{% else %}MT5 Report File{% endif %}</label>
@@ -590,7 +590,7 @@
                         {% if account_type == "FUTURES" %}
                         Upload the Tradovate performance export as <code>.csv</code>. Contract code, side, entry, exit, timestamps, and PnL will be mapped automatically.
                         {% else %}
-                        Upload a MetaTrader 5 report exported as <code>.xlsx</code>. If the file includes close timestamps, duration and session analytics will use them automatically.
+                        Fastest first win: upload a MetaTrader 5 report exported as <code>.xlsx</code>. If the file includes close timestamps, duration and session analytics will use them automatically.
                         {% endif %}
                     </p>
                     <div class="form-actions">

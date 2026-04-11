@@ -61,20 +61,34 @@
                 data-hero-underline-words="9"
             >Turn raw trade history into one clear weekly review.</h1>
             <p class="muted lead landing-reveal" data-reveal-delay="760">
-                Import MT5, Tradovate, or manual trades, review the right account, and surface the behavior patterns worth fixing before next week starts.
+                Start with an MT5 report upload or manual trades today, review the right account, and turn on optional read-only MT5 sync later when you want less export upkeep.
             </p>
             <p class="hero-note landing-reveal" data-reveal-delay="860">
-                Manual import works today. Read-only MT5 sync is request-based during beta.
+                Fastest first win: upload an MT5 report or add closed trades today. Your first weekly AI review appears after at least {{ weekly_ai_min_closed_trades }} closed trades land in a finished trade week.
             </p>
+            {% if signup_code_mode == "required" %}
+            <p class="hero-note landing-reveal" data-reveal-delay="920">
+                Beta access is currently invite-only with a referral code.
+            </p>
+            {% elif manual_signup_review_enabled %}
+            <p class="hero-note landing-reveal" data-reveal-delay="920">
+                New accounts are reviewed before first login during this beta period.
+            </p>
+            {% endif %}
+            {% if mt5_batch_state.batches_enabled and mt5_batch_state.public_badge %}
+            <p class="hero-note landing-reveal" data-reveal-delay="980">
+                {{ mt5_batch_state.public_badge }}{% if mt5_batch_state.active_batch %} in {{ mt5_batch_state.active_batch.name }}{% endif %}. MT5 setup starts right after you submit details.
+            </p>
+            {% endif %}
 
-            <div class="landing-copy landing-reveal" id="workflow" data-reveal-delay="980">
+            <div class="landing-copy landing-reveal" id="workflow" data-reveal-delay="1040">
                 <p class="landing-copy-title">How Traders Start Here</p>
                 <ol>
                     <li>
                         <span>1</span>
                         <div>
-                            <strong>Import the trades you already have</strong>
-                            <p>Bring in MT5 reports, Tradovate exports, or manual trades without rebuilding the week in spreadsheets first.</p>
+                            <strong>Start with the trades you already have</strong>
+                            <p>Recommended first path: upload an MT5 report or add manual trades without rebuilding the week in spreadsheets first.</p>
                         </div>
                     </li>
                     <li>
@@ -106,8 +120,8 @@
 
             {% if not user_logged_in %}
             <div class="hero-reassurance landing-reveal" data-reveal-delay="1240" aria-label="Signup reassurance">
-                <span>Import on day one</span>
-                <span>Read-only MT5 sync</span>
+                <span>Upload first</span>
+                <span>Sync later if needed</span>
                 <span>No credit card required</span>
             </div>
             {% endif %}
@@ -336,20 +350,20 @@
                     <div class="feature-showcase-copy">
                         <div class="feature-kicker-row">
                             <p class="feature-kicker">🔄 Automatic MT5 Sync</p>
-                            <span class="feature-access-pill">Request Access</span>
+                            <span class="feature-access-pill">Batch Slots</span>
                         </div>
-                        <h3><span class="feature-title-accent">Keep broker history fresh</span> Sync approved MT5 accounts into the journal without repeated exports</h3>
+                        <h3><span class="feature-title-accent">Keep broker history fresh</span> Sync MT5 accounts into the journal without repeated exports</h3>
                         <p>
-                            Automatic MT5 Sync lets approved accounts pull read-only MT5 history into MyFXJournal, so your dashboard, analytics, and trade review stay closer to the live account state.
+                            Automatic MT5 Sync lets read-only MT5 accounts pull history into MyFXJournal, so your dashboard, analytics, and trade review stay closer to the live account state.
                         </p>
                         <p class="feature-detail">
-                            Manual import works right away. Request read-only sync for approved MT5 accounts when you want less export upkeep and fewer moving parts week to week.
+                            Manual import works right away and is still the fastest first step. When a free sync slot is open, setup starts as soon as you submit read-only MT5 details.
                         </p>
                     </div>
                     <figure class="feature-shot feature-shot-sync-card" aria-hidden="true">
                         <div class="feature-sync-visual">
                             <div class="feature-sync-visual-head">
-                                <span class="feature-sync-visual-pill">Approved account</span>
+                                <span class="feature-sync-visual-pill">Batch slot open</span>
                                 <span class="feature-sync-visual-pill is-accent">Read-only only</span>
                             </div>
                             <div class="feature-sync-visual-list">
@@ -369,7 +383,7 @@
                             <div class="feature-sync-visual-badges">
                                 <span>Secure onboarding</span>
                                 <span>Sync status</span>
-                                <span>Approved accounts</span>
+                                <span>Open beta slots</span>
                             </div>
                         </div>
                     </figure>
@@ -398,8 +412,8 @@
                         before you commit to another monthly subscription.
                     </p>
                     <ul class="comparison-highlight-list">
-                        <li>Manual import is ready today. Read-only MT5 sync is request-based during beta.</li>
-                        <li>Weekly AI review, analytics, and account-level review are already usable now.</li>
+                        <li>Fastest first win is file import. Read-only MT5 sync is optional later during beta.</li>
+                        <li>Your first weekly AI review appears after at least {{ weekly_ai_min_closed_trades }} closed trades in a finished trade week.</li>
                         <li>Founder-led support means faster answers while the product is still taking shape.</li>
                     </ul>
                     <div class="comparison-highlight-actions">

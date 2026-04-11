@@ -18,6 +18,8 @@ def test_invalidate_deletes_current_and_legacy_dashboard_cache_keys(monkeypatch)
         "analytics:u7:a11",
         "analytics_v2:u7:a11",
         "analytics_v3:u7:a11",
+        "analytics_v4:u7:a11",
+        "analytics_v5:u7:a11",
         "rr_summary:u7:a11",
         "rr_summary_v2:u7:a11",
         "rr_summary_v3:u7:a11",

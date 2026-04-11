@@ -433,6 +433,55 @@ class TradeBars(db.Model):
     fetched_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
 
 
+class MT5SyncBatch(db.Model):
+    __tablename__ = "mt5_sync_batch"
+    __table_args__ = (
+        db.Index(
+            "uq_mt5_sync_batch_one_open",
+            "is_open",
+            unique=True,
+            sqlite_where=db.text("is_open = 1"),
+            postgresql_where=db.text("is_open"),
+        ),
+        db.Index("ix_mt5_sync_batch_created_at", "created_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    capacity_total = db.Column(db.Integer, nullable=False, default=0)
+    total_slots_claimed = db.Column(db.Integer, nullable=False, default=0)
+    is_open = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    opened_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    closed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+    )
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    updated_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    mt5_access_requests = db.relationship(
+        "MT5AccessRequest",
+        back_populates="batch",
+        lazy=True,
+        passive_deletes=True,
+    )
+
+
 class MT5Account(db.Model):
     __tablename__ = "mt5_account"
     __table_args__ = (
@@ -512,6 +561,12 @@ class MT5AccessRequest(db.Model):
         nullable=False,
         index=True,
     )
+    batch_id = db.Column(
+        db.Integer,
+        db.ForeignKey("mt5_sync_batch.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status = db.Column(db.String(16), nullable=False, default=STATUS_PENDING, index=True)
     request_note = db.Column(db.Text, nullable=True)
     reviewed_by_user_id = db.Column(
@@ -536,6 +591,11 @@ class MT5AccessRequest(db.Model):
     trade_account = db.relationship(
         "TradeAccount",
         foreign_keys=[trade_account_id],
+        back_populates="mt5_access_requests",
+    )
+    batch = db.relationship(
+        "MT5SyncBatch",
+        foreign_keys=[batch_id],
         back_populates="mt5_access_requests",
     )
 

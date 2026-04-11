@@ -1,4 +1,5 @@
 import os
+import uuid
 from datetime import datetime, timedelta, timezone
 import logging
 import sys
@@ -1348,10 +1349,11 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
     root_user, trade_account = _log_in_root_admin(client)
+    account_number = f"33{uuid.uuid4().int % 10_000_000:07d}"
 
     create_captured = {}
 
-    def _fake_create_apply_async(*, args, queue):
+    def _fake_create_apply_async(*, args, queue, kwargs=None):
         create_captured["args"] = args
         create_captured["queue"] = queue
 
@@ -1364,19 +1366,19 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
         data={
             "user_id": str(root_user.id),
             "trade_account_id": str(trade_account.id),
-            "account_number": "33333333",
+            "account_number": account_number,
             "investor_password": "investor-pass",
             "server": "Broker-Server",
         },
         follow_redirects=False,
     )
 
-    mt5_account = MT5Account.query.filter_by(account_number="33333333").one()
+    mt5_account = MT5Account.query.filter_by(account_number=account_number).one()
     list_response = client.get("/dashboard/admin/access/mt5")
 
     setup_captured = {}
 
-    def _fake_setup_apply_async(*, args, queue):
+    def _fake_setup_apply_async(*, args, queue, kwargs=None):
         setup_captured["args"] = args
         setup_captured["queue"] = queue
 
@@ -1390,7 +1392,7 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
 
     sync_captured = {}
 
-    def _fake_sync_apply_async(*, args, queue):
+    def _fake_sync_apply_async(*, args, queue, kwargs=None):
         sync_captured["args"] = args
         sync_captured["queue"] = queue
 
@@ -1414,7 +1416,7 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
     assert create_captured["queue"] == "mt5_setup"
     assert create_captured["args"] == [mt5_account.id]
     assert list_response.status_code == 200
-    assert b"33333333" in list_response.data
+    assert account_number.encode("ascii") in list_response.data
     assert b"Setup Terminal" in list_response.data
     assert b"Terminal not set up yet" in list_response.data
     assert b"AppData hash pending" in list_response.data

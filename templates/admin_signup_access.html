@@ -728,6 +728,7 @@
                                 <td class="actions-cell">
                                     {% if is_root_admin %}
                                     <div class="inline-actions">
+                                        <a href="{{ url_for('admin_view_user_dashboard', target_user_id=user.id) }}" class="ghost-btn">View Dashboard</a>
                                         <a href="{{ url_for('admin_weekly_report', user_id=user.id) }}" class="ghost-btn">AI Audit</a>
                                         {% if user.signup_status == 'pending' %}
                                         <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
@@ -800,6 +801,84 @@
         </section>
         {% elif section == "mt5" %}
         <section class="panel-grid admin-main-grid admin-mt5-layout">
+            <article class="panel codes-panel mt5-batches-panel">
+                <div class="panel-head">
+                    <h2>MT5 Sync Batches</h2>
+                    <span class="soft">
+                        {% if active_mt5_batch %}
+                        {{ active_mt5_batch.slots_remaining }} left in {{ active_mt5_batch.name }}
+                        {% else %}
+                        No open batch
+                        {% endif %}
+                    </span>
+                </div>
+                <p class="helper-note">Open one batch at a time to control how many new MT5 sync submissions can start immediately. If no batches exist yet, MT5 sync stays in legacy open-access mode.</p>
+                {% if is_root_admin %}
+                    {% if active_mt5_batch %}
+                    <article class="code-card">
+                        <div class="code-head">
+                            <p class="code-value">{{ active_mt5_batch.name }}</p>
+                            <span class="chip success-chip">Open</span>
+                        </div>
+                        <p class="pending-line">Capacity: {{ active_mt5_batch.capacity_total }}</p>
+                        <p class="pending-line">Active slots used: {{ active_mt5_batch.active_slots_used }}</p>
+                        <p class="pending-line">Slots remaining: {{ active_mt5_batch.slots_remaining }}</p>
+                        <p class="pending-line">Total slots ever claimed: {{ active_mt5_batch.total_slots_claimed }}</p>
+                        <p class="pending-line">Opened: {{ active_mt5_batch.opened_at.strftime("%Y-%m-%d %H:%M UTC") if active_mt5_batch.opened_at else "-" }}</p>
+                        <p class="pending-line">Notes: {{ active_mt5_batch.notes or "-" }}</p>
+                        <div class="inline-actions" style="margin-top: 0.75rem; flex-wrap: wrap;">
+                            <form action="{{ url_for('admin_mt5_add_batch_slots', batch_id=active_mt5_batch.id) }}" method="post" class="code-form" style="display:grid; gap:0.45rem; min-width: 220px;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <label for="mt5_batch_add_slots">Add Slots</label>
+                                <input id="mt5_batch_add_slots" name="additional_slots" type="number" min="1" step="1" placeholder="e.g. 5" required>
+                                <button type="submit" class="submit-btn">Add Slots</button>
+                            </form>
+                            <form action="{{ url_for('admin_mt5_close_batch', batch_id=active_mt5_batch.id) }}" method="post" onsubmit="return confirm('Close this MT5 sync batch? New submissions will stop until you open another one.');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="ghost-btn danger-btn">Close Batch</button>
+                            </form>
+                        </div>
+                    </article>
+                    {% else %}
+                    <form action="{{ url_for('admin_mt5_create_batch') }}" method="post" class="code-form" data-themed-validation>
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        <label for="mt5_batch_name">Batch Name</label>
+                        <input id="mt5_batch_name" name="name" type="text" maxlength="120" placeholder="e.g. April Beta Batch">
+
+                        <label for="mt5_batch_capacity_total">Slots</label>
+                        <input id="mt5_batch_capacity_total" name="capacity_total" type="number" min="1" step="1" placeholder="e.g. 10" required>
+
+                        <label for="mt5_batch_notes">Notes (optional)</label>
+                        <input id="mt5_batch_notes" name="notes" type="text" maxlength="1000" placeholder="e.g. Open to first 10 MT5 users this week">
+
+                        <button type="submit" class="submit-btn">Open Batch</button>
+                    </form>
+                    {% endif %}
+                {% endif %}
+
+                {% if mt5_batches %}
+                <div class="codes-list" style="margin-top: 1rem;">
+                    {% for batch in mt5_batches %}
+                    <article class="code-card">
+                        <div class="code-head">
+                            <p class="code-value">{{ batch.name }}</p>
+                            <span class="chip{% if batch.is_open %} success-chip{% else %} default{% endif %}">{{ "Open" if batch.is_open else "Closed" }}</span>
+                        </div>
+                        <p class="pending-line">Capacity: {{ batch.capacity_total }}</p>
+                        <p class="pending-line">Active slots used: {{ batch.active_slots_used }}</p>
+                        <p class="pending-line">Slots remaining: {{ batch.slots_remaining }}</p>
+                        <p class="pending-line">Total slots ever claimed: {{ batch.total_slots_claimed }}</p>
+                        <p class="pending-line">Opened: {{ batch.opened_at.strftime("%Y-%m-%d %H:%M UTC") if batch.opened_at else "-" }}</p>
+                        <p class="pending-line">Closed: {{ batch.closed_at.strftime("%Y-%m-%d %H:%M UTC") if batch.closed_at else ("Still open" if batch.is_open else "-") }}</p>
+                        <p class="pending-line">Notes: {{ batch.notes or "-" }}</p>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="helper-note">No MT5 sync batches created yet.</p>
+                {% endif %}
+            </article>
             <article class="panel codes-panel mt5-accounts-panel">
                 <div class="panel-head">
                     <h2>MT5 Accounts</h2>
@@ -807,7 +886,7 @@
                         {{ mt5_accounts|length }} total{% if orphaned_mt5_count %}, {{ orphaned_mt5_count }} cleanup-only{% endif %}
                     </span>
                 </div>
-                <p class="helper-note">Users now submit the full MT5 sync request from the dashboard. Use this table to monitor submitted accounts, queue setup, trigger syncs, or clean up old records.</p>
+                <p class="helper-note">Users now submit the full MT5 sync setup form from the dashboard. Use this table to monitor queued accounts, trigger syncs, or clean up old records.</p>
                 <div class="inline-actions" style="margin-bottom: 0.85rem; flex-wrap: wrap;">
                     <form
                         action="{{ url_for('admin_mt5_recalibrate_all_trade_times') }}"
@@ -899,6 +978,10 @@
                                         <form action="{{ url_for('admin_mt5_backfill_bars', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Queue bar backfill for all closed trades on this account? This may dispatch many tasks.');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="ghost-btn" {% if not account.is_active or is_orphaned %}disabled aria-disabled="true" title="Cannot backfill bars for inactive or cleanup-only accounts."{% endif %}>Backfill Bars</button>
+                                        </form>
+                                        <form action="{{ url_for('admin_mt5_clear_bars', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete all stored chart bars for this MT5 account? Trade records are kept — use Backfill Bars to refetch.');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="ghost-btn danger-btn" {% if is_orphaned %}disabled aria-disabled="true" title="Cannot clear bars for cleanup-only accounts."{% endif %}>Clear Bars</button>
                                         </form>
                                         <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

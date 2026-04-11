@@ -31,10 +31,12 @@ from helpers.behavior_labels import build_trade_behavior_analytics, build_trade_
 from helpers.core import (
     build_mt5_access_state,
     get_active_trade_account_for_user,
+    get_app_timezone_name,
     get_display_timezone_name,
     get_user_trade_accounts,
     is_weekly_checkin_complete,
     is_trade_running,
+    normalize_timezone_name,
 )
 from helpers.trade_analysis import detect_outliers, get_trade_identity
 from helpers.trends import trend_direction_ei_scores, trend_direction_expectancy_weeks, trend_direction_win_rate_weeks
@@ -54,7 +56,7 @@ from trading import (
 bp = Blueprint("dashboard", __name__)
 
 DEFAULT_WEEKLY_AI_EMPTY_MESSAGE = (
-    "Your weekly AI review appears after an eligible trade week on this account."
+    f"Your weekly AI review appears after at least {MIN_CLOSED_TRADES_FOR_ADVICE} closed trades land in a finished trade week on this account."
 )
 WEEKLY_AI_GENERATING_MESSAGE = (
     "Generating your weekly AI review. Check back shortly."
@@ -962,7 +964,7 @@ def _build_week_on_week_insight(current_week_stats, previous_week_stats):
     return "No prior completed trade week to compare yet."
 
 
-def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trades):
+def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trades, generate=True):
     account_id = getattr(active_trade_account, "id", None)
     weekly_ai_review = None
     weekly_ai_review_text = ""
@@ -1028,7 +1030,10 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
         except CacheUnavailableError as exc:
             current_app.logger.warning("Weekly AI status unavailable: %s", exc)
 
-        if reviews_available and current_period_review is None:
+        if reviews_available and current_period_review is None and not generate:
+            weekly_ai_empty_message = DEFAULT_WEEKLY_AI_EMPTY_MESSAGE
+
+        if reviews_available and current_period_review is None and generate:
             if ai_status in {"queued", "running"}:
                 weekly_ai_is_generating = True
                 weekly_ai_empty_message = WEEKLY_AI_GENERATING_MESSAGE
@@ -1142,42 +1147,48 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
     ]
     pending_requests_by_trade_account = mt5_access_state["pending_requests_by_trade_account"]
     approved_requests_by_trade_account = mt5_access_state["approved_requests_by_trade_account"]
-    linked_mt5_trade_account_ids = mt5_access_state["linked_mt5_trade_account_ids"]
+    mt5_accounts_by_trade_account = mt5_access_state["mt5_accounts_by_trade_account"]
     active_mt5_trade_account_ids = mt5_access_state["active_mt5_trade_account_ids"]
+    batch_state = mt5_access_state["batch_state"]
 
     status_rows = []
     for account in mt5_cfd_accounts:
         pending_request = pending_requests_by_trade_account.get(account.id)
         approved_request = approved_requests_by_trade_account.get(account.id)
-        is_linked = account.id in linked_mt5_trade_account_ids
+        mt5_account = mt5_accounts_by_trade_account.get(account.id)
+        is_linked = mt5_account is not None
         is_active_linked = account.id in active_mt5_trade_account_ids
+        has_setup_artifacts = bool(
+            str(getattr(mt5_account, "terminal_path", "") or "").strip()
+            or str(getattr(mt5_account, "appdata_hash", "") or "").strip()
+        )
 
         if is_active_linked:
             status = "linked"
             status_label = "MT5 Linked"
             note = "MT5 details are already on file for this account."
-        elif is_linked and pending_request is not None:
-            status = "pending"
-            status_label = "Setup Pending"
-            note = (
-                "Request received. We'll notify you by email when your MT5 sync is ready. "
-                "This usually takes 1-2 business days."
-            )
+        elif has_setup_artifacts:
+            status = "setting_up"
+            status_label = "Setting Up"
+            note = "MT5 terminal setup is in progress. We'll email you when sync is ready."
         elif is_linked:
-            status = "submitted"
-            status_label = "Setup Pending"
+            status = "queued"
+            status_label = "Setup Queued"
             note = (
-                "MT5 details are saved. The remaining onboarding steps will be completed from admin "
-                "before sync becomes active."
+                "MT5 details are saved and setup started right away. We'll email you when sync is ready."
             )
         elif pending_request is not None or approved_request is not None:
             status = "pending"
             status_label = "Submit Details"
-            note = "Submit your read-only MT5 details here so we can review the request and finish setup."
+            note = "Finish the one-step MT5 setup form here to start setup."
+        elif batch_state["batches_enabled"] and not batch_state["can_accept_requests"]:
+            status = "batch_unavailable"
+            status_label = batch_state["status_label"]
+            note = batch_state["request_blocked_message"] or "MT5 sync is not available right now."
         else:
             status = "requestable"
-            status_label = "Not Requested"
-            note = "No MT5 sync request has been submitted yet."
+            status_label = "Ready to Start"
+            note = "Submit your read-only MT5 details to start MT5 sync setup."
 
         status_rows.append(
             {
@@ -1185,10 +1196,12 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
                 "status": status,
                 "status_label": status_label,
                 "note": note,
+                "mt5_account": mt5_account,
                 "pending_request": pending_request,
                 "approved_request": approved_request,
                 "is_linked": is_linked,
                 "is_active_linked": is_active_linked,
+                "has_setup_artifacts": has_setup_artifacts,
             }
         )
 
@@ -1211,6 +1224,7 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
         "mt5_selected_account": selected_account,
         "mt5_selected_status": selected_status,
         "mt5_dashboard_next": dashboard_next,
+        "mt5_batch_state": batch_state,
     }
 
 
@@ -1230,9 +1244,22 @@ def home():
     return _dashboard_home_authenticated()
 
 
-def _dashboard_home_authenticated():
-    username = session.get("username", "User")
-    user_id = session["user_id"]
+def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=None):
+    is_admin_view = target_user_id is not None and admin_viewer_username is not None
+    if is_admin_view:
+        from models import User as _User
+        target_user = db.session.get(_User, target_user_id)
+        if target_user is None:
+            from flask import abort
+            abort(404)
+        username = target_user.username
+        user_id = target_user_id
+        timezone_name = normalize_timezone_name(target_user.timezone, get_app_timezone_name()) or "UTC"
+    else:
+        username = session.get("username", "User")
+        user_id = session["user_id"]
+        timezone_name = get_display_timezone_name()
+
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_rows = get_user_trade_accounts(user_id)
     mt5_access_state = build_mt5_access_state(user_id, account_rows)
@@ -1242,8 +1269,6 @@ def _dashboard_home_authenticated():
         mt5_access_state=mt5_access_state,
     )
     user_trades = _load_user_trades(user_id, active_trade_account)
-
-    timezone_name = get_display_timezone_name()
     dashboard_analytics = _load_dashboard_analytics(
         user_id,
         active_trade_account,
@@ -1321,7 +1346,7 @@ def _dashboard_home_authenticated():
         current_week_stats,
         previous_week_stats,
     )
-    weekly_ai_state = _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trades)
+    weekly_ai_state = _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trades, generate=not is_admin_view)
     weekly_ai_review_text = weekly_ai_state.get("weekly_ai_review_text", "")
     if not weekly_ai_review_text and weekly_ai_state["weekly_ai_review"] is not None:
         weekly_ai_review_text = normalize_dashboard_advice_text(
@@ -1356,8 +1381,9 @@ def _dashboard_home_authenticated():
 
     return render_template(
         "index.html",
-        title="MyFXJournal | Dashboard",
+        title=f"MyFXJournal | Dashboard [{username}] (Admin View)" if is_admin_view else "MyFXJournal | Dashboard",
         username=username,
+        admin_viewer_username=admin_viewer_username,
         active_trade_account=active_trade_account,
         win_rate=summary.get("win_rate"),
         closed_trade_count=closed_trade_count,
@@ -1407,6 +1433,7 @@ def _dashboard_home_authenticated():
         mt5_selected_account=mt5_sections["mt5_selected_account"],
         mt5_selected_status=mt5_sections["mt5_selected_status"],
         mt5_dashboard_next=mt5_sections["mt5_dashboard_next"],
+        mt5_batch_state=mt5_sections["mt5_batch_state"],
     )
 
 

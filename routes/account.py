@@ -178,10 +178,10 @@ def account():
 
             current_email_result = send_email_placeholder(
                 user.email,
-                "Confirm your current FX Journal email",
+                "Confirm your current MyFXJournal email",
                 (
                     f"Hi {user.username},\n\n"
-                    "You requested an email change for your FX Journal account.\n"
+                    "You requested an email change for your MyFXJournal account.\n"
                     "Confirm from your current email address using this link:\n"
                     f"{current_email_link}\n\n"
                     "Your new email will not be applied until both addresses are verified.\n"
@@ -205,10 +205,10 @@ def account():
             )
             new_email_result = send_email_placeholder(
                 email,
-                "Confirm your new FX Journal email",
+                "Confirm your new MyFXJournal email",
                 (
                     f"Hi {user.username},\n\n"
-                    "You requested to use this email for your FX Journal account.\n"
+                    "You requested to use this email for your MyFXJournal account.\n"
                     "Confirm your new email address using this link:\n"
                     f"{new_email_link}\n\n"
                     "Your new email will not be applied until both addresses are verified.\n"
@@ -221,7 +221,7 @@ def account():
                     heading="Confirm your new email",
                     intro=(
                         f"Hi {user.username}, confirm that you want to use this new "
-                        "email address for your FX Journal account."
+                        "email address for your MyFXJournal account."
                     ),
                     confirm_url=new_email_link,
                     button_label="Confirm New Email",
@@ -446,7 +446,7 @@ def account_password_reset_email():
         reset_nonce,
     )
     reset_link = build_external_url(url_for("reset_password_token", token=reset_token))
-    email_subject = "Reset your FX Journal password"
+    email_subject = "Reset your MyFXJournal password"
     email_body = (
         f"Hi {user.username},\n\n"
         "You requested a password reset.\n"

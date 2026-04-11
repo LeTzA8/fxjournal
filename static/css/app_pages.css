@@ -590,6 +590,11 @@ body.app-layout .trade-accounts-page .mt5-request-form textarea {
     min-height: 3.5rem;
 }
 
+body.app-layout .trade-accounts-page .mt5-unlink-form,
+body.app-layout .mt5-access-panel .mt5-unlink-form {
+    margin-top: 0.55rem;
+}
+
 body.app-layout .trade-accounts-page .create-form {
     display: grid;
     gap: 0.62rem;

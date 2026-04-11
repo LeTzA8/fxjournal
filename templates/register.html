@@ -18,7 +18,7 @@
     <div class="login-card">
         <p class="eyebrow">MyFXJournal</p>
         <h1>Create account</h1>
-        <p class="subtext">Create your MyFXJournal account and get from broker history to weekly review without building another spreadsheet routine.</p>
+        <p class="subtext">Create your MyFXJournal account, upload trades first, and work toward your first weekly review without building another spreadsheet routine.</p>
         {% if success %}
         <p class="notice success">{{ success }}</p>
         {% endif %}
@@ -31,8 +31,15 @@
         <div class="auth-reassurance" aria-label="Signup reassurance">
             <span>Free beta</span>
             <span>Google or email</span>
-            <span>Import on day one</span>
+            <span>Upload first</span>
         </div>
+        <p class="helper-note auth-helper-copy">Fastest first win: upload an MT5 report or add trades after signup. Your first weekly review appears after at least {{ weekly_ai_min_closed_trades }} closed trades land in a finished trade week.</p>
+        {% if manual_signup_review_enabled %}
+        <p class="helper-note auth-helper-copy">New accounts are reviewed before first login during this beta period.</p>
+        {% endif %}
+        {% if signup_code_mode == "required" %}
+        <p class="helper-note auth-helper-copy">This beta is currently invite-only and requires a referral code.</p>
+        {% endif %}
 
         {% if google_auth_enabled %}
         <div class="auth-oauth-stack">
@@ -141,7 +148,7 @@
 
             <button type="submit" {% if registrations_paused %}disabled{% endif %}>Create Free Account</button>
         </form>
-        <p class="helper-note auth-helper-copy">Email verification comes right after signup. Once you're in, manual import is ready on day one.</p>
+        <p class="helper-note auth-helper-copy">Email verification comes right after signup. Once you're in, upload an MT5 report or add trades on day one.</p>
         <p class="switch-link">Already have an account? <a href="/login">Log in</a></p>
     </div>
 </section>

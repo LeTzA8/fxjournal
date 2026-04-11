@@ -4,6 +4,46 @@
 
 {% block head_extra %}
 <style>
+    .admin-view-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.7rem 0.92rem;
+        margin-bottom: 0.95rem;
+        border: 1px solid color-mix(in srgb, var(--warning-border, #c8963a) 60%, var(--border));
+        background: color-mix(in srgb, var(--warning-border, #c8963a) 8%, var(--card));
+    }
+
+    .admin-view-banner-copy {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+        font-size: 0.875rem;
+    }
+
+    .admin-view-banner-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--warning-border, #c8963a) 90%, var(--text));
+        background: color-mix(in srgb, var(--warning-border, #c8963a) 15%, var(--card));
+        border: 1px solid color-mix(in srgb, var(--warning-border, #c8963a) 40%, var(--border));
+        padding: 0.15em 0.5em;
+        border-radius: 3px;
+    }
+
+    .admin-view-banner-text {
+        color: var(--text);
+    }
+
+    .admin-view-banner-back {
+        flex-shrink: 0;
+        font-size: 0.82rem;
+    }
+
     .onboarding-banner,
     .workflow-banner {
         margin-bottom: 0.95rem;
@@ -163,11 +203,14 @@
 
     .trend-panel__title {
         margin: 0 0 0.5rem;
-        font-size: 0.72rem;
-        font-weight: 800;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4em;
+        font-size: 0.76rem;
+        font-weight: 900;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: var(--muted);
+        color: var(--ink);
     }
 
     .trend-panel__kicker {
@@ -287,6 +330,16 @@
             </div>
         </header>
 
+        {% if admin_viewer_username %}
+        <section class="panel admin-view-banner">
+            <div class="admin-view-banner-copy">
+                <span class="admin-view-banner-label">Admin View</span>
+                <span class="admin-view-banner-text">Viewing <strong>{{ username }}</strong>'s dashboard as <strong>{{ admin_viewer_username }}</strong>. Read-only.</span>
+            </div>
+            <a href="{{ url_for('admin_signup_users') }}" class="ghost-btn admin-view-banner-back">Back to Admin</a>
+        </section>
+        {% endif %}
+
         {% if show_whats_next_banner %}
         <section class="panel journey-banner{% if is_state_one %} is-guided{% endif %}">
             <div class="journey-banner-copy">
@@ -304,18 +357,19 @@
                 </h2>
                 <p class="journey-banner-text">
                     {% if not has_any_trades %}
-                    Import your MT5 or Tradovate history, or add a manual trade, to start filling the journal. Once you have closed trades in an eligible completed week, FX Journal will generate your first weekly AI review.
+                    Recommended first step: upload an MT5 report or add a manual closed trade to start filling the journal. Tradovate import works too. Your first weekly AI review appears after at least {{ weekly_ai_min_closed_trades }} closed trades land in a finished trade week on this account.
                     {% elif not has_closed_trades %}
                     Your journal has trades, but the dashboard learns most from closed trades with realized PnL. Close a few positions or import more account history to unlock win rate, equity, and session insights.
                     {% elif weekly_ai_is_generating %}
                     Your trades are in and the system is preparing your first weekly AI review. While that runs, you can spot-check imports in the journal and review the early dashboard stats.
                     {% else %}
-                    You already have trade data in place. Keep journaling until you have an eligible completed trade week and at least {{ weekly_ai_min_closed_trades }} closed trades for the first full weekly AI review.
+                    You already have trade data in place. Keep journaling until this account has a finished trade week with at least {{ weekly_ai_min_closed_trades }} closed trades for the first full weekly AI review.
                     {% endif %}
                 </p>
                 {% if is_state_one %}
-                <p class="dashboard-guidance-copy">Import account history or add your first trade to unlock the rest of the dashboard.</p>
+                <p class="dashboard-guidance-copy">Recommended first win: upload account history or add a manual closed trade to unlock the rest of the dashboard.</p>
                 {% endif %}
+                <p class="journey-banner-note">Your first weekly review unlocks after at least {{ weekly_ai_min_closed_trades }} closed trades land in a finished trade week on this account.</p>
                 <p class="journey-banner-note">New to journal metrics? Use the <strong>?</strong> icons on dashboard and analytics cards for quick explanations.</p>
             </div>
             <div class="journey-steps" aria-label="Getting started progress">
@@ -326,7 +380,7 @@
                         {% if has_any_trades %}
                         Complete
                         {% else %}
-                        Start with MT5 history or a manual trade entry.
+                        Recommended: upload an MT5 report first. Manual entry works too.
                         {% endif %}
                     </p>
                 </article>
@@ -352,13 +406,13 @@
                         {% elif weekly_ai_is_generating %}
                         Generating now.
                         {% else %}
-                        Your first weekly review appears after enough eligible closed trades.
+                        Unlocks after {{ weekly_ai_min_closed_trades }}+ closed trades in a finished week.
                         {% endif %}
                     </p>
                 </article>
             </div>
             <div class="journey-actions{% if is_state_one %} guided-focus-panel{% endif %}">
-                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">{% if is_state_one %}Import or Add Your First Trade{% else %}Import or Add Trades{% endif %}</a>
+                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">{% if is_state_one %}Upload Report or Add Your First Trade{% else %}Import or Add Trades{% endif %}</a>
                 <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
                 {% if has_closed_trades %}
                 <a href="{{ url_for('dashboard.analytics') }}" class="ghost-btn">View Analytics</a>
@@ -370,19 +424,19 @@
         {% if show_onboarding_banner %}
         <section class="panel onboarding-banner">
             <div class="onboarding-banner-copy">
-                <p class="onboarding-banner-kicker">Trading Profile</p>
+                <p class="onboarding-banner-kicker">Optional Setup</p>
                 <p class="onboarding-banner-title">
                     {% if onboarding_was_skipped %}
-                    You can still finish the onboarding profile later.
+                    Optional: finish your trading profile later.
                     {% else %}
-                    A quick onboarding profile helps tailor the journal to you.
+                    Optional: tailor MyFXJournal to how you trade.
                     {% endif %}
                 </p>
                 <p class="onboarding-banner-note">
                     {% if onboarding_was_skipped %}
-                    You skipped the questionnaire earlier. Add your trading style, main instruments, and experience level whenever you are ready so the AI review tone and coaching feel more like they were written for you.
+                    You skipped the questionnaire earlier, which is fine. Add your trading style, main instruments, and experience level whenever you are ready so the AI review tone and coaching feel more like they were written for you.
                     {% else %}
-                    It takes about 30 seconds and helps FX Journal tune jargon level, behavioral framing, and review language to your trading background.
+                    It takes about 30 seconds and only changes tone, examples, and jargon level. You can do it after your first import if you prefer.
                     {% endif %}
                 </p>
             </div>
@@ -443,14 +497,12 @@
                         <span class="soft">
                             {% if mt5_selected_status == "linked" %}
                             Connected
-                            {% elif mt5_selected_row and mt5_selected_row.is_linked and mt5_selected_status == "pending" %}
-                            Setup Pending
-                            {% elif mt5_selected_row and mt5_selected_row.is_linked %}
-                            Setup Pending
+                            {% elif mt5_selected_status in ("queued", "setting_up") %}
+                            Setting Up
                             {% elif mt5_selected_status in ("requestable", "pending") %}
-                            Request MT5 Sync
+                            Start MT5 Sync
                             {% else %}
-                            Manual Onboarding
+                            Optional After Import
                             {% endif %}
                         </span>
                     </div>
@@ -458,16 +510,16 @@
                     {% if mt5_selected_row %}
                     {% if mt5_selected_status == "linked" %}
                     {% set mt5_progress_stage = 4 %}
-                    {% elif mt5_selected_row.is_linked and mt5_selected_status == "pending" %}
-                    {% set mt5_progress_stage = 2 %}
-                    {% elif mt5_selected_row.is_linked %}
+                    {% elif mt5_selected_status == "setting_up" %}
                     {% set mt5_progress_stage = 3 %}
+                    {% elif mt5_selected_status == "queued" %}
+                    {% set mt5_progress_stage = 2 %}
                     {% else %}
                     {% set mt5_progress_stage = 1 %}
                     {% endif %}
                     <div class="mt5-workflow-summary">
                         <ol class="mt5-progress-track" data-mt5-progress data-current-stage="{{ mt5_progress_stage }}" aria-label="MT5 sync progress">
-                            {% for progress_label in ["Submit Details", "Request Submitted", "Setting Up", "Sync Active"] %}
+                            {% for progress_label in ["Submit Details", "Setup Queued", "Setting Up", "Sync Active"] %}
                             {% set progress_step = loop.index %}
                             <li class="mt5-progress-step{% if progress_step == 1 %} is-entry{% endif %}{% if progress_step < mt5_progress_stage %} is-complete{% elif progress_step == mt5_progress_stage %} is-current{% else %} is-upcoming{% endif %}" data-mt5-progress-step="{{ progress_step }}"{% if progress_step == mt5_progress_stage %} aria-current="step"{% endif %}>
                                 <span class="mt5-progress-dot" aria-hidden="true"></span>
@@ -482,11 +534,18 @@
 
                     {% if show_mt5_guidance %}
                     <p class="dashboard-guidance-copy dashboard-guidance-copy-mt5">Connect MT5 for automatic sync{% if is_state_one %} on this account{% endif %}.</p>
+                    <p class="dashboard-guidance-copy dashboard-guidance-copy-mt5">Optional after import: use this when you want ongoing read-only automation.</p>
+                    {% endif %}
+                    {% if mt5_batch_state.batches_enabled and mt5_batch_state.public_badge %}
+                    <p class="mt5-panel-copy">{{ mt5_batch_state.public_badge }}{% if mt5_batch_state.active_batch %} in {{ mt5_batch_state.active_batch.name }}{% endif %}.</p>
                     {% endif %}
 
                     {% if mt5_selected_account and mt5_selected_row and not mt5_selected_row.is_linked and mt5_selected_status in ("requestable", "pending") %}
                     {% if mt5_selected_status != "pending" %}
-                    <p class="mt5-panel-copy">Submit one form and admin will handle the remaining MT5 setup from there. Use investor/read-only credentials only, never a trading or master password.</p>
+                    <p class="mt5-panel-copy">Fastest first win is still file import. Use this optional setup when you want ongoing read-only MT5 sync for this account.</p>
+                    <p class="mt5-panel-copy">Submit one form and MyFXJournal will start setup right away. Use investor/read-only credentials only, never a trading or master password.</p>
+                    {% else %}
+                    <p class="mt5-panel-copy">A legacy MT5 record exists for this account. Finish the one-step form below to restart setup.</p>
                     {% endif %}
                     <div class="mt5-form-shell{% if show_mt5_guidance %} guided-focus-panel{% endif %}" data-mt5-form-shell>
                         <form
@@ -503,7 +562,7 @@
                             <div class="mt5-selected-account-card">
                                 <span class="mt5-selected-account-label">Selected Account</span>
                                 <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                                <span class="mt5-selected-account-meta">Your full MT5 sync request for this CFD account is collected here in one step.</span>
+                                <span class="mt5-selected-account-meta">Your MT5 sync setup details for this CFD account are collected here in one step.</span>
                             </div>
 
                             <div class="mt5-request-form-alert" data-mt5-form-alert role="status" hidden></div>
@@ -557,23 +616,55 @@
                                 <span>I confirm this is my read-only investor password. MyFXJournal cannot place trades or withdraw funds on my behalf.</span>
                             </label>
 
-                            <button type="submit" class="submit-btn" data-mt5-submit disabled>Request MT5 Sync</button>
+                            <button type="submit" class="submit-btn" data-mt5-submit disabled>Start MT5 Sync Setup</button>
                         </form>
                     </div>
-                    <p class="mt5-card-footnote">Your investor password is encrypted before storage and kept only for MT5 sync review and setup.</p>
-                    {% elif mt5_selected_status == "pending" and mt5_selected_account %}
-                    <p class="mt5-card-empty">Request received. We will email you when MT5 sync is ready (usually 1-2 business days).</p>
+                    <p class="mt5-card-footnote">Your investor password is encrypted before storage and kept only for MT5 sync setup and syncing. MyFXJournal can only read account history with investor access.</p>
+                    {% elif mt5_selected_status == "queued" and mt5_selected_account %}
+                    <p class="mt5-card-empty">MT5 details are saved and setup started right away. We will email you when MT5 sync is ready.</p>
                     <div class="mt5-selected-account-card">
-                        <span class="mt5-selected-account-label">Request Received</span>
+                        <span class="mt5-selected-account-label">Setup Queued</span>
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                        <span class="mt5-selected-account-meta">Admin is reviewing your MT5 sync request.</span>
+                        <span class="mt5-selected-account-meta">MyFXJournal has already queued terminal setup for this MT5 account.</span>
                     </div>
-                    {% elif mt5_selected_status == "submitted" and mt5_selected_account %}
-                    <p class="mt5-card-empty">MT5 details are saved. Admin will finish setup before sync goes live.</p>
+                    <form
+                        method="post"
+                        action="{{ url_for('trade_accounts.unlink_mt5_sync') }}"
+                        class="mt5-unlink-form"
+                    >
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
+                        <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
+                        <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
+                    </form>
+                    <p class="mt5-card-footnote">Cancel setup and remove saved MT5 credentials for this account. Your trades stay in the journal.</p>
+                    {% elif mt5_selected_status == "setting_up" and mt5_selected_account %}
+                    <p class="mt5-card-empty">MT5 terminal setup is in progress now. You do not need to resubmit credentials.</p>
                     <div class="mt5-selected-account-card">
-                        <span class="mt5-selected-account-label">Saved Details</span>
+                        <span class="mt5-selected-account-label">Setting Up</span>
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                        <span class="mt5-selected-account-meta">You do not need to resubmit credentials unless support asks you to update them.</span>
+                        <span class="mt5-selected-account-meta">We will email you when sync goes live for this account.</span>
+                    </div>
+                    <form
+                        method="post"
+                        action="{{ url_for('trade_accounts.unlink_mt5_sync') }}"
+                        class="mt5-unlink-form"
+                    >
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
+                        <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
+                        <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
+                    </form>
+                    <p class="mt5-card-footnote">Stops setup and removes MT5 credentials for this account. Trades already in the journal are kept.</p>
+                    {% elif mt5_selected_status == "batch_unavailable" and mt5_selected_account %}
+                    <p class="mt5-card-empty">{{ mt5_selected_row.note }}</p>
+                    <div class="mt5-selected-account-card">
+                        <span class="mt5-selected-account-label">{{ mt5_selected_row.status_label }}</span>
+                        <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
+                        <span class="mt5-selected-account-meta">Start with file import today, then claim a sync slot in the next open batch.</span>
+                    </div>
+                    <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
+                        <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Open Import</a>
                     </div>
                     {% elif mt5_selected_status == "linked" and mt5_selected_account %}
                     <p class="mt5-card-empty">This account is already linked for MT5 sync. Switch your active dashboard account if you want to check MT5 onboarding on a different account.</p>
@@ -582,13 +673,24 @@
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
                         <span class="mt5-selected-account-meta">MT5 details are already on file for this account.</span>
                     </div>
+                    <form
+                        method="post"
+                        action="{{ url_for('trade_accounts.unlink_mt5_sync') }}"
+                        class="mt5-unlink-form"
+                    >
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
+                        <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
+                        <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
+                    </form>
+                    <p class="mt5-card-footnote">Stops automated sync and removes stored MT5 credentials. Your trades stay in the journal; you can reconnect later.</p>
                     {% elif mt5_cfd_accounts and not mt5_selected_account %}
                     <p class="mt5-card-empty">Switch your active dashboard account to a CFD trade account to view or manage its MT5 sync status here.</p>
                     <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
                         <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Open Trade Accounts</a>
                     </div>
                     {% else %}
-                    <p class="mt5-card-empty">Create a CFD trade account first, then request MT5 sync access here.</p>
+                    <p class="mt5-card-empty">Create a CFD trade account first, then start MT5 sync setup here.</p>
                     <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
                         <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Open Trade Accounts</a>
                     </div>
@@ -599,12 +701,13 @@
                     <div class="panel-head">
                         <div class="panel-title-wrap">
                             <h2>🔗 MT5 Sync Setup</h2>
-                            <p class="panel-account-note">Create a CFD trade account first, then request MT5 sync access here.</p>
+                            <p class="panel-account-note">Create a CFD trade account first, then start MT5 sync setup here.</p>
                         </div>
-                        <span class="soft">Manual Onboarding</span>
+                        <span class="soft">Optional After Import</span>
                     </div>
                     {% if show_mt5_guidance %}
                     <p class="dashboard-guidance-copy dashboard-guidance-copy-mt5">Connect MT5 for automatic sync{% if is_state_one %} after you add the right account{% endif %}.</p>
+                    <p class="dashboard-guidance-copy dashboard-guidance-copy-mt5">Optional after import: use this when you want ongoing read-only automation.</p>
                     {% endif %}
                     <p class="mt5-card-empty">You will see the setup flow here as soon as you have a CFD trade account available.</p>
                     <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
@@ -620,7 +723,7 @@
                 ) %}
                 {% if has_any_trend %}
                 <article class="panel trend-panel-hero trend-panel-hero--left" aria-label="Rolling performance trends">
-                    <h4 class="trend-panel__title">Rolling trends</h4>
+                    <h4 class="trend-panel__title"><span aria-hidden="true">📈</span> Rolling trends</h4>
                     <p class="trend-panel__kicker soft">Last four completed weeks · closed trades and weekly reviews</p>
                     <ul class="trend-panel__list">
                         {% if performance_trends.win_rate_trend %}

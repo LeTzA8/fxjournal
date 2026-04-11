@@ -14,7 +14,7 @@
     const summaryPill = document.querySelector("[data-mt5-status-pill]");
     const summaryCopy = document.querySelector("[data-mt5-panel-copy]");
     const softLabel = document.querySelector("#mt5-access .soft");
-    const defaultSubmitText = submitButton ? submitButton.textContent.trim() : "Request MT5 Sync";
+    const defaultSubmitText = submitButton ? submitButton.textContent.trim() : "Start MT5 Sync";
 
     let isSubmitting = false;
 
@@ -77,7 +77,7 @@
 
         const title = document.createElement("p");
         title.className = "mt5-success-title";
-        title.textContent = "Request Received";
+        title.textContent = "Setup Queued";
         card.appendChild(title);
 
         const copy = document.createElement("p");
@@ -142,12 +142,12 @@
 
             const payload = await response.json();
             if (!response.ok || !payload.ok) {
-                setAlert(payload.message || "Could not save your MT5 sync request right now. Please try again.", "error");
+                setAlert(payload.message || "Could not start MT5 sync setup right now. Please try again.", "error");
                 return;
             }
 
             updateStatusText(summaryPill, payload.status_label);
-            updateProgressTrack(progressTrack, 2);
+            updateProgressTrack(progressTrack, Number(payload.progress_stage) || 2);
             if (summaryCopy && payload.status_note) {
                 summaryCopy.textContent = payload.status_note;
             }
@@ -160,7 +160,7 @@
                 formShell.replaceChildren(buildSuccessCard(payload.message || "", payload.account_name || ""));
             }
         } catch (_error) {
-            setAlert("Could not save your MT5 sync request right now. Please try again.", "error");
+            setAlert("Could not start MT5 sync setup right now. Please try again.", "error");
         } finally {
             isSubmitting = false;
             syncSubmitState();

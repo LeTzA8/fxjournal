@@ -1,23 +1,23 @@
 {% extends "emails/_base.html" %}
-{% set title = "We received your MT5 sync request" %}
-{% set preheader = "Your MT5 sync request is in and under review." %}
+{% set title = "Your MT5 sync setup update" %}
+{% set preheader = "Your MT5 sync details were saved." %}
 
 {% block card_content %}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
   <tr>
     <td align="center">
-      <div class="email-surface email-accent" style="display:inline-block;padding:10px 14px;border-radius:999px;background-color:#eef4ff;border:1px solid #dce4f0;font-size:12px;font-weight:700;letter-spacing:0.7px;text-transform:uppercase;color:#3658e8;">MT5 request received</div>
+      <div class="email-surface email-accent" style="display:inline-block;padding:10px 14px;border-radius:999px;background-color:#eef4ff;border:1px solid #dce4f0;font-size:12px;font-weight:700;letter-spacing:0.7px;text-transform:uppercase;color:#3658e8;">{% if setup_queued %}MT5 setup started{% else %}MT5 details saved{% endif %}</div>
     </td>
   </tr>
 </table>
-<p class="email-text" style="margin:0 0 8px 0;font-size:24px;font-weight:700;color:#182538;letter-spacing:-0.3px;text-align:center;">We received your MT5 sync request.</p>
-<p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#66758f;line-height:1.7;text-align:center;">Hi {{ name }}, your read-only MT5 sync request for <strong class="email-text" style="color:#182538;">{{ account_name }}</strong> is now in the queue. We will notify you by email when setup is ready.</p>
+<p class="email-text" style="margin:0 0 8px 0;font-size:24px;font-weight:700;color:#182538;letter-spacing:-0.3px;text-align:center;">{% if setup_queued %}Your MT5 sync setup has started.{% else %}We saved your MT5 sync details.{% endif %}</p>
+<p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#66758f;line-height:1.7;text-align:center;">Hi {{ name }}, {% if setup_queued %}your read-only MT5 setup for <strong class="email-text" style="color:#182538;">{{ account_name }}</strong> started right away. We will notify you by email when sync is ready.{% else %}we saved the read-only MT5 details for <strong class="email-text" style="color:#182538;">{{ account_name }}</strong>, but setup could not be queued right away. Please check the dashboard or contact support if you need help.{% endif %}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
   <tr>
     <td class="email-surface" style="border-radius:14px;background-color:#eef4ff;border:1px solid #dce4f0;padding:18px 20px;">
       <p class="email-accent" style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#3658e8;letter-spacing:0.7px;text-transform:uppercase;">What happens next</p>
-      <p class="email-text" style="margin:0 0 6px 0;font-size:14px;font-weight:700;color:#182538;">We review and prepare the MT5 connection.</p>
-      <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">Most requests are ready within 1-2 business days. If any account detail needs clarification, we will reach out by email.</p>
+      <p class="email-text" style="margin:0 0 6px 0;font-size:14px;font-weight:700;color:#182538;">{% if setup_queued %}We are preparing the MT5 connection now.{% else %}Setup still needs a retry from our side.{% endif %}</p>
+      <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">{% if setup_queued %}Most setups are ready within 1-2 business days. If any account detail needs clarification, we will reach out by email.{% else %}Your details are still stored securely. If anything needs clarification, or if you want us to retry setup, reply to this email or contact support.{% endif %}</p>
     </td>
   </tr>
 </table>

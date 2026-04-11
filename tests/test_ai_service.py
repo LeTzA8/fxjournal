@@ -1303,36 +1303,91 @@ def test_maybe_generate_weekly_dashboard_advice_returns_skip_reason_for_no_trade
     assert result["skip_reason"] == "no_trades"
 
 
-def test_maybe_generate_weekly_dashboard_advice_returns_skip_reason_for_too_few_trades(app_ctx, monkeypatch):
-    period = {
-        "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
-        "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
-    }
+def test_maybe_generate_weekly_dashboard_advice_generates_with_two_closed_trades(app_ctx, monkeypatch):
+    """Weekly advice no longer skips on trade count alone; two closed trades can still generate."""
+    user, trade_account = _create_user_and_account(
+        username="ai-two-trades-user",
+        email="ai-two-trades@example.com",
+    )
+    db.session.add_all(
+        [
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="EURUSD",
+                side="BUY",
+                entry_price=1.1000,
+                exit_price=1.1010,
+                lot_size=1.0,
+                pnl=100.0,
+                opened_at=datetime(2026, 3, 10, 9, 0, 0),
+                closed_at=datetime(2026, 3, 10, 10, 0, 0),
+            ),
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="GBPUSD",
+                side="SELL",
+                entry_price=1.2700,
+                exit_price=1.2690,
+                lot_size=1.0,
+                pnl=90.0,
+                opened_at=datetime(2026, 3, 11, 9, 0, 0),
+                closed_at=datetime(2026, 3, 11, 10, 0, 0),
+            ),
+        ]
+    )
+    db.session.commit()
 
-    monkeypatch.setattr(ai_service, "get_latest_trade_week_period", lambda **kwargs: period)
+    prompt_history = AIPromptHistory(
+        prompt_id="dashboard_advice",
+        prompt_sha256="two-closed-trades-sha",
+        prompt_text="Prompt text",
+        source_path="prompts/dashboard_advice.txt",
+    )
+    db.session.add(prompt_history)
+    db.session.commit()
+
     monkeypatch.setattr(
         ai_service,
-        "build_trade_payload",
-        lambda **kwargs: {
-            "generated_at": "2026-03-12T12:00:00Z",
-            "period_start_utc": "2026-03-07T21:30:00Z",
-            "period_end_utc": "2026-03-14T21:30:00Z",
-            "notes_coverage": 0.5,
-            "account_age_days": 40,
-            "historical_context": {},
-            "summary": {"closed_trades": 2},
-            "trades": [{"symbol": "EURUSD"}, {"symbol": "GBPUSD"}],
+        "request_openai_response",
+        lambda messages, model=None: {
+            "model": "gpt-5-mini",
+            "status": "completed",
+            "output_text": json.dumps(
+                {
+                    "summary": {
+                        "text": "Two-trade week: early EURUSD win with GBPUSD follow-through.",
+                        "refs": ["T1", "T2"],
+                    },
+                    "takeaways": [
+                        {"text": "EURUSD set the tone for the week.", "refs": ["T1"]},
+                        {"text": "GBPUSD added a second clean close.", "refs": ["T2"]},
+                    ],
+                    "improvement": {
+                        "text": "Improve this week: keep risk consistent across both winners.",
+                        "refs": [],
+                    },
+                    "strength": {"text": "", "refs": []},
+                }
+            ),
+            "usage": {},
+            "output": [],
         },
     )
 
     result = maybe_generate_weekly_dashboard_advice(
-        user_id=1,
-        trade_account_id=1,
+        user_id=user.id,
+        trade_account_id=trade_account.id,
         prompt_filename="dashboard_advice.txt",
+        now_utc=datetime(2026, 3, 14, 22, 0, 0),
+        force_regenerate=True,
     )
 
-    assert result["generated"] is False
-    assert result["skip_reason"] == "too_few_trades"
+    assert result["generated"] is True
+    assert result["record"] is not None
+    assert result["record"].trade_count_used == 2
+    assert result["record"].response_meta_json is not None
 
 
 def test_maybe_generate_weekly_dashboard_advice_generates_when_three_closed_trades_exist(app_ctx, monkeypatch):
@@ -1417,12 +1472,13 @@ def test_maybe_generate_weekly_dashboard_advice_generates_when_three_closed_trad
                             "refs": ["T3"],
                         },
                     ],
-                    "rule": {
-                        "text": "Rule: Keep size fixed and let the first clean winner set the standard for later setups.",
-                        "refs": ["T1", "T3"],
-                    },
-                }
-            ),
+                        "improvement": {
+                            "text": "Improve this week: Keep size fixed and let the first clean winner set the standard for later setups.",
+                            "refs": [],
+                        },
+                        "strength": {"text": "", "refs": []},
+                    }
+                ),
             "usage": {},
             "output": [],
         },
@@ -1447,7 +1503,7 @@ def test_maybe_generate_weekly_dashboard_advice_generates_when_three_closed_trad
     )
     assert review_display["summary"]["refs"] == ["T1", "T3"]
     assert [item["refs"] for item in review_display["takeaways"]] == [["T1"], ["T2"], ["T3"]]
-    assert review_display["rule"]["text"].startswith("Rule:")
+    assert review_display["improvement"]["text"].lower().startswith("improve this week:")
 
 
 def test_force_weekly_generation_appends_new_response_for_same_period(app_ctx, monkeypatch):

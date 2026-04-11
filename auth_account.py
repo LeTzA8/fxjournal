@@ -9,12 +9,13 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
-from ai_service import WEEKLY_DASHBOARD_KIND, get_latest_trade_week_period
+from ai_service import MIN_CLOSED_TRADES_FOR_ADVICE, WEEKLY_DASHBOARD_KIND, get_latest_trade_week_period
 from models import (
     AIGeneratedResponse,
     AllowedSignupEmailDomain,
     MT5Account,
     MT5AccessRequest,
+    MT5SyncBatch,
     SignupCode,
     Trade,
     TradeAccount,
@@ -23,7 +24,7 @@ from models import (
     UserProfile,
     db,
 )
-from helpers.core import sanitize_error_message
+from helpers.core import get_mt5_sync_batch_state, sanitize_error_message
 from helpers.trade_analysis import detect_outliers
 from helpers.utils import (
     encrypt_password,
@@ -287,7 +288,7 @@ def _build_admin_mt5_status(*, account, request_row=None):
         }
     if request_status == MT5AccessRequest.STATUS_PENDING:
         return {
-            "label": "Requested",
+            "label": "Setup Queued",
             "chip_class": "requested-chip",
         }
     return {
@@ -334,7 +335,7 @@ SEO_PAGE_DEFINITIONS = {
         "workflow_steps": (
             {
                 "title": "Import now, sync when ready",
-                "body": "Start with MT5 report imports today, then use automatic read-only MT5 sync for approved accounts when you want less export upkeep.",
+                "body": "Start with MT5 report imports today, then use automatic read-only MT5 sync when you want less export upkeep.",
             },
             {
                 "title": "See what actually happened",
@@ -366,14 +367,14 @@ SEO_PAGE_DEFINITIONS = {
     "free-mt5-sync": {
         "title": "MyFXJournal | Free MT5 Sync",
         "meta_description": (
-            "Free during open beta. Request read-only MetaTrader 5 (MT5) sync in MyFXJournal and turn account history into a weekly AI review without repeated exports."
+            "Free during open beta. Use batch-based read-only MetaTrader 5 (MT5) sync in MyFXJournal and turn account history into a weekly AI review without repeated exports."
         ),
         "eyebrow": "Free MT5 sync",
         "hero_title": "Read-only MT5 sync for a lighter review workflow.",
         "hero_body": (
-            "During open beta, MT5 sync is request-based, read-only, and built to keep account history flowing into weekly review instead of another export routine."
+            "During open beta, MT5 sync opens in batches, stays read-only, and keeps account history flowing into weekly review instead of another export routine."
         ),
-        "chips": ("Request-based beta", "Read-only only", "Weekly review feed"),
+        "chips": ("Batch-based beta", "Read-only only", "Weekly review feed"),
         "intro_title": "Why this page matters",
         "intro_body": (
             "The sync is not the product. It is the fastest way into a cleaner review workflow."
@@ -399,12 +400,12 @@ SEO_PAGE_DEFINITIONS = {
         ),
         "workflow_steps": (
             {
-                "title": "Request MT5 sync",
-                "body": "Use the in-product beta flow so setup stays supported while the workflow sharpens. Manual import still works right away.",
+                "title": "Claim an open slot",
+                "body": "Use the in-product beta flow when a free sync slot is open. Manual import still works right away.",
             },
             {
                 "title": "Connect read-only",
-                "body": "Use investor credentials only. No trading access and no extra export routine.",
+                "body": "Use investor credentials only. When a batch slot is open, setup starts after you submit details.",
             },
             {
                 "title": "Let the week arrive",
@@ -425,7 +426,7 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "question": "Is the sync instant self-serve?",
-                "answer": "Not yet. It is still request-based while the beta sharpens.",
+                "answer": "Not fully. During beta, MT5 sync opens in batches. When a free slot is open, setup starts after you submit read-only details.",
             },
         ),
     },
@@ -1002,6 +1003,8 @@ def register_public_auth_routes(
             show_signup_code_input=show_signup_code_input,
             registrations_paused=get_registration_paused(),
             google_auth_enabled=get_google_auth_enabled(),
+            weekly_ai_min_closed_trades=MIN_CLOSED_TRADES_FOR_ADVICE,
+            manual_signup_review_enabled=not get_auto_approve_new_users(),
         )
 
     def clear_google_auth_session():
@@ -1289,6 +1292,7 @@ def register_public_auth_routes(
 
     @app.route("/")
     def landing():
+        mt5_batch_state = get_mt5_sync_batch_state()
         return render_template(
             "landing.html",
             title="MyFXJournal | Free Forex Trading Journal With Weekly AI Review",
@@ -1298,6 +1302,10 @@ def register_public_auth_routes(
             body_class="landing-layout",
             canonical_url=build_external_url("/"),
             user_logged_in=bool(session.get("user_id")),
+            weekly_ai_min_closed_trades=MIN_CLOSED_TRADES_FOR_ADVICE,
+            manual_signup_review_enabled=not get_auto_approve_new_users(),
+            signup_code_mode=get_signup_code_mode(),
+            mt5_batch_state=mt5_batch_state,
         )
 
     @app.route("/mt5-trading-journal")
@@ -2644,6 +2652,45 @@ def register_public_auth_routes(
                 request_row=request_row,
             )
         orphaned_mt5_count = sum(1 for account in mt5_accounts if account.is_orphaned)
+        mt5_batches = (
+            MT5SyncBatch.query.order_by(
+                MT5SyncBatch.created_at.desc(),
+                MT5SyncBatch.id.desc(),
+            ).all()
+        )
+        batch_usage_by_id = {}
+        batch_ids = [batch.id for batch in mt5_batches]
+        if batch_ids:
+            batch_usage_by_id = dict(
+                db.session.query(
+                    MT5AccessRequest.batch_id,
+                    func.count(MT5AccessRequest.id),
+                )
+                .filter(
+                    MT5AccessRequest.batch_id.in_(batch_ids),
+                    MT5AccessRequest.status.in_(
+                        [
+                            MT5AccessRequest.STATUS_PENDING,
+                            MT5AccessRequest.STATUS_APPROVED,
+                        ]
+                    ),
+                )
+                .group_by(MT5AccessRequest.batch_id)
+                .all()
+            )
+        active_mt5_batch = None
+        for batch in mt5_batches:
+            batch.active_slots_used = int(batch_usage_by_id.get(batch.id, 0) or 0)
+            batch.claimed_slots = max(
+                int(batch.total_slots_claimed or 0),
+                batch.active_slots_used,
+            )
+            batch.slots_remaining = max(
+                int(batch.capacity_total or 0) - batch.claimed_slots,
+                0,
+            )
+            if batch.is_open and active_mt5_batch is None:
+                active_mt5_batch = batch
         return render_admin_page(
             admin_user=admin_user,
             section="mt5",
@@ -2651,6 +2698,29 @@ def register_public_auth_routes(
             mt5_trade_counts_by_account=mt5_trade_counts_by_account,
             mt5_statuses_by_account_id=mt5_statuses_by_account_id,
             orphaned_mt5_count=orphaned_mt5_count,
+            mt5_batches=mt5_batches,
+            active_mt5_batch=active_mt5_batch,
+        )
+
+    @app.route("/dashboard/admin/users/<int:target_user_id>/view-dashboard")
+    @root_admin_required
+    def admin_view_user_dashboard(target_user_id):
+        target_user = db.session.get(User, target_user_id)
+        if target_user is None:
+            return build_admin_redirect("users", "User not found.", "error")
+        admin_user = get_current_root_admin_user()
+        admin_username = admin_user.username if admin_user else session.get("username", "admin")
+        current_app.logger.info(
+            "Admin dashboard view: admin_user_id=%s (%s) viewed dashboard for user_id=%s (%s)",
+            session.get("user_id"),
+            admin_username,
+            target_user_id,
+            target_user.username,
+        )
+        from routes.dashboard import _dashboard_home_authenticated
+        return _dashboard_home_authenticated(
+            target_user_id=target_user_id,
+            admin_viewer_username=admin_username,
         )
 
     @app.route("/dashboard/admin/access/weekly-report")
@@ -2972,6 +3042,104 @@ def register_public_auth_routes(
             "success",
         )
 
+    @app.route("/dashboard/admin/access/mt5/batches/create", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_create_batch():
+        admin_user = get_current_root_admin_user()
+        existing_open_batch = MT5SyncBatch.query.filter_by(is_open=True).first()
+        if existing_open_batch is not None:
+            return build_admin_redirect(
+                "mt5",
+                f"Close the current open batch ({existing_open_batch.name}) before creating a new one.",
+                "error",
+            )
+
+        raw_name = (request.form.get("name") or "").strip()
+        raw_notes = (request.form.get("notes") or "").strip()
+        raw_capacity = (request.form.get("capacity_total") or "").strip()
+
+        if len(raw_name) > 120:
+            return build_admin_redirect("mt5", "Batch name must be 120 characters or less.", "error")
+        if len(raw_notes) > 1000:
+            return build_admin_redirect("mt5", "Batch notes must be 1000 characters or less.", "error")
+        try:
+            capacity_total = int(raw_capacity)
+        except (TypeError, ValueError):
+            return build_admin_redirect("mt5", "Batch capacity must be a whole number.", "error")
+        if capacity_total <= 0:
+            return build_admin_redirect("mt5", "Batch capacity must be greater than zero.", "error")
+
+        batch = MT5SyncBatch(
+            name=raw_name or f"MT5 Batch {utcnow_naive().strftime('%Y-%m-%d %H:%M UTC')}",
+            notes=raw_notes or None,
+            capacity_total=capacity_total,
+            total_slots_claimed=0,
+            is_open=True,
+            opened_at=utcnow_naive(),
+            created_by_user_id=admin_user.id if admin_user else None,
+            updated_by_user_id=admin_user.id if admin_user else None,
+        )
+        try:
+            db.session.add(batch)
+            db.session.commit()
+        except (OperationalError, IntegrityError):
+            db.session.rollback()
+            return build_admin_redirect("mt5", "Could not create that MT5 batch right now. Please try again.", "error")
+
+        return build_admin_redirect(
+            "mt5",
+            f"Opened MT5 sync batch '{batch.name}' with {batch.capacity_total} slot{'s' if batch.capacity_total != 1 else ''}.",
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/mt5/batches/<int:batch_id>/add-slots", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_add_batch_slots(batch_id):
+        admin_user = get_current_root_admin_user()
+        batch = MT5SyncBatch.query.filter_by(id=batch_id).first_or_404()
+        raw_slots = (request.form.get("additional_slots") or "").strip()
+        try:
+            additional_slots = int(raw_slots)
+        except (TypeError, ValueError):
+            return build_admin_redirect("mt5", "Additional slots must be a whole number.", "error")
+        if additional_slots <= 0:
+            return build_admin_redirect("mt5", "Additional slots must be greater than zero.", "error")
+
+        try:
+            batch.capacity_total = int(batch.capacity_total or 0) + additional_slots
+            batch.updated_by_user_id = admin_user.id if admin_user else None
+            batch.updated_at = utcnow_naive()
+            db.session.commit()
+        except (OperationalError, IntegrityError):
+            db.session.rollback()
+            return build_admin_redirect("mt5", "Could not add MT5 batch slots right now. Please try again.", "error")
+
+        return build_admin_redirect(
+            "mt5",
+            f"Added {additional_slots} MT5 sync slot{'s' if additional_slots != 1 else ''} to {batch.name}.",
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/mt5/batches/<int:batch_id>/close", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_close_batch(batch_id):
+        admin_user = get_current_root_admin_user()
+        batch = MT5SyncBatch.query.filter_by(id=batch_id).first_or_404()
+        if not batch.is_open:
+            return build_admin_redirect("mt5", f"{batch.name} is already closed.", "info")
+
+        try:
+            batch.is_open = False
+            batch.closed_at = utcnow_naive()
+            batch.updated_by_user_id = admin_user.id if admin_user else None
+            batch.updated_at = batch.closed_at
+            db.session.commit()
+        except (OperationalError, IntegrityError):
+            db.session.rollback()
+            return build_admin_redirect("mt5", "Could not close that MT5 batch right now. Please try again.", "error")
+
+        return build_admin_redirect("mt5", f"Closed MT5 sync batch '{batch.name}'.", "success")
+
     @app.route("/dashboard/admin/access/mt5/<int:mt5_account_id>/sync", methods=["POST"])
     @root_admin_required
     def admin_mt5_trigger_sync(mt5_account_id):
@@ -3196,6 +3364,48 @@ def register_public_auth_routes(
         return build_admin_redirect(
             "mt5",
             f"Queued bar backfill for {queued} closed trade{'s' if queued != 1 else ''} on account {account.account_number}.",
+            "success",
+        )
+
+    @app.route("/dashboard/admin/access/mt5/<int:mt5_account_id>/clear-bars", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_clear_bars(mt5_account_id):
+        account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        trade_ids = [
+            trade_id
+            for (trade_id,) in db.session.query(Trade.id).filter_by(
+                user_id=account.user_id,
+                trade_account_id=account.trade_account_id,
+            ).all()
+        ] if not account.is_orphaned else []
+
+        if not trade_ids:
+            return build_admin_redirect("mt5", "No trades found for that MT5 account — nothing to clear.", "info")
+
+        try:
+            deleted = (
+                TradeBars.query.filter(TradeBars.trade_id.in_(trade_ids))
+                .delete(synchronize_session=False)
+            )
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            current_app.logger.warning(
+                "Admin clear-bars failed for mt5_account_id=%s: %s",
+                mt5_account_id,
+                sanitize_error_message(exc),
+            )
+            return build_admin_redirect("mt5", "Could not clear chart bars. Check logs and try again.", "error")
+
+        current_app.logger.info(
+            "Admin cleared trade_bars for mt5_account_id=%s (%s rows)", mt5_account_id, deleted
+        )
+        return build_admin_redirect(
+            "mt5",
+            (
+                f"Cleared {deleted} bar row{'s' if deleted != 1 else ''} for MT5 account "
+                f"{account.account_number}. Use Backfill Bars to refetch."
+            ),
             "success",
         )
 

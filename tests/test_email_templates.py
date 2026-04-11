@@ -40,8 +40,9 @@ import pytest
                 "name": "Template Tester",
                 "account_name": "Request Account",
                 "dashboard_url": "https://example.com/dashboard",
+                "setup_queued": True,
             },
-            ["MT5 request received", "Request Account"],
+            ["MT5 setup started", "Request Account"],
         ),
         (
             "emails/mt5-ready.html",

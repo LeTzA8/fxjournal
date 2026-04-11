@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 
 import celery_workers.mt5_setup as mt5_setup_module
@@ -44,7 +45,9 @@ def test_cleanup_mt5_terminal_falls_back_without_psutil_and_uses_appdata_hash(mo
     assert not appdata_folder.exists()
     assert len(calls) == 1
     assert calls[0][0][:3] == ["powershell.exe", "-NoProfile", "-Command"]
-    assert calls[0][1]["env"]["FXJ_TERMINAL_EXE"] == str(terminal_exe)
+    assert os.path.normcase(calls[0][1]["env"]["FXJ_TERMINAL_EXE"]) == os.path.normcase(
+        str(terminal_exe)
+    )
 
 
 def test_cleanup_mt5_terminal_skips_mismatched_hash_folder(monkeypatch, tmp_path):

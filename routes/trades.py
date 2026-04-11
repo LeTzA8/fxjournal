@@ -26,8 +26,7 @@ from helpers.core import (
     resolve_trade_profile_form_state,
 )
 from helpers.trade_analysis import detect_outliers, get_trade_identity
-from auth_account import user_has_admin_access
-from models import Trade, TradeBars, User, db
+from models import Trade, TradeBars, db
 from trading import (
     aggregate_ohlc_bars,
     calculate_trade_net_pnl,
@@ -1326,9 +1325,6 @@ def _trade_bar_row_to_ohlc_dict(row):
 @login_required
 def trade_chart_data(trade_pubkey):
     user_id = session["user_id"]
-    user = db.session.get(User, user_id)
-    if not user_has_admin_access(user):
-        return current_app.response_class(status=404)
     trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
 
     if not trade.mt5_position or trade.closed_at is None:
