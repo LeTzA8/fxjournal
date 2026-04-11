@@ -3,8 +3,8 @@ import logging
 import types
 import sys
 
-import celery_workers.mt5_setup as mt5_setup_module
-import celery_workers.tasks as task_module
+import celery_workers.mt5_setup_tasks as mt5_setup_module
+import celery_workers.weekly_tasks as task_module
 
 
 def test_setup_mt5_terminal_logs_missing_account_as_table(app_ctx, monkeypatch, caplog, tmp_path):
@@ -14,7 +14,7 @@ def test_setup_mt5_terminal_logs_missing_account_as_table(app_ctx, monkeypatch, 
     monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
     monkeypatch.setattr(mt5_setup_module, "MT5_BASE_PATH", str(base_dir))
 
-    caplog.set_level(logging.INFO, logger="celery_workers.mt5_setup")
+    caplog.set_level(logging.INFO, logger="celery_workers.mt5_setup_tasks")
 
     result = mt5_setup_module.setup_mt5_terminal.run(999999)
 
@@ -34,7 +34,7 @@ def test_generate_weekly_ai_task_logs_context_and_result(monkeypatch, caplog):
     monkeypatch.setattr(task_module, "_set_task_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(task_module, "_clear_task_status", lambda *args, **kwargs: None)
 
-    caplog.set_level(logging.INFO, logger="celery_workers.tasks")
+    caplog.set_level(logging.INFO, logger="celery_workers.weekly_tasks")
 
     task_module.generate_weekly_ai_task.run(
         7,
@@ -61,7 +61,7 @@ def test_cleanup_weekly_checkins_task_logs_result(app_ctx, monkeypatch, caplog):
     monkeypatch.setattr(task_module.WeeklyCheckin, "query", DummyQuery())
     monkeypatch.setattr(task_module.db.session, "commit", lambda: None)
 
-    caplog.set_level(logging.INFO, logger="celery_workers.tasks")
+    caplog.set_level(logging.INFO, logger="celery_workers.weekly_tasks")
 
     result = task_module.cleanup_weekly_checkins_task.run()
 

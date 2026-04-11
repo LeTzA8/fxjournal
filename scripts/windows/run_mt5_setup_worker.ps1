@@ -55,6 +55,10 @@ $pythonExe = Resolve-PythonExe -RepoRoot $RepoRoot -PythonExe $PythonExe
 
 Set-Location $RepoRoot
 
+if (-not $env:FXJ_ASCII_LOG_MAX_WIDTH) {
+    $env:FXJ_ASCII_LOG_MAX_WIDTH = "0"
+}
+
 while ($true) {
     $host.UI.RawUI.WindowTitle = "MT5 Setup Window | Starting..."
     $startedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"

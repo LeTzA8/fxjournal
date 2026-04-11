@@ -320,7 +320,7 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
     queue_message = MT5_REQUEST_SUCCESS_MESSAGE
     setup_queued = False
     try:
-        from celery_workers.mt5_setup import setup_mt5_terminal
+        from celery_workers.mt5_setup_tasks import setup_mt5_terminal
 
         setup_mt5_terminal.apply_async(
             args=[mt5_account.id],

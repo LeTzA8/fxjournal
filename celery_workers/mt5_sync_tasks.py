@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+import json
 import logging
 import threading
 import uuid
@@ -15,6 +16,7 @@ from celery_workers.logging_utils import duration_label, log_ascii_table
 from trading import MT5_DEFAULT_SOURCE_TIMEZONE_NAME
 
 logger = logging.getLogger(__name__)
+
 
 # MetaTrader5 keeps process-global session state, so sync tasks must not
 # overlap MT5 API calls inside the same worker process.
@@ -311,6 +313,112 @@ def _summarize_trade_states(trades):
     return open_trades, closed_trades
 
 
+def _rolling_sync_window_days():
+    """How far back incremental (non–full-history) syncs request MT5 deals."""
+    raw = os.environ.get("FXJ_MT5_SYNC_ROLLING_DAYS", "").strip()
+    if not raw:
+        return 90
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return 90
+    return max(1, min(parsed, 366 * 5))
+
+
+def _history_chunk_days():
+    """Chunk size when walking MT5 deal history (wide ranges often truncate in one API call)."""
+    raw = os.environ.get("FXJ_MT5_HISTORY_CHUNK_DAYS", "").strip()
+    if not raw:
+        return 30
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return 30
+    return max(1, min(parsed, 120))
+
+
+def _deal_dedupe_key(deal):
+    ticket = getattr(deal, "ticket", None)
+    if ticket is not None:
+        return ("ticket", int(ticket))
+    return (
+        "nt",
+        getattr(deal, "time", None),
+        getattr(deal, "order", None),
+        getattr(deal, "position_id", None),
+        getattr(deal, "entry", None),
+        getattr(deal, "type", None),
+    )
+
+
+def _chunked_history_deals_get(mt5, mt5_from_date, mt5_to_date):
+    """
+    MetaTrader 5 frequently returns only a subset of deals for very wide
+    history_deals_get(from, to) windows. Walk the range in smaller slices and
+    merge, deduping by deal ticket so each deal is counted once.
+    """
+    chunk_days = _history_chunk_days()
+    span_seconds = (mt5_to_date - mt5_from_date).total_seconds()
+    if span_seconds <= 0:
+        return [], 0
+
+    if span_seconds <= chunk_days * 86400:
+        batch = list(mt5.history_deals_get(mt5_from_date, mt5_to_date) or [])
+        return batch, 1
+
+    seen = set()
+    merged = []
+    step = timedelta(days=chunk_days)
+    t = mt5_from_date
+    chunks = 0
+    while t < mt5_to_date:
+        t_end = min(t + step, mt5_to_date)
+        batch = mt5.history_deals_get(t, t_end) or []
+        chunks += 1
+        for deal in batch:
+            key = _deal_dedupe_key(deal)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(deal)
+        t = t_end
+
+    if chunks > 1:
+        logger.info(
+            "MT5 history fetch used %s chunks (%s day window); merged %s unique deals",
+            chunks,
+            chunk_days,
+            len(merged),
+        )
+    return merged, chunks
+def _log_mt5_sync_api_payload(mt5_account_id, task_id, trigger_label, result):
+    """Emit one JSON line so skip_reasons / insert_validation_reasons are not table-truncated."""
+    try:
+        payload = {
+            "kind": "mt5_sync_api_result",
+            "mt5_account_id": mt5_account_id,
+            "task_id": task_id,
+            "trigger": trigger_label,
+            "saved": result.get("saved"),
+            "updated": result.get("updated"),
+            "skipped": result.get("skipped"),
+            "errors": result.get("errors"),
+            "skip_reasons": result.get("skip_reasons"),
+        }
+        iv = result.get("insert_validation_reasons")
+        if iv:
+            payload["insert_validation_reasons"] = iv
+        if result.get("timestamp_refreshes") is not None:
+            payload["timestamp_refreshes"] = result.get("timestamp_refreshes")
+        line = json.dumps(payload, default=str, ensure_ascii=True)
+        if int(result.get("errors") or 0) > 0:
+            logger.warning("MT5 sync API JSON %s", line)
+        else:
+            logger.info("MT5 sync API JSON %s", line)
+    except Exception:
+        logger.exception("MT5 sync API JSON log failed mt5_account_id=%s", mt5_account_id)
+
+
 @celery.task(
     bind=True,
     max_retries=2,
@@ -351,8 +459,10 @@ def sync_mt5_account(
     applied_offset_minutes = 0
     sync_started_at = None
     sync_finished_at = None
-    sync_mode = "full_history" if full_history else "rolling_7d"
+    rolling_days = _rolling_sync_window_days()
+    sync_mode = "full_history" if full_history else f"rolling_{rolling_days}d"
     trigger_label = str(trigger_source or "unknown").strip() or "unknown"
+    history_chunks_fetched = 0
     try:
         try:
             lock_acquired = claim_lock(_sync_lock_key(mt5_account_id), lock_token, ttl=600)
@@ -448,7 +558,7 @@ def sync_mt5_account(
                 if full_history or is_first_sync:
                     from_date = datetime(2000, 1, 1, tzinfo=timezone.utc)
                 else:
-                    from_date = datetime.now(timezone.utc) - timedelta(days=7)
+                    from_date = datetime.now(timezone.utc) - timedelta(days=rolling_days)
                 to_date = datetime.now(timezone.utc)
                 probe_symbol = None
                 try:
@@ -471,30 +581,11 @@ def sync_mt5_account(
                     minutes=applied_offset_minutes,
                 )
                 vm_timing_context = _vm_timezone_context()
-                log_ascii_table(
-                    logger,
-                    "MT5 Sync Context",
-                    [
-                        ("Started", sync_started_at),
-                        ("Trade Account", f"{trade_account_name} [ID: {trade_account_id}]"),
-                        ("MT5 Account", f"DB {mt5_account_id} / Login {mt5_login}"),
-                        ("Server", server),
-                        ("Balance", mt5_balance),
-                        ("Equity", mt5_equity),
-                        ("Trigger", trigger_label),
-                        ("Mode", sync_mode),
-                        ("VM Timezone", vm_timing_context.get("vm_timezone_name")),
-                        ("VM UTC Offset (min)", vm_timing_context.get("vm_utc_offset_minutes")),
-                        ("MT5-UTC Delta (min)", mt5_server_delta_minutes),
-                        ("Applied Time Offset (min)", applied_offset_minutes),
-                        ("Window (UTC)", f"{from_date.isoformat()} -> {to_date.isoformat()}"),
-                        ("MT5 Request Window", f"{mt5_from_date.isoformat()} -> {mt5_to_date.isoformat()}"),
-                    ],
-                )
+                # One summary table is logged after the internal API returns (see below).
                 # MT5 history filters follow broker/server clock semantics in
                 # practice, so shift the request window into server time while
                 # continuing to normalize returned timestamps back to UTC.
-                deals = mt5.history_deals_get(mt5_from_date, mt5_to_date) or []
+                deals, history_chunks_fetched = _chunked_history_deals_get(mt5, mt5_from_date, mt5_to_date)
                 raw_deal_count = len(deals)
 
                 deal_type_buy = getattr(mt5, "DEAL_TYPE_BUY", 0)
@@ -551,61 +642,103 @@ def sync_mt5_account(
                 "X-Sync-Secret": sync_secret,
                 "Content-Type": "application/json",
             },
-            timeout=30,
+            timeout=int(os.environ.get("FXJ_MT5_SYNC_HTTP_TIMEOUT_SECONDS", "180")),
         )
         response.raise_for_status()
         result = response.json()
         sync_finished_at = datetime.now(timezone.utc)
+        skipped_n = int(result.get("skipped") or 0)
+        saved_n = int(result.get("saved") or 0)
+        updated_n = int(result.get("updated") or 0)
+        errors_n = int(result.get("errors") or 0)
+        skip_reasons = result.get("skip_reasons") or {}
+        worrisome_skip_n = (
+            int(skip_reasons.get("close_only_without_existing_open") or 0)
+            + int(skip_reasons.get("batch_validation_skipped") or 0)
+            + int(skip_reasons.get("batch_symbol_validation_failed") or 0)
+            + int(skip_reasons.get("incoming_close_validation_failed") or 0)
+        )
+        # Beat/incremental runs often re-post the same closed positions; every row
+        # skips with existing_already_closed_or_no_state_change — not an error.
+        idle_noop = (
+            skipped_n > 0
+            and saved_n == 0
+            and updated_n == 0
+            and errors_n == 0
+            and worrisome_skip_n == 0
+            and bool(skip_reasons)
+        )
+        worrisome_no_save = (
+            skipped_n > 0 and saved_n == 0 and updated_n == 0 and not idle_noop
+        )
+        skip_debug_rows = result.get("skip_debug") or []
+
+        summary_rows = [
+            ("Task ID", task_id),
+            ("MT5 Account ID", mt5_account_id),
+            ("Trade Account ID", trade_account_id),
+            ("Started", sync_started_at),
+            ("Trade Account", f"{trade_account_name} [ID: {trade_account_id}]"),
+            ("MT5 Account", f"DB {mt5_account_id} / Login {mt5_login}"),
+            ("Server", server),
+            ("Balance", mt5_balance),
+            ("Equity", mt5_equity),
+            ("Trigger", trigger_label),
+            ("Mode", sync_mode),
+            ("VM Timezone", vm_timing_context.get("vm_timezone_name")),
+            ("VM UTC Offset (min)", vm_timing_context.get("vm_utc_offset_minutes")),
+            ("MT5-UTC Delta (min)", mt5_server_delta_minutes),
+            ("Applied Time Offset (min)", applied_offset_minutes),
+            ("Window (UTC)", f"{from_date.isoformat()} -> {to_date.isoformat()}"),
+            ("MT5 Request Window", f"{mt5_from_date.isoformat()} -> {mt5_to_date.isoformat()}"),
+            ("History chunk days", _history_chunk_days()),
+            ("History API Chunks", history_chunks_fetched),
+            ("Raw Deals", raw_deal_count),
+            ("Trade Rows", aggregated_trade_count),
+            ("Open Rows", open_trade_count),
+            ("Closed Rows", closed_trade_count),
+            ("Finished", sync_finished_at),
+            ("Duration", duration_label(sync_started_at, sync_finished_at)),
+            ("Saved New", result.get("saved")),
+            ("Updated", result.get("updated")),
+            ("Skipped", result.get("skipped")),
+            ("Errors", result.get("errors")),
+            ("Timestamp Refreshes", result.get("timestamp_refreshes")),
+            ("Skip Reasons", result.get("skip_reasons")),
+        ]
+        if idle_noop:
+            summary_rows.append(
+                (
+                    "Note",
+                    f"idle noop — {skipped_n} broker row(s) matched DB (benign)",
+                )
+            )
+        elif worrisome_no_save:
+            summary_rows.extend(
+                [
+                    (
+                        "Alert",
+                        "no saves/updates — review Skip Reasons and skip_debug below",
+                    ),
+                    ("Worrisome skip rows (sum)", worrisome_skip_n),
+                ]
+            )
+            if skip_debug_rows:
+                try:
+                    debug_blob = json.dumps(
+                        skip_debug_rows, default=str, ensure_ascii=True
+                    )
+                except TypeError:
+                    debug_blob = str(skip_debug_rows)
+                summary_rows.append(("Skip debug (JSON)", debug_blob))
+
         log_ascii_table(
             logger,
-            "MT5 Sync Result",
-            [
-                ("Finished", sync_finished_at),
-                ("Duration", duration_label(sync_started_at, sync_finished_at)),
-                ("Trigger", trigger_label),
-                ("Mode", sync_mode),
-                ("Raw Deals", raw_deal_count),
-                ("Trade Rows", aggregated_trade_count),
-                ("Open Rows", open_trade_count),
-                ("Closed Rows", closed_trade_count),
-                ("Saved New", result.get("saved")),
-                ("Updated", result.get("updated")),
-                ("Skipped", result.get("skipped")),
-                ("Errors", result.get("errors")),
-                ("Timestamp Refreshes", result.get("timestamp_refreshes")),
-                ("Skip Reasons", result.get("skip_reasons")),
-            ],
+            "MT5 Sync",
+            summary_rows,
+            level=logging.WARNING if worrisome_no_save else logging.INFO,
         )
-        if int(result.get("skipped") or 0) > 0 and int(result.get("saved") or 0) == 0 and int(result.get("updated") or 0) == 0:
-            log_ascii_table(
-                logger,
-                "MT5 Sync Warning",
-                [
-                    ("Task ID", task_id),
-                    ("MT5 Account ID", mt5_account_id),
-                    ("Trade Account ID", trade_account_id),
-                    ("Trigger", trigger_label),
-                    ("Mode", sync_mode),
-                    ("Raw Deals", raw_deal_count),
-                    ("Trade Rows", aggregated_trade_count),
-                    ("Skipped", result.get("skipped")),
-                    ("Reason", "sync produced only skipped rows"),
-                ],
-                level=logging.WARNING,
-            )
-            skip_debug_rows = result.get("skip_debug") or []
-            if skip_debug_rows:
-                log_ascii_table(
-                    logger,
-                    "MT5 Skip Debug",
-                    [
-                        ("Task ID", task_id),
-                        ("MT5 Account ID", mt5_account_id),
-                        ("Rows Logged", len(skip_debug_rows)),
-                        ("Sample", skip_debug_rows),
-                    ],
-                    level=logging.WARNING,
-                )
+        _log_mt5_sync_api_payload(mt5_account_id, task_id, trigger_label, result)
         return result
     except Exception as exc:
         sync_finished_at = sync_finished_at or datetime.now(timezone.utc)
@@ -762,6 +895,18 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
                     raw_bars = chunk
                     symbol = sym
                     break
+            if not raw_bars:
+                logger.warning(
+                    "Bar fetch no rates mt5_account_id=%s trade_id=%s trade_symbol=%s "
+                    "candidates=%s window_utc=%s..%s last_error=%s",
+                    mt5_account_id,
+                    trade_id,
+                    trade.symbol,
+                    list(mt5_symbol_names),
+                    start_dt.isoformat(),
+                    end_dt.isoformat(),
+                    mt5.last_error(),
+                )
             if raw_bars:
                 for bar in raw_bars:
                     # Same epoch skew as deal times: raw bar["time"] is broker/server-oriented; subtract

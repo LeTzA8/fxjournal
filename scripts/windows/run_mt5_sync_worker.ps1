@@ -65,6 +65,11 @@ if ($Concurrency -ne 1) {
 
 Set-Location $RepoRoot
 
+# Full-width ASCII table values (skip reasons, etc.); Render weekly worker keeps default 72-char cap.
+if (-not $env:FXJ_ASCII_LOG_MAX_WIDTH) {
+    $env:FXJ_ASCII_LOG_MAX_WIDTH = "0"
+}
+
 while ($true) {
     $host.UI.RawUI.WindowTitle = "MT5 Sync Window | Starting..."
     $startedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"

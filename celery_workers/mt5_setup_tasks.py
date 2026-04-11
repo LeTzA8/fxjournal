@@ -388,9 +388,19 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                 "Could not find base MT5 AppData via origin.txt — "
                 "ensure the base terminal has been run at least once"
             )
+        logger.info(
+            "MT5 setup base_appdata mt5_account_id=%s basename=%s",
+            mt5_account_id,
+            os.path.basename(base_appdata),
+        )
 
         # Launch the terminal briefly — this causes MT5 to create its AppData folder
         proc = subprocess.Popen([terminal_exe], cwd=terminal_dir)
+        logger.info(
+            "MT5 setup bootstrap_launch mt5_account_id=%s terminal_dir=%s",
+            mt5_account_id,
+            terminal_dir,
+        )
 
         new_appdata = None
         try:
@@ -409,6 +419,11 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                 )
 
             new_hash = os.path.basename(new_appdata)
+            logger.info(
+                "MT5 setup new_terminal_appdata mt5_account_id=%s appdata_hash=%s",
+                mt5_account_id,
+                new_hash,
+            )
 
             # Copy servers.dat from base AppData so the new terminal knows
             # how to resolve the broker server address
@@ -420,6 +435,10 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             if os.path.exists(src_servers):
                 shutil.copy2(src_servers, os.path.join(dst_config, "servers.dat"))
                 shutil.copy2(src_servers, os.path.join(terminal_config, "servers.dat"))
+                logger.info(
+                    "MT5 setup servers_dat_copied mt5_account_id=%s",
+                    mt5_account_id,
+                )
 
             account.appdata_hash = new_hash
             appdata_hash = new_hash
@@ -430,6 +449,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         # Clear the default chart workspace after the bootstrap launch and
         # before the Python API logs into the account.
         _clear_chart_profiles(new_appdata)
+        logger.info("MT5 setup pre_verify_login mt5_account_id=%s", mt5_account_id)
 
         import MetaTrader5 as mt5
 

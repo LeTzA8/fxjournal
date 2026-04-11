@@ -4,7 +4,7 @@ import os
 
 import celery_app as celery_app_module
 import app as flask_app_module
-from celery_workers.mt5_sync import sync_mt5_account
+from celery_workers.mt5_sync_tasks import sync_mt5_account
 
 
 def test_load_runtime_env_reads_dotenv_when_present(tmp_path, monkeypatch):
@@ -20,7 +20,7 @@ def test_load_runtime_env_reads_dotenv_when_present(tmp_path, monkeypatch):
 
 def test_celery_routes_and_mt5_task_reliability_flags():
     assert celery_app_module.celery.conf.worker_prefetch_multiplier == 1
-    assert celery_app_module.celery.conf.task_routes["celery_workers.mt5_sync.sync_mt5_account"]["queue"] == "mt5_sync"
+    assert celery_app_module.celery.conf.task_routes["celery_workers.mt5_sync_tasks.sync_mt5_account"]["queue"] == "mt5_sync"
     assert sync_mt5_account.acks_late is True
     assert sync_mt5_account.reject_on_worker_lost is True
 
@@ -90,3 +90,21 @@ def test_format_mt5_worker_window_title_for_setup_worker():
     )
 
     assert title == "MT5 Setup Window | 3 Pending Setup | 2 In Queue | 0 Running"
+
+
+def test_worker_file_logging_enabled_for_mt5_hostnames(monkeypatch):
+    monkeypatch.delenv("FXJ_WORKER_FILE_LOG", raising=False)
+    monkeypatch.delenv("FXJ_WORKER_LOG_DIR", raising=False)
+
+    class _Sender:
+        def __init__(self, hostname):
+            self.hostname = hostname
+
+    assert celery_app_module._should_enable_worker_file_logging(_Sender("mt5-sync@VM-1")) is True
+    assert celery_app_module._should_enable_worker_file_logging(_Sender("mt5-setup@VM-1")) is True
+    assert celery_app_module._should_enable_worker_file_logging(_Sender("celery@render")) is False
+
+
+def test_worker_file_logging_respects_explicit_disable(monkeypatch):
+    monkeypatch.setenv("FXJ_WORKER_FILE_LOG", "0")
+    assert celery_app_module._should_enable_worker_file_logging(type("S", (), {"hostname": "mt5-sync@VM-1"})()) is False

@@ -857,9 +857,10 @@
                     {% endif %}
                 {% endif %}
 
-                {% if mt5_batches %}
+                {% if mt5_batches_history %}
                 <div class="codes-list" style="margin-top: 1rem;">
-                    {% for batch in mt5_batches %}
+                    <p class="soft" style="margin: 0 0 0.5rem; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase;">Other batches</p>
+                    {% for batch in mt5_batches_history %}
                     <article class="code-card">
                         <div class="code-head">
                             <p class="code-value">{{ batch.name }}</p>
@@ -875,7 +876,7 @@
                     </article>
                     {% endfor %}
                 </div>
-                {% else %}
+                {% elif not mt5_batches %}
                 <p class="helper-note">No MT5 sync batches created yet.</p>
                 {% endif %}
             </article>
@@ -886,7 +887,7 @@
                         {{ mt5_accounts|length }} total{% if orphaned_mt5_count %}, {{ orphaned_mt5_count }} cleanup-only{% endif %}
                     </span>
                 </div>
-                <p class="helper-note">Users now submit the full MT5 sync setup form from the dashboard. Use this table to monitor queued accounts, trigger syncs, or clean up old records.</p>
+                <p class="helper-note">Users now submit the full MT5 sync setup form from the dashboard. Use this table to monitor queued accounts, trigger syncs, or clean up old records. Trade sync does not fetch chart bars — use <strong>Backfill Bars</strong> per account when you want OHLC data for user trade charts.</p>
                 <div class="inline-actions" style="margin-bottom: 0.85rem; flex-wrap: wrap;">
                     <form
                         action="{{ url_for('admin_mt5_recalibrate_all_trade_times') }}"
@@ -899,7 +900,7 @@
                     <form
                         action="{{ url_for('admin_mt5_clear_all_trade_bars') }}"
                         method="post"
-                        onsubmit="return confirm('Delete ALL stored MT5 chart bars for every user and trade? Trade records are kept; charts show pending until you backfill again.');"
+                        onsubmit="return confirm('Delete ALL stored MT5 chart bars for every user and trade? Trade records are kept; user trade charts stay hidden until you run Backfill Bars again.');"
                     >
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="ghost-btn danger-btn">Clear all chart bars</button>

@@ -6,6 +6,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import importlib
 import importlib.util
 import logging
+import logging.handlers
+import re
 import threading
 from pathlib import Path
 
@@ -135,9 +137,9 @@ def _create_celery():
         broker=broker_url,
         backend=backend_url,
         include=[
-            "celery_workers.tasks",
-            "celery_workers.mt5_sync",
-            "celery_workers.mt5_setup",
+            "celery_workers.weekly_tasks",
+            "celery_workers.mt5_sync_tasks",
+            "celery_workers.mt5_setup_tasks",
         ],
         task_cls=FlaskTask,
     )
@@ -149,18 +151,18 @@ def _create_celery():
         "worker_prefetch_multiplier": 1,
         "beat_schedule": {
             "cleanup-weekly-checkins": {
-                "task": "celery_workers.tasks.cleanup_weekly_checkins_task",
+                "task": "celery_workers.weekly_tasks.cleanup_weekly_checkins_task",
                 "schedule": crontab(hour=3, minute=0, day_of_week=1),
             },
             "sync-all-mt5-accounts": {
-                "task": "celery_workers.mt5_sync.sync_all_active_mt5_accounts",
+                "task": "celery_workers.mt5_sync_tasks.sync_all_active_mt5_accounts",
                 "schedule": 300,
             },
         },
         "task_routes": {
-            "celery_workers.mt5_setup.*": {"queue": "mt5_setup"},
-            "celery_workers.mt5_sync.sync_mt5_account": {"queue": "mt5_sync"},
-            "celery_workers.mt5_sync.fetch_trade_bars": {"queue": "mt5_sync"},
+            "celery_workers.mt5_setup_tasks.*": {"queue": "mt5_setup"},
+            "celery_workers.mt5_sync_tasks.sync_mt5_account": {"queue": "mt5_sync"},
+            "celery_workers.mt5_sync_tasks.fetch_trade_bars": {"queue": "mt5_sync"},
         },
     }
     configured_pool = os.environ.get("CELERY_POOL", "").strip().lower()
@@ -206,7 +208,7 @@ def _get_mt5_worker_window_config(hostname):
             "worker_kind": "mt5_sync",
             "queue_name": "mt5_sync",
             "title_prefix": "MT5 Sync Window",
-            "task_prefix": "celery_workers.mt5_sync.",
+            "task_prefix": "celery_workers.mt5_sync_tasks.",
             "primary_label": "Accounts Active",
             "primary_stat_key": "active_accounts",
         }
@@ -215,7 +217,7 @@ def _get_mt5_worker_window_config(hostname):
             "worker_kind": "mt5_setup",
             "queue_name": "mt5_setup",
             "title_prefix": "MT5 Setup Window",
-            "task_prefix": "celery_workers.mt5_setup.",
+            "task_prefix": "celery_workers.mt5_setup_tasks.",
             "primary_label": "Pending Setup",
             "primary_stat_key": "pending_accounts",
         }
@@ -340,6 +342,117 @@ def _resolve_worker_hostname(sender):
         getattr(sender, "hostname", None)
         or getattr(getattr(sender, "consumer", None), "hostname", None)
         or getattr(getattr(sender, "controller", None), "hostname", None)
+    )
+
+
+def _sanitize_worker_log_dir_name(hostname: str) -> str:
+    """Filesystem-safe folder name from Celery --hostname (e.g. mt5-sync@PC)."""
+    text = (hostname or "celery").strip().replace("@", "_at_")
+    text = re.sub(r'[\\/:*?"<>|]+', "_", text)
+    text = re.sub(r"\s+", "_", text)
+    text = text.strip("._") or "celery"
+    return text[:120]
+
+
+def _default_worker_log_root() -> str:
+    return str(Path(__file__).resolve().parent / "logs" / "workers")
+
+
+def _worker_file_log_explicitly_disabled() -> bool:
+    flag = os.getenv("FXJ_WORKER_FILE_LOG", "").strip().lower()
+    return flag in {"0", "false", "no", "off"}
+
+
+def _should_enable_worker_file_logging(sender) -> bool:
+    """MT5 VM workers (--hostname mt5-sync@… / mt5-setup@…) get files by default; others need env."""
+    if _worker_file_log_explicitly_disabled():
+        return False
+    hostname = _resolve_worker_hostname(sender)
+    if _get_mt5_worker_window_config(hostname):
+        return True
+    if os.getenv("FXJ_WORKER_LOG_DIR", "").strip():
+        return True
+    flag = os.getenv("FXJ_WORKER_FILE_LOG", "").strip().lower()
+    return flag in {"1", "true", "yes", "on"}
+
+
+def _resolve_worker_log_root() -> str:
+    configured = os.getenv("FXJ_WORKER_LOG_DIR", "").strip()
+    if configured:
+        return os.path.abspath(configured)
+    return os.path.abspath(_default_worker_log_root())
+
+
+# Rotating worker file logs: sized for ~1 week on one MT5 sync worker with ~10–20 accounts
+# (beat every 5m → ~288 syncs/account/day; rough budget ~5–8 KiB per sync line incl. JSON follow-up).
+# Cap ≈ 32 MiB × (1 active + 9 backups) ≈ 320 MiB per celery.log stream.
+_WORKER_LOG_FILE_MAX_BYTES = 32 * 1024 * 1024
+_WORKER_LOG_FILE_BACKUP_COUNT = 9
+
+
+def _rotating_file_handler_for_path(log_path: str) -> logging.handlers.RotatingFileHandler:
+    handler = logging.handlers.RotatingFileHandler(
+        log_path,
+        maxBytes=_WORKER_LOG_FILE_MAX_BYTES,
+        backupCount=_WORKER_LOG_FILE_BACKUP_COUNT,
+        encoding="utf-8",
+    )
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(
+        logging.Formatter(
+            fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        )
+    )
+    return handler
+
+
+def _root_has_rotating_handler_for_path(root_logger: logging.Logger, log_path: str) -> bool:
+    wanted = os.path.normcase(os.path.abspath(log_path))
+    for existing in root_logger.handlers:
+        if isinstance(existing, logging.handlers.RotatingFileHandler):
+            try:
+                if os.path.normcase(os.path.abspath(existing.baseFilename)) == wanted:
+                    return True
+            except (OSError, ValueError, AttributeError):
+                continue
+    return False
+
+
+@worker_ready.connect
+def _configure_worker_file_logging(sender=None, **kwargs):
+    """Rotating file under logs/workers/<hostname>/celery.log (MT5 workers by hostname; else opt-in via env)."""
+    if not _should_enable_worker_file_logging(sender):
+        return
+
+    log_root = _resolve_worker_log_root()
+    hostname = _resolve_worker_hostname(sender) or "celery"
+    safe_name = _sanitize_worker_log_dir_name(str(hostname))
+    worker_dir = os.path.join(log_root, safe_name)
+    try:
+        os.makedirs(worker_dir, exist_ok=True)
+    except OSError as exc:
+        logging.getLogger(__name__).warning(
+            "Worker file log dir not created (%s): %s", worker_dir, exc
+        )
+        return
+
+    log_path = os.path.join(worker_dir, "celery.log")
+    root_logger = logging.getLogger()
+    if _root_has_rotating_handler_for_path(root_logger, log_path):
+        return
+
+    try:
+        handler = _rotating_file_handler_for_path(log_path)
+    except OSError as exc:
+        logging.getLogger(__name__).warning(
+            "Worker file log handler not attached (%s): %s", log_path, exc
+        )
+        return
+
+    root_logger.addHandler(handler)
+    logging.getLogger(__name__).info(
+        "Worker file logging enabled path=%s hostname=%s", log_path, hostname
     )
 
 

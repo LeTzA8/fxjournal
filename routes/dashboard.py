@@ -56,7 +56,7 @@ from trading import (
 bp = Blueprint("dashboard", __name__)
 
 DEFAULT_WEEKLY_AI_EMPTY_MESSAGE = (
-    f"Your weekly AI review appears after at least {MIN_CLOSED_TRADES_FOR_ADVICE} closed trades land in a finished trade week on this account."
+    f"Weekly review needs a finished week with at least {MIN_CLOSED_TRADES_FOR_ADVICE} closed trades on this account."
 )
 WEEKLY_AI_GENERATING_MESSAGE = (
     "Generating your weekly AI review. Check back shortly."
@@ -1073,7 +1073,7 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
 
                     if claimed:
                         try:
-                            from celery_workers.tasks import generate_weekly_ai_task
+                            from celery_workers.weekly_tasks import generate_weekly_ai_task
 
                             generate_weekly_ai_task.delay(
                                 user_id,

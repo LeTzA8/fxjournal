@@ -25,6 +25,7 @@ instance/
 # Logs and runtime files
 *.log
 *.pid
+logs/workers/
 
 # Build/distribution
 build/

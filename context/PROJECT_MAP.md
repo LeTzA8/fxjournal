@@ -31,7 +31,7 @@ Stable system blueprint.
 - `routes/`: feature routes
 - `helpers/`: shared state, behavior analysis, scoring, utilities
 - `celery_app.py`: Celery bootstrap, routing, beat schedule
-- `celery_workers/`: MT5 setup/sync and cache tasks
+- `celery_workers/`: weekly AI + checkin cleanup (`weekly_tasks.py`), MT5 setup/sync (`mt5_setup_tasks.py`, `mt5_sync_tasks.py`), Redis cache helpers
 - `migrations/`: Alembic schema history
 - `templates/`, `static/js/`: UI
 - `tests/`: focused pytest coverage
@@ -53,7 +53,7 @@ Stable system blueprint.
 - Trade profiles / strategies:
   `routes/trade_profiles.py`
 - MT5 workers and internal sync:
-  `celery_workers/mt5_setup.py`, `celery_workers/mt5_sync.py`, `routes/mt5_internal.py`
+  `celery_workers/mt5_setup_tasks.py`, `celery_workers/mt5_sync_tasks.py`, `routes/mt5_internal.py`
 
 ## Lean Ownership Map
 
@@ -88,7 +88,7 @@ Stable system blueprint.
 - Cache / async state:
   `celery_app.py`, `celery_workers/cache.py`, `tests/test_celery_app.py`, `tests/test_cache.py`
 - MT5 workers:
-  `celery_app.py`, `celery_workers/mt5_setup.py`, `celery_workers/mt5_sync.py`, `routes/mt5_internal.py`, `tests/test_mt5_setup.py`, `tests/test_mt5_sync.py`
+  `celery_app.py`, `celery_workers/mt5_setup_tasks.py`, `celery_workers/mt5_sync_tasks.py`, `routes/mt5_internal.py`, `tests/test_mt5_setup.py`, `tests/test_mt5_sync.py`
 
 ## Data Flow
 
@@ -99,7 +99,7 @@ Stable system blueprint.
 
 - `auth_account.py`: auth, admin access, signup gating, public/admin route boundaries
 - `routes/trade_accounts.py`: ownership checks, MT5 request flow, investor-password handling
-- `celery_workers/mt5_setup.py`, `celery_workers/mt5_sync.py`: account isolation, worker safety, credential-sensitive flows
+- `celery_workers/mt5_setup_tasks.py`, `celery_workers/mt5_sync_tasks.py`: account isolation, worker safety, credential-sensitive flows
 - `models.py`: deletes, relationships, uniqueness, lifecycle invariants
 - `ai_service.py`: payload semantics, citations, persisted AI output
 

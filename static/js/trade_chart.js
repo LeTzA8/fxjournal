@@ -614,7 +614,7 @@
                 }
                 if (data.status === "pending") {
                     rememberChartPrefetch(null);
-                    setStatus("Chart data is being prepared — check back after the next sync.");
+                    hidePanel();
                     return;
                 }
                 if (data.status === "ready") {
@@ -630,7 +630,7 @@
                             loadTimeframe(other[0]);
                             return;
                         }
-                        setStatus("No bars for this timeframe yet. Run MT5 sync to refresh.");
+                        setStatus("No chart data for this timeframe.");
                         return;
                     }
                     if (typeof LightweightCharts === "undefined") {

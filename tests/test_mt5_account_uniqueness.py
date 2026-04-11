@@ -4,7 +4,7 @@ import pytest
 from cryptography.fernet import Fernet
 from sqlalchemy.exc import IntegrityError
 
-import celery_workers.mt5_setup as mt5_setup_module
+import celery_workers.mt5_setup_tasks as mt5_setup_module
 from helpers.utils import encrypt_password
 from models import MT5Account, TradeAccount, User, db
 

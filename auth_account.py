@@ -2313,7 +2313,7 @@ def register_public_auth_routes(
 
         try:
             from celery_workers.cache import CacheUnavailableError, clear_ai_status
-            from celery_workers.tasks import generate_weekly_ai_task
+            from celery_workers.weekly_tasks import generate_weekly_ai_task
 
             try:
                 clear_ai_status(
@@ -2691,6 +2691,12 @@ def register_public_auth_routes(
             )
             if batch.is_open and active_mt5_batch is None:
                 active_mt5_batch = batch
+        # List below the open-batch card should not repeat the active row.
+        mt5_batches_history = [
+            b
+            for b in mt5_batches
+            if active_mt5_batch is None or b.id != active_mt5_batch.id
+        ]
         return render_admin_page(
             admin_user=admin_user,
             section="mt5",
@@ -2699,6 +2705,7 @@ def register_public_auth_routes(
             mt5_statuses_by_account_id=mt5_statuses_by_account_id,
             orphaned_mt5_count=orphaned_mt5_count,
             mt5_batches=mt5_batches,
+            mt5_batches_history=mt5_batches_history,
             active_mt5_batch=active_mt5_batch,
         )
 
@@ -2981,11 +2988,15 @@ def register_public_auth_routes(
             )
 
         try:
-            from celery_workers.mt5_setup import setup_mt5_terminal
+            from celery_workers.mt5_setup_tasks import setup_mt5_terminal
 
             setup_mt5_terminal.apply_async(
                 args=[mt5_account.id],
                 queue="mt5_setup",
+            )
+            current_app.logger.info(
+                "Admin queued MT5 setup_terminal mt5_account_id=%s queue=mt5_setup",
+                mt5_account.id,
             )
         except Exception as exc:
             current_app.logger.warning(
@@ -3017,11 +3028,15 @@ def register_public_auth_routes(
             )
 
         try:
-            from celery_workers.mt5_setup import setup_mt5_terminal
+            from celery_workers.mt5_setup_tasks import setup_mt5_terminal
 
             setup_mt5_terminal.apply_async(
                 args=[mt5_account_id],
                 queue="mt5_setup",
+            )
+            current_app.logger.info(
+                "Admin queued MT5 setup_terminal mt5_account_id=%s queue=mt5_setup",
+                mt5_account_id,
             )
         except Exception as exc:
             db.session.rollback()
@@ -3154,12 +3169,16 @@ def register_public_auth_routes(
             return build_admin_redirect("mt5", "That MT5 account is inactive.", "error")
 
         try:
-            from celery_workers.mt5_sync import sync_mt5_account
+            from celery_workers.mt5_sync_tasks import sync_mt5_account
 
             sync_mt5_account.apply_async(
                 args=[mt5_account_id],
                 kwargs={"full_history": True, "trigger_source": "manual"},
                 queue="mt5_sync",
+            )
+            current_app.logger.info(
+                "Admin queued sync_mt5_account mt5_account_id=%s full_history=True trigger=manual",
+                mt5_account_id,
             )
         except Exception as exc:
             db.session.rollback()
@@ -3207,7 +3226,7 @@ def register_public_auth_routes(
                 "info",
             )
         try:
-            from celery_workers.mt5_sync import sync_mt5_account
+            from celery_workers.mt5_sync_tasks import sync_mt5_account
 
             for account in eligible:
                 sync_mt5_account.apply_async(
@@ -3219,6 +3238,10 @@ def register_public_auth_routes(
                     },
                     queue="mt5_sync",
                 )
+            current_app.logger.info(
+                "Admin queued sync_mt5_account recalibrate_times for %s mt5_account_id(s)",
+                len(eligible),
+            )
         except Exception as exc:
             db.session.rollback()
             current_app.logger.warning(
@@ -3292,7 +3315,7 @@ def register_public_auth_routes(
                 "error",
             )
         try:
-            from celery_workers.mt5_sync import sync_mt5_account
+            from celery_workers.mt5_sync_tasks import sync_mt5_account
 
             sync_mt5_account.apply_async(
                 args=[mt5_account_id],
@@ -3302,6 +3325,10 @@ def register_public_auth_routes(
                     "recalibrate_trade_timestamps": True,
                 },
                 queue="mt5_sync",
+            )
+            current_app.logger.info(
+                "Admin queued sync_mt5_account mt5_account_id=%s recalibrate_trade_timestamps=True",
+                mt5_account_id,
             )
         except Exception as exc:
             db.session.rollback()
@@ -3345,7 +3372,7 @@ def register_public_auth_routes(
             return build_admin_redirect("mt5", "No closed MT5 trades found to backfill bars for.", "info")
 
         try:
-            from celery_workers.mt5_sync import fetch_trade_bars
+            from celery_workers.mt5_sync_tasks import fetch_trade_bars
             queued = 0
             for trade in closed_trades:
                 fetch_trade_bars.apply_async(
@@ -3353,6 +3380,11 @@ def register_public_auth_routes(
                     queue="mt5_sync",
                 )
                 queued += 1
+            current_app.logger.info(
+                "Admin queued fetch_trade_bars mt5_account_id=%s tasks=%s queue=mt5_sync",
+                mt5_account_id,
+                queued,
+            )
         except Exception as exc:
             current_app.logger.warning(
                 "Bar backfill dispatch failed for mt5_account_id=%s: %s",
@@ -3486,7 +3518,7 @@ def register_public_auth_routes(
         cleanup_warning = ""
         if account.terminal_path and account.appdata_hash:
             try:
-                from celery_workers.mt5_setup import cleanup_mt5_terminal
+                from celery_workers.mt5_setup_tasks import cleanup_mt5_terminal
 
                 cleanup_mt5_terminal.apply_async(
                     args=[account.terminal_path, account.appdata_hash],

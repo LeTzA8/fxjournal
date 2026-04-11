@@ -102,7 +102,7 @@ def _stub_mt5_setup_queue(monkeypatch, captured=None, *, should_raise=False):
         return {"id": "test-mt5-setup-task"}
 
     monkeypatch.setattr(
-        "celery_workers.mt5_setup.setup_mt5_terminal.apply_async",
+        "celery_workers.mt5_setup_tasks.setup_mt5_terminal.apply_async",
         _fake_apply_async,
     )
 
@@ -1168,7 +1168,7 @@ def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, m
         return {"id": "cleanup-task"}
 
     monkeypatch.setattr(
-        "celery_workers.mt5_setup.cleanup_mt5_terminal.apply_async",
+        "celery_workers.mt5_setup_tasks.cleanup_mt5_terminal.apply_async",
         _fake_cleanup_apply_async,
     )
 
@@ -1217,7 +1217,7 @@ def test_user_unlink_mt5_without_terminal_skips_cleanup_queue(app_ctx, client, m
         return {"id": "cleanup-task"}
 
     monkeypatch.setattr(
-        "celery_workers.mt5_setup.cleanup_mt5_terminal.apply_async",
+        "celery_workers.mt5_setup_tasks.cleanup_mt5_terminal.apply_async",
         _fake_cleanup_apply_async,
     )
 

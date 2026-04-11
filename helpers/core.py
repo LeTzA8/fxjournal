@@ -671,7 +671,7 @@ def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
 
     if mt5_account.terminal_path and mt5_account.appdata_hash:
         try:
-            from celery_workers.mt5_setup import cleanup_mt5_terminal
+            from celery_workers.mt5_setup_tasks import cleanup_mt5_terminal
 
             cleanup_mt5_terminal.apply_async(
                 args=[mt5_account.terminal_path, mt5_account.appdata_hash],

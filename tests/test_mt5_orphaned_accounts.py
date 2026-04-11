@@ -2,7 +2,7 @@ import os
 
 from cryptography.fernet import Fernet
 
-import celery_workers.mt5_sync as mt5_sync_module
+import celery_workers.mt5_sync_tasks as mt5_sync_module
 from helpers.core import delete_users_with_related_data
 from helpers.utils import encrypt_password
 from models import MT5Account, TradeAccount, User, db

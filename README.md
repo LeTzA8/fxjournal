@@ -157,7 +157,7 @@ The app reads from `.env`. Important variables include:
 - `ENCRYPTION_KEY`
 - `MT5_SYNC_SECRET`
 - `FLASK_API_URL`
-- `RATELIMIT_STORAGE_URI`
+- `RATELIMIT_STORAGE_URI` (optional; defaults to `REDIS_URL`, then `memory://`)
 - `MAX_UPLOAD_MB`
 - `APP_ENV`
 - `FEEDBACK_TO_EMAIL`

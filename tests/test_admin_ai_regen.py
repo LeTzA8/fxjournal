@@ -2,7 +2,7 @@ from datetime import datetime
 from itertools import count
 
 import auth_account
-import celery_workers.tasks as celery_tasks
+import celery_workers.weekly_tasks as celery_tasks
 from ai_service import AIConfigError, AIRequestError, WEEKLY_DASHBOARD_KIND
 from models import AIGeneratedResponse, AIPromptHistory, Trade, TradeAccount, User, db
 

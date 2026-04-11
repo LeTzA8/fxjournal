@@ -120,11 +120,19 @@ def sync_mt5_trades():
         return jsonify({"error": "mt5 sync requires a CFD trade account"}), 400
 
     normalized_rows, invalid_rows = _normalize_sync_trade_rows(raw_rows)
+    if invalid_rows:
+        current_app.logger.warning(
+            "MT5 sync normalize rejected rows mt5_account_id=%s invalid=%s of %s",
+            mt5_account_id,
+            invalid_rows,
+            len(raw_rows),
+        )
 
     try:
         skip_reason_counts = {
             "close_only_without_existing_open": 0,
             "existing_already_closed_or_no_state_change": 0,
+            "incoming_close_validation_failed": 0,
             "batch_duplicate_mt5_position": 0,
             "batch_validation_skipped": 0,
             "batch_symbol_validation_failed": 0,
@@ -160,7 +168,6 @@ def sync_mt5_trades():
         skipped_count = 0
         error_count = invalid_rows
         timestamp_refresh_count = 0
-        newly_closed_trade_ids = []
 
         for row in normalized_rows:
             mt5_position = _normalize_mt5_position_key(row.get("mt5_position"))
@@ -228,6 +235,33 @@ def sync_mt5_trades():
                         )
                     ):
                         error_count += 1
+                        skip_reason_counts["incoming_close_validation_failed"] += 1
+                        current_app.logger.warning(
+                            "MT5 sync rejected incoming close mt5_account_id=%s mt5_position=%s "
+                            "exit_price=%s closed_at=%s opened_at=%s",
+                            mt5_account_id,
+                            mt5_position,
+                            exit_price,
+                            closed_at,
+                            existing_trade.opened_at,
+                        )
+                        if include_skip_debug and len(skip_debug_rows) < skip_debug_limit:
+                            skip_debug_rows.append(
+                                {
+                                    "reason": "incoming_close_validation_failed",
+                                    "mt5_position": mt5_position,
+                                    "detail": "exit_price missing/non-positive or closed_at before opened_at",
+                                    "incoming_exit_price": exit_price,
+                                    "incoming_closed_at": closed_at.isoformat()
+                                    if closed_at is not None
+                                    else None,
+                                    "existing_opened_at": (
+                                        existing_trade.opened_at.isoformat()
+                                        if existing_trade.opened_at is not None
+                                        else None
+                                    ),
+                                }
+                            )
                         continue
                     existing_trade.exit_price = float(exit_price)
                     existing_trade.pnl = float(row.get("pnl")) if row.get("pnl") is not None else None
@@ -245,7 +279,6 @@ def sync_mt5_trades():
                     if row.get("system_trade_note"):
                         existing_trade.system_trade_note = row.get("system_trade_note")
                     updated_count += 1
-                    newly_closed_trade_ids.append(existing_trade.id)
                     continue
 
             if existing_trade.closed_at is None and row.get("closed_at") is not None:
@@ -260,6 +293,33 @@ def sync_mt5_trades():
                     )
                 ):
                     error_count += 1
+                    skip_reason_counts["incoming_close_validation_failed"] += 1
+                    current_app.logger.warning(
+                        "MT5 sync rejected incoming close mt5_account_id=%s mt5_position=%s "
+                        "exit_price=%s closed_at=%s opened_at=%s",
+                        mt5_account_id,
+                        mt5_position,
+                        exit_price,
+                        closed_at,
+                        existing_trade.opened_at,
+                    )
+                    if include_skip_debug and len(skip_debug_rows) < skip_debug_limit:
+                        skip_debug_rows.append(
+                            {
+                                "reason": "incoming_close_validation_failed",
+                                "mt5_position": mt5_position,
+                                "detail": "exit_price missing/non-positive or closed_at before opened_at",
+                                "incoming_exit_price": exit_price,
+                                "incoming_closed_at": closed_at.isoformat()
+                                if closed_at is not None
+                                else None,
+                                "existing_opened_at": (
+                                    existing_trade.opened_at.isoformat()
+                                    if existing_trade.opened_at is not None
+                                    else None
+                                ),
+                            }
+                        )
                     continue
 
                 existing_trade.exit_price = float(exit_price)
@@ -278,7 +338,6 @@ def sync_mt5_trades():
                 if row.get("system_trade_note"):
                     existing_trade.system_trade_note = row.get("system_trade_note")
                 updated_count += 1
-                newly_closed_trade_ids.append(existing_trade.id)
                 continue
 
             skip_reason_counts["existing_already_closed_or_no_state_change"] += 1
@@ -335,9 +394,24 @@ def sync_mt5_trades():
         skip_reason_counts["batch_validation_skipped"] += int(batch_result["validation_skipped"] or 0)
         skip_reason_counts["batch_symbol_validation_failed"] += len(batch_result["failed_symbols"] or [])
 
+        if int(batch_result.get("validation_skipped") or 0) > 0:
+            current_app.logger.warning(
+                "MT5 sync insert batch validation: mt5_account_id=%s rows_queued=%s validation_skipped=%s "
+                "reasons=%s failed_symbols=%s",
+                mt5_account_id,
+                len(rows_to_insert),
+                batch_result["validation_skipped"],
+                batch_result.get("validation_reasons") or {},
+                sorted(batch_result.get("failed_symbols") or []),
+            )
+
         if insert_batch:
             db.session.add_all(insert_batch)
-        account.last_synced_at = utcnow_naive()
+        # If MT5 returned zero trade rows on the account's first-ever sync, do not
+        # stamp last_synced_at — otherwise the worker switches to a short rolling
+        # window and never retries the full-history pull.
+        if not (account.last_synced_at is None and len(normalized_rows) == 0):
+            account.last_synced_at = utcnow_naive()
         db.session.commit()
         current_app.logger.info(
             (
@@ -379,25 +453,8 @@ def sync_mt5_trades():
                     exc,
                 )
 
-        # Dispatch bar fetch for newly closed trades (updated existing + new inserts with closed_at)
-        bar_fetch_trade_ids = list(newly_closed_trade_ids)
-        for trade in insert_batch:
-            if trade.closed_at is not None and trade.id is not None:
-                bar_fetch_trade_ids.append(trade.id)
-        if bar_fetch_trade_ids:
-            try:
-                from celery_workers.mt5_sync import fetch_trade_bars
-                for trade_id in bar_fetch_trade_ids:
-                    fetch_trade_bars.apply_async(
-                        args=[mt5_account_id, trade_id],
-                        queue="mt5_sync",
-                    )
-            except Exception as exc:
-                current_app.logger.warning(
-                    "Bar fetch dispatch failed after MT5 sync for mt5_account_id=%s: %s",
-                    mt5_account_id,
-                    exc,
-                )
+        # Chart OHLC bars are intentionally not queued from MT5 trade sync — admins
+        # use "Backfill Bars" on the MT5 admin row to dispatch fetch_trade_bars tasks.
         response_payload = {
             "saved": saved_count,
             "updated": updated_count,
@@ -408,6 +465,8 @@ def sync_mt5_trades():
             response_payload["timestamp_refreshes"] = timestamp_refresh_count
         if include_skip_reasons:
             response_payload["skip_reasons"] = skip_reason_counts
+            if int(batch_result.get("validation_skipped") or 0) > 0:
+                response_payload["insert_validation_reasons"] = batch_result.get("validation_reasons") or {}
         if include_skip_debug:
             response_payload["skip_debug"] = skip_debug_rows
         return jsonify(response_payload)
@@ -474,6 +533,13 @@ def ingest_trade_bars():
         ]
         db.session.add_all(bar_rows)
         db.session.commit()
+        current_app.logger.info(
+            "MT5 trade bars ingested trade_id=%s mt5_account_id=%s timeframe=%s saved=%s",
+            trade_id,
+            mt5_account_id,
+            timeframe,
+            len(bar_rows),
+        )
         return jsonify({"saved": len(bar_rows), "timeframe": timeframe})
     except Exception as exc:
         db.session.rollback()

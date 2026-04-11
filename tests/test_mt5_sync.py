@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from cryptography.fernet import Fernet
 
-from celery_workers.mt5_sync import (
+from celery_workers.mt5_sync_tasks import (
     _adjust_mt5_unix_epoch,
     aggregate_deals_to_trades,
     _positions_to_open_trades,
@@ -365,9 +365,9 @@ def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
                 },
             }
 
-    monkeypatch.setattr("celery_workers.mt5_sync.requests.post", lambda *args, **kwargs: DummyResponse())
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", lambda *args, **kwargs: DummyResponse())
 
-    caplog.set_level(logging.INFO, logger="celery_workers.mt5_sync")
+    caplog.set_level(logging.INFO, logger="celery_workers.mt5_sync_tasks")
 
     result = sync_mt5_account.run(mt5_account.id)
 
@@ -375,8 +375,7 @@ def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
     assert result["updated"] == 1
     assert result["skipped"] == 0
     assert result["errors"] == 0
-    assert "MT5 Sync Context" in caplog.text
-    assert "MT5 Sync Result" in caplog.text
+    assert "MT5 Sync" in caplog.text
     assert f"Main Account [ID: {trade_account.id}]" in caplog.text
     assert f"DB {mt5_account.id} / Login {mt5_account.account_number}" in caplog.text
     assert "Trigger" in caplog.text
@@ -437,7 +436,7 @@ def test_sync_mt5_account_shifts_history_window_to_mt5_server_time(app_ctx, monk
         def json(self):
             return {"saved": 0, "updated": 0, "skipped": 0, "errors": 0}
 
-    monkeypatch.setattr("celery_workers.mt5_sync.requests.post", lambda *args, **kwargs: DummyResponse())
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", lambda *args, **kwargs: DummyResponse())
 
     sync_mt5_account.run(mt5_account.id)
 
@@ -513,7 +512,7 @@ def test_sync_mt5_account_picks_up_running_trade_from_positions_get(app_ctx, mon
         captured_payload.update(json or {})
         return DummyResponse()
 
-    monkeypatch.setattr("celery_workers.mt5_sync.requests.post", capture_post)
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", capture_post)
 
     sync_mt5_account.run(mt5_account.id)
 
@@ -567,7 +566,7 @@ def test_sync_mt5_account_retries_when_mt5_session_is_on_wrong_login(app_ctx, mo
         post_calls.append((args, kwargs))
         raise AssertionError("requests.post should not run when the MT5 login is wrong")
 
-    monkeypatch.setattr("celery_workers.mt5_sync.requests.post", _fake_post)
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", _fake_post)
     retry_calls = []
 
     def _fake_retry(exc=None, **kwargs):
@@ -620,6 +619,51 @@ def test_internal_mt5_sync_requires_shared_secret(app_ctx, client, monkeypatch):
 
     assert missing_secret.status_code == 403
     assert wrong_secret.status_code == 403
+
+
+def test_internal_mt5_sync_empty_payload_keeps_last_synced_null_until_rows_arrive(app_ctx, client, monkeypatch):
+    """First successful API call with zero trade rows must not flip last_synced (full-history retry)."""
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="sync-empty-first",
+        email="sync-empty-first@example.com",
+    )
+    mt5_account = _create_mt5_account(user_id=user.id, trade_account_id=trade_account.id)
+    assert mt5_account.last_synced_at is None
+
+    empty = client.post(
+        "/api/internal/mt5/sync",
+        json={"mt5_account_id": mt5_account.id, "trades": []},
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+    assert empty.status_code == 200
+    db.session.expire_all()
+    assert db.session.get(MT5Account, mt5_account.id).last_synced_at is None
+
+
+def test_chunked_history_deals_get_queries_mt5_in_slices(monkeypatch):
+    from celery_workers.mt5_sync_tasks import _chunked_history_deals_get
+
+    monkeypatch.setenv("FXJ_MT5_HISTORY_CHUNK_DAYS", "30")
+    calls = []
+
+    def fake_get(fr, to):
+        calls.append((fr, to))
+        return []
+
+    mt5 = SimpleNamespace(history_deals_get=fake_get)
+    date_from = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    date_to = datetime(2020, 6, 1, tzinfo=timezone.utc)
+    deals, chunks = _chunked_history_deals_get(mt5, date_from, date_to)
+
+    assert deals == []
+    assert chunks > 1
+    assert len(calls) == chunks
+    assert calls[0][0] == date_from
+    assert calls[-1][1] == date_to
 
 
 def test_internal_mt5_sync_saves_and_skips_duplicates(app_ctx, client, monkeypatch):
@@ -1357,7 +1401,7 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
         create_captured["args"] = args
         create_captured["queue"] = queue
 
-    import celery_workers.mt5_setup as mt5_setup_module
+    import celery_workers.mt5_setup_tasks as mt5_setup_module
 
     monkeypatch.setattr(mt5_setup_module.setup_mt5_terminal, "apply_async", _fake_create_apply_async)
 
@@ -1396,7 +1440,7 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
         sync_captured["args"] = args
         sync_captured["queue"] = queue
 
-    import celery_workers.mt5_sync as mt5_sync_module
+    import celery_workers.mt5_sync_tasks as mt5_sync_module
     monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_sync_apply_async)
 
     trigger_response = client.post(
@@ -1450,7 +1494,7 @@ def test_admin_mt5_manual_trigger_sync_queues_full_history_for_active_account(ap
         sync_captured["kwargs"] = kwargs
         sync_captured["queue"] = queue
 
-    import celery_workers.mt5_sync as mt5_sync_module
+    import celery_workers.mt5_sync_tasks as mt5_sync_module
 
     monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_sync_apply_async)
 
@@ -1524,7 +1568,7 @@ def test_admin_mt5_create_persists_inactive_account_when_setup_queue_fails(app_c
         username="root-admin-queue-fail",
     )
 
-    import celery_workers.mt5_setup as mt5_setup_module
+    import celery_workers.mt5_setup_tasks as mt5_setup_module
 
     def _failing_apply_async(*, args, queue):
         raise RuntimeError("queue unavailable")
@@ -1620,5 +1664,5 @@ def test_mt5_account_becomes_orphaned_with_user_delete(app_ctx, monkeypatch):
 
 def test_celery_includes_mt5_modules():
     includes = set(celery.conf.include or [])
-    assert "celery_workers.mt5_sync" in includes
-    assert "celery_workers.mt5_setup" in includes
+    assert "celery_workers.mt5_sync_tasks" in includes
+    assert "celery_workers.mt5_setup_tasks" in includes

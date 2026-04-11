@@ -1,7 +1,7 @@
 import os
 from types import SimpleNamespace
 
-import celery_workers.mt5_setup as mt5_setup_module
+import celery_workers.mt5_setup_tasks as mt5_setup_module
 
 
 def _set_missing_psutil(monkeypatch):

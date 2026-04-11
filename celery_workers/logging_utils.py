@@ -1,5 +1,6 @@
 from datetime import datetime
 import logging
+import os
 
 
 def format_log_value(value, *, default="-", max_width=72):
@@ -16,9 +17,29 @@ def format_log_value(value, *, default="-", max_width=72):
     return f"{text_value[: max_width - 3]}..."
 
 
+def _ascii_table_value_max_width():
+    """
+    Widen the Value column for long skip-reason / JSON-ish cells (default 72).
+    Set FXJ_ASCII_LOG_MAX_WIDTH=0 or full on MT5 VMs for untruncated table values.
+    """
+    raw = os.getenv("FXJ_ASCII_LOG_MAX_WIDTH", "").strip().lower()
+    if not raw:
+        return 72
+    if raw in {"0", "full", "none", "unlimited"}:
+        return 1_000_000
+    try:
+        n = int(raw)
+        if n <= 0:
+            return 1_000_000
+        return max(n, 32)
+    except ValueError:
+        return 72
+
+
 def ascii_table(title, rows):
+    value_max = _ascii_table_value_max_width()
     normalized_rows = [
-        (format_log_value(label, default=""), format_log_value(value))
+        (format_log_value(label, default="", max_width=72), format_log_value(value, max_width=value_max))
         for label, value in rows
     ]
     key_header = "Metric"

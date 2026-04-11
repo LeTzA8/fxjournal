@@ -341,78 +341,74 @@
         {% endif %}
 
         {% if show_whats_next_banner %}
-        <section class="panel journey-banner{% if is_state_one %} is-guided{% endif %}">
+        <section class="panel journey-banner{% if is_state_one %} is-guided journey-banner--compact{% endif %}">
             <div class="journey-banner-copy">
                 <p class="journey-banner-kicker">What's next</p>
                 <h2 class="journey-banner-title">
                     {% if not has_any_trades %}
-                    Start your journal with real trade history
+                    Add your first trades
                     {% elif not has_closed_trades %}
-                    You have trade history. Now build your first closed-trade sample.
+                    Add closed trades for analytics
                     {% elif weekly_ai_is_generating %}
-                    Your first AI review is on the way
+                    Your first review is generating
                     {% else %}
-                    You are one step away from the full dashboard loop
+                    Finish the loop
                     {% endif %}
                 </h2>
                 <p class="journey-banner-text">
                     {% if not has_any_trades %}
-                    Recommended first step: upload an MT5 report or add a manual closed trade to start filling the journal. Tradovate import works too. Your first weekly AI review appears after at least {{ weekly_ai_min_closed_trades }} closed trades land in a finished trade week on this account.
+                    Import MT5 or Tradovate, or add a trade manually.
                     {% elif not has_closed_trades %}
-                    Your journal has trades, but the dashboard learns most from closed trades with realized PnL. Close a few positions or import more account history to unlock win rate, equity, and session insights.
+                    Closed positions with realized P&amp;L unlock win rate, equity, and sessions.
                     {% elif weekly_ai_is_generating %}
-                    Your trades are in and the system is preparing your first weekly AI review. While that runs, you can spot-check imports in the journal and review the early dashboard stats.
+                    You can review imports and early stats while this finishes.
                     {% else %}
-                    You already have trade data in place. Keep journaling until this account has a finished trade week with at least {{ weekly_ai_min_closed_trades }} closed trades for the first full weekly AI review.
+                    Keep logging until this account completes a week with enough closes for the full review (step 3).
                     {% endif %}
                 </p>
-                {% if is_state_one %}
-                <p class="dashboard-guidance-copy">Recommended first win: upload account history or add a manual closed trade to unlock the rest of the dashboard.</p>
-                {% endif %}
-                <p class="journey-banner-note">Your first weekly review unlocks after at least {{ weekly_ai_min_closed_trades }} closed trades land in a finished trade week on this account.</p>
-                <p class="journey-banner-note">New to journal metrics? Use the <strong>?</strong> icons on dashboard and analytics cards for quick explanations.</p>
+                <p class="journey-banner-tip">Tip: use the <strong>?</strong> icons on cards for metric help.</p>
             </div>
             <div class="journey-steps" aria-label="Getting started progress">
                 <article class="journey-step {% if has_any_trades %}is-complete{% else %}is-current{% endif %}">
                     <p class="journey-step-label">Step 1</p>
-                    <p class="journey-step-title">Add or import trades</p>
+                    <p class="journey-step-title">Trades in</p>
                     <p class="journey-step-copy">
                         {% if has_any_trades %}
-                        Complete
+                        Done
                         {% else %}
-                        Recommended: upload an MT5 report first. Manual entry works too.
+                        Upload a report or add manually.
                         {% endif %}
                     </p>
                 </article>
                 <article class="journey-step {% if has_closed_trades %}is-complete{% elif has_any_trades %}is-current{% endif %}">
                     <p class="journey-step-label">Step 2</p>
-                    <p class="journey-step-title">Build closed-trade context</p>
+                    <p class="journey-step-title">Closed trades</p>
                     <p class="journey-step-copy">
                         {% if has_closed_trades %}
-                        Complete
+                        Done
                         {% elif has_any_trades %}
-                        Close or import completed trades to unlock analytics.
+                        Close or import completed trades.
                         {% else %}
-                        Closed trades power win rate, expectancy, and equity.
+                        Needed for stats and AI context.
                         {% endif %}
                     </p>
                 </article>
                 <article class="journey-step {% if has_ai_review %}is-complete{% elif weekly_ai_is_generating %}is-current{% endif %}">
                     <p class="journey-step-label">Step 3</p>
-                    <p class="journey-step-title">Receive your first AI review</p>
+                    <p class="journey-step-title">Weekly AI review</p>
                     <p class="journey-step-copy">
                         {% if has_ai_review %}
-                        Complete
+                        Done
                         {% elif weekly_ai_is_generating %}
-                        Generating now.
+                        In progress
                         {% else %}
-                        Unlocks after {{ weekly_ai_min_closed_trades }}+ closed trades in a finished week.
+                        After {{ weekly_ai_min_closed_trades }}+ closes in a finished week.
                         {% endif %}
                     </p>
                 </article>
             </div>
             <div class="journey-actions{% if is_state_one %} guided-focus-panel{% endif %}">
-                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">{% if is_state_one %}Upload Report or Add Your First Trade{% else %}Import or Add Trades{% endif %}</a>
+                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">{% if is_state_one %}Add or import trades{% else %}Import or add trades{% endif %}</a>
                 <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
                 {% if has_closed_trades %}
                 <a href="{{ url_for('dashboard.analytics') }}" class="ghost-btn">View Analytics</a>
@@ -487,7 +483,7 @@
                 <article id="mt5-access" class="panel mt5-access-panel mt5-workflow-panel{% if show_mt5_guidance %} is-guided{% endif %}">
                     <div class="panel-head">
                         <div class="panel-title-wrap">
-                            <h2>🔗 MT5 Sync Setup</h2>
+                            <h2>MT5 sync</h2>
                             {% if mt5_selected_account %}
                             <p class="panel-account-note">{{ mt5_selected_account.name }}</p>
                             {% else %}
@@ -533,8 +529,13 @@
                     {% endif %}
 
                     {% if show_mt5_guidance %}
-                    <p class="dashboard-guidance-copy dashboard-guidance-copy-mt5">Connect MT5 for automatic sync{% if is_state_one %} on this account{% endif %}.</p>
-                    <p class="dashboard-guidance-copy dashboard-guidance-copy-mt5">Optional after import: use this when you want ongoing read-only automation.</p>
+                    <p class="mt5-panel-hint">
+                        {% if is_state_one %}
+                        Connect MT5 for automatic sync on this account. Optional once you have trades&mdash;read-only investor password.
+                        {% else %}
+                        Connect MT5 for automatic sync after you have trades. Optional read-only automation (investor password only).
+                        {% endif %}
+                    </p>
                     {% endif %}
                     {% if mt5_batch_state.batches_enabled and mt5_batch_state.public_badge %}
                     <p class="mt5-panel-copy">{{ mt5_batch_state.public_badge }}{% if mt5_batch_state.active_batch %} in {{ mt5_batch_state.active_batch.name }}{% endif %}.</p>
@@ -542,8 +543,7 @@
 
                     {% if mt5_selected_account and mt5_selected_row and not mt5_selected_row.is_linked and mt5_selected_status in ("requestable", "pending") %}
                     {% if mt5_selected_status != "pending" %}
-                    <p class="mt5-panel-copy">Fastest first win is still file import. Use this optional setup when you want ongoing read-only MT5 sync for this account.</p>
-                    <p class="mt5-panel-copy">Submit one form and MyFXJournal will start setup right away. Use investor/read-only credentials only, never a trading or master password.</p>
+                    <p class="mt5-panel-copy">One submit starts setup. Use your investor (read-only) password&mdash;never your master or trading password.</p>
                     {% else %}
                     <p class="mt5-panel-copy">A legacy MT5 record exists for this account. Finish the one-step form below to restart setup.</p>
                     {% endif %}
@@ -562,7 +562,7 @@
                             <div class="mt5-selected-account-card">
                                 <span class="mt5-selected-account-label">Selected Account</span>
                                 <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                                <span class="mt5-selected-account-meta">Your MT5 sync setup details for this CFD account are collected here in one step.</span>
+                                <span class="mt5-selected-account-meta">Credentials apply only to this account.</span>
                             </div>
 
                             <div class="mt5-request-form-alert" data-mt5-form-alert role="status" hidden></div>
@@ -595,7 +595,7 @@
                                             Show
                                         </button>
                                     </div>
-                                    <p class="mt5-card-helper">Use your investor (read-only) password, not your master trading password</p>
+                                    <p class="mt5-card-helper">Read-only investor password, not master</p>
                                 </div>
 
                                 <div class="mt5-form-field">
@@ -613,13 +613,13 @@
 
                             <label class="mt5-card-consent" for="mt5_sync_consent">
                                 <input id="mt5_sync_consent" name="mt5_sync_consent" type="checkbox" value="on" required data-mt5-consent>
-                                <span>I confirm this is my read-only investor password. MyFXJournal cannot place trades or withdraw funds on my behalf.</span>
+                                <span>I confirm this is my read-only investor password.</span>
                             </label>
 
-                            <button type="submit" class="submit-btn" data-mt5-submit disabled>Start MT5 Sync Setup</button>
+                            <button type="submit" class="submit-btn" data-mt5-submit disabled>Start MT5 setup</button>
                         </form>
                     </div>
-                    <p class="mt5-card-footnote">Your investor password is encrypted before storage and kept only for MT5 sync setup and syncing. MyFXJournal can only read account history with investor access.</p>
+                    <p class="mt5-card-footnote">Password encrypted at rest; used only to sync history (read-only).</p>
                     {% elif mt5_selected_status == "queued" and mt5_selected_account %}
                     <p class="mt5-card-empty">MT5 details are saved and setup started right away. We will email you when MT5 sync is ready.</p>
                     <div class="mt5-selected-account-card">
@@ -700,14 +700,13 @@
                 <article id="mt5-access" class="panel mt5-access-panel mt5-overview-panel-empty{% if show_mt5_guidance %} is-guided{% endif %}">
                     <div class="panel-head">
                         <div class="panel-title-wrap">
-                            <h2>🔗 MT5 Sync Setup</h2>
+                            <h2>MT5 sync</h2>
                             <p class="panel-account-note">Create a CFD trade account first, then start MT5 sync setup here.</p>
                         </div>
                         <span class="soft">Optional After Import</span>
                     </div>
                     {% if show_mt5_guidance %}
-                    <p class="dashboard-guidance-copy dashboard-guidance-copy-mt5">Connect MT5 for automatic sync{% if is_state_one %} after you add the right account{% endif %}.</p>
-                    <p class="dashboard-guidance-copy dashboard-guidance-copy-mt5">Optional after import: use this when you want ongoing read-only automation.</p>
+                    <p class="mt5-panel-hint">Optional: Connect MT5 for automatic sync{% if is_state_one %} once this CFD account exists{% endif %} (read-only investor password).</p>
                     {% endif %}
                     <p class="mt5-card-empty">You will see the setup flow here as soon as you have a CFD trade account available.</p>
                     <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
@@ -784,15 +783,20 @@
             </div>
 
             <div class="hero-top-main">
-            <article class="panel notes-panel notes-panel-hero">
+            <article class="panel notes-panel notes-panel-hero{% if is_state_one and not weekly_ai_review %} notes-panel-hero--onboarding{% endif %}">
                 <div class="ai-hero-head">
+                    {% if is_state_one and not weekly_ai_review %}
+                    <h2 class="ai-hero-title">Weekly AI Review</h2>
+                    <p class="ai-hero-copy ai-hero-copy--onboarding">Ships after step 3 when you have enough closed trades in a completed week.</p>
+                    {% else %}
                     <div class="ai-hero-badges">
                         <span class="ai-hero-badge">AI Coach</span>
                         <span class="ai-hero-badge is-muted">Weekly Only</span>
                     </div>
                     <p class="ai-hero-kicker">Built from your real trade history</p>
                     <h2 class="ai-hero-title">Weekly AI Review</h2>
-                    <p class="ai-hero-copy">A concise weekly read on consistency, behavior patterns, and what to improve next.</p>
+                    <p class="ai-hero-copy">Consistency, behavior patterns, and what to improve next.</p>
+                    {% endif %}
                 </div>
                 <div class="ai-review-panels">
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-main">
@@ -840,6 +844,7 @@
                         {% endif %}
                     </div>
 
+                    {% if weekly_ai_review or not is_state_one %}
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-improvement">
                         <p class="insight-title">🎯 Actionable Improvement</p>
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.improvement.text %}
@@ -847,7 +852,7 @@
                         {% elif weekly_ai_is_generating %}
                         <p class="insight-body ai-generating-copy muted-value">{{ weekly_ai_empty_message|trim }}</p>
                         {% else %}
-                        <p class="insight-body ai-review-copy ai-review-improvement muted-value">No specific improvement yet. Add more closed trades and check-in context.</p>
+                        <p class="insight-body ai-review-copy ai-review-improvement muted-value">Shows here once your review runs.</p>
                         {% endif %}
                     </div>
 
@@ -858,11 +863,15 @@
                         {% elif weekly_ai_is_generating %}
                         <p class="insight-body ai-generating-copy muted-value">{{ weekly_ai_empty_message|trim }}</p>
                         {% else %}
-                        <p class="insight-body ai-review-copy ai-review-strength muted-value">No specific strength yet. Keep logging clean notes so repeatable behavior is detected.</p>
+                        <p class="insight-body ai-review-copy ai-review-strength muted-value">Shows here once your review runs.</p>
                         {% endif %}
                     </div>
+                    {% endif %}
                 </div>
                 <div class="ai-hero-meta">
+                    {% if is_state_one and not weekly_ai_review %}
+                    <p class="insight-note">Journaling only; not financial advice.</p>
+                    {% else %}
                     <p class="insight-note">
                         Uses the most recent eligible trade week on your active account, with older history as context.
                         {% if weekly_ai_period_label %}
@@ -873,6 +882,7 @@
                     <p class="insight-note">Latest generated: {{ weekly_ai_generated_at_label }}.</p>
                     {% endif %}
                     <p class="insight-note">For journaling and education only. Not financial advice.</p>
+                    {% endif %}
                 </div>
             </article>
             {% if not is_state_one %}
@@ -1537,6 +1547,18 @@
             linear-gradient(145deg, color-mix(in srgb, var(--card) 97%, transparent), color-mix(in srgb, var(--surface) 92%, transparent));
     }
 
+    .journey-banner--compact {
+        gap: 0.72rem;
+        padding: 0.85rem 0.95rem;
+    }
+
+    .journey-banner-tip {
+        margin: 0;
+        font-size: 0.78rem;
+        line-height: 1.4;
+        color: color-mix(in srgb, var(--muted) 92%, var(--ink));
+    }
+
     @property --dashboard-focus-angle {
         syntax: "<angle>";
         initial-value: 0deg;
@@ -1694,6 +1716,13 @@
         width: 100%;
         justify-content: flex-start;
         border-radius: 12px;
+    }
+
+    .mt5-panel-hint {
+        margin: 0 0 0.5rem;
+        font-size: 0.8rem;
+        line-height: 1.45;
+        color: color-mix(in srgb, var(--muted) 88%, var(--ink));
     }
 
     .journey-steps {
@@ -1948,6 +1977,20 @@
         font-size: clamp(0.8rem, 0.94vw, 0.9rem);
         line-height: 1.36;
         color: color-mix(in srgb, var(--muted) 74%, var(--ink)); }
+
+    .notes-panel-hero--onboarding .ai-hero-title {
+        font-size: clamp(1.12rem, 2.1vw, 1.65rem);
+    }
+
+    .ai-hero-copy--onboarding {
+        max-width: 42ch;
+        font-size: 0.86rem;
+    }
+
+    .ai-hero-grid.state-onboarding .notes-panel-hero--onboarding .ai-review-panels {
+        grid-template-columns: 1fr;
+        grid-template-areas: "main";
+    }
 
     .notes-panel-hero .insight-content {
         margin-inline: auto;
