@@ -49,7 +49,9 @@
 {% block footer %}
 <p class="email-muted" style="margin:0 0 8px 0;font-size:13px;color:#66758f;">You are receiving this because you have a MyFXJournal account.</p>
 <p class="email-muted" style="margin:0;font-size:12px;color:#66758f;">
-  <a href="https://myfxjournal.com" class="email-accent" style="color:#3658e8;text-decoration:none;">myfxjournal.com</a>
+  <a href="{{ site_url|default('https://myfxjournal.com') }}" class="email-accent" style="color:#3658e8;text-decoration:none;">{{ site_label|default("myfxjournal.com") }}</a>
+  &nbsp;&middot;&nbsp;
+  <a href="mailto:{{ support_email|default('support@myfxjournal.com') }}" class="email-muted" style="color:#66758f;text-decoration:none;">{{ support_email|default("support@myfxjournal.com") }}</a>
   {% if unsubscribe_url %}
   &nbsp;&middot;&nbsp;
   <a href="{{ unsubscribe_url }}" class="email-muted" style="color:#66758f;text-decoration:none;">Unsubscribe</a>

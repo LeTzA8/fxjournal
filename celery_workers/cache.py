@@ -98,6 +98,8 @@ def invalidate(user_id, trade_account_id=None):
         cache_key("analytics", user_id, trade_account_id),
         cache_key("analytics_v2", user_id, trade_account_id),
         cache_key("analytics_v3", user_id, trade_account_id),
+        cache_key("analytics_v4", user_id, trade_account_id),
+        cache_key("analytics_v5", user_id, trade_account_id),
         cache_key("rr_summary", user_id, trade_account_id),
         cache_key("rr_summary_v2", user_id, trade_account_id),
         cache_key("rr_summary_v3", user_id, trade_account_id),

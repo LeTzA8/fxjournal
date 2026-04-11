@@ -788,9 +788,20 @@ def _log_email_payloads(text_body, html_body=None):
         current_app.logger.info("Email HTML body:\n%s", html_body)
 
 
+def _resolve_email_from_header():
+    """Return Resend/SMTP-style From value (optional display name + address)."""
+    raw = os.getenv("EMAIL_FROM", "support@example.com").strip()
+    if "<" in raw and ">" in raw:
+        return raw
+    name = os.getenv("EMAIL_FROM_NAME", "MyFXJournal").strip()
+    if name:
+        return f"{name} <{raw}>"
+    return raw
+
+
 def send_email_placeholder(to_email, subject, text_body, html_body=None):
     provider = os.getenv("EMAIL_PROVIDER", "placeholder").strip().lower()
-    sender = os.getenv("EMAIL_FROM", "noreply@example.com").strip()
+    sender = _resolve_email_from_header()
     send_enabled = os.getenv("EMAIL_SEND_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     api_key = os.getenv("RESEND_API_KEY", "").strip() or os.getenv("EMAIL_API_KEY", "").strip()
     log_email_bodies = _should_log_email_bodies()
