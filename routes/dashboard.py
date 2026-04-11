@@ -323,32 +323,26 @@ def _build_review_text_segments(text, citations):
             continue
 
         best_match = None
-        winning_candidate = None
         for candidate in candidates:
             found = re.search(re.escape(candidate), normalized, flags=re.IGNORECASE)
             if found is None:
                 continue
             if best_match is None:
                 best_match = found
-                winning_candidate = candidate
                 continue
             if found.start() < best_match.start():
                 best_match = found
-                winning_candidate = candidate
             elif found.start() == best_match.start() and found.end() > best_match.end():
                 best_match = found
-                winning_candidate = candidate
 
         if best_match is None:
             continue
-        matched_full_span = bool(full_label and winning_candidate == full_label)
         matches.append(
             {
                 "start": best_match.start(),
                 "end": best_match.end(),
                 "length": best_match.end() - best_match.start(),
                 "citation": citation,
-                "matched_full_span": matched_full_span,
             }
         )
 
@@ -380,15 +374,10 @@ def _build_review_text_segments(text, citations):
         citation = item["citation"]
         if start > cursor:
             segments.append({"type": "text", "text": normalized[cursor:start]})
-        segment_label = (
-            str(citation.get("label") or citation.get("inline_label") or "").strip()
-            if item.get("matched_full_span")
-            else str(citation.get("inline_label") or citation.get("label") or "").strip()
-        )
         segments.append(
             {
                 "type": "citation",
-                "label": segment_label,
+                "label": str(citation.get("label") or citation.get("inline_label") or "").strip(),
                 "citation_type": citation.get("type"),
                 "trade_id": citation.get("trade_id"),
                 "bundle_key": citation.get("bundle_key"),

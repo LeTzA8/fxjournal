@@ -758,15 +758,15 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
         "citation",
         "text",
     ]
-    assert display["summary"]["segments"][0]["label"] == "XAUUSD"
+    assert display["summary"]["segments"][0]["label"] == "XAUUSD | 01 Apr 2026 (Wed)"
     assert display["summary"]["segments"][0]["tone"] == "good"
-    assert display["summary"]["segments"][2]["label"] == "GBPUSD bundle"
+    assert display["summary"]["segments"][2]["label"] == "GBPUSD bundle | 02 Apr 2026 (Thu)"
     assert display["summary"]["segments"][2]["tone"] == "bad"
     assert display["takeaways"][0]["segments"][0]["type"] == "citation"
-    assert display["takeaways"][0]["segments"][0]["label"] == "XAUUSD"
+    assert display["takeaways"][0]["segments"][0]["label"] == "XAUUSD | 01 Apr 2026 (Wed)"
     assert display["takeaways"][0]["segments"][0]["tone"] == "good"
     assert display["takeaways"][1]["segments"][0]["type"] == "citation"
-    assert display["takeaways"][1]["segments"][0]["label"] == "GBPUSD bundle"
+    assert display["takeaways"][1]["segments"][0]["label"] == "GBPUSD bundle | 02 Apr 2026 (Thu)"
     assert display["takeaways"][1]["segments"][0]["tone"] == "bad"
     assert "T1" not in display["improvement"]["text"]
     assert display["improvement"]["citations"] == []
@@ -942,10 +942,10 @@ def test_weekly_ai_review_display_autocites_unique_symbol_mentions():
     display = dashboard_routes._build_weekly_ai_review_display(review, "UTC")
 
     assert display["summary"]["segments"][0]["type"] == "citation"
-    assert display["summary"]["segments"][0]["label"] == "EURCHF"
+    assert display["summary"]["segments"][0]["label"] == "EURCHF | 03 Apr 2026 (Fri)"
     assert display["summary"]["segments"][0]["tone"] == "good"
     assert display["takeaways"][0]["segments"][0]["type"] == "citation"
-    assert display["takeaways"][0]["segments"][0]["label"] == "EURCHF"
+    assert display["takeaways"][0]["segments"][0]["label"] == "EURCHF | 03 Apr 2026 (Fri)"
     assert display["improvement"]["segments"] == [
         {"type": "text", "text": display["improvement"]["text"]},
     ]
