@@ -14,7 +14,10 @@ def test_robots_txt_exposes_sitemap_and_private_paths(client):
 
     assert response.status_code == 200
     assert b"User-agent: *" in response.data
-    assert b"Disallow: /dashboard/" in response.data
+    assert b"Disallow: /login" not in response.data
+    assert b"Disallow: /register" not in response.data
+    assert b"Disallow: /dashboard/" not in response.data
+    assert b"Disallow: /password/" in response.data
     assert b"Sitemap: http://localhost:5000/sitemap.xml" in response.data
 
 
@@ -24,6 +27,9 @@ def test_sitemap_xml_lists_public_pages(client):
     assert response.status_code == 200
     assert b'<?xml version="1.0" encoding="UTF-8"?>' in response.data
     assert b"<loc>http://localhost:5000/</loc>" in response.data
+    assert b"<loc>http://localhost:5000/dashboard</loc>" in response.data
+    assert b"<loc>http://localhost:5000/login</loc>" in response.data
+    assert b"<loc>http://localhost:5000/register</loc>" in response.data
     assert b"<loc>http://localhost:5000/contact</loc>" in response.data
     assert b"<loc>http://localhost:5000/privacy</loc>" in response.data
     assert b"<loc>http://localhost:5000/terms</loc>" in response.data
@@ -31,6 +37,33 @@ def test_sitemap_xml_lists_public_pages(client):
     assert b"<loc>http://localhost:5000/mt5-trading-journal</loc>" in response.data
     assert b"<loc>http://localhost:5000/forex-trading-journal</loc>" in response.data
     assert b"<loc>http://localhost:5000/weekly-trading-review</loc>" in response.data
+
+
+def test_login_page_has_indexable_metadata(client):
+    response = client.get("/login")
+
+    assert response.status_code == 200
+    assert b"Sign in to MyFXJournal" in response.data
+    assert b'<meta name="robots" content="index, follow">' in response.data
+    assert b'href="http://localhost:5000/login"' in response.data
+
+
+def test_register_page_has_indexable_metadata(client):
+    response = client.get("/register")
+
+    assert response.status_code == 200
+    assert b"Create a MyFXJournal account" in response.data
+    assert b'<meta name="robots" content="index, follow">' in response.data
+    assert b'href="http://localhost:5000/register"' in response.data
+
+
+def test_dashboard_public_gate_has_indexable_metadata(client):
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b"Trading dashboard" in response.data
+    assert b'<meta name="robots" content="index, follow">' in response.data
+    assert b'href="http://localhost:5000/dashboard"' in response.data
 
 
 def test_free_mt5_sync_page_has_indexable_metadata(client):

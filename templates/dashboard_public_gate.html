@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="auth-shell">
+    <div class="auth-topbar">
+        <a href="{{ url_for('landing') }}" class="auth-topbar-brand" aria-label="Go to landing page">
+            <img
+                src="{{ url_for('static', filename='site-logo.png') }}"
+                alt="MyFXJournal Logo"
+                class="auth-topbar-logo"
+            >
+            <span>MyFXJournal</span>
+        </a>
+        <div class="auth-topbar-links">
+            <a href="{{ url_for('landing') }}" class="auth-topbar-link ghost">Back to Landing</a>
+        </div>
+    </div>
+    <div class="login-card">
+        <p class="eyebrow">Trading dashboard</p>
+        <h1>Your journal hub after you sign in</h1>
+        <p class="subtext">
+            The dashboard brings together account-scoped trade history, performance summaries,
+            optional MetaTrader 5 sync status, and the weekly AI review generated from your own closed trades.
+        </p>
+        <div class="auth-reassurance" aria-label="Dashboard highlights">
+            <span>Weekly AI review</span>
+            <span>Account analytics</span>
+            <span>MT5-ready workflow</span>
+        </div>
+        <p class="helper-note auth-helper-copy">
+            New here? Create an account first, then return to this page once you are signed in.
+        </p>
+        <form action="{{ url_for('login') }}" method="get" class="login-form">
+            <button type="submit">Sign in</button>
+        </form>
+        <p class="switch-link">No account yet? <a href="{{ url_for('register') }}">Create one</a></p>
+    </div>
+</section>
+
+{% endblock %}

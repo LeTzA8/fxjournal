@@ -75,7 +75,7 @@ def contact():
         return (
             render_template(
                 "contact.html",
-                title="MyFXJournal | Contact",
+                title="Contact MyFXJournal | Support, MT5 sync and feedback",
                 meta_description="Contact MyFXJournal for support, MT5 sync questions, privacy requests, bug reports, or product feedback.",
                 canonical_url=build_external_url("/contact"),
                 username=session.get("username", "User"),

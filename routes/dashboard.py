@@ -38,6 +38,7 @@ from helpers.core import (
 )
 from helpers.trade_analysis import detect_outliers, get_trade_identity
 from helpers.trends import trend_direction_ei_scores, trend_direction_expectancy_weeks, trend_direction_win_rate_weeks
+from auth_account import build_external_url
 from helpers.utils import login_required, utcnow_naive
 from models import AIGeneratedResponse, Trade, UserProfile, WeeklyCheckin, db
 from trading import (
@@ -1214,8 +1215,22 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
 
 
 @bp.route("/dashboard")
-@login_required
 def home():
+    if not session.get("user_id"):
+        return render_template(
+            "dashboard_public_gate.html",
+            title="Trading dashboard | MyFXJournal weekly AI review and analytics",
+            meta_description=(
+                "Sign in to MyFXJournal to open your trading dashboard: account-scoped analytics, trade history, "
+                "optional MT5 sync, and a concise weekly AI review built from your own executions."
+            ),
+            canonical_url=build_external_url("/dashboard"),
+            body_class="auth-layout",
+        )
+    return _dashboard_home_authenticated()
+
+
+def _dashboard_home_authenticated():
     username = session.get("username", "User")
     user_id = session["user_id"]
     active_trade_account = get_active_trade_account_for_user(user_id)

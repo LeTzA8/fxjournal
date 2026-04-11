@@ -956,7 +956,12 @@ def register_public_auth_routes(
     def render_login_page(*, error=None, success=None, info=None, email=""):
         return render_template(
             "login.html",
-            title="MyFXJournal | Login",
+            title="Sign in to MyFXJournal | Forex trading journal with weekly AI review",
+            meta_description=(
+                "Sign in to MyFXJournal to open your trading dashboard, analytics, MT5 sync, "
+                "and weekly AI review for your forex and CFD accounts."
+            ),
+            canonical_url=build_external_url("/login"),
             body_class="auth-layout",
             error=error,
             success=success,
@@ -979,7 +984,12 @@ def register_public_auth_routes(
         show_signup_code_input = signup_code_mode != SIGNUP_CODE_MODE_OFF
         return render_template(
             "register.html",
-            title="MyFXJournal | Register",
+            title="Create a MyFXJournal account | Free forex trading journal",
+            meta_description=(
+                "Create a free MyFXJournal account during open beta. Import or sync trade history, "
+                "review by account, and get a weekly AI trading review without spreadsheet overhead."
+            ),
+            canonical_url=build_external_url("/register"),
             body_class="auth-layout",
             error=error,
             success=success,
@@ -1311,13 +1321,10 @@ def register_public_auth_routes(
         robots_lines = [
             "User-agent: *",
             "Allow: /",
-            "Disallow: /login",
-            "Disallow: /register",
             "Disallow: /password/",
             "Disallow: /verify-email/",
             "Disallow: /onboarding",
             "Disallow: /auth/google",
-            "Disallow: /dashboard/",
             "Sitemap: " + build_external_url("/sitemap.xml"),
         ]
         return Response("\n".join(robots_lines) + "\n", mimetype="text/plain")
@@ -1326,6 +1333,9 @@ def register_public_auth_routes(
     def sitemap_xml():
         public_urls = (
             build_external_url("/"),
+            build_external_url("/dashboard"),
+            build_external_url("/login"),
+            build_external_url("/register"),
             build_external_url("/contact"),
             build_external_url("/privacy"),
             build_external_url("/terms"),
@@ -1344,7 +1354,7 @@ def register_public_auth_routes(
     def privacy_policy():
         return render_template(
             "privacy_policy.html",
-            title="MyFXJournal | Privacy Policy",
+            title="Privacy Policy | MyFXJournal data, MT5 sync and your rights",
             meta_description="Read how MyFXJournal handles personal data, privacy requests, MT5 sync information, and account data for the trading journal service.",
             canonical_url=build_external_url("/privacy"),
             last_updated=legal_last_updated,
@@ -1355,7 +1365,7 @@ def register_public_auth_routes(
     def terms_and_conditions():
         return render_template(
             "terms_and_conditions.html",
-            title="MyFXJournal | Terms and Conditions",
+            title="Terms of use | MyFXJournal trading journal service",
             meta_description="Review the terms for using MyFXJournal, including account responsibilities, acceptable use, MT5 sync conditions, and service limitations.",
             canonical_url=build_external_url("/terms"),
             last_updated=legal_last_updated,

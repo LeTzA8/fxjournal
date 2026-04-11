@@ -41,6 +41,7 @@ Short-term operational memory.
 - AI role/taste guidance refinement in `context/ROLES.md`, `AGENTS.md`, and `CLAUDE.md`
 - Public acquisition messaging polish across `auth_account.py`, `templates/landing.html`, `templates/seo_page.html`, `templates/register.html`, `templates/login.html`, and `templates/base.html`
 - Second-pass landing/auth copy tightening for clearer review-first positioning and lower perceived signup friction
+- Public SEO: `robots.txt` allows `/login`, `/register`, and `/dashboard`; sitemap lists `/`, `/dashboard`, `/login`, `/register`, contact, legal, and SEO landing slugs; signed-out `/dashboard` serves an indexable gate page (`dashboard_public_gate.html`); login/register use dedicated titles, meta descriptions, and canonicals; `base.html` adds `og:locale` and `WebSite` JSON-LD; contact page title refined for SERPs
 
 ## Next Priorities
 

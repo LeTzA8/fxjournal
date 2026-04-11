@@ -6,7 +6,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    {% set should_noindex = is_app_layout or request.path.startswith('/login') or request.path.startswith('/register') or request.path.startswith('/password/') or request.path.startswith('/verify-email') or request.path.startswith('/onboarding') or request.path.startswith('/auth/google') %}
+    {% set should_noindex = is_app_layout or request.path.startswith('/password/') or request.path.startswith('/verify-email') or request.path.startswith('/onboarding') or request.path.startswith('/auth/google') %}
     {% set resolved_meta_robots = meta_robots or ('noindex, nofollow' if should_noindex else 'index, follow') %}
     {% set resolved_canonical_url = canonical_url or default_canonical_url %}
     <title>{{ title or "MyFXJournal | Free Forex Trading Journal With Weekly AI Review" }}</title>
@@ -16,6 +16,7 @@
     <meta property="og:title" content="{{ title or 'MyFXJournal | Free Forex Trading Journal With Weekly AI Review' }}">
     <meta property="og:description" content="{{ meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
     <meta property="og:type" content="website">
+    <meta property="og:locale" content="en_GB">
     <meta property="og:site_name" content="MyFXJournal">
     <meta property="og:url" content="{{ resolved_canonical_url }}">
     <meta property="og:image" content="{{ url_for('static', filename='dashboard.png', v='1', _external=True) }}">
@@ -49,6 +50,23 @@
             "name": "MyFXJournal",
             "url": {{ url_for('landing', _external=True)|tojson }},
             "logo": {{ url_for('static', filename='site-logo.png', v='1', _external=True)|tojson }}
+        }
+    </script>
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "MyFXJournal",
+            "url": {{ url_for('landing', _external=True)|tojson }},
+            "description": {{ (meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.')|tojson }},
+            "publisher": {
+                "@type": "Organization",
+                "name": "MyFXJournal",
+                "logo": {
+                    "@type": "ImageObject",
+                    "url": {{ url_for('static', filename='site-logo.png', v='1', _external=True)|tojson }}
+                }
+            }
         }
     </script>
     <script>
