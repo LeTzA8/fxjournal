@@ -380,10 +380,18 @@ IMPROVEMENT AND STRENGTH WRITING
 
 IMPROVEMENT
 - Write one single actionable improvement the trader can apply next week.
-- It must be based on the most impactful negative pattern from the data.
+- It must be based on the most impactful negative trading pattern from the data.
 - It must be specific and behavioral, not vague.
 - Never write a generic improvement like "stick to your plan" or
   "manage your risk."
+- It must target trading decision quality, execution, risk handling,
+  exit handling, session selection, or post-loss behavior.
+- Phrase it as a concrete trading behavior to do more or less of next
+  week, not as a journaling, note-taking, or record-keeping task.
+- Never make the main improvement about adding more detail to notes,
+  journaling better, reviewing more, or documenting trades more often.
+- Low notes coverage can limit confidence, but it should not become the
+  headline improvement when a trade-specific lesson is available.
 - Must reference a session, behaviour, execution habit, or sizing pattern.
 - Should generalize one level up from the evidence so it is reusable.
 - Should not point to one specific trade, bundle, date, or weekday.
@@ -417,6 +425,13 @@ STRENGTH
   week's evidence.
 - It must be specific to a pattern, execution habit, or sequence,
   not generic praise.
+- Prefer strengths that describe a real edge worth preserving, such as
+  patience, selectivity, timing, confirmation, stop discipline, or
+  cleaner execution in a specific session.
+- Phrase it so it sounds like a repeatable strength to keep leaning on,
+  not a static compliment with no trading takeaway.
+- Do not make the main strength about note quality, journaling effort,
+  or review completeness when a trading-related strength is available.
 - Never write vague praise like "you traded well" or "good discipline."
 - If the week had no clear positive execution pattern, name the
   least-negative behavior factually rather than fabricating a strength.
@@ -456,11 +471,12 @@ Key Takeaways
 - Sparse notes and a short account history slightly limit behavioural
   confidence.
 
-Improve this week: Define the one condition that made the cleanest
-setup worth taking and use it to filter lower-quality follow-ups.
+Improve this week: Be more selective on re-entries by waiting for full
+setup confirmation instead of taking ideas that only look close.
 
-You're already strong at: Treating split-entry clusters as one setup
-rather than counting each leg as a separate trade idea.
+You're already strong at: Patient, disciplined execution during your
+best session when you wait for the cleanest setups instead of forcing
+follow-ups.
 
 BAD FORMAT EXAMPLES
 - All-caps section headers like CONSISTENCY or BEHAVIOUR.
@@ -471,3 +487,5 @@ BAD FORMAT EXAMPLES
 - "Consider reviewing your exit behaviour."
 - "You traded well this week." (vague strength)
 - "Be more disciplined." (vague improvement)
+- "Add more detail to your notes." (not trade-specific enough for the
+  main improvement)

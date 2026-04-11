@@ -758,15 +758,15 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
         "citation",
         "text",
     ]
-    assert display["summary"]["segments"][0]["label"] == "XAUUSD | 01 Apr 2026 (Wed)"
+    assert display["summary"]["segments"][0]["label"] == "XAUUSD"
     assert display["summary"]["segments"][0]["tone"] == "good"
-    assert display["summary"]["segments"][2]["label"] == "GBPUSD bundle | 02 Apr 2026 (Thu)"
+    assert display["summary"]["segments"][2]["label"] == "GBPUSD bundle"
     assert display["summary"]["segments"][2]["tone"] == "bad"
     assert display["takeaways"][0]["segments"][0]["type"] == "citation"
-    assert display["takeaways"][0]["segments"][0]["label"] == "XAUUSD | 01 Apr 2026 (Wed)"
+    assert display["takeaways"][0]["segments"][0]["label"] == "XAUUSD"
     assert display["takeaways"][0]["segments"][0]["tone"] == "good"
     assert display["takeaways"][1]["segments"][0]["type"] == "citation"
-    assert display["takeaways"][1]["segments"][0]["label"] == "GBPUSD bundle | 02 Apr 2026 (Thu)"
+    assert display["takeaways"][1]["segments"][0]["label"] == "GBPUSD bundle"
     assert display["takeaways"][1]["segments"][0]["tone"] == "bad"
     assert "T1" not in display["improvement"]["text"]
     assert display["improvement"]["citations"] == []
@@ -808,6 +808,80 @@ def test_rewrite_review_text_refs_drops_stray_clitic_after_brackets_and_labels()
         lookup,
     )
     assert out_day == "The day trade was fine."
+
+
+def test_rewrite_review_text_refs_drops_clitic_after_full_dated_label():
+    """Strip 'd/s' glued to closing paren when the model wrote the full pill text (e.g. gold bleed)."""
+    lookup = {
+        "B1": {
+            "ref": "B1",
+            "type": "bundle",
+            "bundle_key": "bundle-key",
+            "inline_label": "XAUUSD bundle",
+            "label": "XAUUSD bundle | 06 Apr 2026 (Mon)",
+            "tone": "bad",
+        }
+    }
+    out = dashboard_routes._rewrite_review_text_refs(
+        "Drawdown from XAUUSD bundle | 06 Apr 2026 (Mon)d position dominated.",
+        lookup,
+    )
+    assert out == "Drawdown from XAUUSD bundle | 06 Apr 2026 (Mon) position dominated."
+
+    out_spaced = dashboard_routes._rewrite_review_text_refs(
+        "Drawdown from XAUUSD bundle | 06 Apr 2026 (Mon) d position dominated.",
+        lookup,
+    )
+    assert out_spaced == "Drawdown from XAUUSD bundle | 06 Apr 2026 (Mon) position dominated."
+
+
+def test_weekly_ai_review_display_segments_span_full_label_when_present():
+    """Prefer matching the full dated label so the pill replaces the entire phrase (no stray tail)."""
+    review = type(
+        "Review",
+        (),
+        {
+            "response_text": "Unused",
+            "response_meta_json": json.dumps(
+                {
+                    "summary": {
+                        "text": (
+                            "Loss tied to XAUUSD bundle | 06 Apr 2026 (Mon) "
+                            "when risk spiked."
+                        ),
+                        "refs": ["B1"],
+                    },
+                    "takeaways": [],
+                    "improvement": {"text": "", "refs": []},
+                    "strength": {"text": "", "refs": []},
+                }
+            ),
+            "payload_json": json.dumps(
+                {
+                    "trades": [
+                        {
+                            "review_ref": "B1",
+                            "trade_id": 1,
+                            "symbol": "XAUUSD",
+                            "opened_at": "2026-04-06T12:00:00Z",
+                            "pnl": -50.0,
+                            "is_bundle": True,
+                            "bundle_pubkey": "bundle-abc",
+                        }
+                    ]
+                }
+            ),
+        },
+    )()
+
+    display = dashboard_routes._build_weekly_ai_review_display(review, "UTC")
+    segs = display["summary"]["segments"]
+    cite = next(s for s in segs if s["type"] == "citation")
+    assert cite["label"] == "XAUUSD bundle | 06 Apr 2026 (Mon)"
+    after = segs[segs.index(cite) + 1]
+    assert after["type"] == "text"
+    assert "| 06 Apr" not in after["text"]
+    assert after["text"].startswith(" when risk")
 
 
 def test_weekly_ai_review_display_autocites_unique_symbol_mentions():
@@ -868,10 +942,10 @@ def test_weekly_ai_review_display_autocites_unique_symbol_mentions():
     display = dashboard_routes._build_weekly_ai_review_display(review, "UTC")
 
     assert display["summary"]["segments"][0]["type"] == "citation"
-    assert display["summary"]["segments"][0]["label"] == "EURCHF | 03 Apr 2026 (Fri)"
+    assert display["summary"]["segments"][0]["label"] == "EURCHF"
     assert display["summary"]["segments"][0]["tone"] == "good"
     assert display["takeaways"][0]["segments"][0]["type"] == "citation"
-    assert display["takeaways"][0]["segments"][0]["label"] == "EURCHF | 03 Apr 2026 (Fri)"
+    assert display["takeaways"][0]["segments"][0]["label"] == "EURCHF"
     assert display["improvement"]["segments"] == [
         {"type": "text", "text": display["improvement"]["text"]},
     ]

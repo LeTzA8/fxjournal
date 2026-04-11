@@ -80,6 +80,7 @@ def _create_user_with_account():
 def test_setup_mt5_terminal_sends_ready_email_when_account_becomes_active(app_ctx, monkeypatch, tmp_path):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.com")
 
     user, trade_account, mt5_account = _create_user_with_account()
 
@@ -129,3 +130,7 @@ def test_setup_mt5_terminal_sends_ready_email_when_account_becomes_active(app_ct
     assert captured["to_email"] == user.email
     assert captured["subject"] == "Your MT5 sync is ready"
     assert "your MT5 sync is ready" in captured["text_body"]
+    assert captured["html_body"] is not None
+    assert "Your MT5 sync is ready." in captured["html_body"]
+    assert "Ready Account" in captured["html_body"]
+    assert "77112233" in captured["html_body"]

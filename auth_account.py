@@ -258,6 +258,10 @@ def build_external_url(path_or_url):
     return f"{get_public_base_url()}{path_or_url}"
 
 
+def render_app_template(template_name, **context):
+    return current_app.jinja_env.get_template(template_name).render(**context)
+
+
 def _build_admin_mt5_status(*, account, request_row=None):
     if getattr(account, "is_orphaned", False):
         return {

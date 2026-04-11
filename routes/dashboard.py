@@ -151,10 +151,18 @@ def _build_weekly_review_citation_lookup(payload_json, timezone_name):
     return lookup
 
 
-_STRAY_CLITIC_AFTER_LABEL_SUFFIX = (
-    r"\s+[ds]\s+"
-    r"(?=trade|trades|loss|losses|win|wins|winner|losers?|idea|ideas|setup|setups|"
+_STRAY_CLITIC_KEYWORD_LOOKAHEAD = (
+    r"(?:trade|trades|loss|losses|win|wins|winner|losers?|idea|ideas|setup|setups|"
     r"entry|entries|exit|exits|position|positions|scalp|runner)\b"
+)
+
+_STRAY_CLITIC_AFTER_LABEL_SUFFIX = (
+    rf"\s+[ds]\s+(?={_STRAY_CLITIC_KEYWORD_LOOKAHEAD})"
+)
+
+# Model sometimes omits the space before a clitic (e.g. "(Mon)d position" from "gold" bleed-through).
+_GLUED_CLITIC_AFTER_LABEL = (
+    rf"['\u2019']?[ds](?=\s*(?:{_STRAY_CLITIC_KEYWORD_LOOKAHEAD}))"
 )
 
 
@@ -168,19 +176,27 @@ def _strip_stray_possessive_after_review_labels(text, citation_lookup):
     for citation in citation_lookup.values():
         if not isinstance(citation, dict):
             continue
-        label = str(citation.get("inline_label") or "").strip()
-        if not label:
-            continue
-        key = label.lower()
-        if key in seen:
-            continue
-        seen.add(key)
+        for raw in (
+            str(citation.get("label") or "").strip(),
+            str(citation.get("inline_label") or "").strip(),
+        ):
+            if not raw:
+                continue
+            key = raw.lower()
+            if key in seen:
+                continue
+            seen.add(key)
 
-        normalized = re.sub(
-            rf"(?i){re.escape(label)}{_STRAY_CLITIC_AFTER_LABEL_SUFFIX}",
-            f"{label} ",
-            normalized,
-        )
+            normalized = re.sub(
+                rf"(?i){re.escape(raw)}{_STRAY_CLITIC_AFTER_LABEL_SUFFIX}",
+                f"{raw} ",
+                normalized,
+            )
+            normalized = re.sub(
+                rf"(?i){re.escape(raw)}{_GLUED_CLITIC_AFTER_LABEL}",
+                f"{raw} ",
+                normalized,
+            )
     return normalized
 
 
@@ -296,18 +312,43 @@ def _build_review_text_segments(text, citations):
 
     matches = []
     for citation in deduped_citations:
-        label = str(citation.get("inline_label") or "").strip()
-        if not label:
+        full_label = str(citation.get("label") or "").strip()
+        short_label = str(citation.get("inline_label") or "").strip()
+        candidates = []
+        if full_label:
+            candidates.append(full_label)
+        if short_label and short_label != full_label:
+            candidates.append(short_label)
+        if not candidates:
             continue
-        match = re.search(re.escape(label), normalized, flags=re.IGNORECASE)
-        if match is None:
+
+        best_match = None
+        winning_candidate = None
+        for candidate in candidates:
+            found = re.search(re.escape(candidate), normalized, flags=re.IGNORECASE)
+            if found is None:
+                continue
+            if best_match is None:
+                best_match = found
+                winning_candidate = candidate
+                continue
+            if found.start() < best_match.start():
+                best_match = found
+                winning_candidate = candidate
+            elif found.start() == best_match.start() and found.end() > best_match.end():
+                best_match = found
+                winning_candidate = candidate
+
+        if best_match is None:
             continue
+        matched_full_span = bool(full_label and winning_candidate == full_label)
         matches.append(
             {
-                "start": match.start(),
-                "end": match.end(),
-                "length": len(label),
+                "start": best_match.start(),
+                "end": best_match.end(),
+                "length": best_match.end() - best_match.start(),
                 "citation": citation,
+                "matched_full_span": matched_full_span,
             }
         )
 
@@ -339,10 +380,15 @@ def _build_review_text_segments(text, citations):
         citation = item["citation"]
         if start > cursor:
             segments.append({"type": "text", "text": normalized[cursor:start]})
+        segment_label = (
+            str(citation.get("label") or citation.get("inline_label") or "").strip()
+            if item.get("matched_full_span")
+            else str(citation.get("inline_label") or citation.get("label") or "").strip()
+        )
         segments.append(
             {
                 "type": "citation",
-                "label": str(citation.get("label") or citation.get("inline_label") or "").strip(),
+                "label": segment_label,
                 "citation_type": citation.get("type"),
                 "trade_id": citation.get("trade_id"),
                 "bundle_key": citation.get("bundle_key"),

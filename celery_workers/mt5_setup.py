@@ -31,6 +31,8 @@ APPDATA_TERMINAL_PATH = os.path.join(
     "Terminal",
 )
 IGNORED_APPDATA_FOLDERS = {"Common", "Community"}
+MT5_SETUP_VERIFY_ATTEMPTS = 2
+MT5_SETUP_VERIFY_RETRY_DELAY_SECONDS = 2
 
 
 def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
@@ -173,9 +175,20 @@ def _send_mt5_ready_email(account):
     if user is None or not getattr(user, "email", None):
         return
 
-    from auth_account import send_email_placeholder
+    from auth_account import get_public_base_url, render_app_template, send_email_placeholder
 
     try:
+        trade_account = getattr(account, "trade_account", None)
+        account_name = getattr(trade_account, "name", None) or f"MT5 account {account.account_number}"
+        base_url = get_public_base_url()
+        html_body = render_app_template(
+            "emails/mt5-ready.html",
+            name=user.username,
+            account_name=account_name,
+            account_number=account.account_number,
+            dashboard_url=f"{base_url}/dashboard",
+            logo_url=f"{base_url}/static/site-logo.png",
+        )
         send_email_placeholder(
             user.email,
             "Your MT5 sync is ready",
@@ -183,6 +196,7 @@ def _send_mt5_ready_email(account):
                 f"Hi {user.username}, your MT5 sync is ready for {account.account_number}. "
                 "Open your dashboard any time to review the account and let the journal keep syncing automatically."
             ),
+            html_body=html_body,
         )
     except Exception as exc:
         log_ascii_table(
@@ -196,6 +210,85 @@ def _send_mt5_ready_email(account):
             ],
             level=logging.WARNING,
         )
+
+
+def _mt5_last_error(mt5):
+    last_error = getattr(mt5, "last_error", None)
+    if callable(last_error):
+        try:
+            return last_error()
+        except Exception as exc:
+            return f"last_error() failed: {exc}"
+    return "last_error unavailable"
+
+
+def _verify_mt5_terminal_login(
+    mt5,
+    *,
+    terminal_exe: str,
+    login: int,
+    investor_password: str,
+    server: str,
+    task_id=None,
+    mt5_account_id=None,
+    user_id=None,
+    trade_account_id=None,
+):
+    for attempt in range(1, MT5_SETUP_VERIFY_ATTEMPTS + 1):
+        retry_in_seconds = None
+        try:
+            result = mt5.initialize(
+                path=terminal_exe,
+                login=login,
+                password=investor_password,
+                server=server,
+                timeout=60000,
+            )
+
+            if not result:
+                error = _mt5_last_error(mt5)
+                raise RuntimeError(f"mt5.initialize() failed: {error}")
+
+            account_info = mt5.account_info()
+            if account_info is None:
+                error = _mt5_last_error(mt5)
+                raise RuntimeError(f"mt5.account_info() returned None: {error}")
+
+            actual_login = getattr(account_info, "login", None)
+            if actual_login != login:
+                raise RuntimeError(
+                    f"Wrong account logged in: expected {login}, got {actual_login}"
+                )
+
+            return
+        except RuntimeError as exc:
+            if attempt >= MT5_SETUP_VERIFY_ATTEMPTS:
+                raise
+
+            retry_in_seconds = MT5_SETUP_VERIFY_RETRY_DELAY_SECONDS
+            log_ascii_table(
+                logger,
+                "MT5 Setup Verification Retry",
+                [
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("User ID", user_id),
+                    ("Trade Account ID", trade_account_id),
+                    ("Account", _mask_account_number_for_log(login)),
+                    ("Server", server),
+                    ("Attempt", f"{attempt}/{MT5_SETUP_VERIFY_ATTEMPTS}"),
+                    ("Retry In", f"{retry_in_seconds}s"),
+                    ("Error", exc),
+                ],
+                level=logging.WARNING,
+            )
+        finally:
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+        if retry_in_seconds:
+            time.sleep(retry_in_seconds)
 
 
 @celery.task(bind=True, max_retries=2, default_retry_delay=30, queue="mt5_setup")
@@ -340,30 +433,17 @@ def setup_mt5_terminal(self, mt5_account_id: int):
 
         import MetaTrader5 as mt5
 
-        try:
-            result = mt5.initialize(
-                path=terminal_exe,
-                login=login,
-                password=investor_password,
-                server=server,
-                timeout=60000,
-            )
-
-            if not result:
-                error = mt5.last_error()
-                raise RuntimeError(f"mt5.initialize() failed: {error}")
-
-            account_info = mt5.account_info()
-            if account_info is None:
-                error = mt5.last_error()
-                raise RuntimeError(f"mt5.account_info() returned None: {error}")
-
-            if account_info.login != login:
-                raise RuntimeError(
-                    f"Wrong account logged in: expected {login}, got {account_info.login}"
-                )
-        finally:
-            mt5.shutdown()
+        _verify_mt5_terminal_login(
+            mt5,
+            terminal_exe=terminal_exe,
+            login=login,
+            investor_password=investor_password,
+            server=server,
+            task_id=task_id,
+            mt5_account_id=mt5_account_id,
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+        )
 
         _clear_market_watch_selection(new_appdata, server)
 

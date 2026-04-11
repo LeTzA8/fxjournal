@@ -30,8 +30,7 @@ def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
 
 def _send_weekly_review_email(user_id, result):
     try:
-        from auth_account import get_public_base_url, send_email_placeholder
-        from flask import render_template
+        from auth_account import get_public_base_url, render_app_template, send_email_placeholder
         from models import User
 
         record = result.get("record")
@@ -68,7 +67,7 @@ def _send_weekly_review_email(user_id, result):
         dashboard_url = f"{base_url}/dashboard"
         week_label = period_start.strftime("%d %B %Y") if period_start else ""
 
-        html_body = render_template(
+        html_body = render_app_template(
             "emails/weekly-review.html",
             name=user.username,
             week_label=week_label,
