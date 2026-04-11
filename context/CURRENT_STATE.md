@@ -23,6 +23,7 @@ Short-term operational memory.
 - Legacy MT5 `approved before details` path is being removed so dashboard/trade-account states now stay aligned with the one-step submit-then-review flow
 - Admin MT5 table now uses explicit workflow statuses: Requested, Setting Up, Active, Inactive, while preserving Cleanup Pending for orphaned records
 - Dashboard MT5 messaging, rolling performance/behaviour trend panel, and weekly AI presentation work in `routes/dashboard.py`, `templates/index.html`, and `helpers/trends.py`
+- State-1 onboarding dashboard: “What’s next” journey banner spans full width; MT5 + weekly AI use the same two-column hero as the main dashboard (MT5 left); stacked breakpoint puts MT5 above weekly AI (`templates/index.html`)
 - Weekly AI hero now drafts a split review layout: larger left narrative panel (summary + takeaways) with two right-side micro-panels for one actionable improvement and one strength to reinforce (`templates/index.html`)
 - Light emoji prefixes on major section titles only (dashboard MT5/trades, analytics KPI bands, trade accounts, strategies, trades table); account settings headings stay plain with a calmer single-border overview list (`templates/account.html`)
 - Worker/admin MT5 flow work in `auth_account.py`, `helpers/core.py`, and `celery_workers/mt5_setup.py`
