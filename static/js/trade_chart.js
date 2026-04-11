@@ -16,6 +16,8 @@
     var MAX_CHART_PRICE_DECIMALS = 6;
     /** Bumps when chart is torn down so in-flight candle reveal animations stop. */
     var chartRevealGeneration = 0;
+    /** Cleared in destroyChart so scheduled reveal steps stop. */
+    var chartRevealTimer = null;
     /** From last successful chart-data response: avoids a second HTTP/DB round-trip when toggling M5/M15. */
     var chartPrefetchByTf = null;
     var lastChartReadyMeta = null;
@@ -60,6 +62,10 @@
 
     function destroyChart() {
         chartRevealGeneration += 1;
+        if (chartRevealTimer != null) {
+            clearTimeout(chartRevealTimer);
+            chartRevealTimer = null;
+        }
         if (chartInstance) {
             chartInstance.remove();
             chartInstance = null;
@@ -74,11 +80,52 @@
         }
     }
 
-    /** Ease-in-out cubic; same family as CSS ease-in-out curves used on cards. */
-    function easeInOutCubic(t) {
-        if (t <= 0) return 0;
-        if (t >= 1) return 1;
-        return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    /**
+     * Padded min/max for the full trade window so the price scale stays fixed while candles reveal
+     * (matches landing-style stagger without vertical rescaling).
+     */
+    function tradeChartFixedPriceRange(bars, markers) {
+        var values = [];
+        if (bars && bars.length) {
+            for (var i = 0; i < bars.length; i++) {
+                var b = bars[i];
+                values.push(b.open, b.high, b.low, b.close);
+            }
+        }
+        var m = markers || {};
+        var mk = [m.entry_price, m.stop_loss, m.take_profit, m.exit_price];
+        for (var j = 0; j < mk.length; j++) {
+            if (mk[j] != null && mk[j] !== "") {
+                values.push(Number(mk[j]));
+            }
+        }
+        var minV = Infinity;
+        var maxV = -Infinity;
+        for (var k = 0; k < values.length; k++) {
+            var n = Number(values[k]);
+            if (!isFinite(n)) continue;
+            if (n < minV) minV = n;
+            if (n > maxV) maxV = n;
+        }
+        if (!isFinite(minV) || !isFinite(maxV)) {
+            return null;
+        }
+        var span = maxV - minV;
+        var pad = isFinite(span) && span > 0 ? span * 0.06 : Math.max(Math.abs(minV) * 0.0005, 1e-8);
+        return { minValue: minV - pad, maxValue: maxV + pad };
+    }
+
+    /** Real OHLC for the first `revealedCount` bars; whitespace slots hold the full time span. */
+    function buildCandleRevealData(bars, revealedCount) {
+        var out = [];
+        for (var i = 0; i < bars.length; i++) {
+            if (i < revealedCount) {
+                out.push(bars[i]);
+            } else {
+                out.push({ time: bars[i].time });
+            }
+        }
+        return out;
     }
 
     function buildChartPayloadFromPrefetch(tf) {
@@ -376,7 +423,14 @@
         chartInstance = chart;
         wireChartWheelCapture(chart);
 
-        var series = chart.addCandlestickSeries({
+        var bars = payload.bars;
+        var m = payload.markers || {};
+        var isBuy = (m.side || "").toUpperCase() === "BUY";
+        var pricePrecision = derivePricePrecision(bars, m);
+        var minMove = Math.pow(10, -pricePrecision);
+
+        var fixedRange = tradeChartFixedPriceRange(bars, m);
+        var seriesOpts = {
             upColor: good,
             downColor: bad,
             borderUpColor: good,
@@ -386,13 +440,18 @@
             /* Hide library default “current / last close” line + scale tag; we only show trade lines */
             priceLineVisible: false,
             lastValueVisible: false,
-        });
-
-        var bars = payload.bars;
-        var m = payload.markers || {};
-        var isBuy = (m.side || "").toUpperCase() === "BUY";
-        var pricePrecision = derivePricePrecision(bars, m);
-        var minMove = Math.pow(10, -pricePrecision);
+        };
+        if (fixedRange) {
+            seriesOpts.autoscaleInfoProvider = function () {
+                return {
+                    priceRange: {
+                        minValue: fixedRange.minValue,
+                        maxValue: fixedRange.maxValue,
+                    },
+                };
+            };
+        }
+        var series = chart.addCandlestickSeries(seriesOpts);
 
         series.applyOptions({
             priceFormat: {
@@ -497,31 +556,40 @@
             });
         }
 
-        /* Canvas series can’t use CSS transitions; ease-in-out drives how fast new candles appear. */
+        /*
+         * Landing-style stagger: one candle per tick, fixed price scale, whitespace holds the full time span
+         * so the viewport does not rescale as bars appear (LC canvas has no CSS transition per bar).
+         */
         var revealGen = chartRevealGeneration;
         if (prefersReducedMotion() || bars.length <= 3) {
             series.setData(bars);
             applyTradeChartDecorations();
         } else {
             var n = bars.length;
-            var durationMs = Math.min(2800, Math.max(520, 380 + n * 14));
-            var t0 = performance.now();
-            series.setData(bars.slice(0, 1));
+            var LANDING_STAGGER_MS = 52;
+            var REVEAL_MAX_TOTAL_MS = 2800;
+            var staggerMs = Math.max(12, Math.min(LANDING_STAGGER_MS, Math.floor(REVEAL_MAX_TOTAL_MS / n)));
 
-            function tickBarReveal(now) {
-                if (revealGen !== chartRevealGeneration) return;
-                var u = Math.min(1, (now - t0) / durationMs);
-                var eased = easeInOutCubic(u);
-                var count = u >= 1 ? n : Math.max(1, Math.ceil(eased * n));
-                series.setData(bars.slice(0, count));
-                if (count >= n) {
+            function revealStep(revealedCount) {
+                if (revealGen !== chartRevealGeneration) {
+                    return;
+                }
+                series.setData(buildCandleRevealData(bars, revealedCount));
+                if (revealedCount === 0) {
+                    chart.timeScale().fitContent();
+                }
+                if (revealedCount >= n) {
+                    chartRevealTimer = null;
                     applyTradeChartDecorations();
                     return;
                 }
-                requestAnimationFrame(tickBarReveal);
+                chartRevealTimer = setTimeout(function () {
+                    chartRevealTimer = null;
+                    revealStep(revealedCount + 1);
+                }, staggerMs);
             }
 
-            requestAnimationFrame(tickBarReveal);
+            revealStep(0);
         }
 
         wireResizeOnce();
