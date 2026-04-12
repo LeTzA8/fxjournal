@@ -62,13 +62,13 @@ from trading import (
 bp = Blueprint("dashboard", __name__)
 
 DEFAULT_WEEKLY_AI_EMPTY_MESSAGE = (
-    f"Weekly review needs at least {MIN_CLOSED_TRADES_FOR_ADVICE} closed trade idea(s) on this account "
+    f"Weekly review needs at least {MIN_CLOSED_TRADES_FOR_ADVICE} closed trade(s) on this account "
     "in the active review window."
 )
 WEEKLY_AI_GENERATING_MESSAGE = (
     "Generating your weekly AI review. Check back shortly."
 )
-WEEKLY_AI_NO_TRADES_MESSAGE = "No trades this week. Add closed trade ideas to generate a review."
+WEEKLY_AI_NO_TRADES_MESSAGE = "No trades this week. Add closed trades to generate a review."
 WEEKLY_AI_TOO_FEW_TRADES_MESSAGE = (
     "Limited trade data this week, so the review will stay cautious."
 )
