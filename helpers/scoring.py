@@ -8,6 +8,7 @@ from trading import (
     is_extremely_long_duration_minutes,
     merge_bundled_trades,
     resolve_net_pnl,
+    resolve_planned_risk_dollars,
 )
 
 REVENGE_BASE_WEIGHT = 4.5
@@ -29,6 +30,8 @@ CORRECTIVE_POINTS_CAP = 2.0
 CORRECTIVE_HEURISTIC_SEVERITY_MAX = 0.9
 # Raw score must clear this to count as heuristic corrective (reduces false positives).
 CORRECTIVE_HEURISTIC_MIN_RAW = 1.25
+# Planned risk (stop to entry) outlier vs cohort; same multiplier as legacy lot rule.
+OUTLIER_PLANNED_RISK_RATIO = 3.0
 
 SELF_REPORT_MISMATCH_THRESHOLD = 2.5
 
@@ -126,7 +129,7 @@ def _get_closed_before_sl(trade, trade_pnl):
     )
 
 
-def _get_outlier_size_flag(trade, median_lot_size):
+def _get_outlier_lot_spike_flag(trade, median_lot_size):
     try:
         trade_lot_size = float(getattr(trade, "lot_size", None))
     except (TypeError, ValueError):
@@ -134,8 +137,72 @@ def _get_outlier_size_flag(trade, median_lot_size):
     return bool(
         median_lot_size
         and median_lot_size > 0
-        and trade_lot_size > median_lot_size * 3
+        and trade_lot_size > median_lot_size * OUTLIER_PLANNED_RISK_RATIO
     )
+
+
+def _first_positive_account_size(trades):
+    for trade in trades:
+        account = getattr(trade, "trade_account", None)
+        if account is None:
+            continue
+        raw = getattr(account, "account_size", None)
+        if raw in {None, ""}:
+            continue
+        try:
+            size = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if size > 0:
+            return size
+    return None
+
+
+def _build_outlier_risk_context(closed_trades, median_lot_size):
+    """
+    Per trade identity: outlier_risk = unusual planned risk vs peers (prefer % of
+    account_size when set, else dollar risk at stop). outlier_lot_spike = lot vs
+    median cohort (for copy only; heuristics use outlier_risk).
+    """
+    account_size = _first_positive_account_size(closed_trades)
+    meta_by_identity = {}
+    dollar_risks = []
+    pct_risks = []
+
+    for trade in closed_trades:
+        ident = get_trade_identity(trade)
+        risk_d = resolve_planned_risk_dollars(trade)
+        lot_spike = _get_outlier_lot_spike_flag(trade, median_lot_size)
+        pct = None
+        if risk_d is not None and account_size:
+            pct = (risk_d / account_size) * 100.0
+        meta_by_identity[ident] = {
+            "risk_dollars": risk_d,
+            "risk_pct": pct,
+            "lot_spike": lot_spike,
+        }
+        if risk_d is not None:
+            dollar_risks.append(risk_d)
+        if pct is not None:
+            pct_risks.append(pct)
+
+    median_dollar = statistics.median(dollar_risks) if len(dollar_risks) >= 2 else None
+    median_pct = statistics.median(pct_risks) if len(pct_risks) >= 2 else None
+
+    result = {}
+    for ident, meta in meta_by_identity.items():
+        d = meta["risk_dollars"]
+        pct = meta["risk_pct"]
+        risk_outlier = False
+        if median_pct is not None and median_pct > 0 and pct is not None:
+            risk_outlier = pct > OUTLIER_PLANNED_RISK_RATIO * median_pct
+        elif median_dollar is not None and median_dollar > 0 and d is not None:
+            risk_outlier = d > OUTLIER_PLANNED_RISK_RATIO * median_dollar
+        result[ident] = {
+            "outlier_risk": risk_outlier,
+            "outlier_lot_spike": meta["lot_spike"],
+        }
+    return result
 
 
 def _score_heuristic_corrective_signal(
@@ -251,12 +318,18 @@ def _prepare_closed_trade_signal_inputs(trades):
         if duration_minutes is not None and not is_extremely_long_duration_minutes(duration_minutes):
             durations.append(duration_minutes)
 
+    median_lot_size = statistics.median(lot_sizes) if lot_sizes else None
+    outlier_context = _build_outlier_risk_context(closed_trades, median_lot_size)
     return {
         "closed_trades": closed_trades,
         "annotations": annotations,
-        "median_lot_size": statistics.median(lot_sizes) if lot_sizes else None,
+        "median_lot_size": median_lot_size,
         "median_duration_minutes": statistics.median(durations) if durations else None,
+        "outlier_context": outlier_context,
     }
+
+
+prepare_closed_trade_signal_inputs = _prepare_closed_trade_signal_inputs
 
 
 def build_trade_behavior_signal_map(trades):
@@ -264,6 +337,7 @@ def build_trade_behavior_signal_map(trades):
     annotations = prepared["annotations"]
     median_lot_size = prepared["median_lot_size"]
     median_duration_minutes = prepared["median_duration_minutes"]
+    outlier_context = prepared["outlier_context"]
 
     signal_map = {}
     for trade in trades:
@@ -273,7 +347,10 @@ def build_trade_behavior_signal_map(trades):
         trade_pnl = resolve_net_pnl(trade) if trade_is_closed else None
         duration_minutes = _get_trade_duration_minutes(trade) if trade_is_closed else None
         closed_before_sl = _get_closed_before_sl(trade, trade_pnl) if trade_is_closed else None
-        outlier_size = _get_outlier_size_flag(trade, median_lot_size) if trade_is_closed else False
+        oc = outlier_context.get(identity, {}) if trade_is_closed else {}
+        outlier_risk = bool(oc.get("outlier_risk"))
+        outlier_lot_spike = bool(oc.get("outlier_lot_spike"))
+        outlier_size = outlier_risk
         heuristic_corrective_strength = (
             _normalize_signal_strength(
                 _score_heuristic_corrective_signal(
@@ -362,7 +439,8 @@ def build_trade_behavior_signal_map(trades):
                 "loss_streak_before_trade": annotation.get("loss_streak_before_trade") or 0,
                 "closed_before_sl": closed_before_sl,
                 "quick_duration": quick_duration,
-                "outlier_size": outlier_size,
+                "outlier_size": outlier_risk,
+                "outlier_lot_spike": outlier_lot_spike,
                 "possible_split_order": bool(annotation.get("possible_split_order")),
             },
         }
@@ -401,6 +479,7 @@ def compute_emotional_index(*, trades, weekly_checkin):
     annotations = prepared["annotations"]
     median_lot_size = prepared["median_lot_size"]
     median_duration_minutes = prepared["median_duration_minutes"]
+    outlier_context = prepared["outlier_context"]
 
     heuristic_revenge_trade_count = 0
     heuristic_reactive_trade_count = 0
@@ -419,7 +498,8 @@ def compute_emotional_index(*, trades, weekly_checkin):
         annotation = annotations.get(identity, {})
         trade_pnl = resolve_net_pnl(trade)
         duration_minutes = _get_trade_duration_minutes(trade)
-        outlier_size = _get_outlier_size_flag(trade, median_lot_size)
+        oc = outlier_context.get(identity, {})
+        outlier_size = bool(oc.get("outlier_risk"))
         closed_before_sl = _get_closed_before_sl(trade, trade_pnl)
 
         has_confirmed_revenge = bool(getattr(trade, "is_revenge", False))

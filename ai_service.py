@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import and_, func
 from sqlalchemy.orm import load_only, selectinload
 
-from helpers.scoring import compute_emotional_index
+from helpers.scoring import compute_emotional_index, prepare_closed_trade_signal_inputs
 from helpers.trade_analysis import (
     build_trade_annotations as _build_trade_annotations,
     coerce_float as _coerce_float,
@@ -58,7 +58,7 @@ WEEKLY_CUTOFF_HOUR = 17
 WEEKLY_CUTOFF_MINUTE = 30
 WEEKLY_ACTIVITY_LOOKBACK_DAYS = 3
 MIN_TRADE_IDEAS_FOR_WEEKLY_REVIEW = 1
-MIN_TRADE_IDEAS_FOR_EXPERIMENT = 5
+MIN_TRADE_IDEAS_FOR_EXPERIMENT = MIN_TRADE_IDEAS_FOR_WEEKLY_REVIEW
 # Backward-compatible alias used by route imports/templates.
 MIN_CLOSED_TRADES_FOR_ADVICE = MIN_TRADE_IDEAS_FOR_WEEKLY_REVIEW
 logger = logging.getLogger(__name__)
@@ -1407,7 +1407,6 @@ def build_trade_payload(
     signals = (emotional_index or {}).get("signals", {})
 
     notes_with_content = 0
-    lot_sizes = []
     durations = []
     closed_trade_count = 0
     total_absolute_trade_pnl = 0.0
@@ -1422,9 +1421,6 @@ def build_trade_payload(
             notes_with_content += 1
         if bool(getattr(trade, "_is_bundle", False)):
             bundle_count += 1
-        trade_lot_size = _coerce_float(trade.lot_size)
-        if trade_lot_size is not None:
-            lot_sizes.append(trade_lot_size)
         duration_minutes = _get_trade_duration_minutes(trade)
         if duration_minutes is not None and not is_extremely_long_duration_minutes(duration_minutes):
             durations.append(duration_minutes)
@@ -1441,7 +1437,9 @@ def build_trade_payload(
             largest_trade_abs_pnl = absolute_trade_pnl
             largest_trade_symbol = trade_symbol
 
-    median_lot_size = statistics.median(lot_sizes) if lot_sizes else None
+    sig_inputs = prepare_closed_trade_signal_inputs(trades)
+    median_lot_size = sig_inputs["median_lot_size"]
+    outlier_context = sig_inputs["outlier_context"]
     median_duration_minutes = statistics.median(durations) if durations else None
     notes_coverage = round(notes_with_content / len(trades), 2) if trades else 0.0
     notes_missing = max(len(trades) - notes_with_content, 0)
@@ -1490,7 +1488,6 @@ def build_trade_payload(
         annotation = trade_annotations.get(identity, {})
         trade_pnl = resolve_net_pnl(trade)
         duration_minutes = _get_trade_duration_minutes(trade)
-        trade_lot_size = _coerce_float(trade.lot_size)
         exit_quality = _build_trade_exit_quality(trade, trade_pnl)
         is_bundle_trade = bool(getattr(trade, "_is_bundle", False))
         review_ref = f"B{next_bundle_ref}" if is_bundle_trade else f"T{next_trade_ref}"
@@ -1544,12 +1541,8 @@ def build_trade_payload(
                 "tp_capture_pct": exit_quality["tp_capture_pct"],
                 "closed_before_tp": exit_quality["closed_before_tp"],
                 "closed_before_sl": exit_quality["closed_before_sl"],
-                "outlier_size": bool(
-                    median_lot_size
-                    and median_lot_size > 0
-                    and trade_lot_size is not None
-                    and trade_lot_size > median_lot_size * 3
-                ),
+                "outlier_size": bool(outlier_context.get(identity, {}).get("outlier_risk")),
+                "outlier_lot_spike": bool(outlier_context.get(identity, {}).get("outlier_lot_spike")),
                 "possible_split_order": bool(annotation.get("possible_split_order")),
                 "split_group_size": annotation.get("split_group_size", 1),
                 "split_group_index": annotation.get("split_group_index", 1),
@@ -2215,6 +2208,7 @@ def format_payload_for_prompt(payload):
                 f"   closed_before_tp: {_format_optional_bool(trade.get('closed_before_tp'))}",
                 f"   closed_before_sl: {_format_optional_bool(trade.get('closed_before_sl'))}",
                 f"   outlier_size: {_format_bool(trade.get('outlier_size'))}",
+                f"   outlier_lot_spike: {_format_bool(trade.get('outlier_lot_spike'))}",
                 f"   possible_split_order: {_format_bool(trade.get('possible_split_order'))}",
                 f"   split_group_size: {trade.get('split_group_size') if trade.get('split_group_size') is not None else '-'}",
                 f"   split_group_index: {trade.get('split_group_index') if trade.get('split_group_index') is not None else '-'}",

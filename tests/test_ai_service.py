@@ -172,7 +172,7 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
                 }
             ],
         },
-        "experiment_context": {"eligible": False, "trade_idea_count": 1, "min_required": 5},
+        "experiment_context": {"eligible": False, "trade_idea_count": 1, "min_required": 1},
         "recent_experiments": [{"period_start_utc": "2026-02-17T00:00:00Z", "text": "Reduce add-on entries after losses to one."}],
         "trades": [
             {
@@ -218,6 +218,7 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
                 "closed_before_tp": True,
                 "closed_before_sl": None,
                 "outlier_size": False,
+                "outlier_lot_spike": False,
                 "possible_split_order": False,
                 "split_group_size": 1,
                 "split_group_index": 1,
@@ -303,6 +304,7 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "tp_capture_pct: 35.00%" in prompt_text
     assert "closed_before_tp: true" in prompt_text
     assert "outlier_size: false" in prompt_text
+    assert "outlier_lot_spike: false" in prompt_text
     assert "possible_split_order: false" in prompt_text
     assert "split_group_role: solo" in prompt_text
     assert "is_likely_corrective: false" in prompt_text
@@ -473,6 +475,7 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
                     "closed_before_tp": None,
                     "closed_before_sl": None,
                     "outlier_size": True,
+                    "outlier_lot_spike": True,
                     "possible_split_order": False,
                     "split_group_size": 1,
                     "split_group_index": 1,
@@ -488,6 +491,7 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
     assert "exit_session: London" in prompt_text
     assert "session: -" in prompt_text
     assert "outlier_size: true" in prompt_text
+    assert "outlier_lot_spike: true" in prompt_text
     assert "is_likely_corrective: true" in prompt_text
     assert "is_revenge: false" in prompt_text
     assert "closed_before_tp: -" in prompt_text
@@ -753,6 +757,7 @@ def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, mon
         username="ai-flags-user",
         email="ai-flags@example.com",
     )
+    trade_account.account_size = 100_000.0
 
     trades = [
         Trade(
@@ -775,6 +780,7 @@ def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, mon
             side="BUY",
             entry_price=1.1020,
             exit_price=1.1030,
+            stop_loss=1.1010,
             lot_size=1.0,
             pnl=80.0,
             opened_at=datetime(2026, 3, 10, 10, 1, 0),
@@ -788,6 +794,7 @@ def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, mon
             side="BUY",
             entry_price=1.1030,
             exit_price=1.1040,
+            stop_loss=1.1020,
             lot_size=1.0,
             pnl=90.0,
             opened_at=datetime(2026, 3, 10, 10, 4, 0),
@@ -801,6 +808,7 @@ def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, mon
             side="SELL",
             entry_price=1.2700,
             exit_price=1.2690,
+            stop_loss=1.2710,
             lot_size=4.0,
             pnl=160.0,
             opened_at=datetime(2026, 3, 10, 13, 0, 0),
@@ -840,6 +848,7 @@ def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, mon
     assert {trade["split_group_size"] for trade in eur_trades} == {2}
     assert {trade["split_group_role"] for trade in eur_trades} == {"lead", "add_on"}
     assert gbp_trade["outlier_size"] is True
+    assert gbp_trade["outlier_lot_spike"] is True
     assert gbp_trade["is_likely_corrective"] is True
 
 
@@ -1744,7 +1753,7 @@ def test_maybe_generate_weekly_dashboard_advice_omits_experiment_when_ineligible
             "historical_context": {},
             "summary": {"closed_trades": 1},
             "trades": [{"review_ref": "T1"}],
-            "experiment_context": {"eligible": False, "trade_idea_count": 1, "min_required": 5},
+            "experiment_context": {"eligible": False, "trade_idea_count": 1, "min_required": 1},
         },
     )
     monkeypatch.setattr(
@@ -1816,7 +1825,7 @@ def test_maybe_generate_weekly_dashboard_advice_keeps_experiment_when_eligible(a
             "historical_context": {},
             "summary": {"closed_trades": 5},
             "trades": [{"review_ref": "T1"}],
-            "experiment_context": {"eligible": True, "trade_idea_count": 5, "min_required": 5},
+            "experiment_context": {"eligible": True, "trade_idea_count": 5, "min_required": 1},
         },
     )
     monkeypatch.setattr(

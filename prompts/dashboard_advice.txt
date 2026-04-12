@@ -28,7 +28,7 @@ KNOWN TRADE FIELDS
   is_post_loss_same_symbol_trade, same_trade_idea_reentry,
   is_potential_revenge, is_potential_reactive, planned_rr,
   realized_rr, tp_capture_pct, closed_before_tp, closed_before_sl,
-  outlier_size, possible_split_order, split_group_size,
+  outlier_size, outlier_lot_spike, possible_split_order, split_group_size,
   split_group_index, split_group_role, is_likely_corrective,
   trade_note, is_revenge, is_reactive, is_corrective, is_bundle,
   and bundle_trade_count.
@@ -461,6 +461,7 @@ STRENGTH
 EXPERIMENT
 - Use EXPERIMENT_CONTEXT to decide if an experiment is allowed.
 - If experiment_context.eligible is false, omit the experiment key.
+- If experiment_context.eligible is true, you must include experiment with non-empty experiment.text.
 - If experiment_context.eligible is true, return one experiment that is:
   specific, measurable, testable in one week, and not a repeat of
   RECENT_EXPERIMENTS.

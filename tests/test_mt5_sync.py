@@ -829,6 +829,87 @@ def test_internal_mt5_sync_requires_shared_secret(app_ctx, client, monkeypatch):
     assert wrong_secret.status_code == 403
 
 
+def test_internal_mt5_sync_updates_trade_account_size_from_broker_equity(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="sync-size-equity",
+        email="sync-size-equity@example.com",
+    )
+    trade_account.account_size = 1000.0
+    db.session.commit()
+    mt5_account = _create_mt5_account(user_id=user.id, trade_account_id=trade_account.id)
+
+    resp = client.post(
+        "/api/internal/mt5/sync",
+        json={
+            "mt5_account_id": mt5_account.id,
+            "trades": [],
+            "broker_equity": 52340.5,
+            "broker_balance": 50000.0,
+        },
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+    assert resp.status_code == 200
+    db.session.expire_all()
+    ta = db.session.get(TradeAccount, trade_account.id)
+    assert ta.account_size == pytest.approx(52340.5)
+
+
+def test_internal_mt5_sync_updates_trade_account_size_from_balance_when_no_equity(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="sync-size-balance",
+        email="sync-size-balance@example.com",
+    )
+    trade_account.account_size = 100.0
+    db.session.commit()
+    mt5_account = _create_mt5_account(user_id=user.id, trade_account_id=trade_account.id)
+
+    resp = client.post(
+        "/api/internal/mt5/sync",
+        json={
+            "mt5_account_id": mt5_account.id,
+            "trades": [],
+            "broker_balance": 8800.25,
+        },
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+    assert resp.status_code == 200
+    db.session.expire_all()
+    ta = db.session.get(TradeAccount, trade_account.id)
+    assert ta.account_size == pytest.approx(8800.25)
+
+
+def test_internal_mt5_sync_preserves_account_size_without_broker_fields(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="sync-size-preserve",
+        email="sync-size-preserve@example.com",
+    )
+    trade_account.account_size = 777.0
+    db.session.commit()
+    mt5_account = _create_mt5_account(user_id=user.id, trade_account_id=trade_account.id)
+
+    resp = client.post(
+        "/api/internal/mt5/sync",
+        json={"mt5_account_id": mt5_account.id, "trades": []},
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+    assert resp.status_code == 200
+    db.session.expire_all()
+    ta = db.session.get(TradeAccount, trade_account.id)
+    assert ta.account_size == pytest.approx(777.0)
+
+
 def test_internal_mt5_sync_empty_payload_keeps_last_synced_null_until_rows_arrive(app_ctx, client, monkeypatch):
     """First successful API call with zero trade rows must not flip last_synced (full-history retry)."""
     key = Fernet.generate_key().decode("utf-8")

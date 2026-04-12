@@ -119,6 +119,28 @@ def _normalize_sync_trade_rows(raw_rows):
     return normalized_rows, invalid_rows
 
 
+def _positive_float_from_sync_payload(payload, key):
+    raw = payload.get(key)
+    if raw in {None, ""}:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _account_size_from_mt5_sync_payload(payload):
+    """
+    Live account value for risk-% analytics: prefer equity (includes open PnL),
+    else balance. Both come from MT5 account_info on each sync.
+    """
+    equity = _positive_float_from_sync_payload(payload, "broker_equity")
+    if equity is not None:
+        return equity
+    return _positive_float_from_sync_payload(payload, "broker_balance")
+
+
 @bp.route("/api/internal/mt5/sync", methods=["POST"])
 def sync_mt5_trades():
     sync_secret = os.getenv("MT5_SYNC_SECRET", "").strip()
@@ -452,6 +474,9 @@ def sync_mt5_trades():
         # window and never retries the full-history pull.
         if not (account.last_synced_at is None and len(normalized_rows) == 0):
             account.last_synced_at = utcnow_naive()
+        broker_account_size = _account_size_from_mt5_sync_payload(payload)
+        if broker_account_size is not None:
+            account.trade_account.account_size = broker_account_size
         db.session.commit()
         current_app.logger.info(
             (

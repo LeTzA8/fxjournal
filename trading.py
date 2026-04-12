@@ -1915,6 +1915,53 @@ def calc_pnl_values(symbol, side, entry_price, exit_price, lot_size, instrument_
     return direction * (exit_price - entry_price) * lot_size * contract_size * conversion_rate
 
 
+def resolve_planned_risk_dollars(trade):
+    """
+    Absolute account-currency loss if price tagged stop_loss at entry (planned risk).
+    None when stop/lot/entry are unusable or PnL cannot be priced.
+    """
+    entry_price = getattr(trade, "entry_price", None)
+    stop_loss = getattr(trade, "stop_loss", None)
+    lot_size = getattr(trade, "lot_size", None)
+    side = getattr(trade, "side", None)
+    symbol = getattr(trade, "symbol", None)
+    contract_code = getattr(trade, "contract_code", None)
+    if entry_price is None or stop_loss is None or lot_size is None:
+        return None
+    try:
+        entry_price = float(entry_price)
+        stop_loss = float(stop_loss)
+        lot_size = float(lot_size)
+    except (TypeError, ValueError):
+        return None
+    if lot_size <= 0:
+        return None
+    instrument_type = get_trade_account_type(trade)
+    issues = get_trade_level_validation_issues(
+        entry_price,
+        stop_loss,
+        None,
+        side,
+        symbol,
+        instrument_type=instrument_type,
+        contract_code=contract_code,
+    )
+    if issues["stop_loss_too_close"] or issues["invalid_stop_loss_side"]:
+        return None
+    pnl = calc_pnl_values(
+        symbol,
+        side,
+        entry_price,
+        stop_loss,
+        lot_size,
+        instrument_type=instrument_type,
+        contract_code=contract_code,
+    )
+    if pnl is None:
+        return None
+    return abs(float(pnl))
+
+
 def derive_exit_price(symbol, side, entry_price, lot_size, pnl_value, instrument_type="CFD", contract_code=None):
     if entry_price is None or pnl_value is None:
         return None

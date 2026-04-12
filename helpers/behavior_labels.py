@@ -76,7 +76,10 @@ def _build_reason_snippets(key, signal):
         if context.get("quick_duration"):
             reasons.append("short holding time")
         if context.get("outlier_size"):
-            reasons.append("outlier sizing")
+            if context.get("outlier_lot_spike"):
+                reasons.append("unusually large lot vs your typical risk on the account")
+            else:
+                reasons.append("unusually high risk on the account vs your recent trades")
         if context.get("is_post_loss_trade") or context.get("same_trade_idea_reentry"):
             reasons.append("followed a pressured sequence")
 

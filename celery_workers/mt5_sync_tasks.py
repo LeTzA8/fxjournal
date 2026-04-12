@@ -679,6 +679,16 @@ def sync_mt5_account(
             "include_skip_reasons": True,
             "skip_debug_mode": "full" if verbose_mt5_sync_logs else "worrisome",
         }
+        if mt5_equity is not None:
+            try:
+                sync_payload["broker_equity"] = float(mt5_equity)
+            except (TypeError, ValueError):
+                pass
+        if mt5_balance is not None:
+            try:
+                sync_payload["broker_balance"] = float(mt5_balance)
+            except (TypeError, ValueError):
+                pass
         if recalibrate_trade_timestamps:
             sync_payload["refresh_closed_trade_timestamps"] = True
         response = requests.post(
