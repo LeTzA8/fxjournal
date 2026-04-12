@@ -15,7 +15,14 @@ from celery import Celery
 from celery.app.task import Task as CeleryTask
 from celery.schedules import crontab
 from celery.app import trace as celery_trace
-from celery.signals import task_postrun, task_prerun, worker_ready, worker_shutdown
+from celery.signals import (
+    task_failure,
+    task_postrun,
+    task_prerun,
+    task_retry,
+    worker_ready,
+    worker_shutdown,
+)
 from dotenv import load_dotenv
 
 
@@ -525,3 +532,61 @@ def _decrement_mt5_worker_active_tasks(task=None, sender=None, **kwargs):
             0,
         )
     _refresh_mt5_worker_window_title()
+
+
+@task_failure.connect(weak=False)
+def _fxj_log_task_failure_diagnostic(
+    sender=None,
+    task_id=None,
+    exception=None,
+    args=None,
+    kwargs=None,
+    traceback=None,
+    einfo=None,
+    **extra,
+):
+    """Emit a single copy-paste block on final task failure (after retries exhausted)."""
+    try:
+        from celery_workers.worker_diagnostics import log_worker_task_diagnostic
+
+        task_name = getattr(sender, "name", None) or getattr(sender, "__name__", None)
+        log_worker_task_diagnostic(
+            logging.getLogger("celery.app.task"),
+            phase="task_failure_final",
+            task_name=str(task_name) if task_name else None,
+            task_id=str(task_id) if task_id is not None else None,
+            args=args if args is not None else (),
+            kwargs=kwargs if kwargs is not None else {},
+            exception=exception,
+            traceback_obj=traceback,
+            einfo=einfo,
+        )
+    except Exception as exc:
+        logging.getLogger(__name__).debug(
+            "FXJ task_failure diagnostic hook failed: %s", exc, exc_info=exc
+        )
+
+
+@task_retry.connect(weak=False)
+def _fxj_log_task_retry_diagnostic(sender=None, request=None, reason=None, einfo=None, **extra):
+    """Emit a diagnostic block each time a task schedules a retry (intermittent errors)."""
+    try:
+        from celery_workers.worker_diagnostics import log_worker_task_diagnostic
+
+        task_name = getattr(sender, "name", None)
+        req = request
+        log_worker_task_diagnostic(
+            logging.getLogger("celery.app.task"),
+            phase="task_retry",
+            task_name=str(task_name) if task_name else None,
+            task_id=str(getattr(req, "id", None) or "") or None,
+            args=getattr(req, "args", ()) or (),
+            kwargs=getattr(req, "kwargs", {}) or {},
+            exception=reason,
+            retries=getattr(req, "retries", None),
+            einfo=einfo,
+        )
+    except Exception as exc:
+        logging.getLogger(__name__).debug(
+            "FXJ task_retry diagnostic hook failed: %s", exc, exc_info=exc
+        )

@@ -687,7 +687,26 @@ def sync_mt5_account(
             },
             timeout=int(os.environ.get("FXJ_MT5_SYNC_HTTP_TIMEOUT_SECONDS", "180")),
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            from celery_workers.worker_diagnostics import log_requests_http_error
+
+            log_requests_http_error(
+                logger,
+                exc,
+                title="MT5 Sync HTTP Error (copy for support)",
+                rows=[
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("POST URL", f"{base_url}/api/internal/mt5/sync"),
+                    (
+                        "Timeout seconds",
+                        os.environ.get("FXJ_MT5_SYNC_HTTP_TIMEOUT_SECONDS", "180"),
+                    ),
+                ],
+            )
+            raise
         result = response.json()
         sync_finished_at = datetime.now(timezone.utc)
         skipped_n = int(result.get("skipped") or 0)
@@ -990,30 +1009,50 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             start_dt_shifted = _shift_datetime_by_minutes(start_dt, minutes=mt5_server_delta_minutes)
             end_dt_shifted = _shift_datetime_by_minutes(end_dt, minutes=mt5_server_delta_minutes)
             tf_constant = mt5_timeframe_constant("M5", mt5)
-            raw_bars = []
-            for sym in mt5_symbol_names:
-                chunk = mt5.copy_rates_range(sym, tf_constant, start_dt_shifted, end_dt_shifted)
-                if chunk is not None and len(chunk) > 0:
-                    raw_bars = chunk
-                    symbol = sym
-                    break
-            if not raw_bars:
+
+            def _first_rates(window_from, window_to):
+                for sym in mt5_symbol_names:
+                    chunk = mt5.copy_rates_range(sym, tf_constant, window_from, window_to)
+                    if chunk is not None and len(chunk) > 0:
+                        return sym, chunk
+                return None, None
+
+            bar_normalization_offset = 0
+            fetch_strategy = "none"
+            sym_used, raw_bars = _first_rates(start_dt_shifted, end_dt_shifted)
+            if raw_bars is not None:
+                symbol = sym_used
+                bar_normalization_offset = mt5_server_delta_minutes
+                fetch_strategy = "shifted"
+            else:
+                # Broker/API mismatch: some servers return empty for shifted windows but
+                # accept UTC-aware boundaries (MetaQuotes Python docs). Retry without shift.
+                sym_used, raw_bars = _first_rates(start_dt, end_dt)
+                if raw_bars is not None:
+                    symbol = sym_used
+                    bar_normalization_offset = 0
+                    fetch_strategy = "utc_fallback"
+
+            if raw_bars is None:
                 logger.warning(
                     "Bar fetch no rates mt5_account_id=%s trade_id=%s trade_symbol=%s "
-                    "candidates=%s window_utc=%s..%s last_error=%s",
+                    "candidates=%s delta_min=%s window_shifted=%s..%s window_utc=%s..%s last_error=%s",
                     mt5_account_id,
                     trade_id,
                     trade.symbol,
                     list(mt5_symbol_names),
+                    mt5_server_delta_minutes,
+                    start_dt_shifted.isoformat(),
+                    end_dt_shifted.isoformat(),
                     start_dt.isoformat(),
                     end_dt.isoformat(),
                     mt5.last_error(),
                 )
-            if raw_bars:
+            else:
                 for bar in raw_bars:
                     bar_open_utc = _adjust_mt5_unix_epoch(
                         int(bar["time"]),
-                        offset_minutes=mt5_server_delta_minutes,
+                        offset_minutes=bar_normalization_offset,
                     )
                     bars.append({
                         "time": int(bar_open_utc),
@@ -1038,6 +1077,7 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             ("M5 context", f"{pre_entry_m5_bars} pre / {post_exit_m5_bars} post bars"),
             ("Stored TF", "M5"),
             ("Bars Fetched", len(bars)),
+            ("Fetch strategy", fetch_strategy if fetch_strategy != "none" else "none (no rates)"),
             ("MT5-UTC Delta (min)", mt5_server_delta_minutes),
             ("Window (UTC)", f"{start_dt.isoformat()} -> {end_dt.isoformat()}"),
             ("Duration", duration_label(fetch_started_at, fetch_finished_at)),
@@ -1066,7 +1106,24 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
         },
         timeout=30,
     )
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        from celery_workers.worker_diagnostics import log_requests_http_error
+
+        log_requests_http_error(
+            logger,
+            exc,
+            title="MT5 Trade Bars HTTP Error (copy for support)",
+            rows=[
+                ("Task ID", task_id),
+                ("MT5 Account ID", mt5_account_id),
+                ("Trade ID", trade_id),
+                ("Bars in payload", len(bars)),
+                ("POST URL", f"{base_url}/api/internal/mt5/trade-bars"),
+            ],
+        )
+        raise
     return response.json()
 
 
