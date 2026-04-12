@@ -9,6 +9,11 @@ import logging
 import threading
 import uuid
 
+try:
+    import ntplib
+except Exception:  # pragma: no cover - fallback path is exercised when unavailable.
+    ntplib = None
+
 import requests
 
 from celery_app import celery
@@ -21,6 +26,14 @@ logger = logging.getLogger(__name__)
 # MetaTrader5 keeps process-global session state, so sync tasks must not
 # overlap MT5 API calls inside the same worker process.
 _MT5_API_SESSION_LOCK = threading.Lock()
+_NTP_CACHE_LOCK = threading.Lock()
+_NTP_REFERENCE_CACHE = {
+    "expires_at": 0.0,
+    "unix_seconds": None,
+    "source": "vm_fallback",
+    "server": None,
+    "vm_skew_seconds": None,
+}
 
 
 def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
@@ -30,10 +43,10 @@ def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
 
 
 def _adjust_mt5_unix_epoch(timestamp_value, *, offset_minutes=0):
-    """Normalize MT5 Unix epochs as UTC seconds."""
+    """Subtract broker/server-ahead delta from raw MT5 Unix epoch (deal times)."""
     if timestamp_value is None:
         return None
-    return float(timestamp_value)
+    return float(timestamp_value) - (int(offset_minutes or 0) * 60)
 
 
 def _to_utc_iso(timestamp_value, *, offset_minutes=0):
@@ -41,6 +54,12 @@ def _to_utc_iso(timestamp_value, *, offset_minutes=0):
     if adjusted_timestamp is None:
         return None
     return datetime.fromtimestamp(adjusted_timestamp, tz=timezone.utc).isoformat(timespec="seconds")
+
+
+def _shift_datetime_by_minutes(value, *, minutes=0):
+    if value is None:
+        return None
+    return value + timedelta(minutes=int(minutes or 0))
 
 
 def _naive_utc_to_aware(value):
@@ -62,6 +81,82 @@ def _vm_timezone_context():
         "vm_timezone_name": tz_name,
         "vm_utc_offset_minutes": offset_minutes,
     }
+
+
+def _ntp_servers():
+    raw = os.environ.get("FXJ_NTP_SERVERS", "").strip()
+    if not raw:
+        return ["pool.ntp.org", "time.google.com", "time.cloudflare.com"]
+    servers = [part.strip() for part in raw.split(",") if part.strip()]
+    return servers or ["pool.ntp.org", "time.google.com", "time.cloudflare.com"]
+
+
+def _reference_utc_unix_seconds():
+    vm_utc_now = datetime.now(timezone.utc).timestamp()
+    reference_mode = str(os.environ.get("FXJ_MT5_TIME_REFERENCE", "ntp")).strip().lower()
+    cache_seconds_raw = os.environ.get("FXJ_NTP_CACHE_SECONDS", "45").strip()
+    timeout_raw = os.environ.get("FXJ_NTP_TIMEOUT_SECONDS", "2.5").strip()
+    try:
+        cache_seconds = max(float(cache_seconds_raw), 0.0)
+    except (TypeError, ValueError):
+        cache_seconds = 45.0
+    try:
+        timeout_seconds = max(float(timeout_raw), 0.25)
+    except (TypeError, ValueError):
+        timeout_seconds = 2.5
+
+    with _NTP_CACHE_LOCK:
+        now_ts = datetime.now(timezone.utc).timestamp()
+        cached_value = _NTP_REFERENCE_CACHE.get("unix_seconds")
+        if (
+            cache_seconds > 0
+            and cached_value is not None
+            and now_ts < float(_NTP_REFERENCE_CACHE.get("expires_at") or 0.0)
+        ):
+            return (
+                float(cached_value),
+                str(_NTP_REFERENCE_CACHE.get("source") or "vm_fallback"),
+                _NTP_REFERENCE_CACHE.get("server"),
+                _NTP_REFERENCE_CACHE.get("vm_skew_seconds"),
+            )
+
+    if reference_mode == "vm":
+        return vm_utc_now, "vm_forced", None, 0.0
+
+    if ntplib is not None:
+        client = ntplib.NTPClient()
+        for server in _ntp_servers():
+            try:
+                response = client.request(server, version=3, timeout=timeout_seconds)
+                ntp_utc_now = float(getattr(response, "tx_time", None) or getattr(response, "recv_time", 0.0))
+                if ntp_utc_now <= 0:
+                    continue
+                vm_skew_seconds = ntp_utc_now - vm_utc_now
+                with _NTP_CACHE_LOCK:
+                    _NTP_REFERENCE_CACHE.update(
+                        {
+                            "expires_at": datetime.now(timezone.utc).timestamp() + cache_seconds,
+                            "unix_seconds": ntp_utc_now,
+                            "source": "ntp",
+                            "server": server,
+                            "vm_skew_seconds": vm_skew_seconds,
+                        }
+                    )
+                return ntp_utc_now, "ntp", server, vm_skew_seconds
+            except Exception:
+                continue
+
+    with _NTP_CACHE_LOCK:
+        _NTP_REFERENCE_CACHE.update(
+            {
+                "expires_at": datetime.now(timezone.utc).timestamp() + cache_seconds,
+                "unix_seconds": vm_utc_now,
+                "source": "vm_fallback",
+                "server": None,
+                "vm_skew_seconds": 0.0,
+            }
+        )
+    return vm_utc_now, "vm_fallback", None, 0.0
 
 
 def _deal_float_value(deal, field_name, default=0.0):
@@ -256,6 +351,42 @@ def aggregate_deals_to_trades(
 
 def _sync_lock_key(mt5_account_id):
     return f"mt5_sync_lock:{mt5_account_id}"
+
+
+def _probe_mt5_server_delta_minutes(mt5, *, preferred_symbol=None, reference_utc_unix_seconds=None):
+    """
+    Estimate MT5 server clock drift relative to reference UTC using latest tick timestamp.
+    Returns minute delta where positive means MT5 clock appears ahead of UTC.
+    """
+    symbol_info_tick = getattr(mt5, "symbol_info_tick", None)
+    if not callable(symbol_info_tick):
+        return 0
+    if reference_utc_unix_seconds is None:
+        reference_utc_unix_seconds, _, _, _ = _reference_utc_unix_seconds()
+    symbol_candidates = []
+    if preferred_symbol is not None:
+        if isinstance(preferred_symbol, (list, tuple)):
+            symbol_candidates.extend(
+                str(s).strip() for s in preferred_symbol if s and str(s).strip()
+            )
+        else:
+            s = str(preferred_symbol).strip()
+            if s:
+                symbol_candidates.append(s)
+    if "EURUSD" not in symbol_candidates:
+        symbol_candidates.append("EURUSD")
+    for symbol in symbol_candidates:
+        if not symbol:
+            continue
+        tick = symbol_info_tick(symbol)
+        tick_time = getattr(tick, "time", None) if tick is not None else None
+        if not tick_time:
+            continue
+        delta_seconds = int(tick_time) - int(reference_utc_unix_seconds)
+        if abs(delta_seconds) > 6 * 3600:
+            continue
+        return int(round(delta_seconds / 60))
+    return 0
 
 
 def _mask_account_number_for_log(account_number):
@@ -560,14 +691,42 @@ def sync_mt5_account(
                 else:
                     from_date = datetime.now(timezone.utc) - timedelta(days=rolling_days)
                 to_date = datetime.now(timezone.utc)
-                mt5_server_delta_minutes = 0
-                applied_offset_minutes = 0
-                mt5_from_date = from_date
-                mt5_to_date = to_date
+                reference_utc_unix, reference_time_source, ntp_server_used, ntp_vm_skew_seconds = (
+                    _reference_utc_unix_seconds()
+                )
+                probe_symbol = None
+                try:
+                    positions_probe = mt5.positions_get() or []
+                    if positions_probe:
+                        probe_symbol = getattr(positions_probe[0], "symbol", None)
+                except Exception:
+                    probe_symbol = None
+                mt5_server_delta_minutes = _probe_mt5_server_delta_minutes(
+                    mt5,
+                    preferred_symbol=probe_symbol,
+                    reference_utc_unix_seconds=reference_utc_unix,
+                )
+                applied_offset_minutes = mt5_server_delta_minutes
+                mt5_from_date = _shift_datetime_by_minutes(
+                    from_date,
+                    minutes=applied_offset_minutes,
+                )
+                mt5_to_date = _shift_datetime_by_minutes(
+                    to_date,
+                    minutes=applied_offset_minutes,
+                )
                 vm_timing_context = _vm_timezone_context()
+                vm_timing_context.update(
+                    {
+                        "reference_time_source": reference_time_source,
+                        "ntp_server_used": ntp_server_used,
+                        "ntp_vm_skew_seconds": ntp_vm_skew_seconds,
+                    }
+                )
                 # One summary table is logged after the internal API returns (see below).
-                # Use UTC-aware range boundaries directly, matching MetaTrader5
-                # Python docs that data and ranges are UTC-based.
+                # MT5 history filters follow broker/server clock semantics in
+                # practice, so shift the request window into server time while
+                # continuing to normalize returned timestamps back to UTC.
                 deals, history_chunks_fetched = _chunked_history_deals_get(
                     mt5,
                     mt5_from_date,
@@ -586,6 +745,7 @@ def sync_mt5_account(
                         getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
                     ),
                     deal_type_buy=deal_type_buy,
+                    offset_minutes=applied_offset_minutes,
                 )
 
                 # Supplement with currently open positions directly from the broker.
@@ -596,6 +756,7 @@ def sync_mt5_account(
                 position_trades = _positions_to_open_trades(
                     open_positions,
                     position_type_buy=deal_type_buy,
+                    offset_minutes=applied_offset_minutes,
                 )
                 deals_positions = {t["mt5_position"] for t in trades if t.get("mt5_position")}
                 trades = trades + [t for t in position_trades if t.get("mt5_position") not in deals_positions]
@@ -679,6 +840,9 @@ def sync_mt5_account(
                 ("Mode", sync_mode),
                 ("VM Timezone", vm_timing_context.get("vm_timezone_name")),
                 ("VM UTC Offset (min)", vm_timing_context.get("vm_utc_offset_minutes")),
+                ("Reference Time Source", vm_timing_context.get("reference_time_source")),
+                ("NTP Server", vm_timing_context.get("ntp_server_used")),
+                ("NTP vs VM Skew (s)", vm_timing_context.get("ntp_vm_skew_seconds")),
                 ("MT5-UTC Delta (min)", mt5_server_delta_minutes),
                 ("Applied Time Offset (min)", applied_offset_minutes),
                 ("Window (UTC)", f"{from_date.isoformat()} -> {to_date.isoformat()}"),
@@ -934,10 +1098,18 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             if not mt5.login(int(account_number), password=investor_password, server=server):
                 raise RuntimeError(f"MT5 login failed during bar fetch: {mt5.last_error()}")
 
+            reference_utc_unix, _, _, _ = _reference_utc_unix_seconds()
+            mt5_server_delta_minutes = _probe_mt5_server_delta_minutes(
+                mt5,
+                preferred_symbol=mt5_symbol_names,
+                reference_utc_unix_seconds=reference_utc_unix,
+            )
+            start_dt_shifted = _shift_datetime_by_minutes(start_dt, minutes=mt5_server_delta_minutes)
+            end_dt_shifted = _shift_datetime_by_minutes(end_dt, minutes=mt5_server_delta_minutes)
             tf_constant = mt5_timeframe_constant("M5", mt5)
             raw_bars = []
             for sym in mt5_symbol_names:
-                chunk = mt5.copy_rates_range(sym, tf_constant, start_dt, end_dt)
+                chunk = mt5.copy_rates_range(sym, tf_constant, start_dt_shifted, end_dt_shifted)
                 if chunk is not None and len(chunk) > 0:
                     raw_bars = chunk
                     symbol = sym
@@ -956,8 +1128,12 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
                 )
             if raw_bars:
                 for bar in raw_bars:
+                    bar_open_utc = _adjust_mt5_unix_epoch(
+                        int(bar["time"]),
+                        offset_minutes=mt5_server_delta_minutes,
+                    )
                     bars.append({
-                        "time": int(bar["time"]),
+                        "time": int(bar_open_utc),
                         "open": float(bar["open"]),
                         "high": float(bar["high"]),
                         "low": float(bar["low"]),

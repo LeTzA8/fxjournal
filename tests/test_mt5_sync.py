@@ -8,8 +8,11 @@ from types import SimpleNamespace
 import pytest
 from cryptography.fernet import Fernet
 
+import celery_workers.mt5_sync_tasks as mt5_sync_module
 from celery_workers.mt5_sync_tasks import (
     _adjust_mt5_unix_epoch,
+    _probe_mt5_server_delta_minutes,
+    _reference_utc_unix_seconds,
     aggregate_deals_to_trades,
     _positions_to_open_trades,
     sync_mt5_account,
@@ -92,11 +95,82 @@ def _deal(**overrides):
     return SimpleNamespace(**payload)
 
 
-def test_mt5_epoch_normalization_preserves_utc_values():
-    """MT5 epochs are treated as UTC and persisted without probe-based offsets."""
+def test_mt5_bar_epoch_adjustment_matches_deal_timestamp_normalization():
+    """fetch_trade_bars applies the same offset as deal ingest so bars align with opened_at/closed_at."""
     raw = 1_717_200_000
-    assert int(_adjust_mt5_unix_epoch(raw, offset_minutes=120)) == raw
-    assert int(_adjust_mt5_unix_epoch(raw, offset_minutes=-60)) == raw
+    assert int(_adjust_mt5_unix_epoch(raw, offset_minutes=120)) == raw - 7200
+    assert int(_adjust_mt5_unix_epoch(raw, offset_minutes=-60)) == raw + 3600
+
+
+def test_reference_utc_unix_seconds_uses_ntp_and_caches(monkeypatch):
+    class _FakeClient:
+        calls = 0
+
+        def request(self, server, version=3, timeout=2.5):
+            _FakeClient.calls += 1
+            return SimpleNamespace(tx_time=1_700_000_000.0)
+
+    monkeypatch.setenv("FXJ_MT5_TIME_REFERENCE", "ntp")
+    monkeypatch.setenv("FXJ_NTP_SERVERS", "time.google.com")
+    monkeypatch.setenv("FXJ_NTP_CACHE_SECONDS", "60")
+    monkeypatch.setattr(mt5_sync_module, "ntplib", SimpleNamespace(NTPClient=lambda: _FakeClient()))
+    monkeypatch.setattr(
+        mt5_sync_module,
+        "_NTP_REFERENCE_CACHE",
+        {
+            "expires_at": 0.0,
+            "unix_seconds": None,
+            "source": "vm_fallback",
+            "server": None,
+            "vm_skew_seconds": None,
+        },
+    )
+
+    first = _reference_utc_unix_seconds()
+    second = _reference_utc_unix_seconds()
+
+    assert first[0] == pytest.approx(1_700_000_000.0)
+    assert first[1] == "ntp"
+    assert first[2] == "time.google.com"
+    assert _FakeClient.calls == 1
+    assert second[0] == pytest.approx(first[0])
+    assert second[1] == "ntp"
+
+
+def test_reference_utc_unix_seconds_falls_back_to_vm(monkeypatch):
+    monkeypatch.setenv("FXJ_MT5_TIME_REFERENCE", "ntp")
+    monkeypatch.setenv("FXJ_NTP_CACHE_SECONDS", "0")
+    monkeypatch.setattr(mt5_sync_module, "ntplib", None)
+    monkeypatch.setattr(
+        mt5_sync_module,
+        "_NTP_REFERENCE_CACHE",
+        {
+            "expires_at": 0.0,
+            "unix_seconds": None,
+            "source": "vm_fallback",
+            "server": None,
+            "vm_skew_seconds": None,
+        },
+    )
+
+    value, source, server, skew = _reference_utc_unix_seconds()
+
+    assert value > 0
+    assert source == "vm_fallback"
+    assert server is None
+    assert skew == 0.0
+
+
+def test_probe_mt5_server_delta_minutes_uses_reference_time():
+    fake_mt5 = SimpleNamespace(
+        symbol_info_tick=lambda symbol: SimpleNamespace(time=1_700_007_200)
+    )
+    delta = _probe_mt5_server_delta_minutes(
+        fake_mt5,
+        preferred_symbol="EURUSD",
+        reference_utc_unix_seconds=1_700_000_000,
+    )
+    assert delta == 120
 
 
 def test_aggregate_deals_to_trades_closes_position_with_multiple_exit_deals():
@@ -593,7 +667,7 @@ def test_internal_mt5_sync_worrisome_skip_debug_omits_benign_skips(app_ctx, clie
     assert "skip_debug" not in body
 
 
-def test_sync_mt5_account_uses_utc_history_window_without_server_shift(app_ctx, monkeypatch):
+def test_sync_mt5_account_shifts_history_window_to_mt5_server_time(app_ctx, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
     monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
@@ -612,6 +686,7 @@ def test_sync_mt5_account_uses_utc_history_window_without_server_shift(app_ctx, 
     monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
     monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
 
+    broker_now = datetime.now(timezone.utc) + timedelta(hours=3)
     history_call = {}
 
     def _capture_history_window(from_date, to_date):
@@ -630,7 +705,7 @@ def test_sync_mt5_account_uses_utc_history_window_without_server_shift(app_ctx, 
         account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
         history_deals_get=_capture_history_window,
         positions_get=lambda: [],
-        symbol_info_tick=lambda symbol: None,
+        symbol_info_tick=lambda symbol: SimpleNamespace(time=int(broker_now.timestamp())),
         shutdown=lambda: True,
         last_error=lambda: (0, "ok"),
     )
@@ -651,8 +726,8 @@ def test_sync_mt5_account_uses_utc_history_window_without_server_shift(app_ctx, 
     captured_from_date = history_call["from_date"]
     utc_now = datetime.now(timezone.utc)
 
-    assert captured_to_date > utc_now - timedelta(minutes=5)
-    assert captured_to_date < utc_now + timedelta(minutes=5)
+    assert captured_to_date > utc_now + timedelta(hours=2, minutes=55)
+    assert captured_to_date < utc_now + timedelta(hours=3, minutes=5)
     assert captured_from_date < captured_to_date
 
 

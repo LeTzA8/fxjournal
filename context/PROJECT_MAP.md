@@ -107,6 +107,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\run_mt5_setup_worker.
 | `MAX_UPLOAD_MB` | Render web | Upload cap |
 | `RATELIMIT_STORAGE_URI` | Render web | Defaults from `REDIS_URL` then `memory://` |
 | `FXJ_ENV_FILE` | **VM** (optional) | Explicit path to env file for Celery bootstrap |
+| `FXJ_NTP_SERVERS`, `FXJ_NTP_TIMEOUT_SECONDS`, `FXJ_NTP_CACHE_SECONDS`, `FXJ_MT5_TIME_REFERENCE` | **VM MT5 workers** | Reference UTC for MT5 offset probe (`ntp` default, `vm` fallback/override); requires outbound UDP/123 |
 | `MT5_BASE_PATH`, `MT5_TERMINALS_DIR` | **VM** | MT5 install + per-account terminal roots |
 | `CELERY_POOL` | optional | `solo` / `threads` override |
 | `FXJ_WORKER_FILE_LOG`, `FXJ_WORKER_LOG_DIR`, `FXJ_ASCII_LOG_MAX_WIDTH` | **VM** | Logging noise and file rotation |

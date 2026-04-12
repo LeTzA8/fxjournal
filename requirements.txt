@@ -15,6 +15,7 @@ python-dotenv==1.0.1
 redis==5.2.1
 requests==2.33.1
 resend==2.21.0
+ntplib==0.4.0
 
 # Deployment/runtime support
 gunicorn==23.0.0
