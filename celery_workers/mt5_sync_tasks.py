@@ -70,10 +70,29 @@ def _shift_datetime_by_minutes(value, *, minutes=0):
     return value + timedelta(minutes=int(minutes or 0))
 
 
+_PROBE_ALWAYS_ON_SYMBOLS = [
+    "BTCUSD",
+    "BTCUSDT",
+    "XBTUSD",
+    "BTCUSD.r",
+    "BTC/USD",
+]
+
+
 def _probe_mt5_server_delta_minutes(mt5, *, preferred_symbol=None):
     """
     Estimate MT5 server clock drift relative to UTC using latest tick timestamp.
     Returns minute delta where positive means MT5 clock appears ahead of UTC.
+
+    Symbol priority:
+      1. preferred_symbol candidates (trade-specific, e.g. XAUUSD)
+      2. EURUSD (liquid FX baseline; stale on weekends)
+      3. Common BTC/USD names (24/7 crypto — reliable during forex market closure)
+
+    The 6-hour sanity guard filters ticks that are too stale to give a useful
+    reading regardless of which symbol supplied them.  The Redis cache in
+    _resolve_mt5_server_offset_minutes is a final safety net for brokers that
+    offer no crypto instruments at all.
     """
     symbol_info_tick = getattr(mt5, "symbol_info_tick", None)
     if not callable(symbol_info_tick):
@@ -90,6 +109,9 @@ def _probe_mt5_server_delta_minutes(mt5, *, preferred_symbol=None):
                 symbol_candidates.append(s)
     if "EURUSD" not in symbol_candidates:
         symbol_candidates.append("EURUSD")
+    for sym in _PROBE_ALWAYS_ON_SYMBOLS:
+        if sym not in symbol_candidates:
+            symbol_candidates.append(sym)
     for symbol in symbol_candidates:
         if not symbol:
             continue
@@ -102,6 +124,55 @@ def _probe_mt5_server_delta_minutes(mt5, *, preferred_symbol=None):
         if abs(delta_seconds) > 6 * 3600:
             continue
         return int(round(delta_seconds / 60))
+    return 0
+
+
+def _mt5_offset_cache_key(mt5_account_id):
+    return f"mt5_server_offset_minutes:{mt5_account_id}"
+
+
+def _resolve_mt5_server_offset_minutes(mt5, mt5_account_id, *, preferred_symbol=None):
+    """
+    Return the broker UTC offset in minutes.
+
+    During market hours the probe compares the latest tick timestamp to UTC now
+    and gives an accurate reading.  When market is closed the last tick is stale
+    and the probe's sanity guard returns 0.  We cache every non-zero measurement
+    in Redis (7-day TTL) so off-hours syncs and bar-fetches still use the correct
+    offset rather than falling back to 0 and storing raw broker-server-time.
+
+    Returns 0 if the probe fires AND no cached value exists (UTC broker, or first
+    run before a market-hours measurement has been stored).
+    """
+    probed = _probe_mt5_server_delta_minutes(mt5, preferred_symbol=preferred_symbol)
+
+    redis_client = None
+    try:
+        from celery_workers.cache import _client as _cache_client  # noqa: PLC0415
+        redis_client = _cache_client()
+    except Exception:
+        pass
+
+    cache_key = _mt5_offset_cache_key(mt5_account_id)
+
+    if probed != 0:
+        # Good live measurement — persist it so off-hours runs can reuse it.
+        if redis_client is not None:
+            try:
+                redis_client.set(cache_key, str(probed), ex=60 * 60 * 24 * 7)
+            except Exception:
+                pass
+        return probed
+
+    # Probe returned 0 — market may be closed; try the cached offset.
+    if redis_client is not None:
+        try:
+            cached = redis_client.get(cache_key)
+            if cached is not None:
+                return int(cached)
+        except Exception:
+            pass
+
     return 0
 
 
@@ -601,14 +672,16 @@ def sync_mt5_account(
                 else:
                     from_date = datetime.now(timezone.utc) - timedelta(days=rolling_days)
                 to_date = datetime.now(timezone.utc)
-                mt5_server_delta_minutes = 0
-                applied_offset_minutes = 0
+                mt5_server_delta_minutes = _resolve_mt5_server_offset_minutes(
+                    mt5, mt5_account_id
+                )
+                applied_offset_minutes = mt5_server_delta_minutes
                 mt5_from_date = from_date
                 mt5_to_date = to_date
                 vm_timing_context = _vm_timezone_context()
                 vm_timing_context.update(
                     {
-                        "reference_time_source": "utc_direct",
+                        "reference_time_source": "tick_probe_cached",
                         "ntp_server_used": None,
                         "ntp_vm_skew_seconds": None,
                     }
@@ -633,6 +706,7 @@ def sync_mt5_account(
                         getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
                     ),
                     deal_type_buy=deal_type_buy,
+                    offset_minutes=applied_offset_minutes,
                 )
 
                 # Supplement with currently open positions directly from the broker.
@@ -643,6 +717,7 @@ def sync_mt5_account(
                 position_trades = _positions_to_open_trades(
                     open_positions,
                     position_type_buy=deal_type_buy,
+                    offset_minutes=applied_offset_minutes,
                 )
                 deals_positions = {t["mt5_position"] for t in trades if t.get("mt5_position")}
                 trades = trades + [t for t in position_trades if t.get("mt5_position") not in deals_positions]
@@ -1003,8 +1078,8 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             if not mt5.login(int(account_number), password=investor_password, server=server):
                 raise RuntimeError(f"MT5 login failed during bar fetch: {mt5.last_error()}")
 
-            mt5_server_delta_minutes = _probe_mt5_server_delta_minutes(
-                mt5, preferred_symbol=mt5_symbol_names
+            mt5_server_delta_minutes = _resolve_mt5_server_offset_minutes(
+                mt5, mt5_account_id, preferred_symbol=mt5_symbol_names
             )
             start_dt_shifted = _shift_datetime_by_minutes(start_dt, minutes=mt5_server_delta_minutes)
             end_dt_shifted = _shift_datetime_by_minutes(end_dt, minutes=mt5_server_delta_minutes)
