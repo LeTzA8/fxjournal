@@ -267,6 +267,18 @@ def sync_mt5_trades():
                             existing_trade.opened_at = row_opened
                             existing_trade.closed_at = row_closed
                             timestamp_refresh_count += 1
+                    elif (
+                        row_opened is None
+                        and row_closed is not None
+                        and existing_trade.opened_at is not None
+                        and row_closed >= existing_trade.opened_at
+                        and existing_trade.closed_at != row_closed
+                    ):
+                        # Some MT5 history windows can emit close-only rows when
+                        # entry details are outside the current slice; still refresh
+                        # closed_at during explicit recalibration.
+                        existing_trade.closed_at = row_closed
+                        timestamp_refresh_count += 1
                     # Recalibration pass: never treat already-closed rows as generic skips.
                     continue
                 if row_opened is not None:

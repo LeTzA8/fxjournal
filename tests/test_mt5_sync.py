@@ -1158,6 +1158,76 @@ def test_internal_mt5_sync_refresh_timestamps_updates_closed_trade(app_ctx, clie
     assert trade.closed_at == datetime(2026, 3, 21, 10, 0, 0)
 
 
+def test_internal_mt5_sync_refresh_timestamps_accepts_close_only_row_for_closed_trade(
+    app_ctx, client, monkeypatch
+):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="ts-refresh-close-only-user",
+        email="ts-refresh-close-only@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="35353535",
+    )
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.0,
+        exit_price=1.01,
+        lot_size=0.01,
+        opened_at=datetime(2026, 3, 21, 2, 0, 0),
+        closed_at=datetime(2026, 3, 21, 4, 0, 0),
+        mt5_position="12121212",
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    payload = {
+        "mt5_account_id": mt5_account.id,
+        "refresh_closed_trade_timestamps": True,
+        "trades": [
+            {
+                "symbol": "EURUSD",
+                "side": "",
+                "entry_price": None,
+                "exit_price": 1.01,
+                "lot_size": 0.01,
+                "pnl": 0.0,
+                "commission": 0.0,
+                "swap": 0.0,
+                "opened_at": None,
+                "closed_at": "2026-03-21T10:00:00+00:00",
+                "mt5_position": 12121212,
+                "trade_note": "close only",
+                "is_open": False,
+            }
+        ],
+    }
+    response = client.post(
+        "/api/internal/mt5/sync",
+        json=payload,
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["saved"] == 0
+    assert body["updated"] == 0
+    assert body["skipped"] == 0
+    assert body["errors"] == 0
+    assert body.get("timestamp_refreshes") == 1
+
+    db.session.refresh(trade)
+    assert trade.opened_at == datetime(2026, 3, 21, 2, 0, 0)
+    assert trade.closed_at == datetime(2026, 3, 21, 10, 0, 0)
+
+
 def test_internal_mt5_trade_bars_requires_shared_secret(app_ctx, client, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
@@ -1845,6 +1915,78 @@ def test_admin_clear_all_trade_bars_removes_rows_keeps_trades(app_ctx, client, m
     db.session.expire_all()
     assert TradeBars.query.count() == 0
     assert db.session.get(Trade, trade.id) is not None
+
+
+def test_admin_mt5_backfill_bars_queues_only_missing_m5_timeframes(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    root_user, trade_account = _log_in_root_admin(
+        client,
+        email="root-backfill-bars@example.com",
+        username="root-backfill-bars",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=root_user.id,
+        trade_account_id=trade_account.id,
+        account_number="73737373",
+    )
+    first_trade = Trade(
+        user_id=root_user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1,
+        exit_price=1.101,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 9, 0, 0),
+        closed_at=datetime(2026, 4, 10, 10, 0, 0),
+        mt5_position="backfill-pos-1",
+    )
+    second_trade = Trade(
+        user_id=root_user.id,
+        trade_account_id=trade_account.id,
+        symbol="GBPUSD",
+        side="SELL",
+        entry_price=1.3,
+        exit_price=1.299,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 11, 9, 0, 0),
+        closed_at=datetime(2026, 4, 11, 10, 0, 0),
+        mt5_position="backfill-pos-2",
+    )
+    db.session.add_all([first_trade, second_trade])
+    db.session.commit()
+    db.session.add(
+        TradeBars(
+            trade_id=first_trade.id,
+            timeframe="M5",
+            bar_time=1_700_000_000,
+            open=1.1,
+            high=1.11,
+            low=1.09,
+            close=1.105,
+            tick_volume=10,
+        )
+    )
+    db.session.commit()
+
+    queued = []
+
+    import celery_workers.mt5_sync_tasks as mt5_sync_module
+
+    def _fake_apply_async(*, args, queue):
+        queued.append({"args": args, "queue": queue})
+
+    monkeypatch.setattr(mt5_sync_module.fetch_trade_bars, "apply_async", _fake_apply_async)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/backfill-bars",
+        data={},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert queued == [{"args": [mt5_account.id, second_trade.id], "queue": "mt5_sync"}]
 
 
 def test_admin_mt5_create_persists_inactive_account_when_setup_queue_fails(app_ctx, client, monkeypatch):

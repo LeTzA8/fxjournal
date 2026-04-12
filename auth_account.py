@@ -3689,6 +3689,12 @@ def register_public_auth_routes(
             return build_admin_redirect("mt5", "That MT5 record is cleanup-only. Cannot backfill bars.", "error")
         if not account.is_active:
             return build_admin_redirect("mt5", "That MT5 account is inactive. Cannot backfill bars.", "error")
+        force_backfill = str(request.form.get("force_backfill_bars") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
 
         closed_trades = (
             Trade.query.filter_by(
@@ -3703,19 +3709,52 @@ def register_public_auth_routes(
         if not closed_trades:
             return build_admin_redirect("mt5", "No closed MT5 trades found to backfill bars for.", "info")
 
+        closed_trade_ids = [trade.id for trade in closed_trades]
+        already_backfilled_trade_ids = set()
+        if not force_backfill and closed_trade_ids:
+            already_backfilled_trade_ids = {
+                trade_id
+                for (trade_id,) in (
+                    db.session.query(TradeBars.trade_id)
+                    .filter(
+                        TradeBars.trade_id.in_(closed_trade_ids),
+                        TradeBars.timeframe == "M5",
+                    )
+                    .distinct()
+                    .all()
+                )
+            }
+        trades_to_queue = (
+            closed_trades
+            if force_backfill
+            else [trade for trade in closed_trades if trade.id not in already_backfilled_trade_ids]
+        )
+        if not trades_to_queue:
+            return build_admin_redirect(
+                "mt5",
+                (
+                    "All closed MT5 trades already have M5 bars. Use Clear Bars first if you want "
+                    "to refetch everything."
+                ),
+                "info",
+            )
+
         try:
             from celery_workers.mt5_sync_tasks import fetch_trade_bars
             queued = 0
-            for trade in closed_trades:
+            for trade in trades_to_queue:
                 fetch_trade_bars.apply_async(
                     args=[mt5_account_id, trade.id],
                     queue="mt5_sync",
                 )
                 queued += 1
             current_app.logger.info(
-                "Admin queued fetch_trade_bars mt5_account_id=%s tasks=%s queue=mt5_sync",
+                "Admin queued fetch_trade_bars mt5_account_id=%s tasks=%s closed=%s skipped_existing=%s force=%s queue=mt5_sync",
                 mt5_account_id,
                 queued,
+                len(closed_trades),
+                max(len(closed_trades) - queued, 0),
+                force_backfill,
             )
         except Exception as exc:
             current_app.logger.warning(
