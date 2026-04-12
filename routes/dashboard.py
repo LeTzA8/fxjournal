@@ -1180,7 +1180,7 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
         elif pending_request is not None or approved_request is not None:
             status = "pending"
             status_label = "Submit Details"
-            note = "Finish the one-step MT5 setup form here to start setup."
+            note = "Complete the form below to resume MT5 setup."
         elif batch_state["batches_enabled"] and not batch_state["can_accept_requests"]:
             status = "batch_unavailable"
             status_label = batch_state["status_label"]
@@ -1188,7 +1188,7 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
         else:
             status = "requestable"
             status_label = "Ready to Start"
-            note = "Submit your read-only MT5 details to start MT5 sync setup."
+            note = "Fill in and submit the form below to queue setup."
 
         status_rows.append(
             {

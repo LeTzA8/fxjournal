@@ -473,6 +473,45 @@ def _normalize_aliases(value):
     return tuple(seen)
 
 
+def format_cfd_aliases_for_storage(raw_text):
+    """Normalize comma-separated broker aliases for persistence on CFDSymbol."""
+    parts = _normalize_aliases(raw_text)
+    return ",".join(parts) if parts else None
+
+
+def collect_active_cfd_alias_key_conflicts(rows, *, updated_row_id=None, updated_aliases_text=None):
+    """
+    Check that every normalized broker key among active CFD symbols maps to exactly one canonical symbol.
+
+    rows: iterable of objects with id, symbol, aliases, and is_active.
+    When updated_row_id is set, that row's aliases are taken from updated_aliases_text instead of row.aliases.
+
+    Inactive rows are ignored (their aliases are not loaded for MT5 sync).
+    Returns a list of user-facing conflict messages (empty if valid).
+    """
+    key_to_canon = {}
+    conflicts = []
+    for row in rows:
+        if not getattr(row, "is_active", False):
+            continue
+        canon = normalize_symbol(getattr(row, "symbol", "") or "")
+        if not canon:
+            continue
+        aliases_src = updated_aliases_text if row.id == updated_row_id else getattr(row, "aliases", None)
+        keys = [canon] + list(_normalize_aliases(aliases_src))
+        for key in keys:
+            if not key:
+                continue
+            existing = key_to_canon.get(key)
+            if existing is not None and existing != canon:
+                conflicts.append(
+                    f'Broker key "{key}" already maps to {existing}; cannot also use it for {canon}.'
+                )
+            else:
+                key_to_canon[key] = canon
+    return conflicts
+
+
 def clear_cfd_symbol_cache():
     _load_cfd_symbol_specs.cache_clear()
     _load_cfd_symbol_map.cache_clear()

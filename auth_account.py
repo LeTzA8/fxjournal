@@ -13,6 +13,7 @@ from ai_service import MIN_CLOSED_TRADES_FOR_ADVICE, WEEKLY_DASHBOARD_KIND, get_
 from models import (
     AIGeneratedResponse,
     AllowedSignupEmailDomain,
+    CFDSymbol,
     MT5Account,
     MT5AccessRequest,
     MT5SyncBatch,
@@ -25,6 +26,11 @@ from models import (
     db,
 )
 from helpers.core import delete_users_with_related_data, get_mt5_sync_batch_state, sanitize_error_message
+from trading import (
+    clear_cfd_symbol_cache,
+    collect_active_cfd_alias_key_conflicts,
+    format_cfd_aliases_for_storage,
+)
 from helpers.trade_analysis import detect_outliers
 from helpers.utils import (
     encrypt_password,
@@ -1116,6 +1122,7 @@ def register_public_auth_routes(
         endpoint_map = {
             "codes": "admin_signup_codes",
             "mt5": "admin_mt5_accounts",
+            "cfd_symbols": "admin_cfd_symbols",
             "weekly_report": "admin_weekly_report",
         }
         endpoint = endpoint_map.get(section, "admin_signup_users")
@@ -1164,32 +1171,28 @@ def register_public_auth_routes(
         }
 
     def render_admin_page(*, admin_user, section, **extra_context):
-        return render_template(
-            "admin_signup_access.html",
-            **build_admin_page_context(
-                admin_user=admin_user,
-                section=section,
-            ),
-            **extra_context,
+        page_ctx = build_admin_page_context(
+            admin_user=admin_user,
+            section=section,
         )
+        page_ctx.update(extra_context)
+        return render_template("admin_signup_access.html", **page_ctx)
 
     ADMIN_USERS_PER_PAGE = 25
 
     def render_admin_weekly_report_page(*, admin_user, **extra_context):
-        return render_template(
-            "admin_weekly_report.html",
-            **build_admin_page_context(
-                admin_user=admin_user,
-                section="weekly_report",
-                title="MyFXJournal | Weekly AI Audit",
-                page_heading="Weekly AI Audit",
-                page_subtitle=(
-                    "Inspect stored weekly AI payloads, compare trend shifts over time, "
-                    "and review the exact model output for each saved review."
-                ),
+        page_ctx = build_admin_page_context(
+            admin_user=admin_user,
+            section="weekly_report",
+            title="MyFXJournal | Weekly AI Audit",
+            page_heading="Weekly AI Audit",
+            page_subtitle=(
+                "Inspect stored weekly AI payloads, compare trend shifts over time, "
+                "and review the exact model output for each saved review."
             ),
-            **extra_context,
         )
+        page_ctx.update(extra_context)
+        return render_template("admin_weekly_report.html", **page_ctx)
 
     def _format_admin_timestamp(value):
         if not isinstance(value, datetime):
@@ -2626,6 +2629,58 @@ def register_public_auth_routes(
             section="codes",
             signup_codes=signup_codes,
         )
+
+    @app.route("/dashboard/admin/access/cfd-symbols")
+    @root_admin_required
+    def admin_cfd_symbols():
+        admin_user = get_current_root_admin_user()
+        cfd_rows = CFDSymbol.query.order_by(
+            CFDSymbol.sort_order.asc(),
+            CFDSymbol.symbol.asc(),
+        ).all()
+        return render_admin_page(
+            admin_user=admin_user,
+            section="cfd_symbols",
+            title="MyFXJournal | CFD broker aliases",
+            page_heading="CFD broker aliases",
+            page_subtitle=(
+                "Comma-separated MT5/broker strings mapped to each canonical CFD symbol. "
+                "Saves apply immediately (symbol cache cleared). Inactive rows are stored but ignored for sync until activated."
+            ),
+            cfd_symbol_rows=cfd_rows,
+        )
+
+    @app.route("/dashboard/admin/access/cfd-symbols/<int:symbol_id>/aliases", methods=["POST"])
+    @root_admin_required
+    def admin_cfd_symbol_update_aliases(symbol_id):
+        row = CFDSymbol.query.filter_by(id=symbol_id).first()
+        if row is None:
+            flash("CFD symbol not found.", "error")
+            return redirect(url_for("admin_cfd_symbols"))
+
+        proposed = request.form.get("aliases", "")
+        all_rows = CFDSymbol.query.order_by(
+            CFDSymbol.sort_order.asc(),
+            CFDSymbol.symbol.asc(),
+        ).all()
+        if row.is_active:
+            conflicts = collect_active_cfd_alias_key_conflicts(
+                all_rows,
+                updated_row_id=row.id,
+                updated_aliases_text=proposed,
+            )
+            if conflicts:
+                for msg in conflicts[:5]:
+                    flash(msg, "error")
+                if len(conflicts) > 5:
+                    flash(f"...and {len(conflicts) - 5} more conflicts.", "error")
+                return redirect(url_for("admin_cfd_symbols"))
+
+        row.aliases = format_cfd_aliases_for_storage(proposed)
+        db.session.commit()
+        clear_cfd_symbol_cache()
+        flash(f"Updated aliases for {row.symbol}.", "success")
+        return redirect(url_for("admin_cfd_symbols"))
 
     @app.route("/dashboard/admin/access/mt5")
     @root_admin_required

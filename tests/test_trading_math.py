@@ -226,6 +226,39 @@ def test_default_cfd_aliases_have_unique_normalized_keys():
             seen[key] = sym
 
 
+def test_collect_active_cfd_alias_key_conflicts_empty_when_valid():
+    from types import SimpleNamespace
+
+    rows = [
+        SimpleNamespace(id=1, symbol="XAUUSD", aliases="GOLD", is_active=True),
+        SimpleNamespace(id=2, symbol="EURUSD", aliases="EU", is_active=True),
+    ]
+    assert trading.collect_active_cfd_alias_key_conflicts(rows) == []
+
+
+def test_collect_active_cfd_alias_key_conflicts_on_stealing_alias():
+    from types import SimpleNamespace
+
+    rows = [
+        SimpleNamespace(id=1, symbol="XAUUSD", aliases="GOLD", is_active=True),
+        SimpleNamespace(id=2, symbol="EURUSD", aliases="EU", is_active=True),
+    ]
+    conflicts = trading.collect_active_cfd_alias_key_conflicts(
+        rows,
+        updated_row_id=2,
+        updated_aliases_text="GOLD",
+    )
+    assert len(conflicts) == 1
+    assert "GOLD" in conflicts[0]
+    assert "XAUUSD" in conflicts[0]
+    assert "EURUSD" in conflicts[0]
+
+
+def test_format_cfd_aliases_for_storage_normalizes():
+    assert trading.format_cfd_aliases_for_storage(" gold , XAU , GOLD ") == "GOLD,XAU"
+    assert trading.format_cfd_aliases_for_storage("  ,  ") is None
+
+
 def test_crypto_and_metal_aliases_and_formatting():
     assert trading.canonicalize_symbol("BTCUSDT") == "BTCUSD"
     assert trading.canonicalize_symbol("gold") == "XAUUSD"

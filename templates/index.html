@@ -341,7 +341,7 @@
         {% endif %}
 
         {% if show_whats_next_banner %}
-        <section class="panel journey-banner{% if is_state_one %} is-guided journey-banner--compact{% endif %}">
+        <section class="panel journey-banner journey-banner--compact">
             <div class="journey-banner-copy">
                 <p class="journey-banner-kicker">What's next</p>
                 <h2 class="journey-banner-title">
@@ -528,25 +528,48 @@
                     </div>
                     {% endif %}
 
-                    {% if show_mt5_guidance %}
+                    {% if show_mt5_guidance and not (mt5_selected_account and mt5_selected_row and not mt5_selected_row.is_linked and mt5_selected_status in ("requestable", "pending")) %}
                     <p class="mt5-panel-hint">
                         {% if is_state_one %}
-                        Connect MT5 for automatic sync on this account. Optional once you have trades&mdash;read-only investor password.
+                        Optional: automatic sync for this account after you have trades.
                         {% else %}
-                        Connect MT5 for automatic sync after you have trades. Optional read-only automation (investor password only).
+                        Optional: turn on automatic sync once you have trade history on this account.
                         {% endif %}
                     </p>
                     {% endif %}
-                    {% if mt5_batch_state.batches_enabled and mt5_batch_state.public_badge %}
+                    {% if mt5_batch_state.batches_enabled and mt5_batch_state.active_batch and mt5_batch_state.slots_remaining is not none and mt5_batch_state.slots_remaining > 0 %}
+                    {% set _cap = (mt5_batch_state.active_batch.capacity_total or 0)|int %}
+                    {% set _rem = mt5_batch_state.slots_remaining|int %}
+                    {% set _used = ([_cap - _rem, 0] | max) %}
+                    {% set _pct = (_used * 100 // _cap) if _cap > 0 else 0 %}
+                    <div class="mt5-slots-urgency" role="status" aria-live="polite">
+                        <div class="mt5-slots-urgency__top">
+                            <p class="mt5-slots-urgency__kicker">Beta batch — limited free setup</p>
+                            <div class="mt5-slots-urgency__stat">
+                                <span class="mt5-slots-urgency__num">{{ _rem }}</span>
+                                <span class="mt5-slots-urgency__stat-text">
+                                    <span class="mt5-slots-urgency__headline">free MT5 sync slot{% if _rem != 1 %}s{% endif %} left</span>
+                                    <span class="mt5-slots-urgency__batch">in {{ mt5_batch_state.active_batch.name }}</span>
+                                </span>
+                            </div>
+                        </div>
+                        {% if _cap > 0 %}
+                        <div class="mt5-slots-urgency__meter" aria-label="Batch fill: {{ _pct }} percent of slots claimed, {{ _rem }} remaining">
+                            <div class="mt5-slots-urgency__track">
+                                <div class="mt5-slots-urgency__fill" style="width: {{ _pct }}%;"></div>
+                            </div>
+                            <div class="mt5-slots-urgency__meter-labels">
+                                <span>{{ _used }} / {{ _cap }} claimed</span>
+                                <span class="mt5-slots-urgency__hurry">Fills fast — claim yours</span>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% elif mt5_batch_state.batches_enabled and mt5_batch_state.public_badge %}
                     <p class="mt5-panel-copy">{{ mt5_batch_state.public_badge }}{% if mt5_batch_state.active_batch %} in {{ mt5_batch_state.active_batch.name }}{% endif %}.</p>
                     {% endif %}
 
                     {% if mt5_selected_account and mt5_selected_row and not mt5_selected_row.is_linked and mt5_selected_status in ("requestable", "pending") %}
-                    {% if mt5_selected_status != "pending" %}
-                    <p class="mt5-panel-copy">One submit starts setup. Use your investor (read-only) password&mdash;never your master or trading password.</p>
-                    {% else %}
-                    <p class="mt5-panel-copy">A legacy MT5 record exists for this account. Finish the one-step form below to restart setup.</p>
-                    {% endif %}
                     <div class="mt5-form-shell{% if show_mt5_guidance %} guided-focus-panel{% endif %}" data-mt5-form-shell>
                         <form
                             action="{{ url_for('trade_accounts.request_mt5_access') }}"
@@ -588,14 +611,13 @@
                                             id="mt5_investor_password"
                                             name="investor_password"
                                             type="password"
-                                            placeholder="Read-only investor password"
-                                            required
+                                        placeholder="Investor access (MT5)"
+                                        required
                                         >
                                         <button type="button" class="ghost-btn mt5-password-toggle" data-mt5-password-toggle aria-controls="mt5_investor_password" aria-pressed="false">
                                             Show
                                         </button>
                                     </div>
-                                    <p class="mt5-card-helper">Read-only investor password, not master</p>
                                 </div>
 
                                 <div class="mt5-form-field">
@@ -613,13 +635,13 @@
 
                             <label class="mt5-card-consent" for="mt5_sync_consent">
                                 <input id="mt5_sync_consent" name="mt5_sync_consent" type="checkbox" value="on" required data-mt5-consent>
-                                <span>I confirm this is my read-only investor password.</span>
+                                <span>I confirm this is my MT5 <strong>investor</strong> password (read-only), not master or trading password.</span>
                             </label>
 
                             <button type="submit" class="submit-btn" data-mt5-submit disabled>Start MT5 setup</button>
                         </form>
                     </div>
-                    <p class="mt5-card-footnote">Password encrypted at rest; used only to sync history (read-only).</p>
+                    <p class="mt5-card-footnote">Stored encrypted; used only to pull your trade history.</p>
                     {% elif mt5_selected_status == "queued" and mt5_selected_account %}
                     <p class="mt5-card-empty">MT5 details are saved and setup started right away. We will email you when MT5 sync is ready.</p>
                     <div class="mt5-selected-account-card">
@@ -1538,24 +1560,49 @@
 
     .journey-banner {
         display: grid;
-        gap: 1rem;
-        margin-bottom: 0.9rem;
-        padding: 1.05rem 1.1rem;
-        border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+        gap: 0.55rem;
+        margin-bottom: 0.65rem;
+        padding: 0.62rem 0.75rem;
+        border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
         background:
-            radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 12%, transparent), transparent 32%),
+            radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 8%, transparent), transparent 40%),
             linear-gradient(145deg, color-mix(in srgb, var(--card) 97%, transparent), color-mix(in srgb, var(--surface) 92%, transparent));
     }
 
     .journey-banner--compact {
-        gap: 0.72rem;
-        padding: 0.85rem 0.95rem;
+        gap: 0.5rem;
+        padding: 0.55rem 0.68rem;
+    }
+
+    @media (min-width: 900px) {
+        .journey-banner.journey-banner--compact {
+            grid-template-columns: minmax(11rem, 0.42fr) minmax(0, 1fr);
+            grid-template-rows: auto auto;
+            column-gap: 0.85rem;
+            row-gap: 0.45rem;
+            align-items: start;
+        }
+
+        .journey-banner.journey-banner--compact .journey-banner-copy {
+            grid-column: 1;
+            grid-row: 1 / -1;
+        }
+
+        .journey-banner.journey-banner--compact .journey-steps {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .journey-banner.journey-banner--compact .journey-actions {
+            grid-column: 2;
+            grid-row: 2;
+        }
     }
 
     .journey-banner-tip {
         margin: 0;
-        font-size: 0.78rem;
-        line-height: 1.4;
+        font-size: 0.7rem;
+        line-height: 1.35;
         color: color-mix(in srgb, var(--muted) 92%, var(--ink));
     }
 
@@ -1663,23 +1710,25 @@
 
     .journey-banner-copy {
         display: grid;
-        gap: 0.28rem;
+        gap: 0.18rem;
     }
 
     .journey-banner-kicker,
     .panel-empty-kicker {
         margin: 0;
-        font-size: 0.74rem;
+        font-size: 0.65rem;
         font-weight: 800;
         letter-spacing: 0.09em;
         text-transform: uppercase;
-        color: color-mix(in srgb, var(--accent) 62%, var(--ink));
+        color: color-mix(in srgb, var(--accent) 52%, var(--ink));
     }
 
     .journey-banner-title,
     .panel-empty-title {
         margin: 0;
-        font-size: clamp(1.05rem, 1.8vw, 1.34rem);
+        font-size: clamp(0.92rem, 1.35vw, 1.08rem);
+        font-weight: 800;
+        line-height: 1.25;
         color: var(--ink);
     }
 
@@ -1687,12 +1736,13 @@
     .journey-banner-note,
     .panel-empty-copy {
         margin: 0;
+        font-size: 0.78rem;
         color: color-mix(in srgb, var(--muted) 90%, var(--ink));
-        line-height: 1.55;
+        line-height: 1.45;
     }
 
     .journey-banner-note {
-        font-size: 0.84rem;
+        font-size: 0.8rem;
     }
 
     .dashboard-guidance-copy {
@@ -1728,14 +1778,14 @@
     .journey-steps {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 0.75rem;
+        gap: 0.42rem;
     }
 
     .journey-step {
         display: grid;
-        gap: 0.22rem;
-        padding: 0.85rem 0.9rem;
-        border-radius: 14px;
+        gap: 0.12rem;
+        padding: 0.48rem 0.55rem;
+        border-radius: 10px;
         border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         background: color-mix(in srgb, var(--surface) 88%, transparent);
     }
@@ -1752,7 +1802,7 @@
 
     .journey-step-label {
         margin: 0;
-        font-size: 0.7rem;
+        font-size: 0.58rem;
         font-weight: 800;
         letter-spacing: 0.08em;
         text-transform: uppercase;
@@ -1761,15 +1811,16 @@
 
     .journey-step-title {
         margin: 0;
-        font-size: 0.94rem;
+        font-size: 0.78rem;
         font-weight: 800;
+        line-height: 1.2;
         color: var(--ink);
     }
 
     .journey-step-copy {
         margin: 0;
-        font-size: 0.82rem;
-        line-height: 1.45;
+        font-size: 0.68rem;
+        line-height: 1.35;
         color: color-mix(in srgb, var(--muted) 90%, var(--ink));
     }
 
@@ -1777,8 +1828,14 @@
     .panel-empty-actions {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.6rem;
+        gap: 0.45rem;
         align-items: center;
+    }
+
+    .journey-actions .trades-btn,
+    .journey-actions .ghost-btn {
+        padding: 0.26rem 0.5rem;
+        font-size: 0.65rem;
     }
 
     .metric-grid { display: grid;
@@ -2326,6 +2383,113 @@
         line-height: 1.45;
         color: color-mix(in srgb, var(--muted) 88%, var(--ink));
         overflow-wrap: anywhere;
+    }
+
+    .mt5-slots-urgency {
+        margin: 0 0 0.65rem;
+        padding: 0.62rem 0.72rem;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--good) 38%, var(--border));
+        background:
+            linear-gradient(
+                135deg,
+                color-mix(in srgb, var(--good) 14%, var(--card)) 0%,
+                color-mix(in srgb, var(--surface) 92%, var(--card)) 100%
+            );
+        box-shadow: 0 6px 22px color-mix(in srgb, var(--good) 12%, transparent);
+    }
+
+    .mt5-slots-urgency__top {
+        display: grid;
+        gap: 0.35rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .mt5-slots-urgency__kicker {
+        margin: 0;
+        font-size: 0.58rem;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--good) 72%, var(--ink));
+    }
+
+    .mt5-slots-urgency__stat {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 0.35rem 0.65rem;
+    }
+
+    .mt5-slots-urgency__num {
+        font-size: clamp(1.85rem, 4.2vw, 2.45rem);
+        font-weight: 900;
+        line-height: 1;
+        letter-spacing: -0.03em;
+        color: color-mix(in srgb, var(--good) 88%, var(--ink));
+        text-shadow: 0 0 28px color-mix(in srgb, var(--good) 35%, transparent);
+    }
+
+    .mt5-slots-urgency__stat-text {
+        display: grid;
+        gap: 0.12rem;
+        min-width: min(100%, 12rem);
+    }
+
+    .mt5-slots-urgency__headline {
+        font-size: 0.88rem;
+        font-weight: 800;
+        line-height: 1.25;
+        color: var(--ink);
+    }
+
+    .mt5-slots-urgency__batch {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: color-mix(in srgb, var(--muted) 86%, var(--ink));
+    }
+
+    .mt5-slots-urgency__meter {
+        display: grid;
+        gap: 0.28rem;
+    }
+
+    .mt5-slots-urgency__track {
+        height: 0.55rem;
+        border-radius: 999px;
+        overflow: hidden;
+        background: color-mix(in srgb, var(--border) 55%, var(--surface));
+        border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    }
+
+    .mt5-slots-urgency__fill {
+        height: 100%;
+        min-width: 0;
+        border-radius: inherit;
+        background: linear-gradient(
+            90deg,
+            color-mix(in srgb, var(--good) 72%, var(--accent) 28%),
+            color-mix(in srgb, var(--good) 92%, #fff)
+        );
+        box-shadow: 0 0 12px color-mix(in srgb, var(--good) 45%, transparent);
+        transition: width 240ms ease;
+    }
+
+    .mt5-slots-urgency__meter-labels {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.35rem;
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: color-mix(in srgb, var(--muted) 82%, var(--ink));
+    }
+
+    .mt5-slots-urgency__hurry {
+        font-weight: 800;
+        color: color-mix(in srgb, var(--good) 58%, var(--ink));
+        letter-spacing: 0.02em;
     }
 
     .mt5-progress-track {

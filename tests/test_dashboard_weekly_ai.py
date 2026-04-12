@@ -143,7 +143,7 @@ def test_dashboard_home_uses_state_1_for_active_account_even_when_other_accounts
 
     assert response.status_code == 200
     assert b'data-dashboard-state="state-1"' in response.data
-    assert b"journey-banner is-guided" in response.data
+    assert b"journey-banner journey-banner--compact" in response.data
     assert b"mt5-workflow-panel is-guided" in response.data
     assert b'id="trade-journal"' not in response.data
     assert b"Weekly AI Review" in response.data
@@ -189,7 +189,7 @@ def test_dashboard_home_uses_state_2_when_active_account_has_trades_without_acti
 
     assert response.status_code == 200
     assert b'data-dashboard-state="state-2"' in response.data
-    assert b"Connect MT5 for automatic sync" in response.data
+    assert b"Fill in and submit the form below to queue setup." in response.data
     assert b"mt5-workflow-panel is-guided" in response.data
     assert b"journey-banner is-guided" not in response.data
     assert b'id="trade-journal"' in response.data

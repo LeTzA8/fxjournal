@@ -2401,7 +2401,7 @@
                 {% if is_admin_user %}
                 <a
                     href="{{ url_for('admin_signup_users') }}"
-                    class="site-nav-link{% if request.endpoint in ['admin_signup_access', 'admin_signup_users', 'admin_signup_codes', 'admin_mt5_accounts'] %} active{% endif %}"
+                    class="site-nav-link{% if request.endpoint in ['admin_signup_access', 'admin_signup_users', 'admin_signup_codes', 'admin_mt5_accounts', 'admin_cfd_symbols', 'admin_weekly_report'] %} active{% endif %}"
                 >Admin</a>
                 {% endif %}
                 <a

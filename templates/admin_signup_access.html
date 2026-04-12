@@ -1,589 +1,11 @@
 {% extends "base.html" %}
 
 {% block head_extra %}
-<style>
-    .admin-access .dash-head,
-    .admin-access .panel {
-        border-radius: 16px;
-    }
-
-    .admin-head-row {
-        align-items: flex-start;
-    }
-
-    .admin-head-meta {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.55rem;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-        min-width: 0;
-        max-width: 100%;
-    }
-
-    .admin-kicker,
-    .summary-label,
-    .control-label,
-    .code-form label {
-        margin: 0;
-        font-size: 0.74rem;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-    }
-
-    .admin-summary-grid,
-    .admin-main-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.85rem;
-        align-items: start;
-    }
-
-    .admin-users-layout {
-        grid-template-columns: 1fr;
-    }
-
-    .admin-mt5-layout .mt5-accounts-panel {
-        grid-column: 1 / -1;
-    }
-
-    .admin-summary-grid {
-        grid-template-columns: repeat(5, minmax(0, 1fr));
-        margin-bottom: 0.85rem;
-    }
-
-    .summary-card,
-    .control-panel {
-        padding: 0.95rem;
-        min-width: 0;
-    }
-
-    .summary-value {
-        margin: 0.3rem 0 0;
-        font-size: clamp(1.35rem, 2.1vw, 1.9rem);
-        font-weight: 800;
-    }
-
-    .summary-note,
-    .helper-note {
-        margin: 0.3rem 0 0;
-        font-size: 0.82rem;
-        color: var(--muted);
-    }
-
-    .control-panel {
-        margin-bottom: 0.85rem;
-    }
-
-    .control-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 0.7rem;
-    }
-
-    .control-item {
-        display: grid;
-        gap: 0.24rem;
-        padding: 0.72rem;
-        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-        border-radius: 12px;
-        background: color-mix(in srgb, var(--surface) 96%, transparent);
-        min-width: 0;
-    }
-
-    .control-panel .control-item:has(.good) {
-        border-left: 3px solid color-mix(in srgb, var(--good) 62%, transparent);
-        padding-left: calc(0.72rem - 2px);
-    }
-
-    .control-panel .control-item:has(.bad) {
-        border-left: 3px solid color-mix(in srgb, var(--bad) 62%, transparent);
-        padding-left: calc(0.72rem - 2px);
-    }
-
-    .admin-tabs {
-        display: inline-flex;
-        gap: 0.45rem;
-        flex-wrap: wrap;
-        margin-bottom: 0.85rem;
-    }
-
-    .admin-tab,
-    .admin-filter {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex: 0 0 auto;
-        min-height: 38px;
-        padding: 0 0.85rem;
-        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
-        border-radius: 999px;
-        background: color-mix(in srgb, var(--surface) 78%, transparent);
-        color: var(--muted);
-        font-size: 0.76rem;
-        font-weight: 800;
-        letter-spacing: 0.03em;
-        text-transform: uppercase;
-        text-decoration: none;
-    }
-
-    .admin-tab.is-active,
-    .admin-filter.is-active,
-    .admin-tab:hover,
-    .admin-filter:hover {
-        color: var(--accent);
-        border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
-        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-    }
-
-    .panel-head-stack {
-        align-items: flex-start;
-        gap: 0.7rem;
-        flex-direction: column;
-    }
-
-    .admin-head-row > *,
-    .panel-head > *,
-    .panel-head-stack > *,
-    .code-head > * {
-        min-width: 0;
-    }
-
-    .filter-row,
-    .inline-actions {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        min-width: 0;
-        max-width: 100%;
-    }
-
-    .admin-search-form,
-    .users-toolbar-meta,
-    .pagination-row,
-    .pagination-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.55rem;
-        flex-wrap: wrap;
-        min-width: 0;
-    }
-
-    .admin-search-form {
-        width: 100%;
-    }
-
-    .admin-search-input {
-        flex: 1 1 18rem;
-        min-width: 0;
-        width: 100%;
-        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
-        border-radius: 10px;
-        padding: 0.72rem 0.78rem;
-        font: inherit;
-        background: color-mix(in srgb, var(--surface) 96%, transparent);
-        color: var(--ink);
-        box-sizing: border-box;
-    }
-
-    .users-toolbar-meta,
-    .pagination-row {
-        justify-content: space-between;
-    }
-
-    .pagination-label {
-        margin: 0;
-        font-size: 0.78rem;
-        color: var(--muted);
-    }
-
-    .pagination-row {
-        margin-top: 0.72rem;
-    }
-
-    .inline-actions form {
-        margin: 0;
-    }
-
-    .admin-table .actions-cell {
-        min-width: 0;
-        max-width: 220px;
-    }
-
-    .admin-table .inline-actions {
-        max-width: 100%;
-        row-gap: 0.35rem;
-    }
-
-    .admin-table .actions-cell .inline-actions {
-        justify-content: flex-end;
-    }
-
-    .dialog-actions {
-        justify-content: flex-end;
-    }
-
-    .spotlight-panel,
-    .users-panel,
-    .create-code-panel,
-    .codes-panel {
-        padding: 0.95rem;
-        min-width: 0;
-    }
-
-    .pending-list,
-    .codes-list {
-        display: grid;
-        gap: 0.7rem;
-    }
-
-    .pending-card,
-    .code-card {
-        display: grid;
-        gap: 0.6rem;
-        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-        border-radius: 12px;
-        padding: 0.78rem;
-        background: color-mix(in srgb, var(--surface) 96%, transparent);
-        min-width: 0;
-    }
-
-    .pending-name,
-    .code-value {
-        margin: 0;
-        font-size: 0.95rem;
-        font-weight: 800;
-    }
-
-    .pending-line {
-        margin: 0.12rem 0 0;
-        font-size: 0.82rem;
-        overflow-wrap: anywhere;
-    }
-
-    .pending-name {
-        font-size: 1.02rem;
-        color: var(--ink);
-        letter-spacing: -0.01em;
-    }
-
-    .pending-card .pending-line:first-of-type {
-        font-weight: 700;
-        color: color-mix(in srgb, var(--muted) 70%, var(--ink) 30%);
-    }
-
-    .pending-card .inline-actions {
-        margin-top: 0.45rem;
-        padding-top: 0.55rem;
-        border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
-        width: 100%;
-    }
-
-    .code-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 0.65rem;
-    }
-
-    .code-form {
-        display: grid;
-        gap: 0.7rem;
-    }
-
-    .code-form input {
-        width: 100%;
-        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
-        border-radius: 10px;
-        padding: 0.72rem 0.78rem;
-        font: inherit;
-        background: color-mix(in srgb, var(--surface) 96%, transparent);
-        color: var(--ink);
-        box-sizing: border-box;
-    }
-
-    .regen-ai-form {
-        display: grid;
-        gap: 0.7rem;
-    }
-
-    .code-form select,
-    .regen-ai-form select {
-        width: 100%;
-        max-width: 100%;
-        border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
-        border-radius: 10px;
-        padding: 0.72rem 0.78rem;
-        font: inherit;
-        background: color-mix(in srgb, var(--surface) 96%, transparent);
-        color: var(--ink);
-        box-sizing: border-box;
-    }
-
-    .regen-ai-note {
-        margin-top: 0.35rem;
-    }
-
-    .admin-table-shell {
-        overflow: auto;
-        max-width: 100%;
-        -webkit-overflow-scrolling: touch;
-        overscroll-behavior-x: contain;
-        touch-action: pan-x pan-y;
-    }
-
-    .admin-table {
-        width: 100%;
-        min-width: 980px;
-        border-collapse: collapse;
-    }
-
-    .admin-table th,
-    .admin-table td {
-        padding: 0.8rem 0.78rem;
-        border-bottom: 1px solid color-mix(in srgb, var(--border) 74%, transparent);
-        text-align: left;
-        vertical-align: top;
-        font-size: 0.84rem;
-    }
-
-    .admin-table th {
-        font-size: 0.74rem;
-        font-weight: 800;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: var(--muted);
-        background: color-mix(in srgb, var(--surface) 92%, transparent);
-        position: sticky;
-        top: 0;
-        z-index: 1;
-    }
-
-    .user-cell {
-        display: grid;
-        gap: 0.16rem;
-    }
-
-    .user-cell span {
-        color: var(--muted);
-        overflow-wrap: anywhere;
-    }
-
-    .user-metrics {
-        min-width: 13rem;
-    }
-
-    .chip {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-        border-radius: 999px;
-        padding: 0.22rem 0.56rem;
-        font-size: 0.68rem;
-        font-weight: 800;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        background: color-mix(in srgb, var(--surface) 92%, transparent);
-        color: var(--muted);
-    }
-
-    .chip.success-chip {
-        border-color: color-mix(in srgb, var(--good) 48%, var(--border));
-        background: color-mix(in srgb, var(--good) 14%, var(--surface));
-        color: color-mix(in srgb, var(--good) 82%, white 18%);
-    }
-
-    .chip.danger-chip {
-        border-color: color-mix(in srgb, var(--bad) 44%, var(--border));
-        background: color-mix(in srgb, var(--bad) 14%, var(--surface));
-        color: color-mix(in srgb, var(--bad) 82%, white 18%);
-    }
-
-    .chip.warning-chip {
-        border-color: color-mix(in srgb, #f59e0b 48%, var(--border));
-        background: color-mix(in srgb, #f59e0b 16%, var(--surface));
-        color: color-mix(in srgb, #f59e0b 84%, white 16%);
-    }
-
-    .chip.requested-chip {
-        border-color: color-mix(in srgb, #8b5cf6 48%, var(--border));
-        background: color-mix(in srgb, #8b5cf6 16%, var(--surface));
-        color: color-mix(in srgb, #8b5cf6 84%, white 16%);
-    }
-
-    .chip.root-chip {
-        border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
-        background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-        color: color-mix(in srgb, var(--accent) 82%, white 18%);
-    }
-
-    .code-value {
-        overflow-wrap: anywhere;
-    }
-
-    @media (max-width: 1380px) {
-        .admin-summary-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-        }
-    }
-
-    @media (max-width: 1180px) {
-        .admin-summary-grid,
-        .control-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-    }
-
-    @media (max-width: 980px) {
-        .admin-main-grid {
-            grid-template-columns: 1fr;
-        }
-    }
-
-    @media (max-width: 680px) {
-        .admin-summary-grid,
-        .control-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .admin-head-row {
-            flex-direction: column;
-        }
-
-        .admin-head-meta {
-            justify-content: flex-start;
-        }
-
-        .admin-tabs,
-        .filter-row {
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            padding-bottom: 0.18rem;
-            scrollbar-width: thin;
-            -webkit-overflow-scrolling: touch;
-            overscroll-behavior-x: contain;
-            touch-action: pan-x pan-y;
-        }
-
-        .admin-search-form,
-        .users-toolbar-meta,
-        .pagination-row {
-            flex-direction: column;
-            align-items: stretch;
-        }
-
-        .pagination-actions {
-            width: 100%;
-        }
-
-        .admin-search-form .ghost-btn,
-        .pagination-actions .ghost-btn {
-            width: 100%;
-        }
-
-        .admin-table .actions-cell {
-            max-width: 160px;
-        }
-
-        .admin-table .inline-actions {
-            gap: 0.28rem;
-        }
-
-        .admin-table .inline-actions .submit-btn,
-        .admin-table .inline-actions .ghost-btn {
-            font-size: 0.68rem;
-            padding: 0.42rem 0.6rem;
-            min-height: 32px;
-        }
-    }
-</style>
+{% include 'partials/admin_panel_head.html' %}
 {% endblock %}
 
 {% block content %}
-<section class="dash-wrap admin-access">
-    <div class="dash-content">
-        <header class="dash-head">
-            <div class="head-row admin-head-row">
-                <div>
-                    <p class="admin-kicker">{{ page_kicker }}</p>
-                    <h1>{{ page_heading }}</h1>
-                    <p class="welcome">Signed in as {{ username }}.</p>
-                    <p class="subtitle">{{ page_subtitle }}</p>
-                </div>
-                <div class="admin-head-meta">
-                    <span class="chip {{ 'root-chip' if is_root_admin else 'default' }}">
-                        {{ "Root Admin" if is_root_admin else "DB Admin" }}
-                    </span>
-                    <span class="soft">Env + account-state gated</span>
-                </div>
-            </div>
-        </header>
-
-        <section class="admin-summary-grid">
-            <article class="panel summary-card">
-                <p class="summary-label">Pending</p>
-                <p class="summary-value">{{ overview.pending_users }}</p>
-                <p class="summary-note">Awaiting manual review</p>
-            </article>
-            <article class="panel summary-card">
-                <p class="summary-label">Approved</p>
-                <p class="summary-value good">{{ overview.approved_users }}</p>
-                <p class="summary-note">Can access the app</p>
-            </article>
-            <article class="panel summary-card">
-                <p class="summary-label">Rejected</p>
-                <p class="summary-value bad">{{ overview.rejected_users }}</p>
-                <p class="summary-note">Explicitly blocked</p>
-            </article>
-            <article class="panel summary-card">
-                <p class="summary-label">Signup Codes</p>
-                <p class="summary-value">{{ overview.signup_codes }}</p>
-                <p class="summary-note">Referral and invite links</p>
-            </article>
-            <article class="panel summary-card">
-                <p class="summary-label">MT5 Accounts</p>
-                <p class="summary-value">{{ overview.mt5_accounts }}</p>
-                <p class="summary-note">Root-admin sync targets</p>
-            </article>
-        </section>
-
-        <section class="panel control-panel">
-            <div class="panel-head">
-                <h2>Runtime Controls</h2>
-                <span class="soft">Env backed</span>
-            </div>
-            <div class="control-grid">
-                <div class="control-item">
-                    <span class="control-label">Registration Paused</span>
-                    <span class="{{ 'bad' if registration_paused else 'good' }}">{{ "Yes" if registration_paused else "No" }}</span>
-                </div>
-                <div class="control-item">
-                    <span class="control-label">Auto Approve New Users</span>
-                    <span class="{{ 'good' if auto_approve_new_users else 'bad' }}">{{ "Yes" if auto_approve_new_users else "No" }}</span>
-                </div>
-                <div class="control-item">
-                    <span class="control-label">Signup Code Mode</span>
-                    <span>{{ signup_code_mode|replace('_', ' ')|title }}</span>
-                </div>
-                <div class="control-item">
-                    <span class="control-label">Admin Gate</span>
-                    <span>{{ "Root env email for writes" if is_root_admin else "Read-only unless root" }}</span>
-                </div>
-            </div>
-        </section>
-
-        <nav class="admin-tabs" aria-label="Admin Sections">
-            <a href="{{ url_for('admin_signup_users') }}" class="admin-tab{% if section == 'users' %} is-active{% endif %}">Users</a>
-            <a href="{{ url_for('admin_signup_codes') }}" class="admin-tab{% if section == 'codes' %} is-active{% endif %}">Codes</a>
-            {% if is_root_admin %}
-            <a href="{{ url_for('admin_mt5_accounts') }}" class="admin-tab{% if section == 'mt5' %} is-active{% endif %}">MT5</a>
-            <a href="{{ url_for('admin_weekly_report') }}" class="admin-tab{% if section == 'weekly_report' %} is-active{% endif %}">Weekly AI</a>
-            {% endif %}
-        </nav>
+{% include 'partials/admin_shell_start.html' %}
 
         {% if section == "users" %}
         <section class="panel-grid admin-main-grid admin-users-layout">
@@ -597,7 +19,12 @@
                     {% for user in pending_users %}
                     <article class="pending-card">
                         <div class="pending-meta">
-                            <p class="pending-name">{{ user.username }}</p>
+                            <div class="pending-title-row">
+                                <div>
+                                    <p class="pending-name">{{ user.username }}</p>
+                                    <p class="pending-id">User ID {{ user.id }}</p>
+                                </div>
+                            </div>
                             <p class="pending-line">{{ user.email }}</p>
                             <p class="pending-line">Verified: <span class="{{ 'good' if user.email_verified else 'bad' }}">{{ "Yes" if user.email_verified else "No" }}</span></p>
                             <p class="pending-line">Code used: {{ user.signup_code_used or "None" }}</p>
@@ -633,6 +60,7 @@
                         <a href="{{ url_for('admin_signup_users', status='pending', q=search_query or None) }}" class="admin-filter{% if status_filter == 'pending' %} is-active{% endif %}">Pending</a>
                         <a href="{{ url_for('admin_signup_users', status='approved', q=search_query or None) }}" class="admin-filter{% if status_filter == 'approved' %} is-active{% endif %}">Approved</a>
                         <a href="{{ url_for('admin_signup_users', status='rejected', q=search_query or None) }}" class="admin-filter{% if status_filter == 'rejected' %} is-active{% endif %}">Rejected</a>
+                        <a href="{{ url_for('admin_signup_users', status='suspended', q=search_query or None) }}" class="admin-filter{% if status_filter == 'suspended' %} is-active{% endif %}">Suspended</a>
                         <a href="{{ url_for('admin_signup_users', status='admins', q=search_query or None) }}" class="admin-filter{% if status_filter == 'admins' %} is-active{% endif %}">Admins</a>
                         <a href="{{ url_for('admin_signup_users', status='all', q=search_query or None) }}" class="admin-filter{% if status_filter == 'all' %} is-active{% endif %}">All</a>
                     </div>
@@ -683,7 +111,7 @@
                                 <th>Verified</th>
                                 <th>Admin</th>
                                 <th>Signals</th>
-                                <th class="actions-cell">Actions</th>
+                                <th class="actions-cell">Tools</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -694,9 +122,21 @@
                             <tr>
                                 <td>
                                     <div class="user-cell">
-                                        <strong>{{ user.username }}</strong>
+                                        <div class="user-identity-row">
+                                            <strong>{{ user.username }}</strong>
+                                            <span class="user-id-inline">ID {{ user.id }}</span>
+                                            {% if is_root_admin and not is_root_email %}
+                                            <form
+                                                action="{{ url_for('admin_signup_delete_user', user_id=user.id) }}"
+                                                method="post"
+                                                onsubmit="return confirm('Permanently delete this user, all trade accounts, trades, and linked data? This cannot be undone.');"
+                                            >
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <button type="submit" class="ghost-btn danger-btn inline-btn-compact">Delete</button>
+                                            </form>
+                                            {% endif %}
+                                        </div>
                                         <span>{{ user.email }}</span>
-                                        <span>User ID: {{ user.id }}</span>
                                         <span>Referral: {{ user.signup_code_used or "-" }}</span>
                                         <span>Approved: {{ user.approved_at.strftime("%Y-%m-%d %H:%M UTC") if user.approved_at else "-" }}</span>
                                     </div>
@@ -744,16 +184,6 @@
                                         <form action="{{ url_for('admin_signup_suspend_user', user_id=user.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="ghost-btn danger-btn">Suspend</button>
-                                        </form>
-                                        {% endif %}
-                                        {% if not is_root_email %}
-                                        <form
-                                            action="{{ url_for('admin_signup_delete_user', user_id=user.id) }}"
-                                            method="post"
-                                            onsubmit="return confirm('Permanently delete this user, all trade accounts, trades, and linked data? This cannot be undone.');"
-                                        >
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="ghost-btn danger-btn">Delete account</button>
                                         </form>
                                         {% endif %}
                                         {% if user.signup_status in ['rejected', 'suspended'] %}
@@ -898,7 +328,7 @@
                     </span>
                 </div>
                 <p class="helper-note">Users now submit the full MT5 sync setup form from the dashboard. Use this table to monitor queued accounts, trigger syncs, or clean up old records. Trade sync does not fetch chart bars — use <strong>Backfill Bars</strong> per account when you want OHLC data for user trade charts.</p>
-                <div class="inline-actions" style="margin-bottom: 0.85rem; flex-wrap: wrap;">
+                <div class="mt5-global-actions">
                     <form
                         action="{{ url_for('admin_mt5_recalibrate_all_trade_times') }}"
                         method="post"
@@ -926,7 +356,7 @@
                                 <th>MT5</th>
                                 <th>Status</th>
                                 <th>Last Synced</th>
-                                <th class="actions-cell">Actions</th>
+                                <th class="actions-cell">Sync tools</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -952,7 +382,13 @@
                                 </td>
                                 <td>
                                     <div class="user-cell">
-                                        <strong>{{ account.account_number }}</strong>
+                                        <div class="mt5-account-title-row">
+                                            <strong>{{ account.account_number }}</strong>
+                                            <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <button type="submit" class="ghost-btn danger-btn inline-btn-compact">Delete</button>
+                                            </form>
+                                        </div>
                                         <span>{{ account.server }}</span>
                                         <span>{{ account.terminal_path or "Terminal not set up yet" }}</span>
                                         <span>{{ account.appdata_hash or "AppData hash pending" }}</span>
@@ -994,15 +430,6 @@
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="ghost-btn danger-btn" {% if is_orphaned %}disabled aria-disabled="true" title="Cannot clear bars for cleanup-only accounts."{% endif %}>Clear Bars</button>
                                         </form>
-                                        <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button
-                                                type="submit"
-                                                class="ghost-btn danger-btn"
-                                            >
-                                                Delete
-                                            </button>
-                                        </form>
                                     </div>
                                 </td>
                             </tr>
@@ -1012,6 +439,68 @@
                 </div>
                 {% else %}
                 <p class="helper-note">No MT5 accounts have been configured yet.</p>
+                {% endif %}
+            </article>
+        </section>
+        {% elif section == "cfd_symbols" %}
+        <section class="panel-grid admin-main-grid admin-cfd-symbols-layout">
+            <article class="panel codes-panel cfd-aliases-panel">
+                <div class="panel-head panel-head-stack">
+                    <div>
+                        <h2>CFD broker aliases</h2>
+                        <p class="helper-note">
+                            Each row is the canonical symbol stored in the journal. Comma-separated values are extra broker/MT5 names that resolve to that symbol (uppercased, non-alphanumeric stripped).
+                            Conflicts across <strong>active</strong> symbols are rejected.
+                        </p>
+                    </div>
+                </div>
+                {% if cfd_symbol_rows %}
+                <div class="table-shell admin-table-shell">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Status</th>
+                                <th>Aliases</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sym in cfd_symbol_rows %}
+                            <tr>
+                                <td><strong>{{ sym.symbol }}</strong></td>
+                                <td>
+                                    <span class="chip{% if sym.is_active %} success-chip{% else %} default{% endif %}">{{ "Active" if sym.is_active else "Inactive" }}</span>
+                                </td>
+                                <td>
+                                    <form
+                                        action="{{ url_for('admin_cfd_symbol_update_aliases', symbol_id=sym.id) }}"
+                                        method="post"
+                                        class="cfd-alias-inline-form"
+                                    >
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <label class="sr-only" for="cfd_aliases_{{ sym.id }}">Aliases for {{ sym.symbol }}</label>
+                                        <textarea
+                                            id="cfd_aliases_{{ sym.id }}"
+                                            name="aliases"
+                                            class="cfd-alias-textarea"
+                                            rows="2"
+                                            autocomplete="off"
+                                            placeholder="e.g. GOLD, XAUUSDM"
+                                        >{{ sym.aliases or "" }}</textarea>
+                                        <div class="cfd-alias-actions">
+                                            <button type="submit" class="submit-btn">Save aliases</button>
+                                        </div>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="helper-note">
+                    No rows in <code>CFD_Symbols</code>. The app is using built-in defaults from code until the table is seeded — run migrations or insert symbols before using this screen.
+                </p>
                 {% endif %}
             </article>
         </section>
@@ -1056,20 +545,20 @@
                     <article class="code-card">
                         <div class="code-head">
                             <p class="code-value">{{ code.code }}</p>
-                            <span class="chip{% if code.is_active %} success-chip{% else %} default{% endif %}">{{ "Active" if code.is_active else "Inactive" }}</span>
+                            <div class="code-head-actions">
+                                <span class="chip{% if code.is_active %} success-chip{% else %} default{% endif %}">{{ "Active" if code.is_active else "Inactive" }}</span>
+                                {% if is_root_admin %}
+                                <form action="{{ url_for('admin_signup_toggle_code', code_id=code.id) }}" method="post">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="ghost-btn inline-btn-compact">{{ "Deactivate" if code.is_active else "Activate" }}</button>
+                                </form>
+                                {% endif %}
+                            </div>
                         </div>
                         <p class="pending-line">Referral link: {{ public_register_url }}?{{ signup_code_query_param }}={{ code.code }}</p>
                         <p class="pending-line">Uses: {{ code.used_count }}{% if code.max_uses is not none %} / {{ code.max_uses }}{% else %} / unlimited{% endif %}</p>
                         <p class="pending-line">Expires: {{ code.expires_at.strftime("%Y-%m-%d %H:%M UTC") if code.expires_at else "Never" }}</p>
                         <p class="pending-line">Notes: {{ code.notes or "-" }}</p>
-                        {% if is_root_admin %}
-                        <div class="inline-actions">
-                            <form action="{{ url_for('admin_signup_toggle_code', code_id=code.id) }}" method="post">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="ghost-btn">{{ "Deactivate" if code.is_active else "Activate" }}</button>
-                            </form>
-                        </div>
-                        {% endif %}
                     </article>
                     {% endfor %}
                 </div>
@@ -1079,8 +568,7 @@
             </article>
         </section>
         {% endif %}
-    </div>
-</section>
+{% include 'partials/admin_shell_end.html' %}
 
 {% if section == "users" and is_root_admin and users %}
     {% for user in users %}

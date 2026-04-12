@@ -10,6 +10,8 @@ ALL_ADMIN_ROUTES = [
     ("get", "/dashboard/admin/access/users"),
     ("get", "/dashboard/admin/access/codes"),
     ("get", "/dashboard/admin/access/mt5"),
+    ("get", "/dashboard/admin/access/cfd-symbols"),
+    ("post", "/dashboard/admin/access/cfd-symbols/1/aliases"),
     ("get", "/dashboard/admin/access/weekly-report"),
     ("get", "/dashboard/admin/access/weekly-report/1?trade_account_id=1"),
     ("post", "/dashboard/admin/access/users/1/regenerate-ai-advice"),
@@ -38,6 +40,8 @@ ALL_ADMIN_ROUTES = [
 
 ROOT_ONLY_ADMIN_ROUTES = [
     ("get", "/dashboard/admin/access/mt5"),
+    ("get", "/dashboard/admin/access/cfd-symbols"),
+    ("post", "/dashboard/admin/access/cfd-symbols/1/aliases"),
     ("get", "/dashboard/admin/access/weekly-report"),
     ("get", "/dashboard/admin/access/weekly-report/1?trade_account_id=1"),
     ("post", "/dashboard/admin/access/users/1/regenerate-ai-advice"),

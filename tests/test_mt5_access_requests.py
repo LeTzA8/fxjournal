@@ -546,7 +546,7 @@ def test_dashboard_home_uses_active_account_for_mt5_panel(app_ctx, client, monke
     assert response.status_code == 200
     assert b"Start MT5 Sync" in response.data
     assert b"Requestable CFD" in response.data
-    assert b"Submit your read-only MT5 details to start MT5 sync setup." in response.data
+    assert b"Fill in and submit the form below to queue setup." in response.data
     assert b"Pending Review" not in response.data
     assert b"Finish Request" not in response.data
     assert b"Save MT5 Account Details" not in response.data
@@ -587,7 +587,7 @@ def test_dashboard_home_treats_inactive_mt5_details_as_setup_pending_not_active_
     assert b"Setting Up" in response.data
     assert b"Sync Active" in response.data
     assert b"setup started right away" in response.data
-    assert b"Connect MT5 for automatic sync on this account." in response.data
+    assert b"Optional: automatic sync for this account after you have trades." in response.data
     assert b'id="trade-journal"' not in response.data
     assert b"Weekly AI Review" in response.data
     assert b"Session Performance" not in response.data
@@ -617,7 +617,7 @@ def test_dashboard_home_treats_legacy_approved_request_as_direct_submit_flow(app
 
     assert response.status_code == 200
     assert b"Submit Details" in response.data
-    assert b"Finish the one-step MT5 setup form here to start setup." in response.data
+    assert b"Complete the form below to resume MT5 setup." in response.data
     assert b"Approval is already in place for this account." not in response.data
     assert b"APPROVED" not in response.data
 

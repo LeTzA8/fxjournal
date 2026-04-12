@@ -1,0 +1,158 @@
+<section class="dash-wrap admin-access admin-app">
+  <div class="dash-content admin-app-grid">
+    <aside class="admin-sidebar" aria-label="Admin navigation">
+      <div class="admin-sidebar-head">
+        <p class="admin-kicker">Restricted</p>
+        <h2 class="admin-sidebar-title">Admin</h2>
+        <div class="admin-sidebar-meta">
+          <span class="chip {{ 'root-chip' if is_root_admin else 'default' }}">{{ "Root admin" if is_root_admin else "Admin" }}</span>
+        </div>
+      </div>
+      <nav class="admin-side-nav" aria-label="Admin sections">
+        <a
+          href="{{ url_for('admin_signup_users') }}"
+          class="admin-side-nav-link{% if section == 'users' %} is-active{% endif %}"
+        >Users &amp; approvals</a>
+        <a
+          href="{{ url_for('admin_signup_codes') }}"
+          class="admin-side-nav-link{% if section == 'codes' %} is-active{% endif %}"
+        >Invite codes</a>
+        {% if is_root_admin %}
+        <a
+          href="{{ url_for('admin_mt5_accounts') }}"
+          class="admin-side-nav-link{% if section == 'mt5' %} is-active{% endif %}"
+        >MT5 sync</a>
+        <a
+          href="{{ url_for('admin_cfd_symbols') }}"
+          class="admin-side-nav-link{% if section == 'cfd_symbols' %} is-active{% endif %}"
+        >CFD symbols</a>
+        <a
+          href="{{ url_for('admin_weekly_report') }}"
+          class="admin-side-nav-link{% if section == 'weekly_report' %} is-active{% endif %}"
+        >Weekly AI audit</a>
+        {% endif %}
+      </nav>
+      <p class="admin-sidebar-user soft">Signed in as {{ username }}</p>
+    </aside>
+
+    <div class="admin-main">
+      <header class="admin-page-head">
+        <h1 class="admin-page-title">{{ page_heading }}</h1>
+        <p class="admin-page-subtitle">{{ page_subtitle }}</p>
+      </header>
+
+      <div class="admin-context-stats" role="region" aria-label="Key metrics for this area">
+        {% if section == 'users' %}
+        <div class="admin-stat-row">
+          <a href="{{ url_for('admin_signup_users', status='pending', q=search_query or None) }}" class="admin-stat-tile{% if overview.pending_users %} admin-stat-tile--alert{% endif %}">
+            <span class="admin-stat-label">Pending</span>
+            <span class="admin-stat-value">{{ overview.pending_users }}</span>
+          </a>
+          <a href="{{ url_for('admin_signup_users', status='approved', q=search_query or None) }}" class="admin-stat-tile">
+            <span class="admin-stat-label">Approved</span>
+            <span class="admin-stat-value good">{{ overview.approved_users }}</span>
+          </a>
+          <a href="{{ url_for('admin_signup_users', status='rejected', q=search_query or None) }}" class="admin-stat-tile">
+            <span class="admin-stat-label">Rejected</span>
+            <span class="admin-stat-value bad">{{ overview.rejected_users }}</span>
+          </a>
+          <a href="{{ url_for('admin_signup_users', status='suspended', q=search_query or None) }}" class="admin-stat-tile">
+            <span class="admin-stat-label">Suspended</span>
+            <span class="admin-stat-value">{{ overview.suspended_users }}</span>
+          </a>
+          <a href="{{ url_for('admin_signup_users', status='admins', q=search_query or None) }}" class="admin-stat-tile">
+            <span class="admin-stat-label">Admins</span>
+            <span class="admin-stat-value">{{ overview.admin_users }}</span>
+          </a>
+        </div>
+        {% elif section == 'codes' %}
+        <div class="admin-stat-row">
+          <a href="{{ url_for('admin_signup_users', status='pending') }}" class="admin-stat-tile{% if overview.pending_users %} admin-stat-tile--alert{% endif %}">
+            <span class="admin-stat-label">Users pending</span>
+            <span class="admin-stat-value">{{ overview.pending_users }}</span>
+          </a>
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">Signup codes</span>
+            <span class="admin-stat-value">{{ overview.signup_codes }}</span>
+          </span>
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">Registration</span>
+            <span class="admin-stat-value {{ 'bad' if registration_paused else 'good' }}">{{ "Paused" if registration_paused else "Open" }}</span>
+          </span>
+        </div>
+        {% elif section == 'mt5' %}
+        <div class="admin-stat-row">
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">MT5 accounts</span>
+            <span class="admin-stat-value">{{ overview.mt5_accounts }}</span>
+          </span>
+          {% if orphaned_mt5_count is defined and orphaned_mt5_count %}
+          <span class="admin-stat-tile admin-stat-tile--static admin-stat-tile--warn">
+            <span class="admin-stat-label">Cleanup-only</span>
+            <span class="admin-stat-value">{{ orphaned_mt5_count }}</span>
+          </span>
+          {% endif %}
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">Open batch</span>
+            <span class="admin-stat-value {% if active_mt5_batch %}good{% else %}soft{% endif %}">{{ (active_mt5_batch.name or "Unnamed") if active_mt5_batch else "None" }}</span>
+          </span>
+          {% if active_mt5_batch %}
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">Slots left</span>
+            <span class="admin-stat-value">{{ active_mt5_batch.slots_remaining }}</span>
+          </span>
+          {% endif %}
+        </div>
+        {% elif section == 'cfd_symbols' %}
+        <div class="admin-stat-row">
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">Symbol rows</span>
+            <span class="admin-stat-value">{{ cfd_symbol_rows|length if cfd_symbol_rows else 0 }}</span>
+          </span>
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">MT5 accounts</span>
+            <span class="admin-stat-value">{{ overview.mt5_accounts }}</span>
+          </span>
+        </div>
+        {% elif section == 'weekly_report' %}
+        <div class="admin-stat-row">
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">Users with stored reviews</span>
+            <span class="admin-stat-value">{{ audit_users|length if audit_users else 0 }}</span>
+          </span>
+          <a href="{{ url_for('admin_signup_users', status='pending') }}" class="admin-stat-tile{% if overview.pending_users %} admin-stat-tile--alert{% endif %}">
+            <span class="admin-stat-label">Pending signups</span>
+            <span class="admin-stat-value">{{ overview.pending_users }}</span>
+          </a>
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">MT5 accounts</span>
+            <span class="admin-stat-value">{{ overview.mt5_accounts }}</span>
+          </span>
+        </div>
+        {% endif %}
+      </div>
+
+      <details class="admin-runtime-details">
+        <summary class="admin-runtime-summary">
+          <span class="admin-runtime-summary-title">Platform environment</span>
+          <span class="admin-runtime-summary-hint soft">Env-backed flags (read-only here)</span>
+        </summary>
+        <div class="admin-runtime-grid">
+          <div class="admin-runtime-item">
+            <span class="admin-runtime-label">Registration paused</span>
+            <span class="{{ 'bad' if registration_paused else 'good' }}">{{ "Yes" if registration_paused else "No" }}</span>
+          </div>
+          <div class="admin-runtime-item">
+            <span class="admin-runtime-label">Auto-approve new users</span>
+            <span class="{{ 'good' if auto_approve_new_users else 'bad' }}">{{ "Yes" if auto_approve_new_users else "No" }}</span>
+          </div>
+          <div class="admin-runtime-item">
+            <span class="admin-runtime-label">Signup code mode</span>
+            <span>{{ signup_code_mode|replace('_', ' ')|title }}</span>
+          </div>
+          <div class="admin-runtime-item">
+            <span class="admin-runtime-label">Write access</span>
+            <span>{{ "Root env email" if is_root_admin else "Read-only (not root)" }}</span>
+          </div>
+        </div>
+      </details>
