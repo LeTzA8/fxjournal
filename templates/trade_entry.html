@@ -128,9 +128,6 @@
                         <h2>{% if form_mode == 'view' %}Full record{% elif form_mode == 'edit' %}Fields{% else %}Form{% endif %}</h2>
                         <span class="soft">{% if form_mode == 'view' %}View only{% else %}{{ "Futures" if account_type == "FUTURES" else "CFD" }}{% endif %}</span>
                     </div>
-                    {% if form_mode == 'view' and trade %}
-                    <a class="submit-btn trade-panel-edit-btn" href="{{ url_for('trades.edit_trade', trade_pubkey=trade.pubkey) }}">Edit trade</a>
-                    {% endif %}
                 </div>
 
                 {% if form_mode == 'edit' and trade %}
@@ -325,10 +322,6 @@
                         <label class="trade-field-label" for="system_trade_note">Import Note</label>
                         <textarea id="system_trade_note" rows="4" readonly>{{ trade.system_trade_note }}</textarea>
                         {% endif %}
-                    </div>
-
-                    <div class="form-actions trade-form-actions trade-form-actions--viewonly">
-                        <a class="submit-btn" href="{{ url_for('trades.edit_trade', trade_pubkey=trade.pubkey) }}">Edit trade</a>
                     </div>
                 </form>
 
@@ -749,16 +742,6 @@
     .trade-entry-panel-head-text { display: grid;
         gap: 0.22rem;
         min-width: 0; }
-
-    .trade-panel-edit-btn { text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.84rem;
-        padding: 0.48rem 1rem;
-        flex-shrink: 0; }
-
-    .trade-form-actions--viewonly { margin-top: 0.25rem; }
 
     .trade-hero--pills { display: grid;
         gap: 0.55rem;

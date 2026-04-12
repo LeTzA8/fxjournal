@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, func
+from sqlalchemy.orm import load_only, selectinload
 
 from helpers.scoring import compute_emotional_index
 from helpers.trade_analysis import (
@@ -629,7 +630,10 @@ def _query_trades_for_payload(
     period_end_utc=None,
     closed_trades_only=False,
 ):
-    trade_query = Trade.query.filter_by(user_id=user_id)
+    trade_query = Trade.query.filter_by(user_id=user_id).options(
+        selectinload(Trade.trade_account),
+        selectinload(Trade.interpretation),
+    )
     if trade_account_id is not None:
         trade_query = trade_query.filter_by(trade_account_id=trade_account_id)
     if closed_trades_only:
@@ -1218,6 +1222,7 @@ def build_trade_payload(
                     kind=WEEKLY_DASHBOARD_KIND,
                 )
                 .filter(AIGeneratedResponse.period_start_utc < period_start_utc)
+                .options(load_only(AIGeneratedResponse.payload_json, AIGeneratedResponse.period_start_utc))
                 .order_by(AIGeneratedResponse.period_start_utc.desc())
                 .limit(3)
                 .all()

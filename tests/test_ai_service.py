@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import json
+import pytest
 
 import ai_service
 from ai_service import (
@@ -15,6 +17,7 @@ from ai_service import (
     normalize_dashboard_advice_text,
 )
 from helpers.scoring import compute_emotional_index
+from helpers.trade_interpretation import apply_interpretation
 from models import (
     AIGeneratedResponse,
     AIPromptHistory,
@@ -800,57 +803,59 @@ def test_build_trade_payload_uses_bundled_view_for_summary_and_emotional_index(a
     )
 
     bundle_key = "bundle123456789012345678"
-    db.session.add_all(
-        [
-            Trade(
-                user_id=user.id,
-                trade_account_id=trade_account.id,
-                symbol="EURUSD",
-                side="BUY",
-                entry_price=1.1000,
-                exit_price=1.1010,
-                lot_size=0.5,
-                pnl=30.0,
-                commission=-1.0,
-                swap=0.0,
-                trade_note="Planned scale entry.",
-                is_reactive=True,
-                bundle_pubkey=bundle_key,
-                opened_at=datetime(2026, 3, 10, 10, 0, 0),
-                closed_at=datetime(2026, 3, 10, 10, 30, 0),
-            ),
-            Trade(
-                user_id=user.id,
-                trade_account_id=trade_account.id,
-                symbol="EURUSD",
-                side="BUY",
-                entry_price=1.1005,
-                exit_price=1.1015,
-                lot_size=0.5,
-                pnl=20.0,
-                commission=-1.0,
-                swap=0.0,
-                trade_note="Added on confirmation.",
-                is_reactive=True,
-                bundle_pubkey=bundle_key,
-                opened_at=datetime(2026, 3, 10, 10, 5, 0),
-                closed_at=datetime(2026, 3, 10, 10, 35, 0),
-            ),
-            Trade(
-                user_id=user.id,
-                trade_account_id=trade_account.id,
-                symbol="GBPUSD",
-                side="SELL",
-                entry_price=1.2700,
-                exit_price=1.2690,
-                lot_size=1.0,
-                pnl=100.0,
-                trade_note="Standalone winner.",
-                opened_at=datetime(2026, 3, 10, 12, 0, 0),
-                closed_at=datetime(2026, 3, 10, 12, 40, 0),
-            ),
-        ]
+    leg_a = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1000,
+        exit_price=1.1010,
+        lot_size=0.5,
+        pnl=30.0,
+        commission=-1.0,
+        swap=0.0,
+        trade_note="Planned scale entry.",
+        opened_at=datetime(2026, 3, 10, 10, 0, 0),
+        closed_at=datetime(2026, 3, 10, 10, 30, 0),
     )
+    leg_b = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1005,
+        exit_price=1.1015,
+        lot_size=0.5,
+        pnl=20.0,
+        commission=-1.0,
+        swap=0.0,
+        trade_note="Added on confirmation.",
+        opened_at=datetime(2026, 3, 10, 10, 5, 0),
+        closed_at=datetime(2026, 3, 10, 10, 35, 0),
+    )
+    solo = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="GBPUSD",
+        side="SELL",
+        entry_price=1.2700,
+        exit_price=1.2690,
+        lot_size=1.0,
+        pnl=100.0,
+        trade_note="Standalone winner.",
+        opened_at=datetime(2026, 3, 10, 12, 0, 0),
+        closed_at=datetime(2026, 3, 10, 12, 40, 0),
+    )
+    db.session.add_all([leg_a, leg_b, solo])
+    db.session.flush()
+    for t in (leg_a, leg_b):
+        apply_interpretation(
+            t,
+            bundle_pubkey=bundle_key,
+            is_reactive=True,
+            source="test",
+            user_id=user.id,
+        )
     db.session.commit()
 
     payload = build_trade_payload(
@@ -979,39 +984,37 @@ def test_build_trade_payload_flags_calm_self_report_mismatch_when_behaviour_is_e
         email="ai-mismatch@example.com",
     )
 
-    db.session.add_all(
-        [
-            Trade(
-                user_id=user.id,
-                trade_account_id=trade_account.id,
-                symbol="EURUSD",
-                side="BUY",
-                entry_price=1.1000,
-                exit_price=1.0990,
-                stop_loss=1.0980,
-                take_profit=1.1040,
-                lot_size=1.0,
-                pnl=-100.0,
-                opened_at=datetime(2026, 3, 10, 10, 0, 0),
-                closed_at=datetime(2026, 3, 10, 10, 15, 0),
-            ),
-            Trade(
-                user_id=user.id,
-                trade_account_id=trade_account.id,
-                symbol="EURUSD",
-                side="BUY",
-                entry_price=1.0995,
-                exit_price=1.1010,
-                stop_loss=1.0975,
-                take_profit=1.1035,
-                lot_size=1.5,
-                pnl=150.0,
-                is_reactive=True,
-                opened_at=datetime(2026, 3, 10, 10, 20, 0),
-                closed_at=datetime(2026, 3, 10, 10, 40, 0),
-            ),
-        ]
+    first = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1000,
+        exit_price=1.0990,
+        stop_loss=1.0980,
+        take_profit=1.1040,
+        lot_size=1.0,
+        pnl=-100.0,
+        opened_at=datetime(2026, 3, 10, 10, 0, 0),
+        closed_at=datetime(2026, 3, 10, 10, 15, 0),
     )
+    second = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.0995,
+        exit_price=1.1010,
+        stop_loss=1.0975,
+        take_profit=1.1035,
+        lot_size=1.5,
+        pnl=150.0,
+        opened_at=datetime(2026, 3, 10, 10, 20, 0),
+        closed_at=datetime(2026, 3, 10, 10, 40, 0),
+    )
+    db.session.add_all([first, second])
+    db.session.flush()
+    apply_interpretation(second, is_reactive=True, source="test", user_id=user.id)
     db.session.commit()
 
     payload = build_trade_payload(
@@ -1028,7 +1031,7 @@ def test_build_trade_payload_flags_calm_self_report_mismatch_when_behaviour_is_e
     )
 
     emotional_index = payload["emotional_index"]
-    assert emotional_index["score"] == 3.5
+    assert emotional_index["score"] == pytest.approx(3.03, abs=0.02)
     assert emotional_index["label"] == "moderate"
     assert emotional_index["self_report_mismatch"] is True
     assert emotional_index["signals"]["confirmed_revenge_trade_count"] == 0
@@ -1038,7 +1041,7 @@ def test_build_trade_payload_flags_calm_self_report_mismatch_when_behaviour_is_e
     assert emotional_index["signals"]["confirmed_reactive_trade_count"] == 1
     assert emotional_index["signals"]["reactive_trade_count"] == 2
     assert emotional_index["components"]["confirmed_reactive_points"] == 1.25
-    assert emotional_index["components"]["revenge_points"] == 2.25
+    assert emotional_index["components"]["revenge_points"] == pytest.approx(1.78, abs=0.02)
 
 
 def test_compute_emotional_index_normalizes_repeated_confirmed_revenge_trades():
@@ -1060,7 +1063,7 @@ def test_compute_emotional_index_normalizes_repeated_confirmed_revenge_trades():
         opened_at = base_open + timedelta(hours=trade_index * 6)
         closed_at = opened_at + timedelta(hours=2)
         trades.append(
-            Trade(
+            SimpleNamespace(
                 symbol=symbols[trade_index],
                 side="BUY",
                 entry_price=1.1000,
@@ -1068,8 +1071,13 @@ def test_compute_emotional_index_normalizes_repeated_confirmed_revenge_trades():
                 lot_size=1.0,
                 pnl=100.0,
                 is_revenge=True,
+                is_reactive=False,
+                is_corrective=False,
+                bundle_pubkey=None,
                 opened_at=opened_at,
                 closed_at=closed_at,
+                id=trade_index,
+                pubkey=f"t{trade_index}",
             )
         )
 

@@ -3,13 +3,14 @@ from datetime import datetime
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from extensions import limiter
 from celery_workers.cache import CacheUnavailableError, invalidate
 from helpers.behavior_labels import build_trade_behavior_badge_map
 from helpers.core import (
     assign_trade_profile_to_trade,
+    attach_trade_profile_objects,
     build_trade_duplicate_key,
     build_normalized_trade_insert_batch,
     build_unique_trade_pubkey,
@@ -24,8 +25,10 @@ from helpers.core import (
     is_local_dev_environment,
     parse_local_datetime_input,
     resolve_trade_profile_form_state,
+    resolve_user_trade_profile_attachment,
 )
 from helpers.trade_analysis import detect_outliers, get_trade_identity
+from helpers.trade_interpretation import apply_interpretation
 from models import Trade, TradeBars, db
 from trading import (
     aggregate_ohlc_bars,
@@ -175,13 +178,35 @@ def _find_duplicate_trade(
         closed_at=closed_at,
         pnl=pnl,
     )
-    existing_trades = Trade.query.filter_by(
-        user_id=user_id,
-        trade_account_id=trade_account_id,
-    ).filter(
-        Trade.symbol == symbol,
-        Trade.opened_at == opened_at,
-    ).all()
+    existing_trades = (
+        Trade.query.filter_by(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+        )
+        .filter(
+            Trade.symbol == symbol,
+            Trade.opened_at == opened_at,
+        )
+        .options(
+            load_only(
+                Trade.id,
+                Trade.symbol,
+                Trade.contract_code,
+                Trade.side,
+                Trade.entry_price,
+                Trade.exit_price,
+                Trade.lot_size,
+                Trade.opened_at,
+                Trade.closed_at,
+                Trade.pnl,
+                Trade.commission,
+                Trade.swap,
+                Trade.trade_account_id,
+            ),
+            selectinload(Trade.trade_account),
+        )
+        .all()
+    )
     for existing_trade in existing_trades:
         if exclude_trade_id is not None and existing_trade.id == exclude_trade_id:
             continue
@@ -270,8 +295,10 @@ def render_trades_page(*, manage_mode=False):
                 trade_account_id=active_trade_account.id,
             )
             .options(
+                selectinload(Trade.trade_account),
                 selectinload(Trade.trade_profile),
                 selectinload(Trade.trade_profile_version),
+                selectinload(Trade.interpretation),
             )
             .order_by(Trade.opened_at.desc())
             .all()
@@ -478,14 +505,20 @@ def batch_update_trade_profile():
                 Trade.user_id == user_id,
                 Trade.trade_account_id == active_trade_account.id,
                 Trade.pubkey.in_(selected_pubkeys),
-            ).all()
+            )
+            .options(
+                selectinload(Trade.trade_profile),
+                selectinload(Trade.trade_profile_version),
+            )
+            .all()
         )
         if not trades_to_update:
             flash("No trades matched the selected rows.", "info")
             return redirect(url_for("trades.manage_trades"))
 
+        profile, version = resolve_user_trade_profile_attachment(user_id, selected_profile_pubkey)
         for trade in trades_to_update:
-            assign_trade_profile_to_trade(user_id, trade, selected_profile_pubkey)
+            attach_trade_profile_objects(trade, profile, version)
 
         db.session.commit()
     except ValueError as exc:
@@ -628,9 +661,6 @@ def new_trade():
             entry_price=entry_price,
             lot_size=lot_size,
             trade_note=trade_note,
-            is_revenge=is_revenge,
-            is_corrective=is_corrective,
-            is_reactive=is_reactive,
             pnl=pnl,
             stop_loss=stop_loss,
             take_profit=take_profit,
@@ -649,6 +679,16 @@ def new_trade():
         except ValueError:
             return redirect(url_for("trades.new_trade"))
         db.session.add(trade)
+        db.session.flush()
+        if is_revenge or is_corrective or is_reactive:
+            apply_interpretation(
+                trade,
+                is_revenge=is_revenge,
+                is_corrective=is_corrective,
+                is_reactive=is_reactive,
+                source="trade_form",
+                user_id=user_id,
+            )
         db.session.commit()
         _invalidate_trade_caches(user_id, active_trade_account.id)
         return redirect(url_for("trades.trades"))
@@ -1126,9 +1166,14 @@ def edit_trade(trade_pubkey):
         trade.exit_price = exit_price
         trade.lot_size = lot_size
         trade.trade_note = trade_note
-        trade.is_revenge = is_revenge
-        trade.is_corrective = is_corrective
-        trade.is_reactive = is_reactive
+        apply_interpretation(
+            trade,
+            is_revenge=is_revenge,
+            is_corrective=is_corrective,
+            is_reactive=is_reactive,
+            source="trade_form",
+            user_id=user_id,
+        )
         trade.pnl = pnl
         trade.stop_loss = stop_loss
         trade.take_profit = take_profit
@@ -1215,6 +1260,11 @@ def bundle_review():
             user_id=user_id,
             trade_account_id=active_trade_account.id,
         )
+        .options(
+            selectinload(Trade.interpretation),
+            selectinload(Trade.trade_profile),
+            selectinload(Trade.trade_profile_version),
+        )
         .filter(Trade.closed_at.isnot(None))
         .order_by(Trade.closed_at.desc(), Trade.id.desc())
         .all()
@@ -1273,6 +1323,7 @@ def bundle_confirm():
                 Trade.pubkey.in_(trade_pubkeys),
                 Trade.closed_at.isnot(None),
             )
+            .options(selectinload(Trade.interpretation))
             .all()
         )
         if len(trades) < 2:
@@ -1280,7 +1331,12 @@ def bundle_confirm():
         bundle_pubkey = build_unique_trade_pubkey()
         for trade in trades:
             if not trade.bundle_pubkey:
-                trade.bundle_pubkey = bundle_pubkey
+                apply_interpretation(
+                    trade,
+                    bundle_pubkey=bundle_pubkey,
+                    source="bundle_review",
+                    user_id=user_id,
+                )
         updated_group_count += 1
 
     active_trade_account.bundle_review_completed_at = utcnow_naive()

@@ -8,6 +8,7 @@ from ai_service import WEEKLY_DASHBOARD_KIND
 from models import AIGeneratedResponse, AIPromptHistory, MT5Account
 
 import routes.dashboard as dashboard_routes
+from helpers.trade_interpretation import apply_interpretation
 from models import Trade, TradeAccount, TradeProfile, TradeProfileVersion, User, UserProfile, db
 
 
@@ -308,9 +309,15 @@ def test_dashboard_home_marks_bundled_recent_trade_rows(app_ctx, client, monkeyp
         pnl=60.0,
         opened_at=datetime(2026, 3, 22, 8, 0, 0),
         closed_at=datetime(2026, 3, 22, 10, 0, 0),
-        bundle_pubkey="bundle-dashboard-test",
     )
     db.session.add(bundled_trade)
+    db.session.flush()
+    apply_interpretation(
+        bundled_trade,
+        bundle_pubkey="bundle-dashboard-test",
+        source="test",
+        user_id=user.id,
+    )
     db.session.commit()
 
     response = client.get("/dashboard")

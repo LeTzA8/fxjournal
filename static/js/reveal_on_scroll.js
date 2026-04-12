@@ -16,9 +16,13 @@
         if (el.hasAttribute("data-reveal-skip")) {
             return false;
         }
+        if (el.closest(".admin-access")) {
+            return false;
+        }
         return true;
     }).filter((el, index, items) => items.indexOf(el) === index);
     if (!revealTargets.length) {
+        document.documentElement.classList.remove("js-reveal-pending");
         return;
     }
 

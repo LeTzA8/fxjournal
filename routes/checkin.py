@@ -12,7 +12,10 @@ from helpers.core import (
     is_weekly_checkin_complete,
 )
 from helpers.trade_analysis import detect_outliers
+from helpers.trade_interpretation import MISSING, apply_interpretation
 from helpers.utils import login_required, utcnow_naive
+from sqlalchemy.orm import selectinload
+
 from models import Trade, WeeklyCheckin, db
 from trading import to_display_timezone
 
@@ -96,6 +99,7 @@ def _load_closed_trades_for_period(*, user_id, trade_account_id, period):
             user_id=user_id,
             trade_account_id=trade_account_id,
         )
+        .options(selectinload(Trade.interpretation))
         .filter(Trade.closed_at.isnot(None))
         .filter(Trade.closed_at >= period["period_start_utc"])
         .filter(Trade.closed_at < period["period_end_utc"])
@@ -409,17 +413,29 @@ def checkin():
             group_hash = _pubkey_group_hash(trade_pubkeys)
             bundle_type = selected_bundle_types.get(group_hash, "neutral")
             for trade in selected_trades:
-                if not trade.bundle_pubkey:
-                    trade.bundle_pubkey = bundle_pubkey
-                if bundle_type == "revenge" and not trade.is_revenge:
-                    trade.is_revenge = True
+                need_bundle = not trade.bundle_pubkey
+                need_revenge = bundle_type == "revenge" and not trade.is_revenge
+                if not need_bundle and not need_revenge:
+                    continue
+                apply_interpretation(
+                    trade,
+                    bundle_pubkey=bundle_pubkey if need_bundle else MISSING,
+                    is_revenge=True if need_revenge else MISSING,
+                    source="weekly_checkin",
+                    user_id=user_id,
+                )
 
         for trade_pubkey, selected_type in selected_trade_types.items():
             trade = week_trade_map.get(trade_pubkey)
             if trade is None:
                 continue
             if selected_type == "revenge" and not trade.is_revenge:
-                trade.is_revenge = True
+                apply_interpretation(
+                    trade,
+                    is_revenge=True,
+                    source="weekly_checkin",
+                    user_id=user_id,
+                )
 
         weekly_checkin = existing_checkin or WeeklyCheckin(
             user_id=user_id,

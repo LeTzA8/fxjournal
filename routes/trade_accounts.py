@@ -765,9 +765,10 @@ def delete_all_trade_accounts():
         )
         return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
 
+    account_rows = TradeAccount.query.filter_by(user_id=user_id).all()
+    account_ids = [account.id for account in account_rows]
+    account_count = len(account_rows)
     trade_count = Trade.query.filter_by(user_id=user_id).count()
-    account_count = TradeAccount.query.filter_by(user_id=user_id).count()
-    account_ids = [account_id for account_id, in db.session.query(TradeAccount.id).filter_by(user_id=user_id).all()]
     linked_mt5_count = 0
     if account_ids:
         linked_mt5_count = (
@@ -782,7 +783,6 @@ def delete_all_trade_accounts():
             user_id=user_id,
             trade_account_id=None,
         ).all()
-        account_rows = TradeAccount.query.filter_by(user_id=user_id).all()
 
         for ai_review in orphan_ai_reviews:
             db.session.delete(ai_review)

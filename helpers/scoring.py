@@ -27,6 +27,8 @@ CORRECTIVE_REPETITION_BONUS_PER_EXTRA = 0.25
 CORRECTIVE_REPETITION_BONUS_CAP = 0.75
 CORRECTIVE_POINTS_CAP = 2.0
 CORRECTIVE_HEURISTIC_SEVERITY_MAX = 0.9
+# Raw score must clear this to count as heuristic corrective (reduces false positives).
+CORRECTIVE_HEURISTIC_MIN_RAW = 1.25
 
 SELF_REPORT_MISMATCH_THRESHOLD = 2.5
 
@@ -148,25 +150,35 @@ def _score_heuristic_corrective_signal(
     if trade_pnl is None or trade_pnl > 0:
         return 0.0
 
-    score = 0.2
-    if closed_before_sl is True:
-        score += 0.75
-
     quick_cutoff_minutes = 15.0
     if median_duration_minutes and median_duration_minutes > 0:
         quick_cutoff_minutes = max(10.0, median_duration_minutes * 0.4)
-    if duration_minutes is not None and duration_minutes <= quick_cutoff_minutes:
-        score += 0.55
+    quick_hold = bool(
+        duration_minutes is not None and duration_minutes <= quick_cutoff_minutes
+    )
+    # Require at least one execution-structure signal (not narrative alone).
+    has_structural = closed_before_sl is True or outlier_size or quick_hold
+    if not has_structural:
+        return 0.0
 
-    if bool(annotation.get("is_potential_revenge")) or bool(annotation.get("is_potential_reactive")):
-        score += 0.35
+    score = 0.0
+    if closed_before_sl is True:
+        score += 0.78
+
+    if quick_hold:
+        score += 0.52
+
+    if bool(annotation.get("is_potential_revenge")):
+        score += 0.3
+    elif bool(annotation.get("is_potential_reactive")):
+        score += 0.16
     elif bool(annotation.get("is_post_loss_trade")) or bool(annotation.get("same_trade_idea_reentry")):
-        score += 0.2
+        score += 0.18
 
     if outlier_size:
-        score += 0.25
+        score += 0.22
 
-    if score < 1.1:
+    if score < CORRECTIVE_HEURISTIC_MIN_RAW:
         return 0.0
     return min(score * 0.6, CORRECTIVE_HEURISTIC_SEVERITY_MAX)
 

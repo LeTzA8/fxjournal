@@ -4,6 +4,7 @@ from itertools import count
 import auth_account
 import celery_workers.weekly_tasks as celery_tasks
 from ai_service import AIConfigError, AIRequestError, WEEKLY_DASHBOARD_KIND
+from helpers.trade_interpretation import apply_interpretation
 from models import AIGeneratedResponse, AIPromptHistory, Trade, TradeAccount, User, db
 
 
@@ -322,8 +323,6 @@ def test_admin_unbundle_trade_account_clears_bundle_links_but_keeps_flags(app_ct
             pnl=-45.0,
             opened_at=datetime(2026, 3, 10, 9, 50, 0),
             closed_at=datetime(2026, 3, 10, 10, 15, 0),
-            bundle_pubkey="bundle-123",
-            is_reactive=True,
         ),
         Trade(
             user_id=target_user.id,
@@ -336,11 +335,24 @@ def test_admin_unbundle_trade_account_clears_bundle_links_but_keeps_flags(app_ct
             pnl=22.0,
             opened_at=datetime(2026, 3, 10, 10, 20, 0),
             closed_at=datetime(2026, 3, 10, 10, 40, 0),
-            bundle_pubkey="bundle-123",
-            is_corrective=True,
         ),
     ]
     db.session.add_all(trades)
+    db.session.flush()
+    apply_interpretation(
+        trades[0],
+        bundle_pubkey="bundle-123",
+        is_reactive=True,
+        source="test",
+        user_id=target_user.id,
+    )
+    apply_interpretation(
+        trades[1],
+        bundle_pubkey="bundle-123",
+        is_corrective=True,
+        source="test",
+        user_id=target_user.id,
+    )
     account.bundle_review_requested_at = datetime(2026, 3, 10, 11, 0, 0)
     account.bundle_review_completed_at = datetime(2026, 3, 10, 11, 30, 0)
     db.session.commit()

@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 import routes.trades as trades_routes
+from helpers.trade_interpretation import apply_interpretation
 from models import Trade, TradeAccount, TradeBars, User, db
 
 
@@ -223,14 +224,20 @@ def test_trade_list_and_detail_show_trade_flags(app_ctx, client):
         exit_price=1.10120,
         lot_size=1.00,
         pnl=120.0,
-        is_revenge=True,
-        is_corrective=True,
-        is_reactive=True,
-        bundle_pubkey="bundle-flag-test",
         opened_at=datetime(2026, 3, 10, 9, 0, 0),
         closed_at=datetime(2026, 3, 10, 10, 24, 0),
     )
     db.session.add(trade)
+    db.session.flush()
+    apply_interpretation(
+        trade,
+        bundle_pubkey="bundle-flag-test",
+        is_revenge=True,
+        is_corrective=True,
+        is_reactive=True,
+        source="test",
+        user_id=user.id,
+    )
     db.session.commit()
 
     list_response = client.get("/dashboard/trades")

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from flask import Blueprint, current_app, jsonify, render_template, request, session, url_for
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from ai_service import (
     MIN_CLOSED_TRADES_FOR_ADVICE,
@@ -510,8 +510,10 @@ def _load_user_trades(user_id, active_trade_account):
                 trade_account_id=active_trade_account.id,
             )
             .options(
+                selectinload(Trade.trade_account),
                 selectinload(Trade.trade_profile),
                 selectinload(Trade.trade_profile_version),
+                selectinload(Trade.interpretation),
             )
             .order_by(Trade.opened_at.desc())
             .all()
@@ -891,6 +893,7 @@ def _build_ei_trend(user_id, trade_account_id):
             trade_account_id=trade_account_id,
             kind=WEEKLY_DASHBOARD_KIND,
         )
+        .options(load_only(AIGeneratedResponse.payload_json, AIGeneratedResponse.period_start_utc))
         .order_by(AIGeneratedResponse.period_start_utc.desc())
         .limit(4)
         .all()

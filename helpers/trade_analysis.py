@@ -5,7 +5,13 @@ from trading import classify_trading_session, ensure_utc_aware, format_trade_sym
 
 SPLIT_BUCKET_MINUTES = 5
 REVENGE_REENTRY_WINDOW_MINUTES = 90
-REACTIVE_REENTRY_WINDOW_MINUTES = 120
+# Sum of weighted pieces in _score_revenge_signal must clear this for possible revenge.
+REVENGE_POSSIBLE_THRESHOLD = 1.5
+
+# Tighter than revenge: "reactive" should mean meaningfully quick re-engagement, not same session.
+REACTIVE_REENTRY_WINDOW_MINUTES = 75
+# Strength sum must reach this to surface as possible reactive.
+REACTIVE_POSSIBLE_THRESHOLD = 1.55
 SAME_TRADE_IDEA_REENTRY_WINDOW_MINUTES = 90
 BUNDLE_TP_SL_TOLERANCE_PCT = 0.002
 CORRECTIVE_REENTRY_WINDOW_MINUTES = 240
@@ -117,25 +123,32 @@ def _score_revenge_signal(
         return 0.0
 
     score = 0.0
+    # Strong narrative: post-loss re-entry inside the revenge window (already encodes urgency).
+    strong_post_loss_reentry = False
     if is_post_loss_same_symbol_trade and minutes_since_prev_symbol_close is not None:
         if minutes_since_prev_symbol_close <= REVENGE_REENTRY_WINDOW_MINUTES:
             score += 1.0
+            strong_post_loss_reentry = True
     elif is_post_loss_trade and same_trade_idea_reentry and minutes_since_prev_close is not None:
         if minutes_since_prev_close <= REVENGE_REENTRY_WINDOW_MINUTES:
             score += 0.85
+            strong_post_loss_reentry = True
 
-    if minutes_since_prev_symbol_close is not None:
-        if minutes_since_prev_symbol_close <= 10:
-            score += 0.75
-        elif minutes_since_prev_symbol_close <= 30:
-            score += 0.5
-        elif minutes_since_prev_symbol_close <= REVENGE_REENTRY_WINDOW_MINUTES:
-            score += 0.25
-    elif minutes_since_prev_close is not None:
-        if minutes_since_prev_close <= 10:
-            score += 0.4
-        elif minutes_since_prev_close <= 30:
-            score += 0.25
+    # Minute ladders: extra signal when we do NOT already have the strong post-loss re-entry block
+    # (avoids double-counting "lost on X then back on X fast" as both +1.0 and +0.75).
+    if not strong_post_loss_reentry:
+        if minutes_since_prev_symbol_close is not None:
+            if minutes_since_prev_symbol_close <= 10:
+                score += 0.75
+            elif minutes_since_prev_symbol_close <= 30:
+                score += 0.5
+            elif minutes_since_prev_symbol_close <= REVENGE_REENTRY_WINDOW_MINUTES:
+                score += 0.25
+        elif minutes_since_prev_close is not None:
+            if minutes_since_prev_close <= 10:
+                score += 0.4
+            elif minutes_since_prev_close <= 30:
+                score += 0.25
 
     if same_symbol_reentry:
         score += 0.25
@@ -143,14 +156,14 @@ def _score_revenge_signal(
         score += 0.35
 
     if size_vs_prev_symbol_trade == "larger" or size_vs_prev_trade == "larger":
-        score += 0.5
+        score += 0.55
     elif size_vs_prev_symbol_trade == "same" or size_vs_prev_trade == "same":
-        score += 0.2
+        score += 0.1
 
     if current_loss_streak >= 2:
-        score += 0.75
+        score += 0.7
     elif current_loss_streak >= 1:
-        score += 0.25
+        score += 0.22
 
     return round(score, 2)
 
@@ -181,28 +194,34 @@ def _score_reactive_signal(
     )
 
     if same_trade_idea_reentry and quick_reentry:
-        score += 0.75
+        score += 0.78
     elif same_symbol_reentry and quick_symbol_reentry:
-        score += 0.6
+        score += 0.58
+
+    quick_context = quick_reentry or quick_symbol_reentry
 
     if size_vs_prev_symbol_trade == "larger" or size_vs_prev_trade == "larger":
-        score += 0.55
-    elif size_vs_prev_symbol_trade == "same" or size_vs_prev_trade == "same":
-        score += 0.25
+        score += 0.52
+    elif quick_context and (
+        size_vs_prev_symbol_trade == "same" or size_vs_prev_trade == "same"
+    ):
+        score += 0.12
 
-    if is_post_loss_trade:
-        score += 0.35
+    # Reactive = re-engagement speed; post-loss / streak only count in a quick-re-entry context.
+    if quick_context and is_post_loss_trade:
+        score += 0.3
 
     if quick_reentry and minutes_since_prev_close is not None:
         if minutes_since_prev_close <= 15:
-            score += 0.35
+            score += 0.28
         elif minutes_since_prev_close <= 45:
-            score += 0.2
+            score += 0.1
 
-    if current_loss_streak >= 2:
-        score += 0.35
-    elif current_loss_streak >= 1:
-        score += 0.15
+    if quick_context:
+        if current_loss_streak >= 2:
+            score += 0.28
+        elif current_loss_streak >= 1:
+            score += 0.1
 
     return round(score, 2)
 
@@ -351,8 +370,8 @@ def build_trade_annotations(trades):
             size_vs_prev_trade=size_vs_prev_trade,
             size_vs_prev_symbol_trade=size_vs_prev_symbol_trade,
         )
-        is_potential_revenge = revenge_signal_strength >= 1.5
-        is_potential_reactive = reactive_signal_strength >= 1.25
+        is_potential_revenge = revenge_signal_strength >= REVENGE_POSSIBLE_THRESHOLD
+        is_potential_reactive = reactive_signal_strength >= REACTIVE_POSSIBLE_THRESHOLD
 
         annotations[identity] = {
             "trade_sequence_number": sequence_number,

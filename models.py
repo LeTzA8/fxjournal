@@ -316,7 +316,6 @@ class Trade(db.Model):
             "trade_account_id",
             "closed_at",
         ),
-        db.Index("ix_trades_bundle_pubkey", "bundle_pubkey"),
         db.Index("ix_trades_user_trade_profile", "user_id", "trade_profile_id"),
     )
 
@@ -357,10 +356,6 @@ class Trade(db.Model):
     contract_code = db.Column(db.String(24), nullable=True)
     trade_note = db.Column(db.Text, nullable=True)
     system_trade_note = db.Column(db.Text, nullable=True)
-    is_revenge = db.Column(db.Boolean, nullable=False, default=False)
-    is_corrective = db.Column(db.Boolean, nullable=False, default=False)
-    is_reactive = db.Column(db.Boolean, nullable=False, default=False)
-    bundle_pubkey = db.Column(db.String(24), nullable=True)
     trade_profile_id = db.Column(
         db.Integer,
         db.ForeignKey("trade_profiles.id", ondelete="SET NULL"),
@@ -402,6 +397,82 @@ class Trade(db.Model):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    interpretation = db.relationship(
+        "TradeInterpretation",
+        back_populates="trade",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def is_revenge(self):
+        interp = self.interpretation
+        return bool(interp.is_revenge) if interp is not None else False
+
+    @property
+    def is_reactive(self):
+        interp = self.interpretation
+        return bool(interp.is_reactive) if interp is not None else False
+
+    @property
+    def is_corrective(self):
+        interp = self.interpretation
+        return bool(interp.is_corrective) if interp is not None else False
+
+    @property
+    def bundle_pubkey(self):
+        interp = self.interpretation
+        if interp is None or not interp.bundle_pubkey:
+            return None
+        return str(interp.bundle_pubkey).strip() or None
+
+
+class TradeInterpretation(db.Model):
+    """Bundling and user-confirmed behavior flags (derived / interpretation layer)."""
+
+    __tablename__ = "trade_interpretation"
+    __table_args__ = (db.Index("ix_trade_interpretation_bundle_pubkey", "bundle_pubkey"),)
+
+    trade_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trades.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    bundle_pubkey = db.Column(db.String(24), nullable=True)
+    is_revenge = db.Column(db.Boolean, nullable=False, default=False)
+    is_reactive = db.Column(db.Boolean, nullable=False, default=False)
+    is_corrective = db.Column(db.Boolean, nullable=False, default=False)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
+    trade = db.relationship("Trade", back_populates="interpretation")
+
+
+class TradeInterpretationHistory(db.Model):
+    """Append-only log of interpretation changes (detection vs user confirmation, audits, future tuning)."""
+
+    __tablename__ = "trade_interpretation_history"
+    __table_args__ = (
+        db.Index("ix_trade_interpretation_history_trade_id_created", "trade_id", "created_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    trade_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trades.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    bundle_pubkey = db.Column(db.String(24), nullable=True)
+    is_revenge = db.Column(db.Boolean, nullable=False, default=False)
+    is_reactive = db.Column(db.Boolean, nullable=False, default=False)
+    is_corrective = db.Column(db.Boolean, nullable=False, default=False)
+    source = db.Column(db.String(32), nullable=False)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, index=True)
 
 
 class TradeBars(db.Model):

@@ -689,9 +689,14 @@ def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
             user_id=user_id,
             trade_account_id=trade_account_id,
         ).all()
+        batch_ids = {row.batch_id for row in request_rows if row.batch_id is not None}
+        batches_by_id = {}
+        if batch_ids:
+            for batch_row in db.session.query(MT5SyncBatch).filter(MT5SyncBatch.id.in_(batch_ids)):
+                batches_by_id[batch_row.id] = batch_row
         for row in request_rows:
             if row.batch_id is not None:
-                batch = db.session.get(MT5SyncBatch, row.batch_id)
+                batch = batches_by_id.get(row.batch_id)
                 if batch is not None:
                     batch.total_slots_claimed = max(
                         0,
@@ -880,10 +885,19 @@ def get_user_trade_account_by_pubkey_or_404(user_id, trade_account_pubkey):
 
 
 def get_user_trade_by_pubkey_or_404(user_id, trade_pubkey):
-    return Trade.query.filter_by(
-        user_id=user_id,
-        pubkey=str(trade_pubkey or "").strip(),
-    ).first_or_404()
+    return (
+        Trade.query.filter_by(
+            user_id=user_id,
+            pubkey=str(trade_pubkey or "").strip(),
+        )
+        .options(
+            selectinload(Trade.interpretation),
+            selectinload(Trade.trade_profile),
+            selectinload(Trade.trade_profile_version),
+            selectinload(Trade.trade_account),
+        )
+        .first_or_404()
+    )
 
 
 def build_unique_trade_pubkey(reserved_pubkeys=None):
@@ -980,21 +994,38 @@ def resolve_trade_profile_form_state(user_id, trade=None):
     }
 
 
-def assign_trade_profile_to_trade(user_id, trade, profile_pubkey):
-    selected_profile = get_user_trade_profile_by_pubkey(user_id, profile_pubkey)
+def resolve_user_trade_profile_attachment(user_id, profile_pubkey):
+    """
+    Returns (TradeProfile, TradeProfileVersion) or (None, None) when clearing pubkey.
+    Raises ValueError when pubkey is set but the profile is missing or has no version.
+    """
     if not str(profile_pubkey or "").strip():
-        trade.trade_profile = None
-        trade.trade_profile_version = None
-        trade.trade_profile_id = None
-        trade.trade_profile_version_id = None
-        return
+        return None, None
+    selected_profile = get_user_trade_profile_by_pubkey(user_id, profile_pubkey)
     if selected_profile is None:
         raise ValueError("Trade profile not found.")
     current_version = get_trade_profile_version_snapshot(selected_profile)
     if current_version is None:
         raise ValueError("Trade profile has no version history.")
-    trade.trade_profile = selected_profile
-    trade.trade_profile_version = current_version
+    return selected_profile, current_version
+
+
+def attach_trade_profile_objects(trade, profile, version):
+    if profile is None:
+        trade.trade_profile = None
+        trade.trade_profile_version = None
+        trade.trade_profile_id = None
+        trade.trade_profile_version_id = None
+        return
+    trade.trade_profile = profile
+    trade.trade_profile_version = version
+    trade.trade_profile_id = profile.id
+    trade.trade_profile_version_id = version.id
+
+
+def assign_trade_profile_to_trade(user_id, trade, profile_pubkey):
+    selected_profile, current_version = resolve_user_trade_profile_attachment(user_id, profile_pubkey)
+    attach_trade_profile_objects(trade, selected_profile, current_version)
 
 
 def create_trade_profile(user_id, name, short_description=None):
@@ -1065,6 +1096,7 @@ def queue_bundle_review_if_split_candidates(*, user_id, trade_account_id):
     try:
         closed_trades = (
             Trade.query.filter_by(user_id=user_id, trade_account_id=trade_account_id)
+            .options(selectinload(Trade.interpretation))
             .filter(Trade.closed_at.isnot(None))
             .order_by(Trade.closed_at.desc(), Trade.id.desc())
             .all()
@@ -1096,7 +1128,7 @@ def delete_users_with_related_data(user_ids):
 
     users = (
         User.query.options(
-            selectinload(User.trades),
+            selectinload(User.trades).selectinload(Trade.interpretation),
             selectinload(User.trade_accounts),
             selectinload(User.trade_profiles).selectinload(TradeProfile.versions),
             selectinload(User.ai_generated_responses),

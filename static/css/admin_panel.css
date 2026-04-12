@@ -4,6 +4,14 @@
     display: none;
 }
 
+/* Dashboard reveal script skips .admin-access, but belt-and-suspenders: never hide admin panels. */
+.admin-access .panel.reveal-item,
+html.js-reveal-pending .admin-access .panel {
+    opacity: 1;
+    transform: none;
+    filter: none;
+}
+
 .admin-app-grid {
     display: grid;
     grid-template-columns: minmax(200px, 232px) minmax(0, 1fr);

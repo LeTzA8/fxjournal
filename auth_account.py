@@ -5,7 +5,8 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 from flask import Response, abort, current_app, flash, redirect, render_template, request, session, url_for
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
+from sqlalchemy.orm import contains_eager, joinedload, load_only, selectinload
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -21,6 +22,7 @@ from models import (
     Trade,
     TradeAccount,
     TradeBars,
+    TradeInterpretation,
     User,
     UserProfile,
     db,
@@ -32,6 +34,7 @@ from trading import (
     format_cfd_aliases_for_storage,
 )
 from helpers.trade_analysis import detect_outliers
+from helpers.trade_interpretation import apply_interpretation
 from helpers.utils import (
     encrypt_password,
     env_bool as _env_bool,
@@ -1131,15 +1134,36 @@ def register_public_auth_routes(
         return redirect(url_for(endpoint))
 
     def build_admin_overview():
+        # One aggregation round-trip for user breakdown; separate counts for other tables.
+        totals = db.session.query(
+            func.count(User.id),
+            func.coalesce(
+                func.sum(case((User.signup_status == SIGNUP_STATUS_PENDING, 1), else_=0)),
+                0,
+            ),
+            func.coalesce(
+                func.sum(case((User.signup_status == SIGNUP_STATUS_APPROVED, 1), else_=0)),
+                0,
+            ),
+            func.coalesce(
+                func.sum(case((User.signup_status == SIGNUP_STATUS_REJECTED, 1), else_=0)),
+                0,
+            ),
+            func.coalesce(
+                func.sum(case((User.signup_status == SIGNUP_STATUS_SUSPENDED, 1), else_=0)),
+                0,
+            ),
+            func.coalesce(func.sum(case((User.is_admin.is_(True), 1), else_=0)), 0),
+        ).one()
         return {
-            "total_users": User.query.count(),
-            "pending_users": User.query.filter_by(signup_status=SIGNUP_STATUS_PENDING).count(),
-            "approved_users": User.query.filter_by(signup_status=SIGNUP_STATUS_APPROVED).count(),
-            "rejected_users": User.query.filter_by(signup_status=SIGNUP_STATUS_REJECTED).count(),
-            "suspended_users": User.query.filter_by(signup_status=SIGNUP_STATUS_SUSPENDED).count(),
-            "admin_users": User.query.filter_by(is_admin=True).count(),
-            "signup_codes": SignupCode.query.count(),
-            "mt5_accounts": MT5Account.query.count(),
+            "total_users": int(totals[0] or 0),
+            "pending_users": int(totals[1] or 0),
+            "approved_users": int(totals[2] or 0),
+            "rejected_users": int(totals[3] or 0),
+            "suspended_users": int(totals[4] or 0),
+            "admin_users": int(totals[5] or 0),
+            "signup_codes": db.session.query(func.count(SignupCode.id)).scalar() or 0,
+            "mt5_accounts": db.session.query(func.count(MT5Account.id)).scalar() or 0,
         }
 
     def build_admin_page_context(
@@ -2385,6 +2409,7 @@ def register_public_auth_routes(
         account = TradeAccount.query.filter_by(id=trade_account_id, user_id=user_id).first_or_404()
         closed_trades = (
             Trade.query.filter_by(user_id=user_id, trade_account_id=account.id)
+            .options(selectinload(Trade.interpretation))
             .filter(Trade.closed_at.isnot(None))
             .order_by(Trade.closed_at.desc(), Trade.id.desc())
             .all()
@@ -2426,8 +2451,10 @@ def register_public_auth_routes(
 
         account = TradeAccount.query.filter_by(id=trade_account_id, user_id=user_id).first_or_404()
         bundled_trades = (
-            Trade.query.filter_by(user_id=user_id, trade_account_id=account.id)
-            .filter(Trade.bundle_pubkey.isnot(None))
+            Trade.query.join(TradeInterpretation)
+            .options(contains_eager(Trade.interpretation))
+            .filter(Trade.user_id == user_id, Trade.trade_account_id == account.id)
+            .filter(TradeInterpretation.bundle_pubkey.isnot(None))
             .all()
         )
         had_review_state = bool(account.bundle_review_requested_at or account.bundle_review_completed_at)
@@ -2439,8 +2466,15 @@ def register_public_auth_routes(
                 "info",
             )
 
+        admin_user = get_current_root_admin_user()
+        admin_id = admin_user.id if admin_user is not None else None
         for trade in bundled_trades:
-            trade.bundle_pubkey = None
+            apply_interpretation(
+                trade,
+                bundle_pubkey=None,
+                source="admin_unbundle",
+                user_id=admin_id,
+            )
         account.bundle_review_requested_at = None
         account.bundle_review_completed_at = None
         db.session.commit()
@@ -2831,6 +2865,13 @@ def register_public_auth_routes(
 
         latest_record = (
             AIGeneratedResponse.query.filter_by(kind=WEEKLY_DASHBOARD_KIND)
+            .options(
+                load_only(
+                    AIGeneratedResponse.id,
+                    AIGeneratedResponse.user_id,
+                    AIGeneratedResponse.trade_account_id,
+                )
+            )
             .order_by(AIGeneratedResponse.generated_at.desc(), AIGeneratedResponse.id.desc())
             .first()
         )
@@ -2964,7 +3005,8 @@ def register_public_auth_routes(
             records_query = records_query.filter(AIGeneratedResponse.trade_account_id.is_(None))
 
         ordered_records = (
-            records_query.order_by(
+            records_query.options(joinedload(AIGeneratedResponse.prompt_history))
+            .order_by(
                 AIGeneratedResponse.period_start_utc.desc(),
                 AIGeneratedResponse.generated_at.desc(),
                 AIGeneratedResponse.id.desc(),

@@ -173,7 +173,7 @@ Each flow: what happens, what breaks, how you notice.
 | `ai_service.py` | Weekly AI payloads + persistence | Wrong coaching or leaked context in prompts |
 | `models.py` | Schema | Migrations required; data loss if careless |
 | `trading.py` | Imports, PnL, symbol normalization | Silent wrong analytics |
-| `helpers/trade_analysis.py`, `helpers/scoring.py` | Bundles, behavior scoring | False coaching signals |
+| `helpers/trade_analysis.py`, `helpers/scoring.py`, `helpers/trade_interpretation.py` | Bundles, behavior scoring, interpretation rows/history | False coaching signals |
 | `routes/dashboard.py`, `routes/trades.py`, `routes/checkin.py` | Primary UX surfaces | Broken flows |
 | `migrations/` | Alembic history | Deploy mismatch against DB |
 | `scripts/windows/run_mt5_*.ps1` | VM worker entrypoints | MT5 stops if paths/commands wrong |
