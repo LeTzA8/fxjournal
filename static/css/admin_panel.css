@@ -313,6 +313,69 @@ a.admin-stat-tile:hover {
     padding-bottom: 0.75rem;
 }
 
+/* In-page filter (client-side; current view only) */
+.admin-page-filter {
+    display: grid;
+    gap: 0.45rem;
+    padding: 0.75rem 0.85rem;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+    background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+    min-width: 0;
+}
+
+.admin-page-filter-label {
+    margin: 0;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.admin-page-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.admin-page-filter-input {
+    flex: 1 1 16rem;
+    min-width: 0;
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    border-radius: 10px;
+    padding: 0.62rem 0.75rem;
+    font: inherit;
+    font-size: 0.88rem;
+    background: color-mix(in srgb, var(--surface) 98%, transparent);
+    color: var(--ink);
+    box-sizing: border-box;
+}
+
+.admin-page-filter-input:focus {
+    outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    outline-offset: 1px;
+}
+
+.admin-page-filter-clear {
+    flex: 0 0 auto;
+}
+
+.admin-page-filter-hint {
+    margin: 0;
+    font-size: 0.76rem;
+    line-height: 1.4;
+    max-width: 44rem;
+}
+
+.admin-page-filter-status {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
 .admin-runtime-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
