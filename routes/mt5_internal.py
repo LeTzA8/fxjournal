@@ -6,6 +6,7 @@ from flask import Blueprint, current_app, jsonify, request
 
 from celery_workers.cache import CacheUnavailableError, invalidate
 from helpers.core import build_normalized_trade_insert_batch, queue_bundle_review_if_split_candidates
+from helpers.weekly_ai_queue import queue_weekly_ai_review_after_ingest
 from helpers.utils import utcnow_naive
 from models import MT5Account, Trade, TradeBars, db
 from trading import get_timezone, parse_float_value, parse_mt5_position_value, parse_source_datetime_value
@@ -491,6 +492,19 @@ def sync_mt5_trades():
                     mt5_account_id,
                     exc,
                 )
+            if saved_count or updated_count:
+                try:
+                    queue_weekly_ai_review_after_ingest(
+                        user_id=account.user_id,
+                        trade_account_id=account.trade_account_id,
+                        log=current_app.logger,
+                    )
+                except Exception as exc:
+                    current_app.logger.warning(
+                        "Weekly AI queue after MT5 sync failed for mt5_account_id=%s: %s",
+                        mt5_account_id,
+                        exc,
+                    )
 
         # Chart OHLC bars are intentionally not queued from MT5 trade sync — admins
         # use "Backfill Bars" on the MT5 admin row to dispatch fetch_trade_bars tasks.

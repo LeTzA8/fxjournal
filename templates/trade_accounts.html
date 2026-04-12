@@ -49,6 +49,7 @@
                     {% set mt5_account = mt5_accounts_by_trade_account.get(trade_account.id) %}
                     {% set mt5_is_linked = trade_account.id in linked_mt5_trade_account_ids %}
                     {% set mt5_is_active_linked = trade_account.id in active_mt5_trade_account_ids %}
+                    {% set mt5_is_archived = mt5_account and mt5_account.is_archived %}
                     {% set mt5_has_setup_artifacts = mt5_account and ((mt5_account.terminal_path or '') or (mt5_account.appdata_hash or '')) %}
                     <article
                         class="account-card {% if active_trade_account and trade_account.id == active_trade_account.id %}active{% endif %}"
@@ -86,6 +87,8 @@
                                 {% endif %}
                                 {% if trade_account.account_type == "CFD" and mt5_is_active_linked %}
                                 <span class="chip default">MT5 Linked</span>
+                                {% elif trade_account.account_type == "CFD" and mt5_is_archived %}
+                                <span class="chip default">MT5 Sync Inactive</span>
                                 {% elif trade_account.account_type == "CFD" and mt5_is_linked and mt5_has_setup_artifacts %}
                                 <span class="chip default">MT5 Setting Up</span>
                                 {% elif trade_account.account_type == "CFD" and mt5_is_linked %}
@@ -159,6 +162,9 @@
                             <p class="account-meta mt5-request-title">MT5 Sync Access</p>
                             {% if mt5_is_active_linked %}
                             <p class="account-meta">This trade account already has MT5 sync access configured.</p>
+                            {% elif mt5_is_archived %}
+                            <p class="account-meta">MT5 sync is inactive due to inactivity for this account.</p>
+                            <p class="account-meta">Reactivate it when you want MyFXJournal to rebuild the VM terminal and resume automatic sync.</p>
                             {% elif mt5_is_linked and mt5_has_setup_artifacts %}
                             <p class="account-meta">Terminal setup is already in progress for this account.</p>
                             {% if pending_mt5_request and pending_mt5_request.request_note %}
@@ -184,6 +190,17 @@
                             {% if mt5_account %}
                             <form
                                 method="post"
+                                action="{{ url_for('trade_accounts.reactivate_mt5_sync') if mt5_is_archived else url_for('trade_accounts.unlink_mt5_sync') }}"
+                                class="mt5-unlink-form"
+                            >
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
+                                <button type="submit" class="{% if mt5_is_archived %}submit-btn{% else %}ghost-btn danger-btn{% endif %}">{% if mt5_is_archived %}Reactivate MT5 sync{% else %}Disconnect MT5 sync{% endif %}</button>
+                            </form>
+                            {% if mt5_is_archived %}
+                            <p class="account-meta soft">Reactivation keeps your saved read-only credentials. Use disconnect instead if you want to remove them completely.</p>
+                            <form
+                                method="post"
                                 action="{{ url_for('trade_accounts.unlink_mt5_sync') }}"
                                 class="mt5-unlink-form"
                             >
@@ -191,9 +208,11 @@
                                 <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
                                 <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
                             </form>
+                            {% else %}
                             <p class="account-meta soft">
                                 Stops automated sync and removes stored MT5 credentials for this account. Your trades stay in the journal; you can set up MT5 again later from the dashboard.
                             </p>
+                            {% endif %}
                             {% endif %}
                         </div>
                         {% endif %}

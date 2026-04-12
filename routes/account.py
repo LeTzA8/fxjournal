@@ -18,6 +18,7 @@ from auth_account import (
 )
 from extensions import limiter
 from helpers.core import delete_users_with_related_data, is_local_dev_environment
+from helpers.core import get_effective_user_id, get_effective_username
 from models import MT5Account, User, UserProfile, db
 from helpers.utils import env_int, login_required, utcnow_naive
 
@@ -67,7 +68,7 @@ bp = Blueprint("account", __name__)
 @bp.route("/account", methods=["GET", "POST"])
 @login_required
 def account():
-    user = User.query.filter_by(id=session["user_id"]).first_or_404()
+    user = User.query.filter_by(id=get_effective_user_id()).first_or_404()
     profile = user.user_profile
 
     if request.method == "POST":
@@ -308,7 +309,7 @@ def account():
     return render_template(
         "account.html",
         title="MyFXJournal | My Account",
-        username=session.get("username", "User"),
+        username=get_effective_username(),
         account_user=user,
         email_verified=bool(user.email_verified),
         debug_reset_link=debug_reset_link or None,

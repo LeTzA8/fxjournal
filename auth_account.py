@@ -27,7 +27,19 @@ from models import (
     UserProfile,
     db,
 )
-from helpers.core import delete_users_with_related_data, get_mt5_sync_batch_state, sanitize_error_message
+from helpers.core import (
+    SUPPORT_VIEW_ACTIVE_TRADE_ACCOUNT_SESSION_KEY,
+    SUPPORT_VIEW_ADMIN_USER_SESSION_KEY,
+    SUPPORT_VIEW_ADMIN_USERNAME_SESSION_KEY,
+    SUPPORT_VIEW_TARGET_USER_SESSION_KEY,
+    archive_mt5_account,
+    clear_support_view_session,
+    delete_users_with_related_data,
+    get_mt5_sync_batch_state,
+    reactivate_mt5_account,
+    queue_mt5_account_cleanup,
+    sanitize_error_message,
+)
 from trading import (
     clear_cfd_symbol_cache,
     collect_active_cfd_alias_key_conflicts,
@@ -276,6 +288,11 @@ def _build_admin_mt5_status(*, account, request_row=None):
     if getattr(account, "is_orphaned", False):
         return {
             "label": "Cleanup Pending",
+            "chip_class": "default",
+        }
+    if getattr(account, "is_archived", False):
+        return {
+            "label": "Archived",
             "chip_class": "default",
         }
 
@@ -914,6 +931,42 @@ def register_public_auth_routes(
         context.setdefault("logo_url", _build_logo_url())
         return render_template(template_name, **context)
 
+    def _should_show_public_mt5_slot_urgency():
+        current_user_id = session.get("user_id")
+        if not current_user_id:
+            return True
+        try:
+            normalized_user_id = int(str(current_user_id).strip())
+        except (TypeError, ValueError):
+            return True
+
+        has_existing_mt5_link = (
+            db.session.query(MT5Account.id)
+            .filter(MT5Account.user_id == normalized_user_id)
+            .limit(1)
+            .first()
+            is not None
+        )
+        if has_existing_mt5_link:
+            return False
+
+        has_mt5_request_in_flight = (
+            db.session.query(MT5AccessRequest.id)
+            .filter(
+                MT5AccessRequest.user_id == normalized_user_id,
+                MT5AccessRequest.status.in_(
+                    [
+                        MT5AccessRequest.STATUS_PENDING,
+                        MT5AccessRequest.STATUS_APPROVED,
+                    ]
+                ),
+            )
+            .limit(1)
+            .first()
+            is not None
+        )
+        return not has_mt5_request_in_flight
+
     def _send_welcome_email(user):
         welcome_html = _render_email_html(
             "emails/welcome.html",
@@ -1306,6 +1359,8 @@ def register_public_auth_routes(
 
     def _render_public_seo_page(page_slug):
         page = SEO_PAGE_DEFINITIONS[page_slug]
+        mt5_batch_state = get_mt5_sync_batch_state()
+        show_public_mt5_slot_urgency = _should_show_public_mt5_slot_urgency()
         return render_template(
             "seo_page.html",
             title=page["title"],
@@ -1315,11 +1370,14 @@ def register_public_auth_routes(
             user_logged_in=bool(session.get("user_id")),
             seo_page=page,
             seo_page_slug=page_slug,
+            mt5_batch_state=mt5_batch_state,
+            show_public_mt5_slot_urgency=show_public_mt5_slot_urgency,
         )
 
     @app.route("/")
     def landing():
         mt5_batch_state = get_mt5_sync_batch_state()
+        show_public_mt5_slot_urgency = _should_show_public_mt5_slot_urgency()
         return render_template(
             "landing.html",
             title="MyFXJournal | Free Forex Trading Journal With Weekly AI Review",
@@ -1333,6 +1391,7 @@ def register_public_auth_routes(
             manual_signup_review_enabled=not get_auto_approve_new_users(),
             signup_code_mode=get_signup_code_mode(),
             mt5_batch_state=mt5_batch_state,
+            show_public_mt5_slot_urgency=show_public_mt5_slot_urgency,
         )
 
     @app.route("/mt5-trading-journal")
@@ -2842,18 +2901,29 @@ def register_public_auth_routes(
             return build_admin_redirect("users", "User not found.", "error")
         admin_user = get_current_root_admin_user()
         admin_username = admin_user.username if admin_user else session.get("username", "admin")
+        session[SUPPORT_VIEW_ADMIN_USER_SESSION_KEY] = session.get("user_id")
+        session[SUPPORT_VIEW_ADMIN_USERNAME_SESSION_KEY] = admin_username
+        session[SUPPORT_VIEW_TARGET_USER_SESSION_KEY] = target_user.id
+        session.pop(SUPPORT_VIEW_ACTIVE_TRADE_ACCOUNT_SESSION_KEY, None)
         current_app.logger.info(
-            "Admin dashboard view: admin_user_id=%s (%s) viewed dashboard for user_id=%s (%s)",
+            "Admin support view started: admin_user_id=%s (%s) target_user_id=%s (%s)",
             session.get("user_id"),
             admin_username,
             target_user_id,
             target_user.username,
         )
-        from routes.dashboard import _dashboard_home_authenticated
-        return _dashboard_home_authenticated(
-            target_user_id=target_user_id,
-            admin_viewer_username=admin_username,
+        return redirect(url_for("dashboard.home"))
+
+    @app.route("/dashboard/admin/support-view/exit")
+    @root_admin_required
+    def admin_exit_support_view():
+        current_app.logger.info(
+            "Admin support view ended: admin_user_id=%s target_user_id=%s",
+            session.get("user_id"),
+            session.get(SUPPORT_VIEW_TARGET_USER_SESSION_KEY),
         )
+        clear_support_view_session()
+        return redirect(url_for("admin_signup_users"))
 
     @app.route("/dashboard/admin/access/weekly-report")
     @app.route("/dashboard/admin/access/weekly-report/<int:user_id>")
@@ -3159,6 +3229,12 @@ def register_public_auth_routes(
                 "That MT5 record is cleanup-only now. Delete it manually from admin when you're ready.",
                 "error",
             )
+        if account.is_archived:
+            return build_admin_redirect(
+                "mt5",
+                "That MT5 account is archived. Use Reactivate to rebuild its VM terminal.",
+                "error",
+            )
 
         try:
             from celery_workers.mt5_setup_tasks import setup_mt5_terminal
@@ -3188,6 +3264,44 @@ def register_public_auth_routes(
             "mt5",
             f"MT5 terminal setup queued for account {account.account_number}.",
             "success",
+        )
+
+    @app.route("/dashboard/admin/access/mt5/<int:mt5_account_id>/archive", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_archive_account(mt5_account_id):
+        account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        ok, message = archive_mt5_account(
+            mt5_account=account,
+            archive_reason=MT5Account.ARCHIVE_REASON_INACTIVITY,
+            log_context="admin archive",
+        )
+        if ok:
+            message = (
+                f"Archived MT5 account {account.account_number}. Reactivation remains available from the dashboard."
+            )
+        return build_admin_redirect(
+            "mt5",
+            message,
+            "success" if ok else "error",
+        )
+
+    @app.route("/dashboard/admin/access/mt5/<int:mt5_account_id>/reactivate", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_reactivate_account(mt5_account_id):
+        account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        ok, message = reactivate_mt5_account(
+            mt5_account=account,
+            log_context="admin reactivate",
+        )
+        if ok:
+            current_app.logger.info(
+                "Admin queued MT5 reactivation mt5_account_id=%s queue=mt5_setup",
+                mt5_account_id,
+            )
+        return build_admin_redirect(
+            "mt5",
+            message,
+            "success" if ok else "error",
         )
 
     @app.route("/dashboard/admin/access/mt5/batches/create", methods=["POST"])
@@ -3648,22 +3762,11 @@ def register_public_auth_routes(
     @root_admin_required
     def admin_mt5_delete_account(mt5_account_id):
         account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
-        cleanup_warning = ""
-        if account.terminal_path and account.appdata_hash:
-            try:
-                from celery_workers.mt5_setup_tasks import cleanup_mt5_terminal
-
-                cleanup_mt5_terminal.apply_async(
-                    args=[account.terminal_path, account.appdata_hash],
-                    queue="mt5_setup",
-                )
-            except Exception as exc:
-                current_app.logger.warning(
-                    "MT5 cleanup queue failed for mt5_account_id=%s: %s",
-                    mt5_account_id,
-                    sanitize_error_message(exc),
-                )
-                cleanup_warning = " Cleanup could not be queued; terminal files may need manual removal."
+        cleanup_warning = queue_mt5_account_cleanup(
+            mt5_account=account,
+            log_context="admin delete",
+        )
+        cleanup_suffix = f" {cleanup_warning}" if cleanup_warning else ""
 
         account_number = account.account_number
 
@@ -3680,7 +3783,7 @@ def register_public_auth_routes(
 
         return build_admin_redirect(
             "mt5",
-            f"Deleted MT5 account {account_number}.{cleanup_warning}",
+            f"Deleted MT5 account {account_number}.{cleanup_suffix}",
             "success",
         )
 

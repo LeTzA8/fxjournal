@@ -2,6 +2,8 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from helpers.core import (
+    get_effective_user_id,
+    get_effective_username,
     get_active_trade_account_for_user,
     get_user_trade_profiles,
     get_user_trade_profile_by_pubkey,
@@ -19,8 +21,8 @@ bp = Blueprint("trade_profiles", __name__)
 @bp.route("/dashboard/trade-profiles", methods=["GET", "POST"])
 @login_required
 def strategies():
-    user_id = session["user_id"]
-    username = session.get("username", "User")
+    user_id = get_effective_user_id()
+    username = get_effective_username()
 
     if request.method == "POST":
         name = request.form.get("name", "").strip()

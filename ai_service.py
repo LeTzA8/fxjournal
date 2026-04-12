@@ -57,14 +57,17 @@ WEEKLY_CUTOFF_WEEKDAY = 4
 WEEKLY_CUTOFF_HOUR = 17
 WEEKLY_CUTOFF_MINUTE = 30
 WEEKLY_ACTIVITY_LOOKBACK_DAYS = 3
-MIN_CLOSED_TRADES_FOR_ADVICE = 3
+MIN_TRADE_IDEAS_FOR_WEEKLY_REVIEW = 1
+MIN_TRADE_IDEAS_FOR_EXPERIMENT = 5
+# Backward-compatible alias used by route imports/templates.
+MIN_CLOSED_TRADES_FOR_ADVICE = MIN_TRADE_IDEAS_FOR_WEEKLY_REVIEW
 logger = logging.getLogger(__name__)
 
 _DASHBOARD_ADVICE_PREFIX_REPLACEMENTS = (
     ("\u2192 Improve this week:", "Improve this week:"),
     ("\u2192 You're already strong at:", "You're already strong at:"),
 )
-REVIEW_RESPONSE_FORMAT_VERSION = "weekly_cited_review_v1"
+REVIEW_RESPONSE_FORMAT_VERSION = "weekly_cited_review_v2"
 REVIEW_MAX_REFS_PER_ITEM = 3
 REVIEW_JSON_OUTPUT_INSTRUCTIONS = """
 Return valid JSON only. Do not use markdown fences.
@@ -87,6 +90,10 @@ Use this exact shape:
   "strength": {
     "text": "You're already strong at: One specific strength line.",
     "refs": []
+  },
+  "experiment": {
+    "text": "A single measurable experiment to run this week.",
+    "refs": []
   }
 }
 
@@ -98,6 +105,7 @@ Rules for refs:
 - improvement.refs and strength.refs must always be an empty list because they are generalized guidance, not cited trade callouts.
 - If summary.text or a takeaway mentions a specific symbol or bundled trade idea, include the matching review_ref in that item's refs.
 - Do not mention a specific trade idea in summary.text or a takeaway and then leave its refs empty.
+- experiment.refs is optional and may be empty when the experiment is generalized.
 
 Rules for text fields:
 - summary.text must stay as the single opening paragraph.
@@ -107,8 +115,9 @@ Rules for text fields:
 - strength.text must include the "You're already strong at:" prefix exactly once.
 - strength.text must be grounded in observed data or consistent execution from this week, not generic praise.
 - Prefer behavior, execution, session, sizing, or process language in improvement.text over symbol-specific wording.
+- experiment.text must be one clear experiment, specific, measurable, and not repetitive of recent experiments.
 - Never mention review_ref aliases like T1 or B2 inside any text field.
-- Do not include any keys other than summary, takeaways, improvement, and strength.
+- Do not include any keys other than summary, takeaways, improvement, strength, and experiment.
 """.strip()
 
 
@@ -321,6 +330,7 @@ def build_dashboard_review_display(response_text, response_meta_json=None):
     takeaways = review_meta.get("takeaways") if isinstance(review_meta.get("takeaways"), list) else []
     improvement = review_meta.get("improvement") if isinstance(review_meta.get("improvement"), dict) else {}
     strength = review_meta.get("strength") if isinstance(review_meta.get("strength"), dict) else {}
+    experiment = review_meta.get("experiment") if isinstance(review_meta.get("experiment"), dict) else {}
 
     structured_summary = _normalize_review_item_text(summary.get("text"))
     structured_takeaways = []
@@ -339,13 +349,15 @@ def build_dashboard_review_display(response_text, response_meta_json=None):
 
     structured_improvement = _normalize_review_improvement_text(improvement.get("text"))
     structured_strength = _normalize_review_strength_text(strength.get("text"))
-    if structured_summary or structured_takeaways or structured_improvement or structured_strength:
+    structured_experiment = _normalize_review_item_text(experiment.get("text"))
+    if structured_summary or structured_takeaways or structured_improvement or structured_strength or structured_experiment:
         summary_refs = [str(ref).strip().upper() for ref in summary.get("refs") or [] if str(ref or "").strip()]
         return {
             "summary": {"text": structured_summary, "refs": summary_refs},
             "takeaways": structured_takeaways,
             "improvement": {"text": structured_improvement, "refs": []},
             "strength": {"text": structured_strength, "refs": []},
+            "experiment": {"text": structured_experiment, "refs": []},
             "has_citations": bool(summary_refs or any(item["refs"] for item in structured_takeaways)),
         }
 
@@ -356,6 +368,7 @@ def build_dashboard_review_display(response_text, response_meta_json=None):
             "takeaways": [],
             "improvement": {"text": "", "refs": []},
             "strength": {"text": "", "refs": []},
+            "experiment": {"text": "", "refs": []},
             "has_citations": False,
         }
 
@@ -395,11 +408,12 @@ def build_dashboard_review_display(response_text, response_meta_json=None):
         "takeaways": takeaway_lines,
         "improvement": {"text": improvement_text, "refs": []},
         "strength": {"text": strength_text, "refs": []},
+        "experiment": {"text": "", "refs": []},
         "has_citations": False,
     }
 
 
-def _extract_structured_review(response_payload, allowed_refs):
+def _extract_structured_review(response_payload, allowed_refs, *, experiment_eligible=False):
     raw_text = _extract_response_raw_text(response_payload)
     loaded = _load_response_json_object(raw_text)
     if not isinstance(loaded, dict):
@@ -409,6 +423,7 @@ def _extract_structured_review(response_payload, allowed_refs):
     takeaways = loaded.get("takeaways") if isinstance(loaded.get("takeaways"), list) else []
     improvement = loaded.get("improvement") if isinstance(loaded.get("improvement"), dict) else {}
     strength = loaded.get("strength") if isinstance(loaded.get("strength"), dict) else {}
+    experiment = loaded.get("experiment") if isinstance(loaded.get("experiment"), dict) else {}
 
     summary_text = _normalize_review_item_text(summary.get("text"))
     if not summary_text:
@@ -435,6 +450,7 @@ def _extract_structured_review(response_payload, allowed_refs):
         return None
 
     strength_text = _normalize_review_strength_text(strength.get("text"))
+    experiment_text = _normalize_review_item_text(experiment.get("text"))
 
     review_meta = {
         "format": REVIEW_RESPONSE_FORMAT_VERSION,
@@ -452,6 +468,11 @@ def _extract_structured_review(response_payload, allowed_refs):
             "refs": [],
         },
     }
+    if experiment_eligible and experiment_text:
+        review_meta["experiment"] = {
+            "text": experiment_text,
+            "refs": _sanitize_review_refs(experiment.get("refs"), allowed_refs),
+        }
     return {
         "response_text": _render_review_text_from_meta(review_meta),
         "response_meta": review_meta,
@@ -584,6 +605,10 @@ def get_latest_trade_week_period(*, user_id, trade_account_id=None, now_utc=None
     latest_trade_query = Trade.query.filter_by(user_id=user_id)
     if trade_account_id is not None:
         latest_trade_query = latest_trade_query.filter_by(trade_account_id=trade_account_id)
+    # Prefer trades that fall before the dashboard week's end boundary so we align
+    # with the historical "completed week" window. When every closed trade is newer
+    # than that boundary (common right after onboarding / mid-week imports), fall
+    # back to the latest closed trade so a review week can be resolved for the payload.
     latest_trade = (
         latest_trade_query
         .filter(Trade.closed_at.isnot(None))
@@ -591,6 +616,13 @@ def get_latest_trade_week_period(*, user_id, trade_account_id=None, now_utc=None
         .order_by(Trade.closed_at.desc(), Trade.id.desc())
         .first()
     )
+    if latest_trade is None:
+        latest_trade = (
+            latest_trade_query
+            .filter(Trade.closed_at.isnot(None))
+            .order_by(Trade.closed_at.desc(), Trade.id.desc())
+            .first()
+        )
     if latest_trade is None or latest_trade.closed_at is None:
         return None
 
@@ -620,6 +652,50 @@ def get_latest_trade_week_period(*, user_id, trade_account_id=None, now_utc=None
         "next_eligible_at_utc": None,
         "market_cutoff_label": "Latest eligible trade week",
     }
+
+
+def trade_account_has_prior_weekly_dashboard_ai(*, user_id, trade_account_id):
+    if not user_id or trade_account_id is None:
+        return False
+    return (
+        db.session.query(AIGeneratedResponse.id)
+        .filter(
+            AIGeneratedResponse.user_id == user_id,
+            AIGeneratedResponse.trade_account_id == trade_account_id,
+            AIGeneratedResponse.kind == WEEKLY_DASHBOARD_KIND,
+        )
+        .limit(1)
+        .first()
+        is not None
+    )
+
+
+def weekly_review_generation_past_market_week_cutoff(
+    *, user_id, trade_account_id, period, now_utc=None
+):
+    """
+    After the first weekly dashboard AI on a trade account, only allow automatic
+    generation once NY Friday 5:30 PM has passed for that review week
+    (period["eligible_at_utc"]). The first review may run anytime (onboarding).
+    """
+    if trade_account_id is None or period is None:
+        return False
+    if not trade_account_has_prior_weekly_dashboard_ai(
+        user_id=user_id, trade_account_id=trade_account_id
+    ):
+        return True
+    eligible_at = period.get("eligible_at_utc")
+    if eligible_at is None:
+        return False
+    if now_utc is None:
+        current = datetime.now(timezone.utc)
+    else:
+        current = now_utc
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        else:
+            current = current.astimezone(timezone.utc)
+    return _to_utc_naive(current) >= eligible_at
 
 
 def _query_trades_for_payload(
@@ -714,13 +790,13 @@ def build_profile_instructions(
         instructions.append("Never reference ICT, SMC, or orderflow terms.")
         instructions.append("Encouraging tone always, even on bad weeks.")
     elif experience_level == "intermediate":
-        instructions.append("Assume basic trading knowledge, minimal explanations.")
-        instructions.append("Balance foundational feedback with advanced patterns.")
-        instructions.append("Reference RR and session patterns without over-explaining.")
+        instructions.append("Assume basic trading knowledge, but keep language plain.")
+        instructions.append("Balance foundational feedback with deeper pattern context.")
+        instructions.append("If you use RR or expectancy, explain it in plain English briefly.")
     elif experience_level == "experienced":
-        instructions.append("Assume full trading knowledge, no explanations needed.")
         instructions.append("Focus on subtle patterns, not obvious mistakes.")
-        instructions.append("Reference expectancy and RR trends where relevant.")
+        instructions.append("Use concise language without jargon-heavy phrasing.")
+        instructions.append("Depth should increase, but wording should stay clear and direct.")
 
     if trading_style == "scalper":
         instructions.append("Duration analysis in minutes not hours.")
@@ -794,6 +870,290 @@ def _round_metric(value, digits=2):
     if value is None:
         return None
     return round(float(value), digits)
+
+
+def _serialize_breakdown_rows(rows, *, key_name, top_n=5):
+    serialized = []
+    for row in (rows or [])[:top_n]:
+        key_value = row.get(key_name)
+        if not key_value:
+            continue
+        serialized.append(
+            {
+                key_name: key_value,
+                "count": int(row.get("count", 0) or 0),
+                "win_rate": _round_metric(row.get("win_rate")),
+                "net_pnl": _round_metric(row.get("net_pnl")),
+            }
+        )
+    return serialized
+
+
+def _build_current_week_breakdowns(*, analytics, serialized_trades, median_lot_size):
+    closed_trade_count = sum(1 for trade in serialized_trades if trade.get("closed_at"))
+    tp_capture_values = [trade.get("tp_capture_pct") for trade in serialized_trades if trade.get("tp_capture_pct") is not None]
+    closed_before_tp_count = sum(1 for trade in serialized_trades if trade.get("closed_before_tp") is True)
+    closed_before_sl_count = sum(1 for trade in serialized_trades if trade.get("closed_before_sl") is True)
+    outlier_size_count = sum(1 for trade in serialized_trades if trade.get("outlier_size"))
+
+    session_counts = {row.get("name"): int(row.get("count", 0) or 0) for row in analytics.get("session_stats", []) if row.get("name")}
+    busiest_session = max(session_counts.items(), key=lambda item: item[1])[0] if session_counts else None
+
+    open_days = {
+        (trade.get("opened_at") or "")[:10]
+        for trade in serialized_trades
+        if trade.get("opened_at")
+    }
+    active_day_count = len(open_days)
+    trade_ideas_per_active_day = (
+        _round_metric(closed_trade_count / active_day_count)
+        if active_day_count > 0
+        else None
+    )
+    return {
+        "sessions": _serialize_breakdown_rows(analytics.get("session_stats"), key_name="name"),
+        "symbols": _serialize_breakdown_rows(analytics.get("pair_stats"), key_name="symbol"),
+        "weekdays": _serialize_breakdown_rows(
+            [row for row in analytics.get("weekday_stats", []) if int(row.get("count", 0) or 0) > 0],
+            key_name="name",
+        ),
+        "sizing": {
+            "median_lot_size": _round_metric(median_lot_size),
+            "outlier_size_count": outlier_size_count,
+            "outlier_size_share_pct": _round_metric((outlier_size_count / closed_trade_count * 100.0) if closed_trade_count else None),
+        },
+        "frequency": {
+            "trade_idea_count": closed_trade_count,
+            "active_day_count": active_day_count,
+            "trade_ideas_per_active_day": trade_ideas_per_active_day,
+            "busiest_session": busiest_session,
+        },
+        "exit_quality": {
+            "closed_before_tp_count": closed_before_tp_count,
+            "closed_before_sl_count": closed_before_sl_count,
+            "avg_tp_capture_pct": _round_metric(
+                (sum(tp_capture_values) / len(tp_capture_values))
+                if tp_capture_values
+                else None
+            ),
+        },
+    }
+
+
+def _build_tone_context(*, weekly_checkin, emotional_index, analytics_summary):
+    emotional_state = _normalize_optional_text(_get_record_value(weekly_checkin, "emotional_state"))
+    plan_adherence = _normalize_optional_text(_get_record_value(weekly_checkin, "plan_adherence"))
+    execution_quality = _normalize_optional_text(_get_record_value(weekly_checkin, "execution_quality"))
+    ei_label = _normalize_optional_text(_get_record_value(emotional_index, "label"))
+    checkin_submitted = any(
+        _normalize_optional_text(_get_record_value(weekly_checkin, field_name))
+        for field_name in ("emotional_state", "plan_adherence", "execution_quality", "additional_context")
+    )
+
+    reasons = []
+    if emotional_state:
+        reasons.append(f"checkin_emotional_state:{emotional_state}")
+    if plan_adherence:
+        reasons.append(f"checkin_plan_adherence:{plan_adherence}")
+    if execution_quality:
+        reasons.append(f"checkin_execution_quality:{execution_quality}")
+    if ei_label:
+        reasons.append(f"behaviour_pressure:{ei_label}")
+
+    net_pnl = _coerce_float((analytics_summary or {}).get("net_pnl"))
+    if net_pnl is not None:
+        if net_pnl < 0:
+            reasons.append("week_result:losing")
+        elif net_pnl > 0:
+            reasons.append("week_result:profitable")
+        else:
+            reasons.append("week_result:breakeven")
+
+    if not checkin_submitted:
+        mode = "neutral_no_checkin"
+    elif emotional_state == "stressed" or execution_quality == "poor" or ei_label in {"high", "very_high"}:
+        mode = "stressed"
+    elif emotional_state in {"calm", "confident"} and plan_adherence in {"disciplined", "focused"} and ei_label in {None, "low", "moderate"}:
+        mode = "calm_sharp"
+    else:
+        mode = "balanced"
+    return {
+        "checkin_submitted": checkin_submitted,
+        "mode": mode,
+        "reasons": reasons,
+    }
+
+
+def _build_week_behaviour_patterns(merged_trades):
+    trade_annotations = _build_trade_annotations(merged_trades)
+    closed_trades = [
+        trade
+        for trade in merged_trades
+        if getattr(trade, "closed_at", None) is not None and resolve_net_pnl(trade) is not None
+    ]
+    closed_count = len(closed_trades)
+    if closed_count <= 0:
+        return {
+            "post_loss_reentry_count": 0,
+            "same_symbol_post_loss_reentry_count": 0,
+            "larger_size_after_loss_count": 0,
+            "potential_revenge_count": 0,
+            "post_loss_reentry_share_pct": None,
+            "larger_size_after_loss_share_pct": None,
+        }
+
+    post_loss_reentry_count = 0
+    same_symbol_post_loss_reentry_count = 0
+    larger_size_after_loss_count = 0
+    potential_revenge_count = 0
+    for trade in closed_trades:
+        annotation = trade_annotations.get(getattr(trade, "id", None), {})
+        if bool(annotation.get("is_post_loss_trade")):
+            post_loss_reentry_count += 1
+        if bool(annotation.get("is_post_loss_same_symbol_trade")):
+            same_symbol_post_loss_reentry_count += 1
+        if bool(annotation.get("is_potential_revenge")) or bool(getattr(trade, "is_revenge", False)):
+            potential_revenge_count += 1
+        if (
+            _coerce_float(annotation.get("prev_trade_pnl")) is not None
+            and _coerce_float(annotation.get("prev_trade_pnl")) < 0
+            and str(annotation.get("size_vs_prev_trade") or "").strip().lower() == "larger"
+        ):
+            larger_size_after_loss_count += 1
+    return {
+        "post_loss_reentry_count": post_loss_reentry_count,
+        "same_symbol_post_loss_reentry_count": same_symbol_post_loss_reentry_count,
+        "larger_size_after_loss_count": larger_size_after_loss_count,
+        "potential_revenge_count": potential_revenge_count,
+        "post_loss_reentry_share_pct": _round_metric(post_loss_reentry_count / closed_count * 100.0),
+        "larger_size_after_loss_share_pct": _round_metric(larger_size_after_loss_count / closed_count * 100.0),
+    }
+
+
+def _build_four_week_patterns(*, user_id, trade_account_id, period_start_utc, weeks=4):
+    if period_start_utc is None:
+        return {
+            "weeks_considered": 0,
+            "session_patterns": [],
+            "symbol_patterns": [],
+            "weekday_patterns": [],
+            "behaviour_patterns": {},
+            "weekly_series": [],
+        }
+
+    weekly_rows = []
+    session_totals = {}
+    symbol_totals = {}
+    weekday_totals = {}
+    behaviour_rows = []
+    for offset in range(1, weeks + 1):
+        week_end = period_start_utc - timedelta(days=(offset - 1) * 7)
+        week_start = week_end - timedelta(days=7)
+        raw_trades = _query_trades_for_payload(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            period_start_utc=week_start,
+            period_end_utc=week_end,
+            closed_trades_only=True,
+        )
+        merged_trades = merge_bundled_trades(raw_trades)
+        analytics = build_trade_analytics(
+            merged_trades,
+            display_timezone_name=get_ai_timezone_name(),
+        )
+        summary = analytics.get("summary", {})
+        week_behaviour = _build_week_behaviour_patterns(merged_trades)
+        behaviour_rows.append(week_behaviour)
+
+        week_payload = {
+            "period_start_utc": format_utc_timestamp(week_start),
+            "period_end_utc": format_utc_timestamp(week_end),
+            "trade_idea_count": int(summary.get("closed_trades", 0) or 0),
+            "win_rate": _round_metric(summary.get("win_rate")),
+            "net_pnl": _round_metric(summary.get("net_pnl")),
+            "top_session": ((analytics.get("session_stats") or [{}])[0]).get("name"),
+            "top_symbol": ((analytics.get("pair_stats") or [{}])[0]).get("symbol"),
+            "top_weekday": next((row.get("name") for row in analytics.get("weekday_stats", []) if int(row.get("count", 0) or 0) > 0), None),
+            "post_loss_reentry_count": week_behaviour.get("post_loss_reentry_count"),
+            "larger_size_after_loss_count": week_behaviour.get("larger_size_after_loss_count"),
+        }
+        weekly_rows.append(week_payload)
+
+        for row in analytics.get("session_stats", [])[:3]:
+            name = row.get("name")
+            if not name:
+                continue
+            session_totals[name] = session_totals.get(name, 0) + int(row.get("count", 0) or 0)
+        for row in analytics.get("pair_stats", [])[:3]:
+            symbol = row.get("symbol")
+            if not symbol:
+                continue
+            symbol_totals[symbol] = symbol_totals.get(symbol, 0) + int(row.get("count", 0) or 0)
+        for row in analytics.get("weekday_stats", []):
+            name = row.get("name")
+            count = int(row.get("count", 0) or 0)
+            if not name or count <= 0:
+                continue
+            weekday_totals[name] = weekday_totals.get(name, 0) + count
+
+    session_patterns = [{"name": name, "count": count} for name, count in sorted(session_totals.items(), key=lambda item: (-item[1], item[0]))[:5]]
+    symbol_patterns = [{"symbol": symbol, "count": count} for symbol, count in sorted(symbol_totals.items(), key=lambda item: (-item[1], item[0]))[:5]]
+    weekday_patterns = [{"name": name, "count": count} for name, count in sorted(weekday_totals.items(), key=lambda item: (-item[1], item[0]))[:5]]
+
+    weeks_with_trades = [row for row in weekly_rows if (row.get("trade_idea_count") or 0) > 0]
+    behaviour_patterns = {
+        "weeks_with_trades": len(weeks_with_trades),
+        "avg_post_loss_reentry_count": _round_metric(
+            sum((row.get("post_loss_reentry_count") or 0) for row in behaviour_rows) / len(behaviour_rows)
+            if behaviour_rows
+            else None
+        ),
+        "avg_larger_size_after_loss_count": _round_metric(
+            sum((row.get("larger_size_after_loss_count") or 0) for row in behaviour_rows) / len(behaviour_rows)
+            if behaviour_rows
+            else None
+        ),
+    }
+    return {
+        "weeks_considered": weeks,
+        "session_patterns": session_patterns,
+        "symbol_patterns": symbol_patterns,
+        "weekday_patterns": weekday_patterns,
+        "behaviour_patterns": behaviour_patterns,
+        "weekly_series": weekly_rows,
+    }
+
+
+def _build_recent_experiments(*, user_id, trade_account_id, period_start_utc, limit=6):
+    if not user_id:
+        return []
+    query = AIGeneratedResponse.query.filter_by(
+        user_id=user_id,
+        trade_account_id=trade_account_id,
+        kind=WEEKLY_DASHBOARD_KIND,
+    )
+    if period_start_utc is not None:
+        query = query.filter(AIGeneratedResponse.period_start_utc < period_start_utc)
+    rows = (
+        query.options(load_only(AIGeneratedResponse.response_meta_json, AIGeneratedResponse.period_start_utc))
+        .order_by(AIGeneratedResponse.period_start_utc.desc(), AIGeneratedResponse.id.desc())
+        .limit(max(int(limit), 1))
+        .all()
+    )
+    recent = []
+    for row in rows:
+        meta = parse_review_response_meta(getattr(row, "response_meta_json", None)) or {}
+        experiment = meta.get("experiment") if isinstance(meta.get("experiment"), dict) else {}
+        experiment_text = _normalize_review_item_text(experiment.get("text"))
+        if not experiment_text:
+            continue
+        recent.append(
+            {
+                "period_start_utc": format_utc_timestamp(getattr(row, "period_start_utc", None)),
+                "text": experiment_text,
+            }
+        )
+    return recent
 
 
 def _build_historical_context(
@@ -1264,6 +1624,34 @@ def build_trade_payload(
         "expectancy_historical": historical_summary.get("expectancy"),
         "ei_trend": ei_trend_direction,
     }
+    trade_idea_count = sum(1 for trade in serialized_trades if trade.get("closed_at"))
+    experiment_context = {
+        "eligible": trade_idea_count >= MIN_TRADE_IDEAS_FOR_EXPERIMENT,
+        "trade_idea_count": trade_idea_count,
+        "min_required": MIN_TRADE_IDEAS_FOR_EXPERIMENT,
+    }
+    current_week_breakdowns = _build_current_week_breakdowns(
+        analytics=analytics,
+        serialized_trades=serialized_trades,
+        median_lot_size=median_lot_size,
+    )
+    tone_context = _build_tone_context(
+        weekly_checkin=weekly_checkin,
+        emotional_index=emotional_index,
+        analytics_summary=analytics.get("summary"),
+    )
+    four_week_patterns = _build_four_week_patterns(
+        user_id=user_id,
+        trade_account_id=trade_account_id,
+        period_start_utc=period_start_utc,
+        weeks=4,
+    )
+    recent_experiments = _build_recent_experiments(
+        user_id=user_id,
+        trade_account_id=trade_account_id,
+        period_start_utc=period_start_utc,
+        limit=6,
+    )
 
     payload = {
         "generated_at": format_utc_timestamp(utcnow_naive()),
@@ -1280,6 +1668,11 @@ def build_trade_payload(
         "emotional_index": emotional_index,
         "performance_trends": performance_trends,
         "historical_context": historical_ctx,
+        "tone_context": tone_context,
+        "current_week_breakdowns": current_week_breakdowns,
+        "four_week_patterns": four_week_patterns,
+        "experiment_context": experiment_context,
+        "recent_experiments": recent_experiments,
         "summary": {
             "total_trades": analytics["summary"]["total_trades"],
             "closed_trades": analytics["summary"]["closed_trades"],
@@ -1338,6 +1731,24 @@ def has_trade_data_for_period(*, user_id, trade_account_id=None, period_start_ut
     if period_end_utc is not None:
         trade_query = trade_query.filter(Trade.closed_at < period_end_utc)
     return trade_query.first() is not None
+
+
+def count_closed_trade_ideas_in_period(*, user_id, trade_account_id=None, period_start_utc=None, period_end_utc=None):
+    if not user_id:
+        return 0
+    raw_trades = _query_trades_for_payload(
+        user_id=user_id,
+        trade_account_id=trade_account_id,
+        period_start_utc=period_start_utc,
+        period_end_utc=period_end_utc,
+        closed_trades_only=True,
+    )
+    merged_trades = merge_bundled_trades(raw_trades)
+    return sum(
+        1
+        for trade in merged_trades
+        if getattr(trade, "closed_at", None) is not None and resolve_net_pnl(trade) is not None
+    )
 
 
 def should_generate_weekly_dashboard_advice(
@@ -1427,6 +1838,11 @@ def format_payload_for_prompt(payload):
     weekly_checkin = payload.get("weekly_checkin") or {}
     emotional_index = payload.get("emotional_index") or {}
     historical_context = payload.get("historical_context") or {}
+    tone_context = payload.get("tone_context") or {}
+    current_week_breakdowns = payload.get("current_week_breakdowns") or {}
+    four_week_patterns = payload.get("four_week_patterns") or {}
+    experiment_context = payload.get("experiment_context") or {}
+    recent_experiments = payload.get("recent_experiments") or []
     trades = payload.get("trades", [])
 
     lines = [
@@ -1539,6 +1955,112 @@ def format_payload_for_prompt(payload):
                 f"- ei_trend: {performance_trends.get('ei_trend') or '-'}",
             ]
         )
+
+    if _payload_section_has_values(tone_context):
+        lines.extend(
+            [
+                "",
+                "TONE_CONTEXT",
+                f"- checkin_submitted: {_format_bool(tone_context.get('checkin_submitted'))}",
+                f"- mode: {tone_context.get('mode') or '-'}",
+                f"- reasons: {', '.join(tone_context.get('reasons') or []) or '-'}",
+            ]
+        )
+
+    if current_week_breakdowns:
+        lines.extend(
+            [
+                "",
+                "CURRENT_WEEK_BREAKDOWNS",
+            ]
+        )
+        for item in current_week_breakdowns.get("sessions") or []:
+            lines.append(
+                f"- session {item.get('name') or '-'}: count={item.get('count', 0)}, "
+                f"win_rate={_format_percent(item.get('win_rate'))}, net_pnl={_format_signed_currency(item.get('net_pnl'))}"
+            )
+        for item in current_week_breakdowns.get("symbols") or []:
+            lines.append(
+                f"- symbol {item.get('symbol') or '-'}: count={item.get('count', 0)}, "
+                f"win_rate={_format_percent(item.get('win_rate'))}, net_pnl={_format_signed_currency(item.get('net_pnl'))}"
+            )
+        for item in current_week_breakdowns.get("weekdays") or []:
+            lines.append(
+                f"- weekday {item.get('name') or '-'}: count={item.get('count', 0)}, "
+                f"win_rate={_format_percent(item.get('win_rate'))}, net_pnl={_format_signed_currency(item.get('net_pnl'))}"
+            )
+        sizing = current_week_breakdowns.get("sizing") or {}
+        frequency = current_week_breakdowns.get("frequency") or {}
+        exit_quality = current_week_breakdowns.get("exit_quality") or {}
+        lines.extend(
+            [
+                f"- sizing.median_lot_size: {_format_number(sizing.get('median_lot_size'))}",
+                f"- sizing.outlier_size_count: {sizing.get('outlier_size_count', 0)}",
+                f"- sizing.outlier_size_share_pct: {_format_percent(sizing.get('outlier_size_share_pct'))}",
+                f"- frequency.trade_idea_count: {frequency.get('trade_idea_count', 0)}",
+                f"- frequency.active_day_count: {frequency.get('active_day_count', 0)}",
+                f"- frequency.trade_ideas_per_active_day: {_format_number(frequency.get('trade_ideas_per_active_day'))}",
+                f"- frequency.busiest_session: {frequency.get('busiest_session') or '-'}",
+                f"- exit_quality.closed_before_tp_count: {exit_quality.get('closed_before_tp_count', 0)}",
+                f"- exit_quality.closed_before_sl_count: {exit_quality.get('closed_before_sl_count', 0)}",
+                f"- exit_quality.avg_tp_capture_pct: {_format_percent(exit_quality.get('avg_tp_capture_pct'))}",
+            ]
+        )
+
+    if four_week_patterns:
+        lines.extend(
+            [
+                "",
+                "FOUR_WEEK_PATTERNS",
+                f"- weeks_considered: {four_week_patterns.get('weeks_considered', 0)}",
+            ]
+        )
+        for index, row in enumerate(four_week_patterns.get("weekly_series") or [], start=1):
+            lines.append(
+                f"- weekly_series[{index}]: period={row.get('period_start_utc') or '-'} -> {row.get('period_end_utc') or '-'}, "
+                f"trade_ideas={row.get('trade_idea_count', 0)}, win_rate={_format_percent(row.get('win_rate'))}, "
+                f"net_pnl={_format_signed_currency(row.get('net_pnl'))}, top_session={row.get('top_session') or '-'}, "
+                f"top_symbol={row.get('top_symbol') or '-'}, top_weekday={row.get('top_weekday') or '-'}"
+            )
+        for row in four_week_patterns.get("session_patterns") or []:
+            lines.append(f"- session_patterns: {row.get('name') or '-'} count={row.get('count', 0)}")
+        for row in four_week_patterns.get("symbol_patterns") or []:
+            lines.append(f"- symbol_patterns: {row.get('symbol') or '-'} count={row.get('count', 0)}")
+        for row in four_week_patterns.get("weekday_patterns") or []:
+            lines.append(f"- weekday_patterns: {row.get('name') or '-'} count={row.get('count', 0)}")
+        behaviour_patterns = four_week_patterns.get("behaviour_patterns") or {}
+        lines.extend(
+            [
+                f"- behaviour_patterns.weeks_with_trades: {behaviour_patterns.get('weeks_with_trades', 0)}",
+                f"- behaviour_patterns.avg_post_loss_reentry_count: {_format_number(behaviour_patterns.get('avg_post_loss_reentry_count'))}",
+                f"- behaviour_patterns.avg_larger_size_after_loss_count: {_format_number(behaviour_patterns.get('avg_larger_size_after_loss_count'))}",
+            ]
+        )
+
+    if _payload_section_has_values(experiment_context):
+        lines.extend(
+            [
+                "",
+                "EXPERIMENT_CONTEXT",
+                f"- eligible: {_format_bool(experiment_context.get('eligible'))}",
+                f"- trade_idea_count: {experiment_context.get('trade_idea_count', 0)}",
+                f"- min_required: {experiment_context.get('min_required', MIN_TRADE_IDEAS_FOR_EXPERIMENT)}",
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "RECENT_EXPERIMENTS",
+        ]
+    )
+    if recent_experiments:
+        for index, item in enumerate(recent_experiments, start=1):
+            lines.append(
+                f"- {index}. period_start_utc={item.get('period_start_utc') or '-'} text={item.get('text') or '-'}"
+            )
+    else:
+        lines.append("- no recent experiments")
 
     lines.extend(
         [
@@ -1889,7 +2411,12 @@ def generate_dashboard_advice(*, user_id, trade_account_id=None, prompt_filename
             for trade in payload.get("trades", [])
             if str(trade.get("review_ref") or "").strip()
         }
-        structured_review = _extract_structured_review(response_payload, allowed_refs)
+        experiment_context = payload.get("experiment_context") if isinstance(payload.get("experiment_context"), dict) else {}
+        structured_review = _extract_structured_review(
+            response_payload,
+            allowed_refs,
+            experiment_eligible=bool(experiment_context.get("eligible")),
+        )
         response_text = (
             structured_review["response_text"]
             if structured_review is not None
@@ -2006,6 +2533,19 @@ def maybe_generate_weekly_dashboard_advice(
         ):
             return {"record": None, "generated": False, "period": period}
 
+        if not force_regenerate and not weekly_review_generation_past_market_week_cutoff(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            period=period,
+            now_utc=now_utc,
+        ):
+            return {
+                "record": None,
+                "generated": False,
+                "period": period,
+                "skip_reason": "before_weekly_cutoff",
+            }
+
         user_profile = _get_user_profile_for_prompt(user_id)
         weekly_checkin = _get_weekly_checkin_for_prompt(
             user_id=user_id,
@@ -2045,7 +2585,12 @@ def maybe_generate_weekly_dashboard_advice(
             for trade in payload.get("trades", [])
             if str(trade.get("review_ref") or "").strip()
         }
-        structured_review = _extract_structured_review(response_payload, allowed_refs)
+        experiment_context = payload.get("experiment_context") if isinstance(payload.get("experiment_context"), dict) else {}
+        structured_review = _extract_structured_review(
+            response_payload,
+            allowed_refs,
+            experiment_eligible=bool(experiment_context.get("eligible")),
+        )
         response_text = (
             structured_review["response_text"]
             if structured_review is not None

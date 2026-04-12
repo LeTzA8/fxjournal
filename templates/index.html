@@ -330,7 +330,7 @@
             </div>
         </header>
 
-        {% if admin_viewer_username %}
+        {% if admin_viewer_username and not support_view_session_active %}
         <section class="panel admin-view-banner">
             <div class="admin-view-banner-copy">
                 <span class="admin-view-banner-label">Admin View</span>
@@ -493,6 +493,8 @@
                         <span class="soft">
                             {% if mt5_selected_status == "linked" %}
                             Connected
+                            {% elif mt5_selected_status == "archived" %}
+                            Inactive
                             {% elif mt5_selected_status in ("queued", "setting_up") %}
                             Setting Up
                             {% elif mt5_selected_status in ("requestable", "pending") %}
@@ -504,7 +506,7 @@
                     </div>
 
                     {% if mt5_selected_row %}
-                    {% if mt5_selected_status == "linked" %}
+                    {% if mt5_selected_status in ("linked", "archived") %}
                     {% set mt5_progress_stage = 4 %}
                     {% elif mt5_selected_status == "setting_up" %}
                     {% set mt5_progress_stage = 3 %}
@@ -688,6 +690,34 @@
                     <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
                         <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Open Import</a>
                     </div>
+                    {% elif mt5_selected_status == "archived" and mt5_selected_account %}
+                    <p class="mt5-card-empty">This account's MT5 sync is inactive due to inactivity. Reactivate it when you want automatic sync back on.</p>
+                    <div class="mt5-selected-account-card">
+                        <span class="mt5-selected-account-label">Sync Inactive</span>
+                        <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
+                        <span class="mt5-selected-account-meta">Reactivation rebuilds the VM terminal and resumes sync with your saved read-only MT5 credentials.</span>
+                    </div>
+                    <form
+                        method="post"
+                        action="{{ url_for('trade_accounts.reactivate_mt5_sync') }}"
+                        class="mt5-unlink-form"
+                    >
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
+                        <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
+                        <button type="submit" class="submit-btn">Reactivate MT5 sync</button>
+                    </form>
+                    <form
+                        method="post"
+                        action="{{ url_for('trade_accounts.unlink_mt5_sync') }}"
+                        class="mt5-unlink-form"
+                    >
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
+                        <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
+                        <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
+                    </form>
+                    <p class="mt5-card-footnote">Reactivation keeps your saved read-only credentials. Disconnect if you want to remove them completely.</p>
                     {% elif mt5_selected_status == "linked" and mt5_selected_account %}
                     <p class="mt5-card-empty">This account is already linked for MT5 sync. Switch your active dashboard account if you want to check MT5 onboarding on a different account.</p>
                     <div class="mt5-selected-account-card">
@@ -888,6 +918,13 @@
                         <p class="insight-body ai-review-copy ai-review-strength muted-value">Shows here once your review runs.</p>
                         {% endif %}
                     </div>
+
+                    {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.experiment and weekly_ai_review_display.experiment.text %}
+                    <div class="insight-content session-ai-card ai-hero-card ai-review-panel-experiment">
+                        <p class="insight-title">🧪 This Week's Experiment</p>
+                        <p class="insight-body ai-review-copy ai-review-experiment">{% for segment in weekly_ai_review_display.experiment.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
+                    </div>
+                    {% endif %}
                     {% endif %}
                 </div>
                 <div class="ai-hero-meta">

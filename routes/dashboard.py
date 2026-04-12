@@ -2,7 +2,7 @@ import json
 import re
 from datetime import datetime, timedelta
 
-from flask import Blueprint, current_app, jsonify, render_template, request, session, url_for
+from flask import Blueprint, current_app, g, jsonify, render_template, request, session, url_for
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import load_only, selectinload
 
@@ -10,11 +10,13 @@ from ai_service import (
     MIN_CLOSED_TRADES_FOR_ADVICE,
     WEEKLY_DASHBOARD_KIND,
     build_dashboard_review_display,
+    count_closed_trade_ideas_in_period,
     get_latest_trade_week_period,
     get_latest_weekly_dashboard_advice,
     get_weekly_dashboard_period,
     normalize_dashboard_advice_text,
     should_generate_weekly_dashboard_advice,
+    weekly_review_generation_past_market_week_cutoff,
 )
 from celery_workers.cache import (
     AI_STATUS_FAILED_TTL,
@@ -30,11 +32,15 @@ from celery_workers.cache import (
 from helpers.behavior_labels import build_trade_behavior_analytics, build_trade_behavior_badge_map
 from helpers.core import (
     build_mt5_access_state,
+    get_effective_user_id,
+    get_effective_username,
     get_active_trade_account_for_user,
     get_app_timezone_name,
     get_display_timezone_name,
+    get_support_view_admin_username,
     get_user_trade_accounts,
     is_weekly_checkin_complete,
+    is_support_view_active,
     is_trade_running,
     normalize_timezone_name,
 )
@@ -56,17 +62,22 @@ from trading import (
 bp = Blueprint("dashboard", __name__)
 
 DEFAULT_WEEKLY_AI_EMPTY_MESSAGE = (
-    f"Weekly review needs a finished week with at least {MIN_CLOSED_TRADES_FOR_ADVICE} closed trades on this account."
+    f"Weekly review needs at least {MIN_CLOSED_TRADES_FOR_ADVICE} closed trade idea(s) on this account "
+    "in the active review window."
 )
 WEEKLY_AI_GENERATING_MESSAGE = (
     "Generating your weekly AI review. Check back shortly."
 )
-WEEKLY_AI_NO_TRADES_MESSAGE = "No trades this week. Add closed trades to generate a review."
+WEEKLY_AI_NO_TRADES_MESSAGE = "No trades this week. Add closed trade ideas to generate a review."
 WEEKLY_AI_TOO_FEW_TRADES_MESSAGE = (
     "Limited trade data this week, so the review will stay cautious."
 )
 WEEKLY_AI_UNAVAILABLE_MESSAGE = (
     "Weekly AI review is temporarily unavailable. Please try again shortly."
+)
+WEEKLY_AI_WAIT_FOR_WEEK_CLOSE_MESSAGE = (
+    "Your weekly AI review is scheduled for after Friday 5:30 PM New York time, "
+    "once that trading week is complete."
 )
 WEEKLY_AI_PROMPT_FILENAME = "dashboard_advice.txt"
 DASHBOARD_CACHE_PREFIX = "dashboard_v3"
@@ -487,12 +498,17 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
     strength["text"] = _rewrite_review_text_refs(strength.get("text"), citation_lookup)
     strength["citations"] = []
     strength["segments"] = [{"type": "text", "text": strength.get("text")}] if strength.get("text") else []
+    experiment = dict(display.get("experiment") or {})
+    experiment["text"] = _rewrite_review_text_refs(experiment.get("text"), citation_lookup)
+    experiment["citations"] = []
+    experiment["segments"] = [{"type": "text", "text": experiment.get("text")}] if experiment.get("text") else []
 
     return {
         "summary": summary,
         "takeaways": takeaways,
         "improvement": improvement,
         "strength": strength,
+        "experiment": experiment,
         "has_citations": bool(
             summary.get("citations")
             or any(item.get("citations") for item in takeaways)
@@ -1049,16 +1065,22 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
                 period_end_utc=latest_trade_period["period_end_utc"],
             ):
                 weekly_ai_empty_message = DEFAULT_WEEKLY_AI_EMPTY_MESSAGE
+            elif not weekly_review_generation_past_market_week_cutoff(
+                user_id=user_id,
+                trade_account_id=account_id,
+                period=latest_trade_period,
+            ):
+                weekly_ai_empty_message = WEEKLY_AI_WAIT_FOR_WEEK_CLOSE_MESSAGE
             else:
-                closed_trade_count = sum(
-                    1 for t in user_trades
-                    if t.closed_at is not None
-                    and t.closed_at >= latest_trade_period["period_start_utc"]
-                    and t.closed_at < latest_trade_period["period_end_utc"]
+                closed_trade_idea_count = count_closed_trade_ideas_in_period(
+                    user_id=user_id,
+                    trade_account_id=account_id,
+                    period_start_utc=latest_trade_period["period_start_utc"],
+                    period_end_utc=latest_trade_period["period_end_utc"],
                 )
-                if closed_trade_count <= 0:
+                if closed_trade_idea_count <= 0:
                     weekly_ai_empty_message = WEEKLY_AI_NO_TRADES_MESSAGE
-                elif closed_trade_count < MIN_CLOSED_TRADES_FOR_ADVICE:
+                elif closed_trade_idea_count < MIN_CLOSED_TRADES_FOR_ADVICE:
                     weekly_ai_empty_message = WEEKLY_AI_TOO_FEW_TRADES_MESSAGE
                 else:
                     try:
@@ -1161,6 +1183,7 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
         mt5_account = mt5_accounts_by_trade_account.get(account.id)
         is_linked = mt5_account is not None
         is_active_linked = account.id in active_mt5_trade_account_ids
+        is_archived = bool(getattr(mt5_account, "is_archived", False))
         has_setup_artifacts = bool(
             str(getattr(mt5_account, "terminal_path", "") or "").strip()
             or str(getattr(mt5_account, "appdata_hash", "") or "").strip()
@@ -1170,6 +1193,19 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
             status = "linked"
             status_label = "MT5 Linked"
             note = "MT5 details are already on file for this account."
+        elif is_archived:
+            status = "archived"
+            status_label = "Sync Inactive"
+            archived_on = getattr(mt5_account, "archived_at", None)
+            archive_date_label = (
+                archived_on.strftime("%Y-%m-%d UTC")
+                if archived_on is not None
+                else "an earlier date"
+            )
+            note = (
+                f"MT5 sync was archived due to inactivity on {archive_date_label}. "
+                "Reactivate to rebuild the VM terminal using your saved read-only credentials."
+            )
         elif has_setup_artifacts:
             status = "setting_up"
             status_label = "Setting Up"
@@ -1204,6 +1240,7 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
                 "approved_request": approved_request,
                 "is_linked": is_linked,
                 "is_active_linked": is_active_linked,
+                "is_archived": is_archived,
                 "has_setup_artifacts": has_setup_artifacts,
             }
         )
@@ -1248,19 +1285,27 @@ def home():
 
 
 def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=None):
-    is_admin_view = target_user_id is not None and admin_viewer_username is not None
+    support_view_active = is_support_view_active()
+    is_admin_view = (
+        (target_user_id is not None and admin_viewer_username is not None)
+        or support_view_active
+    )
     if is_admin_view:
-        from models import User as _User
-        target_user = db.session.get(_User, target_user_id)
+        if support_view_active and target_user_id is None:
+            target_user = getattr(g, "support_view_target_user", None)
+            admin_viewer_username = get_support_view_admin_username()
+        else:
+            from models import User as _User
+            target_user = db.session.get(_User, target_user_id)
         if target_user is None:
             from flask import abort
             abort(404)
         username = target_user.username
-        user_id = target_user_id
+        user_id = target_user.id
         timezone_name = normalize_timezone_name(target_user.timezone, get_app_timezone_name()) or "UTC"
     else:
-        username = session.get("username", "User")
-        user_id = session["user_id"]
+        username = get_effective_username()
+        user_id = get_effective_user_id()
         timezone_name = get_display_timezone_name()
 
     active_trade_account = get_active_trade_account_for_user(user_id)
@@ -1443,7 +1488,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
 @bp.route("/api/ai-status")
 @login_required
 def ai_status():
-    user_id = session["user_id"]
+    user_id = get_effective_user_id()
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_id = getattr(active_trade_account, "id", None)
     weekly_period = get_latest_trade_week_period(
@@ -1465,7 +1510,7 @@ def ai_status():
 @bp.route("/dashboard/analytics")
 @login_required
 def analytics():
-    user_id = session["user_id"]
+    user_id = get_effective_user_id()
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_id = getattr(active_trade_account, "id", None)
     timezone_name = get_display_timezone_name()
@@ -1537,7 +1582,7 @@ def analytics():
     return render_template(
         "analytics.html",
         title="MyFXJournal | Analytics",
-        username=session.get("username", "User"),
+        username=get_effective_username(),
         analytics=analytics_payload,
         analytics_timezone=timezone_name,
         active_trade_account=active_trade_account,

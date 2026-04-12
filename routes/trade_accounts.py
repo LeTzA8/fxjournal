@@ -9,6 +9,8 @@ from extensions import limiter
 from helpers.core import (
     build_mt5_access_state,
     build_unique_trade_account_pubkey,
+    get_effective_user_id,
+    get_effective_username,
     get_active_trade_account_for_user,
     get_mt5_sync_batch_state,
     get_safe_internal_next,
@@ -18,6 +20,7 @@ from helpers.core import (
     get_user_trade_profiles,
     normalize_trade_account_name,
     parse_trade_account_size,
+    reactivate_mt5_account,
     resolve_active_trade_account,
     unlink_mt5_sync_for_trade_account,
 )
@@ -165,11 +168,16 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
 
     existing_mt5_account = MT5Account.query.filter_by(trade_account_id=account.id).first()
     if existing_mt5_account is not None:
-        message = (
-            "This trade account already has MT5 sync access configured."
-            if existing_mt5_account.is_active
-            else "This trade account already has MT5 sync setup in progress."
-        )
+        if existing_mt5_account.is_archived:
+            message = (
+                "This trade account already has saved MT5 sync credentials. Reactivate it from the dashboard instead of submitting new details again."
+            )
+        else:
+            message = (
+                "This trade account already has MT5 sync access configured."
+                if existing_mt5_account.is_active
+                else "This trade account already has MT5 sync setup in progress."
+            )
         return _build_mt5_request_response(
             ok=False,
             message=message,
@@ -602,6 +610,40 @@ def unlink_mt5_sync():
     return redirect(get_safe_internal_next("trade_accounts.trade_accounts"))
 
 
+@bp.route("/dashboard/trade-accounts/mt5/reactivate", methods=["POST"])
+@limiter.limit(
+    "6 per hour",
+    methods=["POST"],
+    error_message="Too many MT5 reactivation attempts. Please wait and try again.",
+)
+@login_required
+def reactivate_mt5_sync():
+    user_id = session["user_id"]
+    pubkey = (request.form.get("trade_account_pubkey") or "").strip()
+    if not pubkey:
+        flash("Choose a trade account to reactivate.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+
+    account = get_user_trade_account_by_pubkey(user_id, pubkey)
+    if not account:
+        flash("Trade account not found.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+    if normalize_account_type(account.account_type) != "CFD":
+        flash("MT5 sync applies to CFD trade accounts only.", "error")
+        return redirect(_get_mt5_access_redirect_target())
+
+    mt5_account = MT5Account.query.filter_by(
+        trade_account_id=account.id,
+        user_id=user_id,
+    ).first()
+    ok, message = reactivate_mt5_account(
+        mt5_account=mt5_account,
+        log_context="user reactivate",
+    )
+    flash(message, "success" if ok else "error")
+    return redirect(_get_mt5_access_redirect_target())
+
+
 @bp.route("/dashboard/mt5/request-access", methods=["POST"])
 @bp.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/request-mt5-access", methods=["POST"])
 @limiter.limit(
@@ -827,7 +869,7 @@ def delete_all_trade_accounts():
 @bp.route("/dashboard/trade-accounts")
 @login_required
 def trade_accounts():
-    user_id = session["user_id"]
+    user_id = get_effective_user_id()
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_rows = get_user_trade_accounts(
         user_id, eager_load_default_trade_profile=True
@@ -877,7 +919,7 @@ def trade_accounts():
     return render_template(
         "trade_accounts.html",
         title="MyFXJournal | Trade Accounts",
-        username=session.get("username", "User"),
+        username=get_effective_username(),
         account_rows=account_rows,
         account_trade_counts=account_trade_counts,
         account_review_counts=account_review_counts,

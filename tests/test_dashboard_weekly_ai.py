@@ -87,6 +87,40 @@ def test_dashboard_home_shows_too_few_trades_weekly_ai_message(app_ctx, client, 
     assert b"This week has limited trade data, so the AI review will stay cautious and avoid overconfident conclusions." in response.data
 
 
+def test_dashboard_home_renders_experiment_card_when_present(app_ctx, client, monkeypatch):
+    _create_logged_in_user(
+        client,
+        username="dashboard-ai-experiment-user",
+        email="dashboard-ai-experiment@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": type("Review", (), {"response_text": "Summary"})(),
+            "weekly_ai_review_display": {
+                "summary": {"text": "Summary", "segments": [{"type": "text", "text": "Summary"}], "refs": [], "citations": []},
+                "takeaways": [],
+                "improvement": {"text": "Improve this week: Keep risk fixed.", "segments": [{"type": "text", "text": "Improve this week: Keep risk fixed."}], "refs": [], "citations": []},
+                "strength": {"text": "You're already strong at: Staying selective.", "segments": [{"type": "text", "text": "You're already strong at: Staying selective."}], "refs": [], "citations": []},
+                "experiment": {"text": "Run one-week London-only execution test.", "segments": [{"type": "text", "text": "Run one-week London-only execution test."}], "refs": [], "citations": []},
+                "has_citations": False,
+            },
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    response = client.get("/dashboard")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "This Week's Experiment" in response_text
+    assert "Run one-week London-only execution test." in response_text
+
+
 def test_dashboard_home_uses_state_1_for_active_account_even_when_other_accounts_have_activity(app_ctx, client, monkeypatch):
     user, active_trade_account = _create_logged_in_user(
         client,
@@ -725,6 +759,10 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
                         "text": "You're already strong at: Treating T1 entries as single setups rather than layering early.",
                         "refs": [],
                     },
+                    "experiment": {
+                        "text": "Run one-session focus: take only London setups this week and compare execution quality.",
+                        "refs": [],
+                    },
                 }
             ),
             "payload_json": json.dumps(
@@ -784,6 +822,10 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
     assert display["strength"]["segments"] == [
         {"type": "text", "text": display["strength"]["text"]},
     ]
+    assert display["experiment"]["segments"] == [
+        {"type": "text", "text": display["experiment"]["text"]},
+    ]
+    assert display["experiment"]["text"].startswith("Run one-session focus")
 
 
 def test_rewrite_review_text_refs_drops_stray_clitic_after_brackets_and_labels():
@@ -959,6 +1001,7 @@ def test_weekly_ai_review_display_autocites_unique_symbol_mentions():
     assert display["strength"]["segments"] == [
         {"type": "text", "text": display["strength"]["text"]},
     ]
+    assert display["experiment"]["segments"] == []
 
 
 def test_weekly_ai_state_falls_back_to_latest_generated_review_for_account(app_ctx, client, monkeypatch):

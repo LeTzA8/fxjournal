@@ -14,6 +14,8 @@ from helpers.core import (
     build_trade_duplicate_key,
     build_normalized_trade_insert_batch,
     build_unique_trade_pubkey,
+    get_effective_user_id,
+    get_effective_username,
     queue_bundle_review_if_split_candidates,
     format_local_datetime_input,
     get_active_trade_account_for_user,
@@ -21,12 +23,14 @@ from helpers.core import (
     get_trade_size_label,
     get_user_trade_by_pubkey_or_404,
     get_user_trade_profiles,
+    is_support_view_active,
     is_trade_running,
     is_local_dev_environment,
     parse_local_datetime_input,
     resolve_trade_profile_form_state,
     resolve_user_trade_profile_attachment,
 )
+from helpers.weekly_ai_queue import queue_weekly_ai_review_after_ingest
 from helpers.trade_analysis import detect_outliers, get_trade_identity
 from helpers.trade_interpretation import apply_interpretation
 from models import Trade, TradeBars, db
@@ -93,7 +97,7 @@ def _build_trade_entry_context(user_id, trade):
     trade_account = trade.trade_account or get_active_trade_account_for_user(user_id)
     profile_form_state = resolve_trade_profile_form_state(user_id, trade=trade)
     return {
-        "username": session.get("username", "User"),
+        "username": get_effective_username(),
         "active_trade_account_name": trade_account.name,
         "symbol_options": get_symbol_options(trade_account.account_type, trade.symbol),
         "account_type": normalize_account_type(trade_account.account_type),
@@ -285,8 +289,8 @@ def _build_bundle_review_candidates(bundle_candidates):
 
 
 def render_trades_page(*, manage_mode=False):
-    username = session.get("username", "User")
-    user_id = session["user_id"]
+    username = get_effective_username()
+    user_id = get_effective_user_id()
     active_trade_account = get_active_trade_account_for_user(user_id)
     try:
         user_trades = (
@@ -542,7 +546,7 @@ def batch_update_trade_profile():
 @bp.route("/dashboard/trades/new", methods=["GET", "POST"])
 @login_required
 def new_trade():
-    user_id = session["user_id"]
+    user_id = get_effective_user_id()
     active_trade_account = get_active_trade_account_for_user(user_id)
 
     if request.method == "POST":
@@ -699,7 +703,7 @@ def new_trade():
     return render_template(
         "trade_entry.html",
         title="MyFXJournal | New Trade",
-        username=session.get("username", "User"),
+        username=get_effective_username(),
         active_trade_account_name=active_trade_account.name,
         symbol_options=get_symbol_options(active_trade_account.account_type),
         account_type=normalize_account_type(active_trade_account.account_type),
@@ -849,6 +853,19 @@ def import_trade_file():
                 "so stats and weekly review stay accurate.",
                 "info",
             )
+        try:
+            queue_weekly_ai_review_after_ingest(
+                user_id=user_id,
+                trade_account_id=active_trade_account.id,
+                log=current_app.logger,
+            )
+        except Exception as exc:
+            current_app.logger.warning(
+                "Weekly AI queue after trade import failed user_id=%s trade_account_id=%s: %s",
+                user_id,
+                active_trade_account.id,
+                exc,
+            )
         if existing_import_count == 0:
             session["first_import_nudge"] = {
                 "imported_count": len(insert_batch),
@@ -975,7 +992,7 @@ def import_trade_file():
 @bp.route("/dashboard/trades/<string:trade_pubkey>")
 @login_required
 def trade_detail(trade_pubkey):
-    user_id = session["user_id"]
+    user_id = get_effective_user_id()
 
     trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
     trade_pnl = resolve_pnl(trade)
@@ -1045,7 +1062,7 @@ def trade_detail(trade_pubkey):
 @bp.route("/dashboard/trades/<string:trade_pubkey>/edit", methods=["GET", "POST"])
 @login_required
 def edit_trade(trade_pubkey):
-    user_id = session["user_id"]
+    user_id = get_effective_user_id()
 
     trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
     trade_account = trade.trade_account or get_active_trade_account_for_user(user_id)
@@ -1250,7 +1267,7 @@ def edit_trade(trade_pubkey):
 @bp.route("/dashboard/trades/bundle-review")
 @login_required
 def bundle_review():
-    user_id = session["user_id"]
+    user_id = get_effective_user_id()
     active_trade_account = get_active_trade_account_for_user(user_id)
     if active_trade_account is None:
         return redirect(url_for("dashboard.home"))
@@ -1273,6 +1290,12 @@ def bundle_review():
     bundle_candidates = _build_bundle_review_candidates(outliers["bundle_candidates"])
     review_pending = _is_bundle_review_pending(active_trade_account)
     if review_pending and not bundle_candidates:
+        if is_support_view_active():
+            flash(
+                "Bundle review is already up to date for this account. Support view will not mark it complete.",
+                "info",
+            )
+            return redirect(url_for("dashboard.home"))
         active_trade_account.bundle_review_completed_at = utcnow_naive()
         db.session.commit()
         flash("Bundle review is already up to date for this account.", "info")
@@ -1281,7 +1304,7 @@ def bundle_review():
     return render_template(
         "bundle_review.html",
         title="MyFXJournal | Bundle Review",
-        username=session.get("username", "User"),
+        username=get_effective_username(),
         bundle_candidates=bundle_candidates,
         complete_action=url_for("trades.bundle_review_complete") if review_pending else None,
         complete_label="Done Reviewing",
@@ -1380,7 +1403,7 @@ def _trade_bar_row_to_ohlc_dict(row):
 @bp.route("/api/trades/<string:trade_pubkey>/chart-data")
 @login_required
 def trade_chart_data(trade_pubkey):
-    user_id = session["user_id"]
+    user_id = get_effective_user_id()
     trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
 
     if not trade.mt5_position or trade.closed_at is None:

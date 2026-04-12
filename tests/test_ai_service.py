@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import json
@@ -12,6 +12,8 @@ from ai_service import (
     build_profile_instructions,
     build_trade_payload,
     format_payload_for_prompt,
+    get_latest_trade_week_period,
+    get_weekly_dashboard_period,
     load_prompt_text,
     maybe_generate_weekly_dashboard_advice,
     normalize_dashboard_advice_text,
@@ -138,6 +140,40 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
             "top_sessions": [],
             "top_weekdays": [],
         },
+        "tone_context": {
+            "checkin_submitted": True,
+            "mode": "stressed",
+            "reasons": ["checkin_emotional_state:stressed", "week_result:losing"],
+        },
+        "current_week_breakdowns": {
+            "sessions": [{"name": "London", "count": 1, "win_rate": 100.0, "net_pnl": 140.0}],
+            "symbols": [{"symbol": "MES (MESM26)", "count": 1, "win_rate": 100.0, "net_pnl": 140.0}],
+            "weekdays": [{"name": "Monday", "count": 1, "win_rate": 100.0, "net_pnl": 140.0}],
+            "sizing": {"median_lot_size": 1.0, "outlier_size_count": 0, "outlier_size_share_pct": 0.0},
+            "frequency": {"trade_idea_count": 1, "active_day_count": 1, "trade_ideas_per_active_day": 1.0, "busiest_session": "London"},
+            "exit_quality": {"closed_before_tp_count": 1, "closed_before_sl_count": 0, "avg_tp_capture_pct": 35.0},
+        },
+        "four_week_patterns": {
+            "weeks_considered": 4,
+            "session_patterns": [{"name": "London", "count": 3}],
+            "symbol_patterns": [{"symbol": "MES (MESM26)", "count": 3}],
+            "weekday_patterns": [{"name": "Monday", "count": 2}],
+            "behaviour_patterns": {"weeks_with_trades": 2, "avg_post_loss_reentry_count": 1.0, "avg_larger_size_after_loss_count": 0.5},
+            "weekly_series": [
+                {
+                    "period_start_utc": "2026-02-24T00:00:00Z",
+                    "period_end_utc": "2026-03-03T00:00:00Z",
+                    "trade_idea_count": 2,
+                    "win_rate": 50.0,
+                    "net_pnl": 40.0,
+                    "top_session": "London",
+                    "top_symbol": "MES (MESM26)",
+                    "top_weekday": "Monday",
+                }
+            ],
+        },
+        "experiment_context": {"eligible": False, "trade_idea_count": 1, "min_required": 5},
+        "recent_experiments": [{"period_start_utc": "2026-02-17T00:00:00Z", "text": "Reduce add-on entries after losses to one."}],
         "trades": [
             {
                 "review_ref": "T1",
@@ -226,6 +262,16 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- confirmed_behavior_trade_count: 1" in prompt_text
     assert "- comparison_scope: history_before_review_period_only" in prompt_text
     assert "- comparison_scope_note: history sections are comparison-only context and may exclude the current review period" in prompt_text
+    assert "TONE_CONTEXT" in prompt_text
+    assert "- mode: stressed" in prompt_text
+    assert "CURRENT_WEEK_BREAKDOWNS" in prompt_text
+    assert "session London: count=1, win_rate=100.00%, net_pnl=+140.00" in prompt_text
+    assert "FOUR_WEEK_PATTERNS" in prompt_text
+    assert "behaviour_patterns.avg_post_loss_reentry_count: 1.00" in prompt_text
+    assert "EXPERIMENT_CONTEXT" in prompt_text
+    assert "- eligible: false" in prompt_text
+    assert "RECENT_EXPERIMENTS" in prompt_text
+    assert "Reduce add-on entries after losses to one." in prompt_text
     assert "- account_age_days: 45" in prompt_text
     assert "- pair_sample_is_diverse: false" in prompt_text
     assert "- equity_has_outlier_dominance: true" in prompt_text
@@ -636,11 +682,12 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "STEP 2 - JUDGE DATA CONFIDENCE" in prompt_text
     assert "STEP 3 - JUDGE PERFORMANCE SHAPE" in prompt_text
     assert "STEP 4 - JUDGE BEHAVIOUR PRESSURE" in prompt_text
-    assert "STEP 5 - CHOOSE REVIEW MODE" in prompt_text
-    assert "STEP 6 - SELECT THE BEST 2-4 INSIGHTS" in prompt_text
-    assert "STEP 7 - WRITE THE RESPONSE" in prompt_text
+    assert "STEP 5 - CHOOSE TONE MODE" in prompt_text
+    assert "STEP 6 - CHOOSE REVIEW MODE" in prompt_text
+    assert "STEP 7 - SELECT THE BEST 1-4 INSIGHTS" in prompt_text
+    assert "STEP 8 - WRITE THE RESPONSE" in prompt_text
     assert "affirm_and_refine: profitable or orderly week with strengths worth" in prompt_text
-    assert "encouraging_with_limited_evidence: thin sample or sparse notes;" in prompt_text
+    assert "encouraging_with_limited_evidence: thin sample (trade_idea_count 1-4)" in prompt_text
 
     assert "OUTPUT FORMAT" in prompt_text
     assert "Key Takeaways" in prompt_text
@@ -651,8 +698,8 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "The only heading allowed in the output is Key Takeaways." in prompt_text
 
     assert "PRIVACY AND WORDING" in prompt_text
-    assert "Never reveal exact account metrics from the payload." in prompt_text
-    assert "one/two/several trades" in prompt_text
+    assert "Use exact user numbers when they materially support a point." in prompt_text
+    assert "Round sensibly for readability but keep values materially true." in prompt_text
     assert "If all closed trades lost, say there were no winning trades instead" in prompt_text
     assert "Avoid awkward phrasing like Tokyo-related sessions." in prompt_text
 
@@ -1279,6 +1326,151 @@ def test_format_payload_for_prompt_includes_performance_trends_section():
     assert "historical_expectancy" in text or "expectancy_historical" in text
 
 
+def test_get_latest_trade_week_period_falls_back_when_all_trades_are_after_dashboard_period_end(app_ctx):
+    """Mid-week onboarding: closed trades exist only after get_weekly_dashboard_period's end boundary."""
+    user, trade_account = _create_user_and_account(
+        username="onboard-week-user",
+        email="onboard-week@example.com",
+    )
+    now_utc = datetime(2026, 4, 8, 18, 0, 0, tzinfo=timezone.utc)
+    dash = get_weekly_dashboard_period(now_utc=now_utc)
+    closed_at = dash["period_end_utc"] + timedelta(hours=6)
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.1010,
+            lot_size=1.0,
+            pnl=50.0,
+            opened_at=closed_at - timedelta(hours=1),
+            closed_at=closed_at,
+        )
+    )
+    db.session.commit()
+
+    period = get_latest_trade_week_period(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        now_utc=now_utc,
+    )
+    assert period is not None
+    assert period["period_start_utc"] is not None
+    assert period["period_end_utc"] is not None
+
+
+def test_maybe_generate_weekly_dashboard_advice_skips_before_cutoff_for_returning_user(app_ctx, monkeypatch):
+    """Accounts that already had a weekly AI wait until Friday 5:30 PM NY for that review week."""
+    user, trade_account = _create_user_and_account(
+        username="ai-returning-cutoff-user",
+        email="ai-returning-cutoff@example.com",
+    )
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.1010,
+            lot_size=1.0,
+            pnl=100.0,
+            opened_at=datetime(2026, 3, 10, 9, 0, 0),
+            closed_at=datetime(2026, 3, 10, 10, 0, 0),
+        )
+    )
+    db.session.add(
+        AIGeneratedResponse(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            kind=ai_service.WEEKLY_DASHBOARD_KIND,
+            model="gpt-5-mini",
+            response_text="Prior weekly review",
+            trade_count_used=1,
+            period_start_utc=datetime(2026, 3, 2, 5, 0, 0),
+            period_end_utc=datetime(2026, 3, 9, 5, 0, 0),
+        )
+    )
+    db.session.commit()
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("OpenAI should not run before weekly cutoff")
+
+    monkeypatch.setattr(ai_service, "request_openai_response", _boom)
+
+    result = maybe_generate_weekly_dashboard_advice(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        prompt_filename="dashboard_advice.txt",
+        now_utc=datetime(2026, 3, 11, 15, 0, 0, tzinfo=timezone.utc),
+    )
+    assert result["generated"] is False
+    assert result.get("skip_reason") == "before_weekly_cutoff"
+
+
+def test_maybe_generate_weekly_dashboard_advice_first_review_may_run_before_weekly_cutoff(app_ctx, monkeypatch):
+    """No prior weekly AI on the account: allow generation before Friday (onboarding path)."""
+    user, trade_account = _create_user_and_account(
+        username="ai-first-review-cutoff-user",
+        email="ai-first-review-cutoff@example.com",
+    )
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.1010,
+            lot_size=1.0,
+            pnl=100.0,
+            opened_at=datetime(2026, 3, 10, 9, 0, 0),
+            closed_at=datetime(2026, 3, 10, 10, 0, 0),
+        )
+    )
+    db.session.commit()
+
+    prompt_history = AIPromptHistory(
+        prompt_id="dashboard_advice",
+        prompt_sha256="first-review-cutoff-sha",
+        prompt_text="Prompt text",
+        source_path="prompts/dashboard_advice.txt",
+    )
+    db.session.add(prompt_history)
+    db.session.commit()
+
+    monkeypatch.setattr(
+        ai_service,
+        "request_openai_response",
+        lambda messages, model=None: {
+            "model": "gpt-5-mini",
+            "status": "completed",
+            "output_text": json.dumps(
+                {
+                    "summary": {"text": "First review mid-week.", "refs": ["T1"]},
+                    "takeaways": [{"text": "Onboarding takeaway.", "refs": ["T1"]}],
+                    "improvement": {"text": "Improve this week: stay consistent.", "refs": []},
+                    "strength": {"text": "", "refs": []},
+                }
+            ),
+            "usage": {},
+            "output": [],
+        },
+    )
+
+    result = maybe_generate_weekly_dashboard_advice(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        prompt_filename="dashboard_advice.txt",
+        now_utc=datetime(2026, 3, 11, 15, 0, 0, tzinfo=timezone.utc),
+    )
+    assert result["generated"] is True
+    assert result.get("skip_reason") is None
+    assert result["record"] is not None
+
+
 def test_maybe_generate_weekly_dashboard_advice_returns_skip_reason_for_no_trades(app_ctx, monkeypatch):
     period = {
         "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
@@ -1512,6 +1704,150 @@ def test_maybe_generate_weekly_dashboard_advice_generates_when_three_closed_trad
     assert review_display["summary"]["refs"] == ["T1", "T3"]
     assert [item["refs"] for item in review_display["takeaways"]] == [["T1"], ["T2"], ["T3"]]
     assert review_display["improvement"]["text"].lower().startswith("improve this week:")
+
+
+def test_maybe_generate_weekly_dashboard_advice_omits_experiment_when_ineligible(app_ctx, monkeypatch):
+    period = {
+        "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
+        "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
+    }
+    user, trade_account = _create_user_and_account(
+        username="ai-experiment-ineligible-user",
+        email="ai-experiment-ineligible@example.com",
+    )
+
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.1010,
+            lot_size=1.0,
+            pnl=100.0,
+            opened_at=datetime(2026, 3, 10, 9, 0, 0),
+            closed_at=datetime(2026, 3, 10, 10, 0, 0),
+        )
+    )
+    db.session.commit()
+
+    monkeypatch.setattr(ai_service, "get_latest_trade_week_period", lambda **kwargs: period)
+    monkeypatch.setattr(ai_service, "should_generate_weekly_dashboard_advice", lambda **kwargs: True)
+    monkeypatch.setattr(
+        ai_service,
+        "build_trade_payload",
+        lambda **kwargs: {
+            "generated_at": "2026-03-12T12:00:00Z",
+            "period_start_utc": "2026-03-07T21:30:00Z",
+            "period_end_utc": "2026-03-14T21:30:00Z",
+            "historical_context": {},
+            "summary": {"closed_trades": 1},
+            "trades": [{"review_ref": "T1"}],
+            "experiment_context": {"eligible": False, "trade_idea_count": 1, "min_required": 5},
+        },
+    )
+    monkeypatch.setattr(
+        ai_service,
+        "request_openai_response",
+        lambda messages, model=None: {
+            "model": "gpt-5-mini",
+            "status": "completed",
+            "output_text": json.dumps(
+                {
+                    "summary": {"text": "Sample summary.", "refs": []},
+                    "takeaways": [{"text": "Sample takeaway.", "refs": []}, {"text": "Second takeaway.", "refs": []}],
+                    "improvement": {"text": "Improve this week: Keep risk fixed.", "refs": []},
+                    "strength": {"text": "You're already strong at: Staying selective.", "refs": []},
+                    "experiment": {"text": "Try one experiment.", "refs": []},
+                }
+            ),
+            "usage": {},
+            "output": [],
+        },
+    )
+
+    result = maybe_generate_weekly_dashboard_advice(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        prompt_filename="dashboard_advice.txt",
+        force_regenerate=True,
+    )
+    assert result["generated"] is True
+    meta = json.loads(result["record"].response_meta_json or "{}")
+    assert "experiment" not in meta
+
+
+def test_maybe_generate_weekly_dashboard_advice_keeps_experiment_when_eligible(app_ctx, monkeypatch):
+    period = {
+        "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
+        "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
+    }
+    user, trade_account = _create_user_and_account(
+        username="ai-experiment-eligible-user",
+        email="ai-experiment-eligible@example.com",
+    )
+
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.1010,
+            lot_size=1.0,
+            pnl=100.0,
+            opened_at=datetime(2026, 3, 10, 9, 0, 0),
+            closed_at=datetime(2026, 3, 10, 10, 0, 0),
+        )
+    )
+    db.session.commit()
+
+    monkeypatch.setattr(ai_service, "get_latest_trade_week_period", lambda **kwargs: period)
+    monkeypatch.setattr(ai_service, "should_generate_weekly_dashboard_advice", lambda **kwargs: True)
+    monkeypatch.setattr(
+        ai_service,
+        "build_trade_payload",
+        lambda **kwargs: {
+            "generated_at": "2026-03-12T12:00:00Z",
+            "period_start_utc": "2026-03-07T21:30:00Z",
+            "period_end_utc": "2026-03-14T21:30:00Z",
+            "historical_context": {},
+            "summary": {"closed_trades": 5},
+            "trades": [{"review_ref": "T1"}],
+            "experiment_context": {"eligible": True, "trade_idea_count": 5, "min_required": 5},
+        },
+    )
+    monkeypatch.setattr(
+        ai_service,
+        "request_openai_response",
+        lambda messages, model=None: {
+            "model": "gpt-5-mini",
+            "status": "completed",
+            "output_text": json.dumps(
+                {
+                    "summary": {"text": "Sample summary.", "refs": []},
+                    "takeaways": [{"text": "Sample takeaway.", "refs": []}, {"text": "Second takeaway.", "refs": []}],
+                    "improvement": {"text": "Improve this week: Keep risk fixed.", "refs": []},
+                    "strength": {"text": "You're already strong at: Staying selective.", "refs": []},
+                    "experiment": {"text": "Run one London-only execution drill.", "refs": []},
+                }
+            ),
+            "usage": {},
+            "output": [],
+        },
+    )
+
+    result = maybe_generate_weekly_dashboard_advice(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        prompt_filename="dashboard_advice.txt",
+        force_regenerate=True,
+    )
+    assert result["generated"] is True
+    meta = json.loads(result["record"].response_meta_json or "{}")
+    assert meta.get("experiment", {}).get("text") == "Run one London-only execution drill."
 
 
 def test_force_weekly_generation_appends_new_response_for_same_period(app_ctx, monkeypatch):

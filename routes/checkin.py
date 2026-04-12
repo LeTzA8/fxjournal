@@ -7,6 +7,8 @@ from ai_service import get_weekly_dashboard_period
 from celery_workers.cache import CacheUnavailableError, invalidate
 from helpers.core import (
     build_unique_trade_pubkey,
+    get_effective_user_id,
+    get_effective_username,
     get_active_trade_account_for_user,
     get_display_timezone_name,
     is_weekly_checkin_complete,
@@ -257,7 +259,7 @@ def _render_checkin_page(
         "checkin.html",
         title="MyFXJournal | Weekly Check-In",
         body_class="auth-layout",
-        username=session.get("username", "User"),
+        username=get_effective_username(),
         error=error,
         active_trade_account=active_trade_account,
         week_label=week_label,
@@ -280,7 +282,7 @@ def _render_checkin_page(
 @bp.route("/checkin", methods=["GET", "POST"])
 @login_required
 def checkin():
-    user_id = session["user_id"]
+    user_id = get_effective_user_id()
     active_trade_account = get_active_trade_account_for_user(user_id)
     if active_trade_account is None:
         return redirect(url_for("dashboard.home"))

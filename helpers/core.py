@@ -36,6 +36,11 @@ from trading import (
 )
 from .utils import env_bool, env_int, utcnow_naive
 
+SUPPORT_VIEW_TARGET_USER_SESSION_KEY = "support_view_target_user_id"
+SUPPORT_VIEW_ADMIN_USER_SESSION_KEY = "support_view_admin_user_id"
+SUPPORT_VIEW_ADMIN_USERNAME_SESSION_KEY = "support_view_admin_username"
+SUPPORT_VIEW_ACTIVE_TRADE_ACCOUNT_SESSION_KEY = "support_view_active_trade_account_id"
+
 
 def get_app_timezone_name():
     return os.getenv("APP_TIMEZONE", "Asia/Singapore").strip() or "Asia/Singapore"
@@ -54,6 +59,55 @@ def normalize_timezone_name(value, default=None):
 
 def get_display_timezone_name():
     return normalize_timezone_name(session.get("display_timezone"), get_app_timezone_name()) or "UTC"
+
+
+def clear_support_view_session():
+    for key in (
+        SUPPORT_VIEW_TARGET_USER_SESSION_KEY,
+        SUPPORT_VIEW_ADMIN_USER_SESSION_KEY,
+        SUPPORT_VIEW_ADMIN_USERNAME_SESSION_KEY,
+        SUPPORT_VIEW_ACTIVE_TRADE_ACCOUNT_SESSION_KEY,
+    ):
+        session.pop(key, None)
+
+
+def is_support_view_session_active():
+    return bool(getattr(g, "support_view_session_active", False))
+
+
+def is_support_view_active():
+    return bool(getattr(g, "support_view_active", False))
+
+
+def get_support_view_target_user():
+    return getattr(g, "support_view_target_user", None)
+
+
+def get_support_view_admin_user():
+    return getattr(g, "support_view_admin_user", None)
+
+
+def get_support_view_admin_username(default="Admin"):
+    admin_user = get_support_view_admin_user()
+    if admin_user is not None and getattr(admin_user, "username", None):
+        return admin_user.username
+    return str(session.get(SUPPORT_VIEW_ADMIN_USERNAME_SESSION_KEY) or "").strip() or default
+
+
+def get_effective_user_id():
+    if is_support_view_active():
+        target_user = get_support_view_target_user()
+        if target_user is not None:
+            return target_user.id
+    return session.get("user_id")
+
+
+def get_effective_username(default="User"):
+    if is_support_view_active():
+        target_user = get_support_view_target_user()
+        if target_user is not None and getattr(target_user, "username", None):
+            return target_user.username
+    return session.get("username", default)
 
 
 def parse_local_datetime_input(raw_value):
@@ -647,6 +701,140 @@ def get_mt5_sync_batch_state(*, for_update=False):
     return state
 
 
+def queue_mt5_account_cleanup(*, mt5_account, log_context):
+    """
+    Queue VM cleanup for an MT5 account's terminal/AppData pair when present.
+
+    Returns a short warning string when cleanup could not be queued, otherwise
+    ``None``. Missing terminal metadata is treated as a no-op.
+    """
+    from flask import current_app
+
+    terminal_path = str(getattr(mt5_account, "terminal_path", "") or "").strip()
+    appdata_hash = str(getattr(mt5_account, "appdata_hash", "") or "").strip()
+    if not terminal_path or not appdata_hash:
+        return None
+
+    try:
+        from celery_workers.mt5_setup_tasks import cleanup_mt5_terminal
+
+        cleanup_mt5_terminal.apply_async(
+            args=[terminal_path, appdata_hash],
+            queue="mt5_setup",
+        )
+    except Exception as exc:
+        current_app.logger.warning(
+            "MT5 cleanup queue failed for %s mt5_account_id=%s: %s",
+            log_context,
+            getattr(mt5_account, "id", None),
+            sanitize_error_message(exc),
+        )
+        return "Cleanup could not be queued; terminal files may need manual removal."
+    return None
+
+
+def archive_mt5_account(
+    *,
+    mt5_account,
+    archive_reason=MT5Account.ARCHIVE_REASON_INACTIVITY,
+    log_context="archive",
+):
+    """
+    Archive an MT5 account so sync stops and VM files can be removed while the
+    DB record and encrypted credentials stay available for reactivation.
+    """
+    if mt5_account is None:
+        return False, "MT5 account not found."
+    if mt5_account.is_orphaned:
+        return False, "Cleanup-only MT5 records cannot be archived."
+    if mt5_account.is_archived:
+        return False, "That MT5 account is already archived."
+    if not str(mt5_account.investor_password_encrypted or "").strip():
+        return (
+            False,
+            "That MT5 account no longer has saved credentials, so it cannot be archived for reactivation.",
+        )
+
+    terminal_exists = bool(
+        str(getattr(mt5_account, "terminal_path", "") or "").strip()
+        or str(getattr(mt5_account, "appdata_hash", "") or "").strip()
+    )
+    if not mt5_account.is_active and not terminal_exists:
+        return False, "That MT5 account is not active on the VM."
+
+    cleanup_warning = queue_mt5_account_cleanup(
+        mt5_account=mt5_account,
+        log_context=log_context,
+    )
+
+    try:
+        mt5_account.is_active = False
+        mt5_account.archived_at = utcnow_naive()
+        mt5_account.archive_reason = str(archive_reason or "").strip() or None
+        mt5_account.terminal_path = None
+        mt5_account.appdata_hash = None
+        db.session.commit()
+    except (OperationalError, IntegrityError):
+        db.session.rollback()
+        return False, "Could not archive that MT5 account right now. Please try again."
+
+    message = (
+        "MT5 sync archived. The saved read-only credentials are kept so it can be reactivated later."
+    )
+    if cleanup_warning:
+        message = f"{message} {cleanup_warning}"
+    return True, message
+
+
+def reactivate_mt5_account(*, mt5_account, log_context="reactivate"):
+    """
+    Queue MT5 terminal setup again for an archived account and clear its
+    archived flag so the UI moves back into the setup flow.
+    """
+    if mt5_account is None:
+        return False, "MT5 account not found."
+    if mt5_account.is_orphaned:
+        return False, "Cleanup-only MT5 records cannot be reactivated."
+    if not mt5_account.is_archived:
+        return False, "That MT5 account is not archived."
+    if not str(mt5_account.investor_password_encrypted or "").strip():
+        return (
+            False,
+            "Saved MT5 credentials are no longer available for this account, so reactivation is not possible.",
+        )
+
+    try:
+        from celery_workers.mt5_setup_tasks import setup_mt5_terminal
+
+        setup_mt5_terminal.apply_async(
+            args=[mt5_account.id],
+            queue="mt5_setup",
+        )
+    except Exception as exc:
+        from flask import current_app
+
+        current_app.logger.warning(
+            "MT5 reactivation queue failed for %s mt5_account_id=%s: %s",
+            log_context,
+            getattr(mt5_account, "id", None),
+            sanitize_error_message(exc),
+        )
+        return (
+            False,
+            "MT5 reactivation could not be queued right now. Please try again shortly.",
+        )
+
+    try:
+        mt5_account.archived_at = None
+        mt5_account.archive_reason = None
+        db.session.commit()
+    except (OperationalError, IntegrityError):
+        db.session.rollback()
+        return False, "MT5 reactivation was queued, but the account state could not be updated cleanly."
+
+    return True, "MT5 reactivation started. We'll email you when your sync is ready again."
+
+
 def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
     """
     Remove MT5 sync for a trade account: delete MT5Account, clear MT5AccessRequest rows,
@@ -654,8 +842,6 @@ def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
 
     Returns (success, message) for user-facing flash text.
     """
-    from flask import current_app
-
     trade_account = db.session.get(TradeAccount, trade_account_id)
     if trade_account is None or trade_account.user_id != user_id:
         return False, "Trade account not found."
@@ -669,20 +855,10 @@ def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
     if mt5_account.is_orphaned:
         return False, "MT5 sync is not available for this account."
 
-    if mt5_account.terminal_path and mt5_account.appdata_hash:
-        try:
-            from celery_workers.mt5_setup_tasks import cleanup_mt5_terminal
-
-            cleanup_mt5_terminal.apply_async(
-                args=[mt5_account.terminal_path, mt5_account.appdata_hash],
-                queue="mt5_setup",
-            )
-        except Exception as exc:
-            current_app.logger.warning(
-                "MT5 cleanup queue failed for user unlink mt5_account_id=%s: %s",
-                mt5_account.id,
-                sanitize_error_message(exc),
-            )
+    cleanup_warning = queue_mt5_account_cleanup(
+        mt5_account=mt5_account,
+        log_context="user unlink",
+    )
 
     try:
         request_rows = MT5AccessRequest.query.filter_by(
@@ -709,7 +885,10 @@ def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
         db.session.rollback()
         return False, "Could not disconnect MT5 right now. Please try again."
 
-    return True, "MT5 sync disconnected for this trade account. Your trades stay in the journal."
+    message = "MT5 sync disconnected for this trade account. Your trades stay in the journal."
+    if cleanup_warning:
+        message = f"{message} {cleanup_warning}"
+    return True, message
 
 
 def ensure_trade_account_for_user(user_id):
@@ -814,7 +993,13 @@ def get_safe_internal_next(default_endpoint):
     return url_for(default_endpoint)
 
 
-def resolve_active_trade_account(user_id, requested_account_id=None, requested_account_pubkey=None):
+def resolve_active_trade_account(
+    user_id,
+    requested_account_id=None,
+    requested_account_pubkey=None,
+    *,
+    session_key="active_trade_account_id",
+):
     accounts, changed = ensure_trade_account_for_user(user_id)
     if changed:
         db.session.commit()
@@ -828,7 +1013,7 @@ def resolve_active_trade_account(user_id, requested_account_id=None, requested_a
                 None,
             )
             if requested_match:
-                session["active_trade_account_id"] = requested_match.id
+                session[session_key] = requested_match.id
                 return requested_match, accounts
 
     if requested_account_id is not None:
@@ -842,11 +1027,11 @@ def resolve_active_trade_account(user_id, requested_account_id=None, requested_a
                 None,
             )
             if requested_match:
-                session["active_trade_account_id"] = requested_match.id
+                session[session_key] = requested_match.id
                 return requested_match, accounts
 
     try:
-        active_id = int(str(session.get("active_trade_account_id", "")).strip())
+        active_id = int(str(session.get(session_key, "")).strip())
     except (TypeError, ValueError):
         active_id = None
     active_account = next(
@@ -858,7 +1043,7 @@ def resolve_active_trade_account(user_id, requested_account_id=None, requested_a
             (account for account in accounts if account.is_default),
             accounts[0],
         )
-        session["active_trade_account_id"] = active_account.id
+        session[session_key] = active_account.id
     return active_account, accounts
 
 

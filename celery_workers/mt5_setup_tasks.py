@@ -469,6 +469,8 @@ def setup_mt5_terminal(self, mt5_account_id: int):
 
         account.terminal_path = terminal_exe
         account.is_active = True
+        account.archived_at = None
+        account.archive_reason = None
         db.session.commit()
         if not was_active:
             _send_mt5_ready_email(account)

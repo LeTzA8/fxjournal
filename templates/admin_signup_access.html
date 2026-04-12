@@ -235,7 +235,7 @@
                                 <td class="actions-cell">
                                     {% if is_root_admin %}
                                     <div class="inline-actions">
-                                        <a href="{{ url_for('admin_view_user_dashboard', target_user_id=user.id) }}" class="view-btn">View Dashboard</a>
+                                        <a href="{{ url_for('admin_view_user_dashboard', target_user_id=user.id) }}" class="view-btn">Read-Only View</a>
                                         <a href="{{ url_for('admin_weekly_report', user_id=user.id) }}" class="view-btn">AI Audit</a>
                                         {% if user.signup_status == 'pending' %}
                                         <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
@@ -523,6 +523,9 @@
                                         <span>{{ account.server }}</span>
                                         <span>{{ account.terminal_path or "Terminal not set up yet" }}</span>
                                         <span>{{ account.appdata_hash or "AppData hash pending" }}</span>
+                                        {% if account.is_archived %}
+                                        <span>Archived due to inactivity: {{ account.archived_at.strftime("%Y-%m-%d %H:%M UTC") if account.archived_at else "Pending timestamp" }}</span>
+                                        {% endif %}
                                         {% if is_orphaned %}
                                         <span>Cleanup-only record awaiting manual delete</span>
                                         <span>Marked for cleanup: {{ account.cleanup_marked_at.strftime("%Y-%m-%d %H:%M UTC") if account.cleanup_marked_at else "Pending timestamp" }}</span>
@@ -537,9 +540,21 @@
                                 <td>{{ account.last_synced_at.strftime("%Y-%m-%d %H:%M UTC") if account.last_synced_at else "Never" }}</td>
                                 <td class="actions-cell">
                                     <div class="inline-actions">
-                                        <form action="{{ url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">
+                                        <form action="{{ url_for('admin_mt5_reactivate_account', mt5_account_id=account.id) if account.is_archived else url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="submit-btn" {% if is_orphaned %}disabled aria-disabled="true" title="Cleanup-only MT5 records cannot be set up."{% endif %}>Setup Terminal</button>
+                                            <button type="submit" class="submit-btn" {% if is_orphaned %}disabled aria-disabled="true" title="Cleanup-only MT5 records cannot be set up."{% endif %}>{{ "Reactivate" if account.is_archived else "Setup Terminal" }}</button>
+                                        </form>
+                                        <form action="{{ url_for('admin_mt5_archive_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Archive this MT5 account due to inactivity? The VM terminal files will be removed, but the saved read-only credentials will stay available for reactivation.');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button
+                                                type="submit"
+                                                class="ghost-btn"
+                                                {% if is_orphaned or account.is_archived or (not account.is_active and not account.terminal_path and not account.appdata_hash) %}
+                                                disabled
+                                                aria-disabled="true"
+                                                title="Only linked MT5 accounts with active or existing VM artifacts can be archived."
+                                                {% endif %}
+                                            >Archive</button>
                                         </form>
                                         <form action="{{ url_for('admin_mt5_trigger_sync', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

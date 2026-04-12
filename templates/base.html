@@ -1,6 +1,10 @@
 {% set inferred_body_class = "app-layout" if session.get("user_id") else "auth-layout" %}
 {% set page_body_class = body_class|default(inferred_body_class, true) %}
-{% set is_app_layout = page_body_class == "app-layout" %}
+{% if support_view_active %}
+{% set page_body_class = page_body_class ~ " support-view-mode" %}
+{% endif %}
+{% set page_body_class_root = page_body_class.split()[0] %}
+{% set is_app_layout = page_body_class_root == "app-layout" %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -1087,6 +1091,106 @@
             z-index: 1;
         }
 
+        .support-view-banner {
+            width: min(900px, 100%);
+            margin: 1rem auto 0;
+            padding: 1rem clamp(1rem, 3vw, 1.35rem);
+            border: 1px solid color-mix(in srgb, var(--warning-border) 82%, var(--border));
+            border-radius: 18px;
+            background:
+                linear-gradient(135deg, color-mix(in srgb, var(--warning-bg) 88%, transparent), transparent 72%),
+                color-mix(in srgb, var(--surface) 92%, transparent);
+            box-shadow: 0 14px 34px rgba(2, 6, 23, 0.14);
+        }
+
+        .support-view-banner-inner {
+            display: grid;
+            grid-template-columns: minmax(0, 1.55fr) minmax(14rem, 1fr);
+            gap: 1rem 1.25rem;
+            align-items: end;
+        }
+
+        .support-view-banner-copy {
+            display: grid;
+            gap: 0.35rem;
+        }
+
+        .support-view-banner-label {
+            font-size: 0.78rem;
+            font-weight: 800;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--warning-ink);
+        }
+
+        .support-view-banner-title {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--ink);
+        }
+
+        .support-view-banner-note {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.55;
+        }
+
+        .support-view-banner-side {
+            display: grid;
+            gap: 0.75rem;
+        }
+
+        .support-view-switcher-label {
+            display: grid;
+            gap: 0.28rem;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--muted);
+        }
+
+        .support-view-switcher-label span {
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 0.72rem;
+            color: var(--warning-ink);
+        }
+
+        .support-view-switcher {
+            width: 100%;
+            border: 1px solid color-mix(in srgb, var(--warning-border) 82%, var(--border));
+            border-radius: 12px;
+            padding: 0.75rem 0.9rem;
+            background: color-mix(in srgb, var(--card) 90%, transparent);
+            color: var(--ink);
+            font: inherit;
+        }
+
+        .support-view-banner-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.65rem;
+            justify-content: flex-end;
+        }
+
+        .support-view-banner-actions .ghost-btn,
+        .support-view-banner-actions .submit-btn {
+            white-space: nowrap;
+        }
+
+        body.support-view-mode main form[method="post"] input:not([type="hidden"]),
+        body.support-view-mode main form[method="post"] select,
+        body.support-view-mode main form[method="post"] textarea,
+        body.support-view-mode main form[method="post"] button {
+            pointer-events: none;
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        body.support-view-mode main form[method="post"] {
+            opacity: 0.92;
+        }
+
         body.app-layout .dash-wrap {
             position: relative;
             min-height: 100vh;
@@ -1311,6 +1415,14 @@
             .site-account-summary-row {
                 width: 100%;
                 grid-template-columns: minmax(0, 1fr);
+            }
+
+            .support-view-banner-inner {
+                grid-template-columns: 1fr;
+            }
+
+            .support-view-banner-actions {
+                justify-content: flex-start;
             }
 
             .site-account-bar-label {
@@ -2436,7 +2548,7 @@
                         </summary>
                         <div class="site-account-disclosure-panel">
                             <div class="site-account-bar-controls">
-                                {% if header_trade_accounts|length > 1 %}
+                                {% if header_trade_accounts|length > 1 and not support_view_active %}
                                 <form action="{{ url_for('trade_accounts.switch_trade_account') }}" method="post" class="site-account-switcher-form">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <input type="hidden" name="next" value="{{ current_page_path }}">
@@ -2583,6 +2695,44 @@
         </div>
         {% endif %}
         {% endwith %}
+        {% if support_view_session_active and support_view_target_user %}
+        <section class="support-view-banner" aria-label="Read-only support view">
+            <div class="support-view-banner-inner">
+                <div class="support-view-banner-copy">
+                    <span class="support-view-banner-label">Read-Only Support View</span>
+                    <p class="support-view-banner-title">
+                        Viewing {{ support_view_target_user.username }}
+                        {% if support_view_target_user.email %}<span class="soft">({{ support_view_target_user.email }})</span>{% endif %}
+                        as {{ support_view_admin_username or "Admin" }}.
+                    </p>
+                    <p class="support-view-banner-note">
+                        You can browse this user's dashboard, analytics, trades, strategies, trade accounts, check-in, and account pages for troubleshooting. Changes are blocked until you exit support view.
+                    </p>
+                </div>
+                <div class="support-view-banner-side">
+                    {% if support_view_active and header_trade_accounts and header_trade_accounts|length > 1 %}
+                    <label class="support-view-switcher-label" for="supportViewAccountSwitcher">
+                        <span>Viewed Account</span>
+                        <select id="supportViewAccountSwitcher" class="support-view-switcher">
+                            {% for trade_account in header_trade_accounts %}
+                            <option
+                                value="{{ trade_account.pubkey }}"
+                                {% if active_trade_account and trade_account.id == active_trade_account.id %}selected{% endif %}
+                            >
+                                {{ trade_account.name }}{% if trade_account.is_default %} (Default){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    {% endif %}
+                    <div class="support-view-banner-actions">
+                        <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Open Dashboard</a>
+                        <a href="{{ url_for('admin_exit_support_view') }}" class="submit-btn">Exit Support View</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+        {% endif %}
         {% block content %}{% endblock %}
     </main>
 
@@ -2603,6 +2753,23 @@
     <script src="{{ url_for('static', filename='js/timezone_sync.js') }}"></script>
     <script src="{{ url_for('static', filename='js/form_validation.js') }}"></script>
     {% block page_scripts %}{% endblock %}
+    {% if support_view_session_active %}
+    <script>
+        (() => {
+            const select = document.getElementById("supportViewAccountSwitcher");
+            if (!select) return;
+            select.addEventListener("change", () => {
+                const nextUrl = new URL(window.location.href);
+                if (select.value) {
+                    nextUrl.searchParams.set("support_trade_account", select.value);
+                } else {
+                    nextUrl.searchParams.delete("support_trade_account");
+                }
+                window.location.assign(nextUrl.toString());
+            });
+        })();
+    </script>
+    {% endif %}
     <script src="{{ url_for('static', filename='js/reveal_on_scroll.js') }}"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ import sqlite3
 from datetime import timedelta
 from urllib.parse import urlparse
 from dotenv import load_dotenv
-from flask import Flask, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, current_app, flash, g, redirect, render_template, request, session, url_for
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import event
@@ -15,12 +15,18 @@ from auth_account import (
     register_public_auth_routes,
     send_email_placeholder,
     user_has_admin_access,
+    user_has_root_admin_access,
 )
 from models import (
     User,
     db,
 )
 from helpers.core import (
+    SUPPORT_VIEW_ACTIVE_TRADE_ACCOUNT_SESSION_KEY,
+    SUPPORT_VIEW_ADMIN_USER_SESSION_KEY,
+    SUPPORT_VIEW_TARGET_USER_SESSION_KEY,
+    clear_support_view_session,
+    get_effective_user_id,
     get_app_timezone_name,
     get_display_timezone_name,
     is_local_dev_environment,
@@ -37,6 +43,31 @@ from helpers.utils import env_bool, env_int, utcnow_naive
 from trading import format_trade_price, format_trade_size, trim_decimal_string
 
 load_dotenv()
+
+SUPPORT_VIEW_ROUTE_ENDPOINTS = {
+    "account.account",
+    "checkin.checkin",
+    "dashboard.ai_status",
+    "dashboard.analytics",
+    "dashboard.home",
+    "trade_accounts.trade_accounts",
+    "trade_profiles.strategies",
+    "trades.bundle_review",
+    "trades.edit_trade",
+    "trades.manage_trades",
+    "trades.new_trade",
+    "trades.trade_chart_data",
+    "trades.trade_detail",
+    "trades.trades",
+}
+SUPPORT_VIEW_READ_ONLY_BLUEPRINTS = {
+    "account",
+    "checkin",
+    "dashboard",
+    "trade_accounts",
+    "trade_profiles",
+    "trades",
+}
 
 
 @event.listens_for(Engine, "connect")
@@ -198,17 +229,95 @@ def load_display_timezone_context():
 
 
 @app.before_request
+def load_support_view_context():
+    g.support_view_session_active = False
+    g.support_view_active = False
+    g.support_view_target_user = None
+    g.support_view_admin_user = None
+
+    target_user_id = session.get(SUPPORT_VIEW_TARGET_USER_SESSION_KEY)
+    admin_user_id = session.get(SUPPORT_VIEW_ADMIN_USER_SESSION_KEY)
+    session_user_id = session.get("user_id")
+    if not target_user_id or not admin_user_id or not session_user_id:
+        return None
+
+    try:
+        normalized_admin_user_id = int(str(admin_user_id).strip())
+        normalized_target_user_id = int(str(target_user_id).strip())
+        normalized_session_user_id = int(str(session_user_id).strip())
+    except (TypeError, ValueError):
+        clear_support_view_session()
+        return None
+
+    if normalized_admin_user_id != normalized_session_user_id:
+        clear_support_view_session()
+        return None
+
+    admin_user = db.session.get(User, normalized_admin_user_id)
+    target_user = db.session.get(User, normalized_target_user_id)
+    if not user_has_root_admin_access(admin_user) or target_user is None:
+        clear_support_view_session()
+        return None
+
+    g.support_view_session_active = True
+    g.support_view_target_user = target_user
+    g.support_view_admin_user = admin_user
+    g.support_view_active = request.endpoint in SUPPORT_VIEW_ROUTE_ENDPOINTS
+    return None
+
+
+@app.before_request
 def load_trade_account_context():
     g.active_trade_account = None
     g.user_trade_accounts = []
-    user_id = session.get("user_id")
+    user_id = get_effective_user_id()
     if not user_id:
         return None
 
-    active_account, accounts = resolve_active_trade_account(user_id)
+    requested_account_pubkey = None
+    session_key = "active_trade_account_id"
+    if getattr(g, "support_view_active", False):
+        requested_account_pubkey = request.args.get("support_trade_account")
+        session_key = SUPPORT_VIEW_ACTIVE_TRADE_ACCOUNT_SESSION_KEY
+
+    active_account, accounts = resolve_active_trade_account(
+        user_id,
+        requested_account_pubkey=requested_account_pubkey,
+        session_key=session_key,
+    )
     g.active_trade_account = active_account
     g.user_trade_accounts = accounts
     return None
+
+
+@app.before_request
+def enforce_support_view_read_only():
+    if request.method in {"GET", "HEAD", "OPTIONS"}:
+        return None
+    if request.endpoint in {"logout", "set_display_timezone"}:
+        return None
+    if not getattr(g, "support_view_session_active", False):
+        return None
+    if request.blueprint not in SUPPORT_VIEW_READ_ONLY_BLUEPRINTS:
+        return None
+
+    current_app.logger.warning(
+        "Blocked support-view mutation attempt: admin_user_id=%s target_user_id=%s endpoint=%s method=%s",
+        getattr(getattr(g, "support_view_admin_user", None), "id", None),
+        getattr(getattr(g, "support_view_target_user", None), "id", None),
+        request.endpoint,
+        request.method,
+    )
+
+    message = "Support view is read-only. Exit support view before making changes."
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return {"ok": False, "message": message}, 403
+
+    flash(message, "error")
+    referrer = request.referrer or ""
+    if referrer and _is_same_origin(referrer):
+        return redirect(referrer)
+    return redirect(url_for("dashboard.home"))
 
 
 @app.before_request
@@ -243,6 +352,14 @@ def inject_trade_account_context():
         "header_trade_accounts": getattr(g, "user_trade_accounts", []),
         "display_timezone_name": getattr(g, "display_timezone_name", get_app_timezone_name()),
         "is_admin_user": user_has_admin_access(current_user),
+        "support_view_active": getattr(g, "support_view_active", False),
+        "support_view_session_active": getattr(g, "support_view_session_active", False),
+        "support_view_target_user": getattr(g, "support_view_target_user", None),
+        "support_view_admin_username": getattr(
+            getattr(g, "support_view_admin_user", None),
+            "username",
+            "",
+        ),
         "current_page_path": current_page_path,
         "default_canonical_url": default_canonical_url,
         "google_site_verification": os.getenv("GOOGLE_SITE_VERIFICATION", "").strip(),

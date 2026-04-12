@@ -593,6 +593,40 @@ def test_dashboard_home_treats_inactive_mt5_details_as_setup_pending_not_active_
     assert b"Session Performance" not in response.data
 
 
+def test_dashboard_home_shows_archived_mt5_state_with_reactivation_prompt(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _stub_weekly_ai_state(monkeypatch)
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-archived-dashboard",
+        email="mt5-archived-dashboard@example.com",
+        account_name="Archived Account",
+    )
+    _log_in_user(client, user, trade_account)
+
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            account_number="70018882",
+            investor_password_encrypted=encrypt_password("investor-pass"),
+            server="Broker-Live",
+            is_active=False,
+            archived_at=utcnow_naive(),
+            archive_reason=MT5Account.ARCHIVE_REASON_INACTIVITY,
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b'data-current-stage="4"' in response.data
+    assert b"Sync Inactive" in response.data
+    assert b"inactive due to inactivity" in response.data
+    assert b"Reactivate MT5 sync" in response.data
+
+
 def test_dashboard_home_treats_legacy_approved_request_as_direct_submit_flow(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     _stub_weekly_ai_state(monkeypatch)
@@ -781,7 +815,13 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
         account_type="CFD",
         is_default=False,
     )
-    db.session.add_all([pending_account, approved_account, linked_account])
+    archived_account = TradeAccount(
+        user_id=user.id,
+        name="Archived CFD",
+        account_type="CFD",
+        is_default=False,
+    )
+    db.session.add_all([pending_account, approved_account, linked_account, archived_account])
     db.session.commit()
 
     db.session.add(
@@ -810,6 +850,18 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
             is_active=False,
         )
     )
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
+            trade_account_id=archived_account.id,
+            account_number="99110004",
+            investor_password_encrypted=encrypt_password("investor-pass"),
+            server="Broker-Archived",
+            is_active=False,
+            archived_at=utcnow_naive(),
+            archive_reason=MT5Account.ARCHIVE_REASON_INACTIVITY,
+        )
+    )
     db.session.commit()
 
     _log_in_user(client, user, requestable_account)
@@ -819,10 +871,12 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
     assert response.status_code == 200
     assert b"MT5 Needs Details" in response.data
     assert b"MT5 Setup Queued" in response.data
+    assert b"MT5 Sync Inactive" in response.data
     assert b"Manage MT5 sync from the dashboard card instead of per-account forms." in response.data
     assert b"Open Dashboard MT5 Access" in response.data
     assert b"Finish the full MT5 sync form from the dashboard card" not in response.data
     assert b"Open the dashboard card to finish the one-step MT5 setup form." in response.data
+    assert b"Reactivate MT5 sync" in response.data
     assert b"Request MT5 Sync Access" not in response.data
 
 
@@ -898,7 +952,7 @@ def test_admin_mt5_page_shows_submitted_accounts_without_legacy_request_panels(a
     assert MT5Account.query.filter_by(trade_account_id=second_account.id).count() == 1
 
 
-def test_admin_mt5_page_shows_requested_setting_up_active_and_inactive_statuses(app_ctx, client):
+def test_admin_mt5_page_shows_requested_setting_up_active_inactive_and_archived_statuses(app_ctx, client):
     os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode("utf-8")
     _root_user, _ = _log_in_root_admin(
         client,
@@ -929,7 +983,13 @@ def test_admin_mt5_page_shows_requested_setting_up_active_and_inactive_statuses(
         account_type="CFD",
         is_default=False,
     )
-    db.session.add_all([setting_up_account, active_account, inactive_account])
+    archived_account = TradeAccount(
+        user_id=status_user.id,
+        name="Archived Account",
+        account_type="CFD",
+        is_default=False,
+    )
+    db.session.add_all([setting_up_account, active_account, inactive_account, archived_account])
     db.session.commit()
 
     db.session.add(
@@ -984,6 +1044,16 @@ def test_admin_mt5_page_shows_requested_setting_up_active_and_inactive_statuses(
                 appdata_hash="INACTIVEHASH456",
                 is_active=False,
             ),
+            MT5Account(
+                user_id=status_user.id,
+                trade_account_id=archived_account.id,
+                account_number="88110005",
+                investor_password_encrypted=encrypt_password("investor-pass"),
+                server="Broker-Archived",
+                is_active=False,
+                archived_at=utcnow_naive(),
+                archive_reason=MT5Account.ARCHIVE_REASON_INACTIVITY,
+            ),
         ]
     )
     db.session.commit()
@@ -995,6 +1065,7 @@ def test_admin_mt5_page_shows_requested_setting_up_active_and_inactive_statuses(
     assert b"Setting Up Account" in response.data
     assert b"Active Account" in response.data
     assert b"Inactive Account" in response.data
+    assert b"Archived Account" in response.data
     assert b"requested-chip" in response.data
     assert b"warning-chip" in response.data
     assert b"success-chip" in response.data
@@ -1003,6 +1074,7 @@ def test_admin_mt5_page_shows_requested_setting_up_active_and_inactive_statuses(
     assert b"Setting Up" in response.data
     assert b"Active" in response.data
     assert b"Inactive" in response.data
+    assert b"Archived" in response.data
 
 
 def test_mt5_submission_claims_open_batch_slot_and_queues_setup(app_ctx, client, monkeypatch):
@@ -1138,6 +1210,110 @@ def test_non_root_user_cannot_review_mt5_access_requests(app_ctx, client):
     )
 
     assert response.status_code == 404
+
+
+def test_user_can_reactivate_archived_mt5_sync(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    queued_jobs = []
+    _stub_mt5_setup_queue(monkeypatch, queued_jobs)
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-reactivate-user",
+        email="mt5-reactivate-user@example.com",
+    )
+    _log_in_user(client, user, trade_account)
+
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119991",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Archived",
+        is_active=False,
+        archived_at=utcnow_naive(),
+        archive_reason=MT5Account.ARCHIVE_REASON_INACTIVITY,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    response = client.post(
+        "/dashboard/trade-accounts/mt5/reactivate",
+        data={"trade_account_pubkey": trade_account.pubkey},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+
+    assert response.status_code == 200
+    assert refreshed.archived_at is None
+    assert refreshed.archive_reason is None
+    assert refreshed.is_active is False
+    assert queued_jobs == [{"args": [mt5_account.id], "kwargs": {}, "queue": "mt5_setup"}]
+    assert b"MT5 reactivation started. We&#39;ll email you when your sync is ready again." in response.data
+
+
+def test_root_admin_can_archive_mt5_account_and_keep_reactivation_path(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-archive-root@example.com",
+        username="mt5-archive-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-archive-user",
+        email="mt5-archive-user@example.com",
+        account_name="Archive Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119992",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Archive",
+        terminal_path=r"C:\MT5 User Terminals\archive\terminal64.exe",
+        appdata_hash="ARCHIVEHASH123",
+        is_active=True,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+
+    def _fake_cleanup_apply_async(args=None, kwargs=None, queue=None):
+        cleanup_calls.append({"args": list(args or []), "queue": queue})
+        return {"id": "cleanup-task"}
+
+    monkeypatch.setattr(
+        "celery_workers.mt5_setup_tasks.cleanup_mt5_terminal.apply_async",
+        _fake_cleanup_apply_async,
+    )
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/archive",
+        data={},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+
+    assert response.status_code == 200
+    assert refreshed.is_active is False
+    assert refreshed.archived_at is not None
+    assert refreshed.archive_reason == MT5Account.ARCHIVE_REASON_INACTIVITY
+    assert refreshed.terminal_path is None
+    assert refreshed.appdata_hash is None
+    assert cleanup_calls == [
+        {
+            "args": [
+                r"C:\MT5 User Terminals\archive\terminal64.exe",
+                "ARCHIVEHASH123",
+            ],
+            "queue": "mt5_setup",
+        }
+    ]
+    assert b"Archived MT5 account 70119992." in response.data
+    assert b"Archived" in response.data
 
 
 def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, monkeypatch):

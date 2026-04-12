@@ -559,6 +559,8 @@ class MT5Account(db.Model):
         db.UniqueConstraint("trade_account_id", name="uq_mt5_account_trade_account_id"),
     )
 
+    ARCHIVE_REASON_INACTIVITY = "inactivity"
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(
         db.Integer,
@@ -579,6 +581,8 @@ class MT5Account(db.Model):
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
     last_synced_at = db.Column(db.DateTime, nullable=True)
     cleanup_marked_at = db.Column(db.DateTime, nullable=True, index=True)
+    archived_at = db.Column(db.DateTime, nullable=True, index=True)
+    archive_reason = db.Column(db.String(32), nullable=True)
     mt5_consent_accepted_at = db.Column(db.DateTime, nullable=True)
     mt5_consent_version = db.Column(db.String(32), nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
@@ -591,6 +595,10 @@ class MT5Account(db.Model):
     def is_cleanup_only(self):
         return self.is_orphaned and not self.investor_password_encrypted
 
+    @property
+    def is_archived(self):
+        return self.archived_at is not None
+
     def mark_for_cleanup(self, *, marked_at=None):
         self.user_id = None
         self.trade_account_id = None
@@ -598,6 +606,8 @@ class MT5Account(db.Model):
         self.investor_password_encrypted = None
         self.is_active = False
         self.cleanup_marked_at = marked_at or self.cleanup_marked_at or utcnow_naive()
+        self.archived_at = None
+        self.archive_reason = None
         self.mt5_consent_accepted_at = None
         self.mt5_consent_version = None
 
