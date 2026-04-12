@@ -35,7 +35,7 @@
       <p class="admin-sidebar-user soft">Signed in as {{ username }}</p>
     </aside>
 
-    <div class="admin-main">
+    <div class="admin-main" data-admin-section="{{ section }}">
       <header class="admin-page-head">
         <h1 class="admin-page-title">{{ page_heading }}</h1>
         <p class="admin-page-subtitle">{{ page_subtitle }}</p>
@@ -156,3 +156,27 @@
           </div>
         </div>
       </details>
+
+      <div class="admin-page-filter" role="search">
+        <label class="admin-page-filter-label" for="adminPageFilter">Filter this page</label>
+        <div class="admin-page-filter-row">
+          <input
+            type="search"
+            id="adminPageFilter"
+            class="admin-page-filter-input"
+            placeholder="Filter visible rows and cards…"
+            autocomplete="off"
+            spellcheck="false"
+            aria-describedby="adminPageFilterHint"
+          >
+          <button type="button" class="ghost-btn admin-page-filter-clear" id="adminPageFilterClear" hidden>Clear</button>
+        </div>
+        <p class="admin-page-filter-hint soft" id="adminPageFilterHint">
+          {% if section == 'users' %}
+          The table toolbar search finds users on the server. This field only hides rows on the current page.
+          {% else %}
+          Matches any visible text in lists and tables on this screen.
+          {% endif %}
+        </p>
+        <p class="admin-page-filter-status soft" id="adminPageFilterStatus" role="status" aria-live="polite" hidden></p>
+      </div>
