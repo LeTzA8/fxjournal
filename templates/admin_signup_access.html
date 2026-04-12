@@ -9,12 +9,41 @@
 
         {% if section == "users" %}
         <section class="panel-grid admin-main-grid admin-users-layout">
-            <article class="panel spotlight-panel">
+            <article
+                class="panel spotlight-panel"
+                data-admin-filter-panel
+                data-admin-filter-key="pending_spotlight"
+                data-admin-filter-label="Pending spotlight"
+                data-admin-filter-item-selector=".pending-card"
+            >
                 <div class="panel-head">
                     <h2>Pending Spotlight</h2>
                     <span class="soft">{{ pending_users|length }} shown</span>
                 </div>
                 {% if pending_users %}
+                <div class="admin-panel-filter" role="search">
+                    <div class="admin-panel-filter-head">
+                        <label class="admin-panel-filter-label" for="adminPendingSpotlightFilter">Quick filter</label>
+                        <span class="admin-panel-filter-meta soft">Pending panel only</span>
+                    </div>
+                    <div class="admin-panel-filter-row">
+                        <input
+                            type="search"
+                            id="adminPendingSpotlightFilter"
+                            class="admin-panel-filter-input"
+                            placeholder="Filter pending approvals on this panel…"
+                            autocomplete="off"
+                            spellcheck="false"
+                            data-admin-filter-input
+                            aria-describedby="adminPendingSpotlightFilterHint adminPendingSpotlightFilterStatus"
+                        >
+                        <button type="button" class="ghost-btn admin-panel-filter-clear" data-admin-filter-clear hidden>Clear</button>
+                    </div>
+                    <p class="admin-panel-filter-hint soft" id="adminPendingSpotlightFilterHint">
+                        Matches username, email, verification state, and code usage for the cards shown here.
+                    </p>
+                    <p class="admin-panel-filter-status soft" id="adminPendingSpotlightFilterStatus" data-admin-filter-status role="status" aria-live="polite" hidden></p>
+                </div>
                 <div class="pending-list">
                     {% for user in pending_users %}
                     <article class="pending-card">
@@ -50,7 +79,13 @@
                 {% endif %}
             </article>
 
-            <article class="panel users-panel">
+            <article
+                class="panel users-panel"
+                data-admin-filter-panel
+                data-admin-filter-key="registered_users"
+                data-admin-filter-label="Registered users"
+                data-admin-filter-item-selector="tbody tr"
+            >
                 <div class="panel-head panel-head-stack">
                     <div>
                         <h2>Registered Users</h2>
@@ -111,6 +146,29 @@
                 </div>
 
                 {% if users %}
+                <div class="admin-panel-filter" role="search">
+                    <div class="admin-panel-filter-head">
+                        <label class="admin-panel-filter-label" for="adminRegisteredUsersFilter">Quick filter</label>
+                        <span class="admin-panel-filter-meta soft">Shown rows only</span>
+                    </div>
+                    <div class="admin-panel-filter-row">
+                        <input
+                            type="search"
+                            id="adminRegisteredUsersFilter"
+                            class="admin-panel-filter-input"
+                            placeholder="Filter the users on this page…"
+                            autocomplete="off"
+                            spellcheck="false"
+                            data-admin-filter-input
+                            aria-describedby="adminRegisteredUsersFilterHint adminRegisteredUsersFilterStatus"
+                        >
+                        <button type="button" class="ghost-btn admin-panel-filter-clear" data-admin-filter-clear hidden>Clear</button>
+                    </div>
+                    <p class="admin-panel-filter-hint soft" id="adminRegisteredUsersFilterHint">
+                        Status tabs and the search box above fetch users from the server. This quick filter only narrows the rows already loaded here.
+                    </p>
+                    <p class="admin-panel-filter-status soft" id="adminRegisteredUsersFilterStatus" data-admin-filter-status role="status" aria-live="polite" hidden></p>
+                </div>
                 <div class="table-shell admin-table-shell">
                     <table class="admin-table">
                         <thead>
@@ -254,7 +312,13 @@
         </section>
         {% elif section == "mt5" %}
         <section class="panel-grid admin-main-grid admin-mt5-layout">
-            <article class="panel codes-panel mt5-batches-panel">
+            <article
+                class="panel codes-panel mt5-batches-panel"
+                data-admin-filter-panel
+                data-admin-filter-key="mt5_batches"
+                data-admin-filter-label="MT5 batches"
+                data-admin-filter-item-selector=".code-card"
+            >
                 <div class="panel-head">
                     <h2>MT5 Sync Batches</h2>
                     <span class="soft">
@@ -266,6 +330,31 @@
                     </span>
                 </div>
                 <p class="helper-note">Open one batch at a time to control how many new MT5 sync submissions can start immediately. If no batches exist yet, MT5 sync stays in legacy open-access mode.</p>
+                {% if active_mt5_batch or mt5_batches_history %}
+                <div class="admin-panel-filter" role="search">
+                    <div class="admin-panel-filter-head">
+                        <label class="admin-panel-filter-label" for="adminMt5BatchesFilter">Quick filter</label>
+                        <span class="admin-panel-filter-meta soft">Batch cards only</span>
+                    </div>
+                    <div class="admin-panel-filter-row">
+                        <input
+                            type="search"
+                            id="adminMt5BatchesFilter"
+                            class="admin-panel-filter-input"
+                            placeholder="Filter open and historical batches…"
+                            autocomplete="off"
+                            spellcheck="false"
+                            data-admin-filter-input
+                            aria-describedby="adminMt5BatchesFilterHint adminMt5BatchesFilterStatus"
+                        >
+                        <button type="button" class="ghost-btn admin-panel-filter-clear" data-admin-filter-clear hidden>Clear</button>
+                    </div>
+                    <p class="admin-panel-filter-hint soft" id="adminMt5BatchesFilterHint">
+                        Matches batch names, notes, open or closed state, and capacity details in this panel.
+                    </p>
+                    <p class="admin-panel-filter-status soft" id="adminMt5BatchesFilterStatus" data-admin-filter-status role="status" aria-live="polite" hidden></p>
+                </div>
+                {% endif %}
                 {% if is_root_admin %}
                     {% if active_mt5_batch %}
                     <article class="code-card">
@@ -333,7 +422,13 @@
                 <p class="helper-note">No MT5 sync batches created yet.</p>
                 {% endif %}
             </article>
-            <article class="panel codes-panel mt5-accounts-panel">
+            <article
+                class="panel codes-panel mt5-accounts-panel"
+                data-admin-filter-panel
+                data-admin-filter-key="mt5_accounts"
+                data-admin-filter-label="MT5 accounts"
+                data-admin-filter-item-selector="tbody tr"
+            >
                 <div class="panel-head">
                     <h2>MT5 Accounts</h2>
                     <span class="soft">
@@ -360,6 +455,29 @@
                     </form>
                 </div>
                 {% if mt5_accounts %}
+                <div class="admin-panel-filter" role="search">
+                    <div class="admin-panel-filter-head">
+                        <label class="admin-panel-filter-label" for="adminMt5AccountsFilter">Quick filter</label>
+                        <span class="admin-panel-filter-meta soft">Accounts table only</span>
+                    </div>
+                    <div class="admin-panel-filter-row">
+                        <input
+                            type="search"
+                            id="adminMt5AccountsFilter"
+                            class="admin-panel-filter-input"
+                            placeholder="Filter MT5 rows on this panel…"
+                            autocomplete="off"
+                            spellcheck="false"
+                            data-admin-filter-input
+                            aria-describedby="adminMt5AccountsFilterHint adminMt5AccountsFilterStatus"
+                        >
+                        <button type="button" class="ghost-btn admin-panel-filter-clear" data-admin-filter-clear hidden>Clear</button>
+                    </div>
+                    <p class="admin-panel-filter-hint soft" id="adminMt5AccountsFilterHint">
+                        Matches user info, trade-account details, MT5 login or server, status, and action labels for the rows currently shown.
+                    </p>
+                    <p class="admin-panel-filter-status soft" id="adminMt5AccountsFilterStatus" data-admin-filter-status role="status" aria-live="polite" hidden></p>
+                </div>
                 <div class="table-shell admin-table-shell">
                     <table class="admin-table">
                         <thead>
@@ -457,7 +575,13 @@
         </section>
         {% elif section == "cfd_symbols" %}
         <section class="panel-grid admin-main-grid admin-cfd-symbols-layout">
-            <article class="panel codes-panel cfd-aliases-panel">
+            <article
+                class="panel codes-panel cfd-aliases-panel"
+                data-admin-filter-panel
+                data-admin-filter-key="cfd_aliases"
+                data-admin-filter-label="CFD broker aliases"
+                data-admin-filter-item-selector="tbody tr"
+            >
                 <div class="panel-head panel-head-stack">
                     <div>
                         <h2>CFD broker aliases</h2>
@@ -468,6 +592,29 @@
                     </div>
                 </div>
                 {% if cfd_symbol_rows %}
+                <div class="admin-panel-filter" role="search">
+                    <div class="admin-panel-filter-head">
+                        <label class="admin-panel-filter-label" for="adminCfdAliasesFilter">Quick filter</label>
+                        <span class="admin-panel-filter-meta soft">Aliases table only</span>
+                    </div>
+                    <div class="admin-panel-filter-row">
+                        <input
+                            type="search"
+                            id="adminCfdAliasesFilter"
+                            class="admin-panel-filter-input"
+                            placeholder="Filter symbols and aliases on this panel…"
+                            autocomplete="off"
+                            spellcheck="false"
+                            data-admin-filter-input
+                            aria-describedby="adminCfdAliasesFilterHint adminCfdAliasesFilterStatus"
+                        >
+                        <button type="button" class="ghost-btn admin-panel-filter-clear" data-admin-filter-clear hidden>Clear</button>
+                    </div>
+                    <p class="admin-panel-filter-hint soft" id="adminCfdAliasesFilterHint">
+                        Matches the canonical symbol, active state, and any alias text in the rows shown here.
+                    </p>
+                    <p class="admin-panel-filter-status soft" id="adminCfdAliasesFilterStatus" data-admin-filter-status role="status" aria-live="polite" hidden></p>
+                </div>
                 <div class="table-shell admin-table-shell">
                     <table class="admin-table">
                         <thead>
@@ -547,12 +694,41 @@
                 {% endif %}
             </article>
 
-            <article class="panel codes-panel">
+            <article
+                class="panel codes-panel"
+                data-admin-filter-panel
+                data-admin-filter-key="signup_codes"
+                data-admin-filter-label="Signup codes"
+                data-admin-filter-item-selector=".code-card"
+            >
                 <div class="panel-head">
                     <h2>Signup Codes</h2>
                     <span class="soft">{{ signup_codes|length }} total</span>
                 </div>
                 {% if signup_codes %}
+                <div class="admin-panel-filter" role="search">
+                    <div class="admin-panel-filter-head">
+                        <label class="admin-panel-filter-label" for="adminSignupCodesFilter">Quick filter</label>
+                        <span class="admin-panel-filter-meta soft">Codes panel only</span>
+                    </div>
+                    <div class="admin-panel-filter-row">
+                        <input
+                            type="search"
+                            id="adminSignupCodesFilter"
+                            class="admin-panel-filter-input"
+                            placeholder="Filter signup codes on this panel…"
+                            autocomplete="off"
+                            spellcheck="false"
+                            data-admin-filter-input
+                            aria-describedby="adminSignupCodesFilterHint adminSignupCodesFilterStatus"
+                        >
+                        <button type="button" class="ghost-btn admin-panel-filter-clear" data-admin-filter-clear hidden>Clear</button>
+                    </div>
+                    <p class="admin-panel-filter-hint soft" id="adminSignupCodesFilterHint">
+                        Matches code values, notes, link text, usage counts, expiry, and active state for the cards shown here.
+                    </p>
+                    <p class="admin-panel-filter-status soft" id="adminSignupCodesFilterStatus" data-admin-filter-status role="status" aria-live="polite" hidden></p>
+                </div>
                 <div class="codes-list">
                     {% for code in signup_codes %}
                     <article class="code-card">

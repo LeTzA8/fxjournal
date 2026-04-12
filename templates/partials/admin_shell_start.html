@@ -156,27 +156,3 @@
           </div>
         </div>
       </details>
-
-      <div class="admin-page-filter" role="search">
-        <label class="admin-page-filter-label" for="adminPageFilter">Filter this page</label>
-        <div class="admin-page-filter-row">
-          <input
-            type="search"
-            id="adminPageFilter"
-            class="admin-page-filter-input"
-            placeholder="Filter visible rows and cards…"
-            autocomplete="off"
-            spellcheck="false"
-            aria-describedby="adminPageFilterHint"
-          >
-          <button type="button" class="ghost-btn admin-page-filter-clear" id="adminPageFilterClear" hidden>Clear</button>
-        </div>
-        <p class="admin-page-filter-hint soft" id="adminPageFilterHint">
-          {% if section == 'users' %}
-          The table toolbar search finds users on the server. This field only hides rows on the current page.
-          {% else %}
-          Matches any visible text in lists and tables on this screen.
-          {% endif %}
-        </p>
-        <p class="admin-page-filter-status soft" id="adminPageFilterStatus" role="status" aria-live="polite" hidden></p>
-      </div>

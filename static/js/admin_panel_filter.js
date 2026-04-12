@@ -1,5 +1,5 @@
 /**
- * Client-side filter for admin panel lists/tables (current page DOM only).
+ * Client-side quick filters for admin panel lists/tables.
  */
 (function () {
     "use strict";
@@ -10,15 +10,10 @@
     }
 
     var section = main.getAttribute("data-admin-section") || "";
-    var input = document.getElementById("adminPageFilter");
-    var clearBtn = document.getElementById("adminPageFilterClear");
-    var statusEl = document.getElementById("adminPageFilterStatus");
-
-    if (!input || !clearBtn || !statusEl) {
+    var panels = queryAll(main, "[data-admin-filter-panel]");
+    if (!panels.length) {
         return;
     }
-
-    var storageKey = "fxj_admin_page_filter_" + section;
 
     function norm(s) {
         return String(s || "")
@@ -30,39 +25,8 @@
         return Array.prototype.slice.call(root.querySelectorAll(sel));
     }
 
-    /**
-     * @returns {Element[]}
-     */
-    function collectFilterTargets() {
-        var app = document.querySelector(".admin-app");
-        if (!app) {
-            return [];
-        }
-
-        switch (section) {
-            case "users":
-                return queryAll(app, ".admin-users-layout .pending-card").concat(
-                    queryAll(app, ".admin-users-layout table.admin-table tbody tr"),
-                );
-            case "codes":
-                return queryAll(
-                    app,
-                    "section.admin-main-grid:not(.admin-users-layout):not(.admin-mt5-layout):not(.admin-cfd-symbols-layout) .codes-panel .codes-list .code-card",
-                );
-            case "mt5":
-                return queryAll(app, ".admin-mt5-layout .mt5-batches-panel article.code-card").concat(
-                    queryAll(app, ".admin-mt5-layout .mt5-accounts-panel table.admin-table tbody tr"),
-                );
-            case "cfd_symbols":
-                return queryAll(app, ".admin-cfd-symbols-layout .cfd-aliases-panel table.admin-table tbody tr");
-            case "weekly_report":
-                return queryAll(app, ".weekly-audit-scope-panel").concat(
-                    queryAll(app, ".weekly-audit-grid > article.panel"),
-                    queryAll(app, ".weekly-audit-empty"),
-                );
-            default:
-                return [];
-        }
+    function isVisible(el) {
+        return !!(el && (el.offsetWidth || el.offsetHeight || el.getClientRects().length));
     }
 
     function showEl(el) {
@@ -75,30 +39,59 @@
         el.setAttribute("data-admin-filtered-out", "true");
     }
 
-    function applyFilter() {
-        var raw = norm(input.value);
-        var items = collectFilterTargets();
+    function buildPanelContext(panel) {
+        var key = panel.getAttribute("data-admin-filter-key") || "";
+        var label = panel.getAttribute("data-admin-filter-label") || "this panel";
+        var itemSelector = panel.getAttribute("data-admin-filter-item-selector") || "";
+        var input = panel.querySelector("[data-admin-filter-input]");
+        var clearBtn = panel.querySelector("[data-admin-filter-clear]");
+        var statusEl = panel.querySelector("[data-admin-filter-status]");
+
+        if (!key || !itemSelector || !input || !clearBtn || !statusEl) {
+            return null;
+        }
+
+        return {
+            clearBtn: clearBtn,
+            input: input,
+            itemSelector: itemSelector,
+            key: key,
+            label: label,
+            panel: panel,
+            statusEl: statusEl,
+            storageKey: "fxj_admin_panel_filter_" + section + "_" + key,
+        };
+    }
+
+    function collectPanelItems(ctx) {
+        return queryAll(ctx.panel, ctx.itemSelector);
+    }
+
+    function applyFilter(ctx) {
+        var raw = norm(ctx.input.value);
+        var items = collectPanelItems(ctx);
 
         try {
             if (raw) {
-                sessionStorage.setItem(storageKey, input.value);
+                sessionStorage.setItem(ctx.storageKey, ctx.input.value);
             } else {
-                sessionStorage.removeItem(storageKey);
+                sessionStorage.removeItem(ctx.storageKey);
             }
         } catch (_e) {
             /* ignore quota / private mode */
         }
 
-        clearBtn.hidden = !input.value;
+        ctx.clearBtn.hidden = !ctx.input.value;
 
         if (!raw) {
             items.forEach(showEl);
-            statusEl.textContent = "";
-            statusEl.hidden = true;
+            ctx.statusEl.textContent = "";
+            ctx.statusEl.hidden = true;
             return;
         }
 
         var visible = 0;
+        var total = items.length;
         items.forEach(function (el) {
             var text = norm(el.textContent);
             if (text.indexOf(raw) !== -1) {
@@ -109,18 +102,47 @@
             }
         });
 
-        statusEl.textContent =
+        ctx.statusEl.textContent =
             visible === 0
-                ? 'No matches for "' + input.value.trim() + '"'
-                : visible + " match" + (visible === 1 ? "" : "es");
-        statusEl.hidden = false;
+                ? 'No matches in ' + ctx.label.toLowerCase() + ' for "' + ctx.input.value.trim() + '"'
+                : visible +
+                  " of " +
+                  total +
+                  " shown in " +
+                  ctx.label.toLowerCase();
+        ctx.statusEl.hidden = false;
     }
 
-    input.addEventListener("input", applyFilter);
-    clearBtn.addEventListener("click", function () {
-        input.value = "";
-        applyFilter();
-        input.focus();
+    var contexts = panels
+        .map(buildPanelContext)
+        .filter(function (ctx) {
+            return !!ctx;
+        });
+
+    if (!contexts.length) {
+        return;
+    }
+
+    contexts.forEach(function (ctx) {
+        ctx.input.addEventListener("input", function () {
+            applyFilter(ctx);
+        });
+
+        ctx.clearBtn.addEventListener("click", function () {
+            ctx.input.value = "";
+            applyFilter(ctx);
+            ctx.input.focus();
+        });
+
+        try {
+            var saved = sessionStorage.getItem(ctx.storageKey);
+            if (saved) {
+                ctx.input.value = saved;
+                applyFilter(ctx);
+            }
+        } catch (_e) {
+            /* ignore */
+        }
     });
 
     document.addEventListener("keydown", function (e) {
@@ -138,17 +160,16 @@
         if (t.isContentEditable) {
             return;
         }
-        e.preventDefault();
-        input.focus();
-    });
-
-    try {
-        var saved = sessionStorage.getItem(storageKey);
-        if (saved) {
-            input.value = saved;
-            applyFilter();
+        var shortcutInput = contexts
+            .map(function (ctx) {
+                return ctx.input;
+            })
+            .find(isVisible);
+        if (!shortcutInput) {
+            return;
         }
-    } catch (_e) {
-        /* ignore */
-    }
+        e.preventDefault();
+        shortcutInput.focus();
+        shortcutInput.select();
+    });
 })();

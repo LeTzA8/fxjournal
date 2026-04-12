@@ -313,10 +313,11 @@ a.admin-stat-tile:hover {
     padding-bottom: 0.75rem;
 }
 
-/* In-page filter (client-side; current view only) */
-.admin-page-filter {
+/* Panel-scoped quick filters */
+.admin-panel-filter {
     display: grid;
     gap: 0.45rem;
+    margin: 0 0 0.9rem;
     padding: 0.75rem 0.85rem;
     border-radius: 14px;
     border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
@@ -324,7 +325,15 @@ a.admin-stat-tile:hover {
     min-width: 0;
 }
 
-.admin-page-filter-label {
+.admin-panel-filter-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.35rem 0.8rem;
+}
+
+.admin-panel-filter-label {
     margin: 0;
     font-size: 0.68rem;
     font-weight: 800;
@@ -333,7 +342,12 @@ a.admin-stat-tile:hover {
     color: var(--muted);
 }
 
-.admin-page-filter-row {
+.admin-panel-filter-meta {
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
+.admin-panel-filter-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -341,7 +355,7 @@ a.admin-stat-tile:hover {
     min-width: 0;
 }
 
-.admin-page-filter-input {
+.admin-panel-filter-input {
     flex: 1 1 16rem;
     min-width: 0;
     border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
@@ -354,23 +368,23 @@ a.admin-stat-tile:hover {
     box-sizing: border-box;
 }
 
-.admin-page-filter-input:focus {
+.admin-panel-filter-input:focus {
     outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
     outline-offset: 1px;
 }
 
-.admin-page-filter-clear {
+.admin-panel-filter-clear {
     flex: 0 0 auto;
 }
 
-.admin-page-filter-hint {
+.admin-panel-filter-hint {
     margin: 0;
     font-size: 0.76rem;
     line-height: 1.4;
     max-width: 44rem;
 }
 
-.admin-page-filter-status {
+.admin-panel-filter-status {
     margin: 0;
     font-size: 0.78rem;
     font-weight: 700;
@@ -894,6 +908,14 @@ a.admin-stat-tile:hover {
 @media (max-width: 680px) {
     .admin-runtime-grid {
         grid-template-columns: 1fr;
+    }
+
+    .admin-panel-filter-row {
+        align-items: stretch;
+    }
+
+    .admin-panel-filter-clear {
+        width: 100%;
     }
 
     .admin-search-form,
