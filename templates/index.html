@@ -539,7 +539,7 @@
                         {% endif %}
                     </p>
                     {% endif %}
-                    {% if mt5_batch_state.batches_enabled and mt5_batch_state.active_batch and mt5_batch_state.slots_remaining is not none and mt5_batch_state.slots_remaining > 0 %}
+                    {% if mt5_batch_state.batches_enabled and mt5_batch_state.active_batch and mt5_batch_state.slots_remaining is not none and mt5_batch_state.slots_remaining > 0 and mt5_selected_status not in ("linked", "archived", "queued", "setting_up") %}
                     {% set _cap = (mt5_batch_state.active_batch.capacity_total or 0)|int %}
                     {% set _rem = mt5_batch_state.slots_remaining|int %}
                     {% set _used = ([_cap - _rem, 0] | max) %}
