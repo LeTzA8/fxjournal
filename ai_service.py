@@ -118,7 +118,8 @@ Rules for text fields:
 - Prefer behavior, execution, session, sizing, or process language in improvement.text over symbol-specific wording.
 - experiment.text must be one clear experiment, specific, measurable, and not repetitive of recent experiments.
 - improvement.text and experiment.text must not restate the same main rule; experiment should propose a distinct one-week trial (a different lever than improvement, for example session filter, max trades per day, pause rule, or entry gate).
-- Prefer plain phrases like "risked more," "used a larger position," or "increased size after a loss" over stiff jargon such as "escalated sizing" or "sizing escalation."
+- Use plain English in every text field (summary, takeaways, improvement, strength, experiment), not only for sizing: short sentences, everyday trading words, calm coach tone—never academic or consultant speak.
+- Examples: prefer "risked more" / "larger position" over "escalated sizing"; "jumped back in after a loss" over "reactive re-engagement"; "closed before your target" over "suboptimal TP capture"; "one trade drove the week" over "outlier dominance."
 - When CURRENT_WEEK_BREAKDOWNS.sizing includes median_risk_pct_of_account or median_planned_risk_dollars, prefer those anchors over median lot size in any numeric coaching guidance.
 - The plain-text payload lists SUMMARY before weekly breakdowns and TRADES last; use that order when framing the review.
 - Never mention review_ref aliases like T1 or B2 inside any text field.
