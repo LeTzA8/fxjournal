@@ -20,9 +20,12 @@ from ai_service import (
 )
 from helpers.scoring import compute_emotional_index
 from helpers.trade_interpretation import apply_interpretation
+import trading
+
 from models import (
     AIGeneratedResponse,
     AIPromptHistory,
+    FuturesSymbol,
     Trade,
     TradeAccount,
     User,
@@ -149,7 +152,13 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
             "sessions": [{"name": "London", "count": 1, "win_rate": 100.0, "net_pnl": 140.0}],
             "symbols": [{"symbol": "MES (MESM26)", "count": 1, "win_rate": 100.0, "net_pnl": 140.0}],
             "weekdays": [{"name": "Monday", "count": 1, "win_rate": 100.0, "net_pnl": 140.0}],
-            "sizing": {"median_lot_size": 1.0, "outlier_size_count": 0, "outlier_size_share_pct": 0.0},
+            "sizing": {
+                "median_lot_size": 1.0,
+                "median_planned_risk_dollars": 250.0,
+                "median_risk_pct_of_account": 2.5,
+                "outlier_size_count": 0,
+                "outlier_size_share_pct": 0.0,
+            },
             "frequency": {"trade_idea_count": 1, "active_day_count": 1, "trade_ideas_per_active_day": 1.0, "busiest_session": "London"},
             "exit_quality": {"closed_before_tp_count": 1, "closed_before_sl_count": 0, "avg_tp_capture_pct": 35.0},
         },
@@ -245,6 +254,15 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- currency_semantics: *_pnl fields are signed currency values for this account; *_drawdown_amount fields are drawdown magnitudes" in prompt_text
     assert "- realized_result_semantics: SUMMARY.net_pnl is the reviewed-period result; weekly_pnl/monthly_pnl are rolling calendar aggregates relative to generated_at" in prompt_text
     assert "- open_trade_semantics: total_trades includes open and closed trades; closed_trades is the realized-performance denominator" in prompt_text
+    assert prompt_text.find("\n\nSUMMARY\n") < prompt_text.find("\n\nTONE_CONTEXT\n")
+    assert prompt_text.find("\n\nTONE_CONTEXT\n") < prompt_text.find("\n\nEMOTIONAL INDEX\n")
+    assert prompt_text.find("\n\nEMOTIONAL INDEX\n") < prompt_text.find("\n\nCURRENT_WEEK_BREAKDOWNS\n")
+    assert prompt_text.find("\n\nCURRENT_WEEK_BREAKDOWNS\n") < prompt_text.find("\n\nHISTORICAL_CONTEXT\n")
+    assert prompt_text.find("\n\nHISTORICAL_CONTEXT\n") < prompt_text.find("TRADES (")
+    mp = prompt_text.find("median_planned_risk_dollars")
+    mrp = prompt_text.find("median_risk_pct_of_account")
+    ml = prompt_text.find("median_lot_size")
+    assert mp < mrp < ml
     assert "EMOTIONAL INDEX" in prompt_text
     assert "- score_range: 0.00 to 10.00 (higher = stronger objective behavioural pressure)" in prompt_text
     assert "- label_interpretation: low=quiet, moderate=mild, high=elevated, very_high=strong objective behavioural pressure" in prompt_text
@@ -266,6 +284,8 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "TONE_CONTEXT" in prompt_text
     assert "- mode: stressed" in prompt_text
     assert "CURRENT_WEEK_BREAKDOWNS" in prompt_text
+    assert "- sizing.median_planned_risk_dollars: 250.00" in prompt_text
+    assert "- sizing.median_risk_pct_of_account: 2.50%" in prompt_text
     assert "session London: count=1, win_rate=100.00%, net_pnl=+140.00" in prompt_text
     assert "FOUR_WEEK_PATTERNS" in prompt_text
     assert "behaviour_patterns.avg_post_loss_reentry_count: 1.00" in prompt_text
@@ -317,6 +337,19 @@ def test_build_trade_payload_serializes_trade_risk_fields_and_session(app_ctx):
         account_name="Futures Account",
         account_type="FUTURES",
     )
+    trade_account.account_size = 100_000.0
+
+    db.session.add(
+        FuturesSymbol(
+            root_symbol="MES",
+            tick_size=0.25,
+            tick_value=1.25,
+            display_name="MES",
+            exchange="CME",
+        )
+    )
+    db.session.flush()
+    trading.clear_cfd_symbol_cache()
 
     trade = Trade(
         user_id=user.id,
@@ -363,6 +396,9 @@ def test_build_trade_payload_serializes_trade_risk_fields_and_session(app_ctx):
     assert payload["trades"][0]["closed_before_sl"] is None
     assert payload["trades"][0]["split_group_size"] == 1
     assert payload["trades"][0]["split_group_role"] == "solo"
+    sizing = payload["current_week_breakdowns"]["sizing"]
+    assert sizing["median_planned_risk_dollars"] == 10.0
+    assert sizing["median_risk_pct_of_account"] == 0.01
 
 
 def test_build_trade_payload_excludes_system_trade_notes_from_notes_coverage(app_ctx):

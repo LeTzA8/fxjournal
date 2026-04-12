@@ -40,6 +40,7 @@ from trading import (
     is_extremely_long_duration_minutes,
     merge_bundled_trades,
     resolve_net_pnl,
+    resolve_planned_risk_dollars,
 )
 from helpers.utils import utcnow_naive
 
@@ -116,6 +117,10 @@ Rules for text fields:
 - strength.text must be grounded in observed data or consistent execution from this week, not generic praise.
 - Prefer behavior, execution, session, sizing, or process language in improvement.text over symbol-specific wording.
 - experiment.text must be one clear experiment, specific, measurable, and not repetitive of recent experiments.
+- improvement.text and experiment.text must not restate the same main rule; experiment should propose a distinct one-week trial (a different lever than improvement, for example session filter, max trades per day, pause rule, or entry gate).
+- Prefer plain phrases like "risked more," "used a larger position," or "increased size after a loss" over stiff jargon such as "escalated sizing" or "sizing escalation."
+- When CURRENT_WEEK_BREAKDOWNS.sizing includes median_risk_pct_of_account or median_planned_risk_dollars, prefer those anchors over median lot size in any numeric coaching guidance.
+- The plain-text payload lists SUMMARY before weekly breakdowns and TRADES last; use that order when framing the review.
 - Never mention review_ref aliases like T1 or B2 inside any text field.
 - Do not include any keys other than summary, takeaways, improvement, strength, and experiment.
 """.strip()
@@ -872,6 +877,45 @@ def _round_metric(value, digits=2):
     return round(float(value), digits)
 
 
+def _first_positive_account_size_from_trades(trades):
+    for trade in trades or []:
+        account = getattr(trade, "trade_account", None)
+        if account is None:
+            continue
+        raw = getattr(account, "account_size", None)
+        if raw in {None, ""}:
+            continue
+        try:
+            size = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if size > 0:
+            return size
+    return None
+
+
+def _median_planned_risk_from_closed_trades(trades):
+    """
+    Median planned risk at stop for closed trades in the payload cohort.
+    When account_size is set on the trade account, also return median risk as % of that balance.
+    """
+    account_size = _first_positive_account_size_from_trades(trades)
+    risk_dollars = []
+    risk_pcts = []
+    for trade in trades or []:
+        if getattr(trade, "closed_at", None) is None:
+            continue
+        dollars = resolve_planned_risk_dollars(trade)
+        if dollars is None:
+            continue
+        risk_dollars.append(float(dollars))
+        if account_size:
+            risk_pcts.append((float(dollars) / account_size) * 100.0)
+    med_dollars = _round_metric(statistics.median(risk_dollars)) if risk_dollars else None
+    med_pct = _round_metric(statistics.median(risk_pcts)) if risk_pcts else None
+    return med_dollars, med_pct
+
+
 def _serialize_breakdown_rows(rows, *, key_name, top_n=5):
     serialized = []
     for row in (rows or [])[:top_n]:
@@ -889,7 +933,14 @@ def _serialize_breakdown_rows(rows, *, key_name, top_n=5):
     return serialized
 
 
-def _build_current_week_breakdowns(*, analytics, serialized_trades, median_lot_size):
+def _build_current_week_breakdowns(
+    *,
+    analytics,
+    serialized_trades,
+    median_lot_size,
+    median_planned_risk_dollars=None,
+    median_risk_pct_of_account=None,
+):
     closed_trade_count = sum(1 for trade in serialized_trades if trade.get("closed_at"))
     tp_capture_values = [trade.get("tp_capture_pct") for trade in serialized_trades if trade.get("tp_capture_pct") is not None]
     closed_before_tp_count = sum(1 for trade in serialized_trades if trade.get("closed_before_tp") is True)
@@ -919,6 +970,8 @@ def _build_current_week_breakdowns(*, analytics, serialized_trades, median_lot_s
         ),
         "sizing": {
             "median_lot_size": _round_metric(median_lot_size),
+            "median_planned_risk_dollars": median_planned_risk_dollars,
+            "median_risk_pct_of_account": median_risk_pct_of_account,
             "outlier_size_count": outlier_size_count,
             "outlier_size_share_pct": _round_metric((outlier_size_count / closed_trade_count * 100.0) if closed_trade_count else None),
         },
@@ -1623,10 +1676,13 @@ def build_trade_payload(
         "trade_idea_count": trade_idea_count,
         "min_required": MIN_TRADE_IDEAS_FOR_EXPERIMENT,
     }
+    med_planned_risk_d, med_risk_pct = _median_planned_risk_from_closed_trades(trades)
     current_week_breakdowns = _build_current_week_breakdowns(
         analytics=analytics,
         serialized_trades=serialized_trades,
         median_lot_size=median_lot_size,
+        median_planned_risk_dollars=med_planned_risk_d,
+        median_risk_pct_of_account=med_risk_pct,
     )
     tone_context = _build_tone_context(
         weekly_checkin=weekly_checkin,
@@ -1881,6 +1937,56 @@ def format_payload_for_prompt(payload):
             ]
         )
 
+    lines.extend(
+        [
+            "",
+            "SUMMARY",
+            f"- total_trades: {summary.get('total_trades', 0)}",
+            f"- closed_trades: {summary.get('closed_trades', 0)}",
+            f"- open_trades: {summary.get('open_trades', 0)}",
+            f"- win_rate: {_format_percent(summary.get('win_rate'))}",
+            f"- net_pnl: {_format_signed_currency(summary.get('net_pnl'))}",
+            f"- weekly_pnl: {_format_signed_currency(summary.get('weekly_pnl'))}",
+            f"- monthly_pnl: {_format_signed_currency(summary.get('monthly_pnl'))}",
+            f"- closed_before_tp_count: {summary.get('closed_before_tp_count', 0)}",
+            f"- closed_before_sl_count: {summary.get('closed_before_sl_count', 0)}",
+            f"- pair_sample_is_diverse: {_format_bool(summary.get('pair_sample_is_diverse'))}",
+            f"- equity_has_outlier_dominance: {_format_bool(summary.get('equity_has_outlier_dominance'))}",
+            f"- top_symbol_by_trade_count: {summary.get('top_symbol_by_trade_count') or '-'}",
+            f"- top_symbol_trade_share_pct: {_format_percent(summary.get('top_symbol_trade_share_pct'))}",
+            f"- top_symbol_by_abs_pnl: {summary.get('top_symbol_by_abs_pnl') or '-'}",
+            f"- top_symbol_abs_pnl_share_pct: {_format_percent(summary.get('top_symbol_abs_pnl_share_pct'))}",
+            f"- largest_trade_symbol: {summary.get('largest_trade_symbol') or '-'}",
+            f"- largest_trade_abs_pnl_share_pct: {_format_percent(summary.get('largest_trade_abs_pnl_share_pct'))}",
+            f"- bundle_count: {summary.get('bundle_count', 0)}",
+            f"- confirmed_revenge_trade_count: {summary.get('confirmed_revenge_trade_count', 0)}",
+            f"- heuristic_revenge_trade_count: {summary.get('heuristic_revenge_trade_count', 0)}",
+            f"- confirmed_reactive_trade_count: {summary.get('confirmed_reactive_trade_count', 0)}",
+            f"- heuristic_reactive_trade_count: {summary.get('heuristic_reactive_trade_count', 0)}",
+            f"- reactive_trade_count: {summary.get('reactive_trade_count', 0)}",
+            f"- reactive_signal_trade_count: {summary.get('reactive_signal_trade_count', 0)}",
+            f"- confirmed_corrective_trade_count: {summary.get('confirmed_corrective_trade_count', 0)}",
+            f"- heuristic_corrective_trade_count: {summary.get('heuristic_corrective_trade_count', 0)}",
+            f"- corrective_trade_count: {summary.get('corrective_trade_count', 0)}",
+            f"- corrective_signal_trade_count: {summary.get('corrective_signal_trade_count', 0)}",
+            f"- revenge_trade_count: {summary.get('revenge_trade_count', 0)}",
+            f"- best_trade_pnl: {_format_signed_currency(summary.get('best_trade_pnl'))}",
+            f"- worst_trade_pnl: {_format_signed_currency(summary.get('worst_trade_pnl'))}",
+            f"- max_drawdown_amount: {_format_currency_magnitude(summary.get('max_drawdown'))}",
+        ]
+    )
+
+    if _payload_section_has_values(tone_context):
+        lines.extend(
+            [
+                "",
+                "TONE_CONTEXT",
+                f"- checkin_submitted: {_format_bool(tone_context.get('checkin_submitted'))}",
+                f"- mode: {tone_context.get('mode') or '-'}",
+                f"- reasons: {', '.join(tone_context.get('reasons') or []) or '-'}",
+            ]
+        )
+
     if _payload_section_has_values(emotional_index):
         signals = emotional_index.get("signals") or {}
         components = emotional_index.get("components") or {}
@@ -1949,17 +2055,6 @@ def format_payload_for_prompt(payload):
             ]
         )
 
-    if _payload_section_has_values(tone_context):
-        lines.extend(
-            [
-                "",
-                "TONE_CONTEXT",
-                f"- checkin_submitted: {_format_bool(tone_context.get('checkin_submitted'))}",
-                f"- mode: {tone_context.get('mode') or '-'}",
-                f"- reasons: {', '.join(tone_context.get('reasons') or []) or '-'}",
-            ]
-        )
-
     if current_week_breakdowns:
         lines.extend(
             [
@@ -1987,6 +2082,8 @@ def format_payload_for_prompt(payload):
         exit_quality = current_week_breakdowns.get("exit_quality") or {}
         lines.extend(
             [
+                f"- sizing.median_planned_risk_dollars: {_format_currency_magnitude(sizing.get('median_planned_risk_dollars'))}",
+                f"- sizing.median_risk_pct_of_account: {_format_percent(sizing.get('median_risk_pct_of_account'))}",
                 f"- sizing.median_lot_size: {_format_number(sizing.get('median_lot_size'))}",
                 f"- sizing.outlier_size_count: {sizing.get('outlier_size_count', 0)}",
                 f"- sizing.outlier_size_share_pct: {_format_percent(sizing.get('outlier_size_share_pct'))}",
@@ -2057,40 +2154,6 @@ def format_payload_for_prompt(payload):
 
     lines.extend(
         [
-            "",
-            "SUMMARY",
-            f"- total_trades: {summary.get('total_trades', 0)}",
-            f"- closed_trades: {summary.get('closed_trades', 0)}",
-            f"- open_trades: {summary.get('open_trades', 0)}",
-            f"- win_rate: {_format_percent(summary.get('win_rate'))}",
-            f"- net_pnl: {_format_signed_currency(summary.get('net_pnl'))}",
-            f"- weekly_pnl: {_format_signed_currency(summary.get('weekly_pnl'))}",
-            f"- monthly_pnl: {_format_signed_currency(summary.get('monthly_pnl'))}",
-            f"- closed_before_tp_count: {summary.get('closed_before_tp_count', 0)}",
-            f"- closed_before_sl_count: {summary.get('closed_before_sl_count', 0)}",
-            f"- pair_sample_is_diverse: {_format_bool(summary.get('pair_sample_is_diverse'))}",
-            f"- equity_has_outlier_dominance: {_format_bool(summary.get('equity_has_outlier_dominance'))}",
-            f"- top_symbol_by_trade_count: {summary.get('top_symbol_by_trade_count') or '-'}",
-            f"- top_symbol_trade_share_pct: {_format_percent(summary.get('top_symbol_trade_share_pct'))}",
-            f"- top_symbol_by_abs_pnl: {summary.get('top_symbol_by_abs_pnl') or '-'}",
-            f"- top_symbol_abs_pnl_share_pct: {_format_percent(summary.get('top_symbol_abs_pnl_share_pct'))}",
-            f"- largest_trade_symbol: {summary.get('largest_trade_symbol') or '-'}",
-            f"- largest_trade_abs_pnl_share_pct: {_format_percent(summary.get('largest_trade_abs_pnl_share_pct'))}",
-            f"- bundle_count: {summary.get('bundle_count', 0)}",
-            f"- confirmed_revenge_trade_count: {summary.get('confirmed_revenge_trade_count', 0)}",
-            f"- heuristic_revenge_trade_count: {summary.get('heuristic_revenge_trade_count', 0)}",
-            f"- confirmed_reactive_trade_count: {summary.get('confirmed_reactive_trade_count', 0)}",
-            f"- heuristic_reactive_trade_count: {summary.get('heuristic_reactive_trade_count', 0)}",
-            f"- reactive_trade_count: {summary.get('reactive_trade_count', 0)}",
-            f"- reactive_signal_trade_count: {summary.get('reactive_signal_trade_count', 0)}",
-            f"- confirmed_corrective_trade_count: {summary.get('confirmed_corrective_trade_count', 0)}",
-            f"- heuristic_corrective_trade_count: {summary.get('heuristic_corrective_trade_count', 0)}",
-            f"- corrective_trade_count: {summary.get('corrective_trade_count', 0)}",
-            f"- corrective_signal_trade_count: {summary.get('corrective_signal_trade_count', 0)}",
-            f"- revenge_trade_count: {summary.get('revenge_trade_count', 0)}",
-            f"- best_trade_pnl: {_format_signed_currency(summary.get('best_trade_pnl'))}",
-            f"- worst_trade_pnl: {_format_signed_currency(summary.get('worst_trade_pnl'))}",
-            f"- max_drawdown_amount: {_format_currency_magnitude(summary.get('max_drawdown'))}",
             "",
             "HISTORICAL_CONTEXT",
             f"- comparison_scope: {historical_context.get('comparison_scope') or '-'}",
