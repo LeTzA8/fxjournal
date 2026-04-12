@@ -30,10 +30,10 @@ def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
 
 
 def _adjust_mt5_unix_epoch(timestamp_value, *, offset_minutes=0):
-    """Subtract broker/server-ahead delta from raw MT5 Unix epoch (deal times)."""
+    """Normalize MT5 Unix epochs as UTC seconds."""
     if timestamp_value is None:
         return None
-    return float(timestamp_value) - (int(offset_minutes or 0) * 60)
+    return float(timestamp_value)
 
 
 def _to_utc_iso(timestamp_value, *, offset_minutes=0):
@@ -41,12 +41,6 @@ def _to_utc_iso(timestamp_value, *, offset_minutes=0):
     if adjusted_timestamp is None:
         return None
     return datetime.fromtimestamp(adjusted_timestamp, tz=timezone.utc).isoformat(timespec="seconds")
-
-
-def _shift_datetime_by_minutes(value, *, minutes=0):
-    if value is None:
-        return None
-    return value + timedelta(minutes=int(minutes or 0))
 
 
 def _naive_utc_to_aware(value):
@@ -262,41 +256,6 @@ def aggregate_deals_to_trades(
 
 def _sync_lock_key(mt5_account_id):
     return f"mt5_sync_lock:{mt5_account_id}"
-
-
-def _probe_mt5_server_delta_minutes(mt5, *, preferred_symbol=None):
-    """
-    Estimate MT5 server clock drift relative to VM UTC using latest tick timestamp.
-    Returns minute delta where positive means MT5 clock appears ahead of UTC.
-    """
-    symbol_info_tick = getattr(mt5, "symbol_info_tick", None)
-    if not callable(symbol_info_tick):
-        return 0
-    symbol_candidates = []
-    if preferred_symbol is not None:
-        if isinstance(preferred_symbol, (list, tuple)):
-            symbol_candidates.extend(
-                str(s).strip() for s in preferred_symbol if s and str(s).strip()
-            )
-        else:
-            s = str(preferred_symbol).strip()
-            if s:
-                symbol_candidates.append(s)
-    if "EURUSD" not in symbol_candidates:
-        symbol_candidates.append("EURUSD")
-    for symbol in symbol_candidates:
-        if not symbol:
-            continue
-        tick = symbol_info_tick(symbol)
-        tick_time = getattr(tick, "time", None) if tick is not None else None
-        if not tick_time:
-            continue
-        now_utc = int(datetime.now(timezone.utc).timestamp())
-        delta_seconds = int(tick_time) - now_utc
-        if abs(delta_seconds) > 6 * 3600:
-            continue
-        return int(round(delta_seconds / 60))
-    return 0
 
 
 def _mask_account_number_for_log(account_number):
@@ -601,31 +560,14 @@ def sync_mt5_account(
                 else:
                     from_date = datetime.now(timezone.utc) - timedelta(days=rolling_days)
                 to_date = datetime.now(timezone.utc)
-                probe_symbol = None
-                try:
-                    positions_probe = mt5.positions_get() or []
-                    if positions_probe:
-                        probe_symbol = getattr(positions_probe[0], "symbol", None)
-                except Exception:
-                    probe_symbol = None
-                mt5_server_delta_minutes = _probe_mt5_server_delta_minutes(
-                    mt5,
-                    preferred_symbol=probe_symbol,
-                )
-                applied_offset_minutes = mt5_server_delta_minutes
-                mt5_from_date = _shift_datetime_by_minutes(
-                    from_date,
-                    minutes=applied_offset_minutes,
-                )
-                mt5_to_date = _shift_datetime_by_minutes(
-                    to_date,
-                    minutes=applied_offset_minutes,
-                )
+                mt5_server_delta_minutes = 0
+                applied_offset_minutes = 0
+                mt5_from_date = from_date
+                mt5_to_date = to_date
                 vm_timing_context = _vm_timezone_context()
                 # One summary table is logged after the internal API returns (see below).
-                # MT5 history filters follow broker/server clock semantics in
-                # practice, so shift the request window into server time while
-                # continuing to normalize returned timestamps back to UTC.
+                # Use UTC-aware range boundaries directly, matching MetaTrader5
+                # Python docs that data and ranges are UTC-based.
                 deals, history_chunks_fetched = _chunked_history_deals_get(
                     mt5,
                     mt5_from_date,
@@ -644,7 +586,6 @@ def sync_mt5_account(
                         getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
                     ),
                     deal_type_buy=deal_type_buy,
-                    offset_minutes=applied_offset_minutes,
                 )
 
                 # Supplement with currently open positions directly from the broker.
@@ -655,7 +596,6 @@ def sync_mt5_account(
                 position_trades = _positions_to_open_trades(
                     open_positions,
                     position_type_buy=deal_type_buy,
-                    offset_minutes=applied_offset_minutes,
                 )
                 deals_positions = {t["mt5_position"] for t in trades if t.get("mt5_position")}
                 trades = trades + [t for t in position_trades if t.get("mt5_position") not in deals_positions]
@@ -994,15 +934,10 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             if not mt5.login(int(account_number), password=investor_password, server=server):
                 raise RuntimeError(f"MT5 login failed during bar fetch: {mt5.last_error()}")
 
-            mt5_server_delta_minutes = _probe_mt5_server_delta_minutes(
-                mt5, preferred_symbol=mt5_symbol_names
-            )
-            start_dt_shifted = _shift_datetime_by_minutes(start_dt, minutes=mt5_server_delta_minutes)
-            end_dt_shifted = _shift_datetime_by_minutes(end_dt, minutes=mt5_server_delta_minutes)
             tf_constant = mt5_timeframe_constant("M5", mt5)
             raw_bars = []
             for sym in mt5_symbol_names:
-                chunk = mt5.copy_rates_range(sym, tf_constant, start_dt_shifted, end_dt_shifted)
+                chunk = mt5.copy_rates_range(sym, tf_constant, start_dt, end_dt)
                 if chunk is not None and len(chunk) > 0:
                     raw_bars = chunk
                     symbol = sym
@@ -1021,14 +956,8 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
                 )
             if raw_bars:
                 for bar in raw_bars:
-                    # Same epoch skew as deal times: raw bar["time"] is broker/server-oriented; subtract
-                    # probe delta so stored Unix matches UTC used by trade.opened_at / closed_at and the chart.
-                    bar_open_utc = _adjust_mt5_unix_epoch(
-                        int(bar["time"]),
-                        offset_minutes=mt5_server_delta_minutes,
-                    )
                     bars.append({
-                        "time": int(bar_open_utc),
+                        "time": int(bar["time"]),
                         "open": float(bar["open"]),
                         "high": float(bar["high"]),
                         "low": float(bar["low"]),

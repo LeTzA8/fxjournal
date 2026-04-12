@@ -105,6 +105,93 @@ VALID_ONBOARDING_EXPERIENCE_LEVELS = {
     option["value"] for option in ONBOARDING_EXPERIENCE_LEVEL_OPTIONS
 }
 
+ADMIN_USERS_SORT_DEFAULT = "default"
+ADMIN_USERS_SORT_CHOICES = frozenset(
+    {
+        ADMIN_USERS_SORT_DEFAULT,
+        "created_desc",
+        "created_asc",
+        "approved_desc",
+        "approved_asc",
+        "username_asc",
+        "username_desc",
+        "email_asc",
+        "email_desc",
+        "login_desc",
+        "login_asc",
+        "id_desc",
+        "id_asc",
+    }
+)
+
+ADMIN_MT5_SORT_DEFAULT = "created_desc"
+ADMIN_MT5_SORT_CHOICES = frozenset(
+    {
+        ADMIN_MT5_SORT_DEFAULT,
+        "created_asc",
+        "sync_desc",
+        "sync_asc",
+        "login_asc",
+        "login_desc",
+        "server_asc",
+        "server_desc",
+        "id_desc",
+        "id_asc",
+    }
+)
+
+
+def normalize_admin_users_sort(raw_value):
+    key = (raw_value or "").strip().lower()
+    return key if key in ADMIN_USERS_SORT_CHOICES else ADMIN_USERS_SORT_DEFAULT
+
+
+def normalize_admin_mt5_sort(raw_value):
+    key = (raw_value or "").strip().lower()
+    return key if key in ADMIN_MT5_SORT_CHOICES else ADMIN_MT5_SORT_DEFAULT
+
+
+def apply_admin_users_sort(query, sort_key):
+    sort_key = normalize_admin_users_sort(sort_key)
+    if sort_key == ADMIN_USERS_SORT_DEFAULT:
+        return query.order_by(
+            User.signup_status.asc(),
+            User.email_verified.asc(),
+            User.id.desc(),
+        )
+    ordering = {
+        "created_desc": (User.created_at.desc(), User.id.desc()),
+        "created_asc": (User.created_at.asc(), User.id.asc()),
+        "approved_desc": (User.approved_at.desc(), User.id.desc()),
+        "approved_asc": (User.approved_at.asc(), User.id.asc()),
+        "username_asc": (User.username.asc(), User.id.asc()),
+        "username_desc": (User.username.desc(), User.id.desc()),
+        "email_asc": (User.email.asc(), User.id.asc()),
+        "email_desc": (User.email.desc(), User.id.desc()),
+        "login_desc": (User.last_login_at.desc().nulls_last(), User.id.desc()),
+        "login_asc": (User.last_login_at.asc().nulls_last(), User.id.asc()),
+        "id_desc": (User.id.desc(),),
+        "id_asc": (User.id.asc(),),
+    }[sort_key]
+    return query.order_by(*ordering)
+
+
+def apply_admin_mt5_sort(query, sort_key):
+    sort_key = normalize_admin_mt5_sort(sort_key)
+    ordering = {
+        "created_desc": (MT5Account.created_at.desc(), MT5Account.id.desc()),
+        "created_asc": (MT5Account.created_at.asc(), MT5Account.id.asc()),
+        "sync_desc": (MT5Account.last_synced_at.desc().nulls_last(), MT5Account.id.desc()),
+        "sync_asc": (MT5Account.last_synced_at.asc().nulls_last(), MT5Account.id.asc()),
+        "login_asc": (MT5Account.account_number.asc(), MT5Account.id.asc()),
+        "login_desc": (MT5Account.account_number.desc(), MT5Account.id.desc()),
+        "server_asc": (MT5Account.server.asc(), MT5Account.id.asc()),
+        "server_desc": (MT5Account.server.desc(), MT5Account.id.desc()),
+        "id_desc": (MT5Account.id.desc(),),
+        "id_asc": (MT5Account.id.asc(),),
+    }[sort_key]
+    return query.order_by(*ordering)
+
 
 def get_registration_paused():
     return _env_bool("REGISTRATION_PAUSED", False)
@@ -2246,6 +2333,7 @@ def register_public_auth_routes(
         }:
             status_filter = "pending"
         search_query = (request.args.get("q") or "").strip()
+        users_sort = normalize_admin_users_sort(request.args.get("sort"))
         page = request.args.get("page", 1, type=int) or 1
         page = max(page, 1)
 
@@ -2278,11 +2366,7 @@ def register_public_auth_routes(
         page_offset = (page - 1) * ADMIN_USERS_PER_PAGE
 
         users = (
-            users_query.order_by(
-                User.signup_status.asc(),
-                User.email_verified.asc(),
-                User.id.desc(),
-            )
+            apply_admin_users_sort(users_query, users_sort)
             .offset(page_offset)
             .limit(ADMIN_USERS_PER_PAGE)
             .all()
@@ -2367,6 +2451,7 @@ def register_public_auth_routes(
             users=users,
             status_filter=status_filter,
             search_query=search_query,
+            users_sort=users_sort,
             users_page=page,
             users_total_pages=total_pages,
             users_total_count=total_user_count,
@@ -2779,9 +2864,8 @@ def register_public_auth_routes(
     @root_admin_required
     def admin_mt5_accounts():
         admin_user = get_current_root_admin_user()
-        mt5_accounts = (
-            MT5Account.query.order_by(MT5Account.created_at.desc(), MT5Account.id.desc()).all()
-        )
+        mt5_sort = normalize_admin_mt5_sort(request.args.get("sort"))
+        mt5_accounts = apply_admin_mt5_sort(MT5Account.query, mt5_sort).all()
         mt5_trade_counts_by_account = {}
         trade_account_ids = sorted(
             {
@@ -2885,6 +2969,7 @@ def register_public_auth_routes(
             admin_user=admin_user,
             section="mt5",
             mt5_accounts=mt5_accounts,
+            mt5_sort=mt5_sort,
             mt5_trade_counts_by_account=mt5_trade_counts_by_account,
             mt5_statuses_by_account_id=mt5_statuses_by_account_id,
             orphaned_mt5_count=orphaned_mt5_count,

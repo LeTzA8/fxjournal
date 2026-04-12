@@ -147,3 +147,32 @@ def test_root_only_admin_routes_return_404_for_db_admins(app_ctx, client, monkey
     response = getattr(client, method)(path, follow_redirects=False)
 
     assert response.status_code == 404
+
+
+def test_admin_users_list_accepts_sort_query(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "admin-users-sort@example.com")
+    admin = _create_user(
+        username="admin-users-sort",
+        email="admin-users-sort@example.com",
+        is_admin=True,
+    )
+    db.session.commit()
+    _login_as(client, admin)
+    response = client.get("/dashboard/admin/access/users?sort=created_desc")
+    assert response.status_code == 200
+    assert b"Sort" in response.data
+    assert b"Created: newest first" in response.data
+
+
+def test_admin_mt5_list_accepts_sort_query(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "root-mt5-sort@example.com")
+    root = _create_user(
+        username="root-mt5-sort",
+        email="root-mt5-sort@example.com",
+        is_admin=True,
+    )
+    db.session.commit()
+    _login_as(client, root)
+    response = client.get("/dashboard/admin/access/mt5?sort=sync_asc")
+    assert response.status_code == 200
+    assert b"Sort accounts" in response.data

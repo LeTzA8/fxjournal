@@ -92,11 +92,11 @@ def _deal(**overrides):
     return SimpleNamespace(**payload)
 
 
-def test_mt5_bar_epoch_adjustment_matches_deal_timestamp_normalization():
-    """fetch_trade_bars applies the same offset as deal ingest so bars align with opened_at/closed_at."""
+def test_mt5_epoch_normalization_preserves_utc_values():
+    """MT5 epochs are treated as UTC and persisted without probe-based offsets."""
     raw = 1_717_200_000
-    assert int(_adjust_mt5_unix_epoch(raw, offset_minutes=120)) == raw - 7200
-    assert int(_adjust_mt5_unix_epoch(raw, offset_minutes=-60)) == raw + 3600
+    assert int(_adjust_mt5_unix_epoch(raw, offset_minutes=120)) == raw
+    assert int(_adjust_mt5_unix_epoch(raw, offset_minutes=-60)) == raw
 
 
 def test_aggregate_deals_to_trades_closes_position_with_multiple_exit_deals():
@@ -593,7 +593,7 @@ def test_internal_mt5_sync_worrisome_skip_debug_omits_benign_skips(app_ctx, clie
     assert "skip_debug" not in body
 
 
-def test_sync_mt5_account_shifts_history_window_to_mt5_server_time(app_ctx, monkeypatch):
+def test_sync_mt5_account_uses_utc_history_window_without_server_shift(app_ctx, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
     monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
@@ -612,7 +612,6 @@ def test_sync_mt5_account_shifts_history_window_to_mt5_server_time(app_ctx, monk
     monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
     monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
 
-    broker_now = datetime.now(timezone.utc) + timedelta(hours=3)
     history_call = {}
 
     def _capture_history_window(from_date, to_date):
@@ -631,7 +630,7 @@ def test_sync_mt5_account_shifts_history_window_to_mt5_server_time(app_ctx, monk
         account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
         history_deals_get=_capture_history_window,
         positions_get=lambda: [],
-        symbol_info_tick=lambda symbol: SimpleNamespace(time=int(broker_now.timestamp())),
+        symbol_info_tick=lambda symbol: None,
         shutdown=lambda: True,
         last_error=lambda: (0, "ok"),
     )
@@ -652,8 +651,8 @@ def test_sync_mt5_account_shifts_history_window_to_mt5_server_time(app_ctx, monk
     captured_from_date = history_call["from_date"]
     utc_now = datetime.now(timezone.utc)
 
-    assert captured_to_date > utc_now + timedelta(hours=2, minutes=55)
-    assert captured_to_date < utc_now + timedelta(hours=3, minutes=5)
+    assert captured_to_date > utc_now - timedelta(minutes=5)
+    assert captured_to_date < utc_now + timedelta(minutes=5)
     assert captured_from_date < captured_to_date
 
 

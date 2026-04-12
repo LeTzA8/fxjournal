@@ -444,6 +444,35 @@ a.admin-stat-tile:hover {
     max-width: 100%;
 }
 
+.admin-sort-form {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin: 0.35rem 0 0;
+    width: 100%;
+}
+
+.admin-sort-label {
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin: 0;
+}
+
+.admin-sort-select {
+    flex: 1 1 16rem;
+    min-width: 0;
+    max-width: 24rem;
+    border: 1px solid color-mix(in srgb, var(--border) 90%, transparent);
+    border-radius: 10px;
+    padding: 0.55rem 0.65rem;
+    font: inherit;
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    color: var(--ink);
+    box-sizing: border-box;
+}
+
 .admin-search-form,
 .users-toolbar-meta,
 .pagination-row,
