@@ -34,6 +34,16 @@ IGNORED_APPDATA_FOLDERS = {"Common", "Community"}
 MT5_SETUP_VERIFY_ATTEMPTS = 2
 MT5_SETUP_VERIFY_RETRY_DELAY_SECONDS = 2
 
+# Crypto symbols added to market watch at terminal setup so the UTC-offset
+# probe has 24/7 tick data available even when forex is closed.
+_MARKET_WATCH_SEED_SYMBOLS = [
+    "BTCUSD",
+    "BTCUSDT",
+    "XBTUSD",
+    "BTCUSD.r",
+    "BTC/USD",
+]
+
 
 def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
     retry_number = getattr(getattr(task, "request", None), "retries", 0)
@@ -156,6 +166,36 @@ def _clear_market_watch_selection(appdata_path: str, server_name: str):
                 os.remove(entry.path)
             except OSError:
                 pass
+
+
+def _seed_market_watch_symbols(mt5, terminal_exe: str, login: int, password: str, server: str):
+    """
+    Open a brief MT5 session to add probe symbols to market watch so they
+    persist in selected*.dat for every future sync.  Failures are non-fatal —
+    the probe falls back to Redis cache and EURUSD during market hours.
+    """
+    try:
+        result = mt5.initialize(
+            path=terminal_exe,
+            login=login,
+            password=password,
+            server=server,
+            timeout=60000,
+        )
+        if not result:
+            return
+        for symbol in _MARKET_WATCH_SEED_SYMBOLS:
+            try:
+                mt5.symbol_select(symbol, True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    finally:
+        try:
+            mt5.shutdown()
+        except Exception:
+            pass
 
 
 class PermanentSetupError(RuntimeError):
@@ -466,6 +506,14 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         )
 
         _clear_market_watch_selection(new_appdata, server)
+
+        _seed_market_watch_symbols(
+            mt5,
+            terminal_exe=terminal_exe,
+            login=login,
+            password=investor_password,
+            server=server,
+        )
 
         account.terminal_path = terminal_exe
         account.is_active = True
