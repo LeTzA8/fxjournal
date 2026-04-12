@@ -746,6 +746,16 @@
                                             <button type="submit" class="ghost-btn danger-btn">Suspend</button>
                                         </form>
                                         {% endif %}
+                                        {% if not is_root_email %}
+                                        <form
+                                            action="{{ url_for('admin_signup_delete_user', user_id=user.id) }}"
+                                            method="post"
+                                            onsubmit="return confirm('Permanently delete this user, all trade accounts, trades, and linked data? This cannot be undone.');"
+                                        >
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="ghost-btn danger-btn">Delete account</button>
+                                        </form>
+                                        {% endif %}
                                         {% if user.signup_status in ['rejected', 'suspended'] %}
                                         <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

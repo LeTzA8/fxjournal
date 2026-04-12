@@ -6,6 +6,7 @@ Short-term operational memory.
 
 ## Current Focus
 
+- Admin Users tab: root admins can permanently delete non–root-email accounts via `POST .../users/<id>/delete` (same data cleanup as self-service delete: `delete_users_with_related_data`), with confirm dialog in `admin_signup_access.html`
 - `context/PROJECT_MAP.md` reorganized into a MyFXJournal architecture + operations cheat sheet (Render vs Hyonix, exact start commands, env ownership); fill in plan/region/cost table when convenient
 - Trades hub UX: shared app-page hero, `static/css/app_pages.css`, corrected nav `request.endpoint` names, scoped trades CSS under `.trades-page`
 - MT5 batch-gated immediate setup flow

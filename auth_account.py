@@ -24,7 +24,7 @@ from models import (
     UserProfile,
     db,
 )
-from helpers.core import get_mt5_sync_batch_state, sanitize_error_message
+from helpers.core import delete_users_with_related_data, get_mt5_sync_batch_state, sanitize_error_message
 from helpers.trade_analysis import detect_outliers
 from helpers.utils import (
     encrypt_password,
@@ -2540,6 +2540,42 @@ def register_public_auth_routes(
             "users",
             f"Suspended {user.username}.",
             "info",
+        )
+
+    @app.route("/dashboard/admin/access/users/<int:user_id>/delete", methods=["POST"])
+    @root_admin_required
+    def admin_signup_delete_user(user_id):
+        admin_user = get_current_root_admin_user()
+
+        user = User.query.filter_by(id=user_id).first()
+        if not user:
+            return build_admin_redirect("users", "User not found.", "error")
+        if user.id == admin_user.id:
+            return build_admin_redirect("users", "You cannot delete your own account.", "error")
+        if is_root_admin_email(user.email):
+            return build_admin_redirect(
+                "users",
+                "Root admin accounts cannot be deleted from this panel.",
+                "error",
+            )
+
+        username = user.username
+        try:
+            delete_users_with_related_data([user.id])
+            db.session.commit()
+        except (OperationalError, IntegrityError):
+            db.session.rollback()
+            current_app.logger.exception("Admin user delete failed for user_id=%s", user_id)
+            return build_admin_redirect(
+                "users",
+                f"Could not delete {username}. Try again or check server logs.",
+                "error",
+            )
+
+        return build_admin_redirect(
+            "users",
+            f"Deleted account {username} and related data.",
+            "success",
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/admin-toggle", methods=["POST"])
