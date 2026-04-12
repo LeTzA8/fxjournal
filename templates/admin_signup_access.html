@@ -55,6 +55,15 @@
                     <div>
                         <h2>Registered Users</h2>
                         <p class="helper-note">Filter by status or inspect admin access at a glance.</p>
+                        {% if is_root_admin %}
+                        <p class="admin-action-legend helper-note" aria-label="Button color guide">
+                            <span class="admin-legend-key"><span class="admin-legend-swatch admin-legend-swatch--view" aria-hidden="true"></span> Open view</span>
+                            <span class="admin-legend-key"><span class="admin-legend-swatch admin-legend-swatch--go" aria-hidden="true"></span> Allow / grant</span>
+                            <span class="admin-legend-key"><span class="admin-legend-swatch admin-legend-swatch--deny" aria-hidden="true"></span> Deny or delete user</span>
+                            <span class="admin-legend-key"><span class="admin-legend-swatch admin-legend-swatch--caution" aria-hidden="true"></span> Restrict or strip role</span>
+                            <span class="admin-legend-key"><span class="admin-legend-swatch admin-legend-swatch--tool" aria-hidden="true"></span> Trade data tools</span>
+                        </p>
+                        {% endif %}
                     </div>
                     <div class="filter-row">
                         <a href="{{ url_for('admin_signup_users', status='pending', q=search_query or None) }}" class="admin-filter{% if status_filter == 'pending' %} is-active{% endif %}">Pending</a>
@@ -168,8 +177,8 @@
                                 <td class="actions-cell">
                                     {% if is_root_admin %}
                                     <div class="inline-actions">
-                                        <a href="{{ url_for('admin_view_user_dashboard', target_user_id=user.id) }}" class="ghost-btn">View Dashboard</a>
-                                        <a href="{{ url_for('admin_weekly_report', user_id=user.id) }}" class="ghost-btn">AI Audit</a>
+                                        <a href="{{ url_for('admin_view_user_dashboard', target_user_id=user.id) }}" class="view-btn">View Dashboard</a>
+                                        <a href="{{ url_for('admin_weekly_report', user_id=user.id) }}" class="view-btn">AI Audit</a>
                                         {% if user.signup_status == 'pending' %}
                                         <form action="{{ url_for('admin_signup_approve_user', user_id=user.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -183,7 +192,7 @@
                                         {% if user.signup_status == 'approved' %}
                                         <form action="{{ url_for('admin_signup_suspend_user', user_id=user.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="ghost-btn danger-btn">Suspend</button>
+                                            <button type="submit" class="ghost-btn admin-btn-caution">Suspend</button>
                                         </form>
                                         {% endif %}
                                         {% if user.signup_status in ['rejected', 'suspended'] %}
@@ -195,13 +204,17 @@
                                         {% if user.signup_status == 'approved' and not is_root_email %}
                                         <form action="{{ url_for('admin_signup_toggle_user_admin', user_id=user.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="ghost-btn">{{ "Remove Admin" if user.is_admin else "Grant Admin" }}</button>
+                                            {% if user.is_admin %}
+                                            <button type="submit" class="ghost-btn admin-btn-caution">Remove Admin</button>
+                                            {% else %}
+                                            <button type="submit" class="submit-btn">Grant Admin</button>
+                                            {% endif %}
                                         </form>
                                         {% endif %}
                                         {% if user_accounts %}
-                                        <button type="button" class="ghost-btn" onclick="openRegenAiDialog({{ user.id }})">Regen AI</button>
+                                        <button type="button" class="ghost-btn admin-btn-tool" onclick="openRegenAiDialog({{ user.id }})">Regen AI</button>
+                                        <button type="button" class="ghost-btn admin-btn-tool" onclick="openBundleBackfillDialog({{ user.id }})">Review Bundles</button>
                                         <button type="button" class="ghost-btn danger-btn" onclick="openUnbundleDialog({{ user.id }})">Unbundle All</button>
-                                        <button type="button" class="ghost-btn" onclick="openBundleBackfillDialog({{ user.id }})">Review Bundles</button>
                                         {% else %}
                                         <button type="button" class="ghost-btn" disabled aria-disabled="true" title="No trade accounts available">No Accounts</button>
                                         {% endif %}

@@ -264,8 +264,15 @@ def test_crypto_and_metal_aliases_and_formatting():
     assert trading.canonicalize_symbol("gold") == "XAUUSD"
     assert trading.canonicalize_symbol("SILVER") == "XAGUSD"
     assert trading.canonicalize_symbol("XAU") == "XAUUSD"
+    assert trading.canonicalize_symbol("EURUSDR") == "EURUSD"
+    assert trading.canonicalize_symbol("XAUUSDMICRO") == "XAUUSD"
+    assert trading.canonicalize_symbol("WTI") == "USOIL"
+    assert trading.canonicalize_symbol("BRENT") == "UKOIL"
+    assert trading.canonicalize_symbol("PLATINUM") == "XPTUSD"
+    assert trading.canonicalize_symbol("DXY") == "USDX"
     assert trading.cfd_mt5_symbol_name_candidates("XAUUSD")[0] == "XAUUSD"
     assert "GOLD" in trading.cfd_mt5_symbol_name_candidates("XAUUSD")
+    assert "XAUUSD.r" in trading.cfd_mt5_symbol_name_candidates("XAUUSD")
     assert trading.format_trade_price(0.12345, "DOGEUSD") == "0.12345"
     assert trading.format_trade_price(2500.125, "XAUUSD") == "2500.12"
 

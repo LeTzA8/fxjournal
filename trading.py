@@ -46,6 +46,19 @@ DEFAULT_CFD_SYMBOL_SPECS = (
     {"symbol": "CADCHF", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 260},
     {"symbol": "NZDCHF", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 270},
     {"symbol": "NZDCAD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 280},
+    {"symbol": "USDMXN", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 281},
+    {"symbol": "USDZAR", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 282},
+    {"symbol": "USDTRY", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 283},
+    {"symbol": "USDSEK", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 284},
+    {"symbol": "USDNOK", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 285},
+    {"symbol": "USDSGD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 286},
+    {"symbol": "USDHKD", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 287},
+    {"symbol": "EURTRY", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 288},
+    {"symbol": "GBPTRY", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 289},
+    {"symbol": "EURPLN", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 291},
+    {"symbol": "USDPLN", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 292},
+    {"symbol": "USDHUF", "aliases": (), "contract_size": 100000.0, "pip_size": 0.01, "sort_order": 293},
+    {"symbol": "USDCNH", "aliases": (), "contract_size": 100000.0, "pip_size": 0.0001, "sort_order": 294},
     # Metals: brokers use XAUUSD, GOLD, XAU, and account-type suffixes (.m/.pro/.z → normalized alnum).
     {
         "symbol": "XAUUSD",
@@ -86,10 +99,39 @@ DEFAULT_CFD_SYMBOL_SPECS = (
         "sort_order": 300,
     },
     {
+        "symbol": "USOIL",
+        "aliases": (
+            "WTI",
+            "WTIUSD",
+            "OIL",
+            "CRUDE",
+            "CL",
+            "USCRUDE",
+            "WTICRUDE",
+        ),
+        "contract_size": 1000.0,
+        "pip_size": None,
+        "sort_order": 302,
+    },
+    {
+        "symbol": "UKOIL",
+        "aliases": (
+            "BRENT",
+            "BRENTUSD",
+            "LCO",
+            "UKCRUDE",
+            "BRT",
+        ),
+        "contract_size": 1000.0,
+        "pip_size": None,
+        "sort_order": 303,
+    },
+    {
         "symbol": "US500",
         "aliases": (
             "SPX500",
             "SP500",
+            "USSPX500",
             "US500CASH",
             "US500INDEX",
             "USA500",
@@ -192,6 +234,7 @@ DEFAULT_CFD_SYMBOL_SPECS = (
             "EUSTX50",
             "SX5E",
             "EUROSTOXX50",
+            "EURO50",
             "STOXX50E",
             "EU50CASH",
         ),
@@ -206,6 +249,7 @@ DEFAULT_CFD_SYMBOL_SPECS = (
             "NI225",
             "JP225CASH",
             "NIKKEI",
+            "NIKKEI225",
             "JPN225",
             "JAPAN225",
             "JP225IDX",
@@ -217,8 +261,8 @@ DEFAULT_CFD_SYMBOL_SPECS = (
     {
         "symbol": "HK50",
         "aliases": (
-            "HSI",
             "HSI50",
+            "HSI",
             "HK50CASH",
             "HANGSENG",
             "HKHSI",
@@ -259,6 +303,7 @@ DEFAULT_CFD_SYMBOL_SPECS = (
         "aliases": (
             "IBEX35",
             "ES35",
+            "SPA35",
             "IBEX",
             "SPAIN35",
             "ESP35CASH",
@@ -274,6 +319,7 @@ DEFAULT_CFD_SYMBOL_SPECS = (
             "ITALY40",
             "MIB40",
             "FTSEMIB",
+            "FTSEMIB40",
             "IT40CASH",
         ),
         "contract_size": 1.0,
@@ -375,6 +421,84 @@ DEFAULT_CFD_SYMBOL_SPECS = (
         "pip_size": None,
         "sort_order": 520,
     },
+    {
+        "symbol": "DOTUSD",
+        "aliases": ("DOTUSDT", "DOT"),
+        "contract_size": 1.0,
+        "pip_size": None,
+        "sort_order": 521,
+    },
+    {
+        "symbol": "LINKUSD",
+        "aliases": ("LINKUSDT", "LINK"),
+        "contract_size": 1.0,
+        "pip_size": None,
+        "sort_order": 522,
+    },
+    {
+        "symbol": "XPTUSD",
+        "aliases": ("PLATINUM", "XPT"),
+        "contract_size": 100.0,
+        "pip_size": None,
+        "sort_order": 530,
+    },
+    {
+        "symbol": "XPDUSD",
+        "aliases": ("PALLADIUM", "XPD"),
+        "contract_size": 100.0,
+        "pip_size": None,
+        "sort_order": 531,
+    },
+    {"symbol": "XAUEUR", "aliases": (), "contract_size": 100.0, "pip_size": None, "sort_order": 532},
+    {"symbol": "XAUGBP", "aliases": (), "contract_size": 100.0, "pip_size": None, "sort_order": 533},
+    {"symbol": "XAUAUD", "aliases": (), "contract_size": 100.0, "pip_size": None, "sort_order": 534},
+    {"symbol": "XAGEUR", "aliases": (), "contract_size": 5000.0, "pip_size": None, "sort_order": 535},
+    {"symbol": "XAGGBP", "aliases": (), "contract_size": 5000.0, "pip_size": None, "sort_order": 536},
+    {"symbol": "XAGAUD", "aliases": (), "contract_size": 5000.0, "pip_size": None, "sort_order": 537},
+    {
+        "symbol": "XNGUSD",
+        "aliases": ("NATGAS", "NATURALGAS", "NGAS", "NG"),
+        "contract_size": 1000.0,
+        "pip_size": None,
+        "sort_order": 538,
+    },
+    {
+        "symbol": "USDX",
+        "aliases": ("DXY", "USDINDEX"),
+        "contract_size": 1.0,
+        "pip_size": None,
+        "sort_order": 540,
+    },
+    {"symbol": "VIX", "aliases": ("VOLX",), "contract_size": 1.0, "pip_size": None, "sort_order": 541},
+    {
+        "symbol": "SMI20",
+        "aliases": ("SWI20", "CH20"),
+        "contract_size": 1.0,
+        "pip_size": None,
+        "sort_order": 542,
+    },
+    {"symbol": "COCOA", "aliases": ("USCOCOA",), "contract_size": 1.0, "pip_size": None, "sort_order": 550},
+    {"symbol": "COFFEE", "aliases": ("USCOFFEE",), "contract_size": 1.0, "pip_size": None, "sort_order": 551},
+    {"symbol": "COTTON", "aliases": ("USCOTTON",), "contract_size": 1.0, "pip_size": None, "sort_order": 552},
+    {"symbol": "SUGAR", "aliases": ("USSUGAR",), "contract_size": 1.0, "pip_size": None, "sort_order": 553},
+    {"symbol": "COPPER", "aliases": ("XCUUSD",), "contract_size": 1.0, "pip_size": None, "sort_order": 554},
+    {"symbol": "ALUMINIUM", "aliases": ("XALUSD",), "contract_size": 1.0, "pip_size": None, "sort_order": 555},
+    {"symbol": "NICKEL", "aliases": ("XNIUSD",), "contract_size": 1.0, "pip_size": None, "sort_order": 556},
+    {"symbol": "ZINC", "aliases": ("XZNUSD",), "contract_size": 1.0, "pip_size": None, "sort_order": 557},
+    {"symbol": "LEAD", "aliases": ("XPBUSD",), "contract_size": 1.0, "pip_size": None, "sort_order": 558},
+    {"symbol": "AAPL", "aliases": (), "contract_size": 1.0, "pip_size": None, "sort_order": 600},
+    {"symbol": "TSLA", "aliases": (), "contract_size": 1.0, "pip_size": None, "sort_order": 601},
+    {"symbol": "NVDA", "aliases": (), "contract_size": 1.0, "pip_size": None, "sort_order": 602},
+    {"symbol": "META", "aliases": (), "contract_size": 1.0, "pip_size": None, "sort_order": 603},
+    {"symbol": "AMZN", "aliases": (), "contract_size": 1.0, "pip_size": None, "sort_order": 604},
+    {"symbol": "MSFT", "aliases": (), "contract_size": 1.0, "pip_size": None, "sort_order": 605},
+    {"symbol": "GOOGL", "aliases": ("GOOG",), "contract_size": 1.0, "pip_size": None, "sort_order": 606},
+    {"symbol": "NFLX", "aliases": (), "contract_size": 1.0, "pip_size": None, "sort_order": 607},
+    {"symbol": "AMD", "aliases": (), "contract_size": 1.0, "pip_size": None, "sort_order": 608},
+    {"symbol": "BABA", "aliases": (), "contract_size": 1.0, "pip_size": None, "sort_order": 609},
+    {"symbol": "NIO", "aliases": (), "contract_size": 1.0, "pip_size": None, "sort_order": 610},
+    {"symbol": "COIN", "aliases": (), "contract_size": 1.0, "pip_size": None, "sort_order": 611},
+    {"symbol": "PLTR", "aliases": (), "contract_size": 1.0, "pip_size": None, "sort_order": 612},
 )
 
 MT5_COLUMN_ALIASES = {
@@ -462,6 +586,119 @@ SESSION_DEFINITIONS = (
 
 def normalize_symbol(symbol):
     return "".join(ch for ch in (symbol or "").upper() if ch.isalnum())
+
+
+# Stripped in order: longest multi-character tokens first, then common single-letter account suffixes.
+# normalize_symbol() already removed dots/spaces, so broker "EURUSD.r" is looked up as "EURUSDR".
+CFD_BROKER_SUFFIX_PARTS = (
+    "MICRO",
+    "MINI",
+    "CASH",
+    "INDEX",
+    "SPOT",
+    "ZERO",
+    "PRO",
+    "ECN",
+    "RAW",
+    "SWAP",
+)
+CFD_BROKER_SINGLE_CHAR_SUFFIXES = frozenset({"R", "S", "M", "C", "Z", "I"})
+_CFD_BROKER_SUFFIX_STRIP_MIN_ROOT_LEN = 4
+
+
+def _strip_one_cfd_broker_suffix(text: str):
+    if not text or len(text) < _CFD_BROKER_SUFFIX_STRIP_MIN_ROOT_LEN + 1:
+        return None
+    for suf in CFD_BROKER_SUFFIX_PARTS:
+        if text.endswith(suf):
+            root = text[: -len(suf)]
+            if len(root) >= _CFD_BROKER_SUFFIX_STRIP_MIN_ROOT_LEN:
+                return root
+    last = text[-1]
+    if last in CFD_BROKER_SINGLE_CHAR_SUFFIXES:
+        root = text[:-1]
+        if len(root) >= _CFD_BROKER_SUFFIX_STRIP_MIN_ROOT_LEN:
+            return root
+    return None
+
+
+def _iter_cfd_canonical_lookup_keys(normalized: str):
+    """Yield normalized lookup keys from most specific to more generic (suffix-stripped)."""
+    if not normalized:
+        return
+    seen = set()
+    cur = normalized
+    while cur and cur not in seen:
+        seen.add(cur)
+        yield cur
+        nxt = _strip_one_cfd_broker_suffix(cur)
+        if not nxt or nxt == cur:
+            break
+        cur = nxt
+
+
+def _mt5_dotted_and_spelled_suffix_variants(alnum_key: str):
+    """Map suffix-stripped alphanumeric keys back to common MT5 spellings."""
+    if not alnum_key or len(alnum_key) < _CFD_BROKER_SUFFIX_STRIP_MIN_ROOT_LEN:
+        return ()
+    out = []
+    token_spellings = (
+        ("MICRO", (".micro", "micro")),
+        ("MINI", (".mini", "mini")),
+        ("PRO", (".pro", "pro")),
+        ("ECN", (".ecn", "ecn")),
+        ("RAW", (".raw", "raw")),
+        ("CASH", (".cash", "cash")),
+        ("SPOT", (".spot", "spot")),
+        ("ZERO", (".zero", "zero")),
+        ("INDEX", (".index",)),
+        ("SWAP", (".swap", "swap")),
+    )
+    for token, spellings in token_spellings:
+        if alnum_key.endswith(token) and len(alnum_key) - len(token) >= _CFD_BROKER_SUFFIX_STRIP_MIN_ROOT_LEN:
+            base = alnum_key[: -len(token)]
+            for sp in spellings:
+                out.append(base + sp)
+    letter_spellings = (
+        ("R", (".r",)),
+        ("S", (".s",)),
+        ("M", (".m", "m")),
+        ("C", (".c",)),
+        ("Z", (".z",)),
+        ("I", (".i",)),
+    )
+    for letter, spellings in letter_spellings:
+        if alnum_key.endswith(letter) and len(alnum_key) - 1 >= _CFD_BROKER_SUFFIX_STRIP_MIN_ROOT_LEN:
+            base = alnum_key[:-1]
+            for sp in spellings:
+                out.append(base + sp)
+    return tuple(out)
+
+
+def _mt5_append_common_suffix_spellings(base: str):
+    """For a canonical root (e.g. EURUSD, XAUUSD), try typical broker suffix patterns."""
+    if not base or len(base) < _CFD_BROKER_SUFFIX_STRIP_MIN_ROOT_LEN:
+        return ()
+    extras = []
+    for sfx in (
+        ".r",
+        ".s",
+        ".m",
+        ".c",
+        ".i",
+        ".z",
+        ".pro",
+        ".ecn",
+        ".raw",
+        ".cash",
+        ".micro",
+        ".mini",
+        ".swap",
+    ):
+        extras.append(base + sfx)
+    for sfx in ("micro", "mini", "pro", "ecn", "m"):
+        extras.append(base + sfx)
+    return tuple(extras)
 
 
 def _normalize_aliases(value):
@@ -691,7 +928,12 @@ def canonicalize_symbol(symbol, instrument_type="CFD"):
             return parsed_contract["root_symbol"]
         return normalized
 
-    return _load_cfd_alias_map().get(normalized, normalized)
+    alias_map = _load_cfd_alias_map()
+    for key in _iter_cfd_canonical_lookup_keys(normalized):
+        target = alias_map.get(key)
+        if target is not None:
+            return target
+    return normalized
 
 
 def cfd_mt5_symbol_name_candidates(canonical_symbol):
@@ -705,10 +947,26 @@ def cfd_mt5_symbol_name_candidates(canonical_symbol):
     alias_map = _load_cfd_alias_map()
     keys = sorted({k for k, target in alias_map.items() if target == canon})
     if not keys:
-        return (canon,)
-    if canon in keys:
-        return (canon,) + tuple(k for k in keys if k != canon)
-    return tuple(keys)
+        bases = (canon,)
+    elif canon in keys:
+        bases = (canon,) + tuple(k for k in keys if k != canon)
+    else:
+        bases = tuple(keys)
+
+    seen = []
+
+    def _add_candidate(raw):
+        s = str(raw or "").strip()
+        if s and s not in seen:
+            seen.append(s)
+
+    for b in bases:
+        _add_candidate(b)
+        for v in _mt5_dotted_and_spelled_suffix_variants(b):
+            _add_candidate(v)
+    for v in _mt5_append_common_suffix_spellings(canon):
+        _add_candidate(v)
+    return tuple(seen) if seen else (canon,)
 
 
 def get_symbol_options(instrument_type="CFD", selected_symbol=None):

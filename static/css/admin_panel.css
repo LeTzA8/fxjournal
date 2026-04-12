@@ -103,6 +103,110 @@
     max-width: 52rem;
 }
 
+/* User / approval actions: color vocabulary (scoped to admin app) */
+body.app-layout .admin-app .admin-action-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.55rem 1rem;
+    margin: 0.35rem 0 0;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    max-width: 48rem;
+}
+
+body.app-layout .admin-app .admin-legend-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+}
+
+body.app-layout .admin-app .admin-legend-swatch {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 999px;
+    flex-shrink: 0;
+}
+
+body.app-layout .admin-app .admin-legend-swatch--go {
+    background: color-mix(in srgb, var(--good) 78%, var(--border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--good) 35%, transparent);
+}
+
+body.app-layout .admin-app .admin-legend-swatch--deny {
+    background: color-mix(in srgb, var(--bad) 78%, var(--border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--bad) 35%, transparent);
+}
+
+body.app-layout .admin-app .admin-legend-swatch--caution {
+    background: color-mix(in srgb, #f59e0b 82%, var(--border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, #f59e0b 40%, transparent);
+}
+
+body.app-layout .admin-app .admin-legend-swatch--tool {
+    background: color-mix(in srgb, #8b5cf6 78%, var(--border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, #8b5cf6 38%, transparent);
+}
+
+body.app-layout .admin-app .admin-legend-swatch--view {
+    background: color-mix(in srgb, var(--accent) 72%, var(--border));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+body.app-layout .admin-app .admin-btn-caution,
+body.app-layout .admin-app a.admin-btn-caution,
+body.app-layout .admin-app button.admin-btn-caution {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, #f59e0b 14%, var(--card));
+    color: color-mix(in srgb, #b45309 92%, white 8%);
+    border-color: color-mix(in srgb, #f59e0b 52%, var(--border));
+    box-shadow: 0 8px 16px rgba(245, 158, 11, 0.12);
+}
+
+body.app-layout .admin-app .admin-btn-caution:hover {
+    background: color-mix(in srgb, #f59e0b 22%, var(--card));
+    border-color: color-mix(in srgb, #f59e0b 62%, var(--border));
+    color: color-mix(in srgb, #92400e 95%, white 5%);
+}
+
+body.app-layout .admin-app .admin-btn-tool,
+body.app-layout .admin-app button.admin-btn-tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, #8b5cf6 13%, var(--card));
+    color: color-mix(in srgb, #8b5cf6 88%, white 12%);
+    border-color: color-mix(in srgb, #8b5cf6 48%, var(--border));
+    box-shadow: 0 8px 16px rgba(139, 92, 246, 0.12);
+}
+
+body.app-layout .admin-app .admin-btn-tool:hover {
+    background: color-mix(in srgb, #8b5cf6 20%, var(--card));
+    border-color: color-mix(in srgb, #8b5cf6 58%, var(--border));
+}
+
+body.app-layout .admin-app .pending-card .inline-actions .submit-btn,
+body.app-layout .admin-app .pending-card .inline-actions .ghost-btn,
+body.app-layout .admin-app .pending-card .inline-actions .danger-btn,
+body.app-layout .admin-app .pending-card .inline-actions .admin-btn-caution,
+body.app-layout .admin-app .pending-card .inline-actions .admin-btn-tool {
+    min-height: 36px;
+}
+
+body.app-layout .admin-app .admin-table .inline-actions .view-btn,
+body.app-layout .admin-app .admin-table .inline-actions .submit-btn,
+body.app-layout .admin-app .admin-table .inline-actions .ghost-btn,
+body.app-layout .admin-app .admin-table .inline-actions .danger-btn,
+body.app-layout .admin-app .admin-table .inline-actions .admin-btn-caution,
+body.app-layout .admin-app .admin-table .inline-actions .admin-btn-tool {
+    font-size: 0.72rem;
+    padding: 0.42rem 0.6rem;
+    min-height: 32px;
+}
+
 .admin-context-stats {
     min-width: 0;
 }
