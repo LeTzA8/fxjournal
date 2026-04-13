@@ -55,6 +55,7 @@ from trading import (
     build_rr_summary,
     build_trade_analytics,
     classify_trading_session,
+    format_duration_minutes,
     format_trade_symbol,
     resolve_net_pnl,
     to_display_timezone,
@@ -1340,6 +1341,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         and opened_local.year == now_local.year
     )
 
+    now_utc = utcnow_naive()
     recent_trades = []
     for trade in user_trades:
         trade_is_running = is_trade_running(trade)
@@ -1370,6 +1372,13 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
                 "side": trade.side,
                 "pnl": pnl_value,
                 "running_pnl": pnl_value if trade_is_running else None,
+                "running_duration_label": (
+                    format_duration_minutes(
+                        (now_utc - trade.opened_at).total_seconds() / 60.0
+                    )
+                    if trade_is_running and trade.opened_at is not None
+                    else None
+                ),
                 "session_label": classify_trading_session(trade.opened_at) if trade.opened_at else "-",
                 "is_running": trade_is_running,
                 "bundle_pubkey": getattr(trade, "bundle_pubkey", None),

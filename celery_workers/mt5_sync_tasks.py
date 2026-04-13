@@ -223,7 +223,7 @@ def _positions_to_open_trades(positions, *, position_type_buy=0, offset_minutes=
                 "entry_price": entry_price,
                 "exit_price": None,
                 "lot_size": lot_size,
-                "pnl": None,
+                "pnl": _deal_float_value(pos, "profit"),
                 "commission": _deal_float_value(pos, "commission"),
                 "swap": _deal_float_value(pos, "swap"),
                 "stop_loss": sl,

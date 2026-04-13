@@ -1171,7 +1171,9 @@
                                     </td>
                                     <td>
                                         {% if trade.is_running %}
-                                        <span class="running-pill">Running</span>
+                                        <span class="running-pill">
+                                            Running{% if trade.running_duration_label %} · {{ trade.running_duration_label }}{% endif %}
+                                        </span>
                                         {% if trade.running_pnl is not none %}
                                         <span class="running-pnl-inline {% if trade.running_pnl > 0 %}good{% elif trade.running_pnl < 0 %}bad{% else %}muted{% endif %}">
                                             {% if trade.running_pnl > 0 %}+{% endif %}{{ trim_decimal(trade.running_pnl, 2) }}
