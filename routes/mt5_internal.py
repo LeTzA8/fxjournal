@@ -292,9 +292,6 @@ def sync_mt5_trades():
                         existing_trade.opened_at = row_opened
                         timestamp_refresh_count += 1
                     if row_closed is None:
-                        row_pnl = row.get("pnl")
-                        if row_pnl is not None:
-                            existing_trade.pnl = float(row_pnl)
                         continue
                     # Open in DB but broker row includes exit — close here; do not fall through
                     # to the normal close branch (same validations, single code path intent).
@@ -357,6 +354,15 @@ def sync_mt5_trades():
                         existing_trade.system_trade_note = row.get("system_trade_note")
                     updated_count += 1
                     continue
+
+            if existing_trade.closed_at is None and row.get("closed_at") is None:
+                row_pnl = row.get("pnl")
+                if row_pnl is not None:
+                    existing_trade.pnl = float(row_pnl)
+                    updated_count += 1
+                else:
+                    skipped_count += 1
+                continue
 
             if existing_trade.closed_at is None and row.get("closed_at") is not None:
                 closed_at = row.get("closed_at")
