@@ -45,6 +45,8 @@ Fill in **plan / region / cost** with whatever you actually pay; placeholders be
 | Celery + Beat (“AI / housekeeping”) | Render Background Worker | | | Runs weekly AI pipeline, check-in cleanup **and publishes** beat schedule (including MT5 sync sweep messages) | No weekly AI emails/generation; **MT5 sync not triggered** unless you move beat elsewhere | Render → worker service |
 | Windows VM | Hyonix | | | MT5 setup + sync Celery workers only | MT5 linking and 5‑min sync stop; web may still run | Hyonix control panel (your provider URL) |
 
+> **VM repo path:** `C:\Users\Administrator\fxjournal` — this is the canonical repo root on the Hyonix VM. All Task Scheduler XML files, PowerShell scripts, and any VM-side paths must reference this location, **not** the dev machine path `C:\Coding Projects\FX Journal`.
+
 **Login URLs:** Render — https://dashboard.render.com · Hyonix — your hosting account URL.
 
 ## Start / Restart Commands
@@ -79,7 +81,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\run_mt5_sync_worker.p
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\run_mt5_setup_worker.ps1
 ```
 
-**VM after reboot:** ensure Task Scheduler (or your Hyonix panel scheduled tasks) starts the two PowerShell launchers above with working directory = repo root. Keep any **extra** maintenance scripts (e.g. git pull) alongside `manual VM scripts\` in the repo — your machine-specific schedule config should stay documented there, not only in chat history.
+**VM after reboot:** ensure Task Scheduler (or your Hyonix panel scheduled tasks) starts the two PowerShell launchers above with working directory = `C:\Users\Administrator\fxjournal`. Keep any **extra** maintenance scripts (e.g. git pull) alongside `manual VM scripts\` in the repo — your machine-specific schedule config should stay documented there, not only in chat history.
+
+> **VM path reminder:** dev machine = `C:\Coding Projects\FX Journal` · VM = `C:\Users\Administrator\fxjournal` — never mix these in Task Scheduler XML files or scripts.
 
 **Local dev (optional):** `.venv\Scripts\python.exe -m flask --app app run` — you are **not** maintaining a canonical local `.env` anymore; treat Render + VM env as source of truth.
 
