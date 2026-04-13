@@ -517,27 +517,6 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
     }
 
 
-def _build_trade_running_pnl_map(user_trades):
-    """Return {trade_id: cumulative_realized_pnl} for closed trades, ordered by closed_at."""
-    closed = []
-    for trade in (user_trades or []):
-        closed_at = getattr(trade, "closed_at", None)
-        if closed_at is None:
-            continue
-        pnl_value = resolve_net_pnl(trade)
-        if pnl_value is None:
-            continue
-        closed.append((closed_at, getattr(trade, "id", 0) or 0, pnl_value))
-
-    closed.sort(key=lambda row: (row[0], row[1]))
-    running = 0.0
-    result = {}
-    for _, trade_id, pnl in closed:
-        running += pnl
-        result[trade_id] = round(running, 2)
-    return result
-
-
 def _load_user_trades(user_id, active_trade_account):
     if active_trade_account is None:
         return []
@@ -1361,8 +1340,6 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         and opened_local.year == now_local.year
     )
 
-    running_pnl_map = _build_trade_running_pnl_map(user_trades)
-
     recent_trades = []
     for trade in user_trades:
         trade_is_running = is_trade_running(trade)
@@ -1377,10 +1354,9 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         opened_at_value = opened_local.isoformat() if opened_local else ""
         trade_profile = getattr(trade, "trade_profile", None)
         trade_profile_version = getattr(trade, "trade_profile_version", None)
-        trade_id = getattr(trade, "id", None)
         recent_trades.append(
             {
-                "trade_id": trade_id,
+                "trade_id": getattr(trade, "id", None),
                 "trade_pubkey": getattr(trade, "pubkey", None) or "",
                 "date": trade_date,
                 "date_value": trade_date_value,
@@ -1393,7 +1369,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
                 ),
                 "side": trade.side,
                 "pnl": pnl_value,
-                "running_pnl": running_pnl_map.get(trade_id),
+                "running_pnl": pnl_value if trade_is_running else None,
                 "session_label": classify_trading_session(trade.opened_at) if trade.opened_at else "-",
                 "is_running": trade_is_running,
                 "bundle_pubkey": getattr(trade, "bundle_pubkey", None),

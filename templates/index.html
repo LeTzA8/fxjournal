@@ -1119,7 +1119,6 @@
                                     <th>Strategy</th>
                                     <th>Side</th>
                                     <th>PnL</th>
-                                    <th>Running</th>
                                     <th>Session</th>
                                 </tr>
                             </thead>
@@ -1141,7 +1140,6 @@
                                     data-date="{{ trade.date_value }}"
                                     data-opened-at="{{ trade.opened_at_value }}"
                                     data-pnl="{{ trade.pnl if trade.pnl is not none else '' }}"
-                                    data-running-pnl="{{ trade.running_pnl if trade.running_pnl is not none else '' }}"
                                     data-session="{{ trade.session_label }}"
                                     data-bundle="{{ trade.bundle_pubkey or '' }}"
                                 >
@@ -1174,6 +1172,11 @@
                                     <td>
                                         {% if trade.is_running %}
                                         <span class="running-pill">Running</span>
+                                        {% if trade.running_pnl is not none %}
+                                        <span class="running-pnl-inline {% if trade.running_pnl > 0 %}good{% elif trade.running_pnl < 0 %}bad{% else %}muted{% endif %}">
+                                            {% if trade.running_pnl > 0 %}+{% endif %}{{ trim_decimal(trade.running_pnl, 2) }}
+                                        </span>
+                                        {% endif %}
                                         {% elif trade.pnl is none %}
                                         <span class="muted">-</span>
                                         {% elif trade.pnl > 0 %}
@@ -1184,21 +1187,12 @@
                                         <span class="muted">0</span>
                                         {% endif %}
                                     </td>
-                                    <td class="running-pnl-cell">
-                                        {% if trade.running_pnl is not none %}
-                                        <span class="{% if trade.running_pnl > 0 %}good{% elif trade.running_pnl < 0 %}bad{% else %}muted{% endif %}">
-                                            {% if trade.running_pnl > 0 %}+{% endif %}{{ trim_decimal(trade.running_pnl, 2) }}
-                                        </span>
-                                        {% else %}
-                                        <span class="muted">-</span>
-                                        {% endif %}
-                                    </td>
                                     <td>{{ trade.session_label }}</td>
                                 </tr>
                                 {% endfor %}
                                 {% else %}
                                 <tr class="empty-row">
-                                    <td colspan="7">
+                                    <td colspan="6">
                                         <div class="empty-state-copy">
                                             <p>No trades yet.</p>
                                             <p class="empty-state-note">Add your first trade to start building dashboard stats, session breakdowns, and weekly review history.</p>
@@ -3031,13 +3025,14 @@
         border-collapse: collapse;
         min-width: 620px; }
 
-    .trade-log table { min-width: 640px; }
+    .trade-log table { min-width: 560px; }
 
-    .running-pnl-cell {
+    .running-pnl-inline {
+        display: inline-block;
+        margin-left: 0.4rem;
         font-variant-numeric: tabular-nums;
-        font-size: 0.88rem;
+        font-size: 0.82rem;
         font-weight: 700;
-        white-space: nowrap;
     }
 
     .trade-log tbody tr[data-trade-detail-url] { cursor: pointer; }

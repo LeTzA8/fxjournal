@@ -675,60 +675,6 @@
                 <p class="context-note">Streaks are calculated from closed trades in chronological order.</p>
             </article>
 
-            <article class="panel running-pnl-panel">
-                <div class="panel-head">
-                    <div>
-                        <h2>
-                            <span class="help-label">
-                                <span class="help-label-text">Running P&amp;L</span>
-                                <span class="help-tooltip">
-                                    <button
-                                        type="button"
-                                        class="help-tooltip-button"
-                                        aria-label="Explain Running P&amp;L"
-                                        aria-describedby="analytics-running-pnl-tooltip"
-                                    >?</button>
-                                    <span id="analytics-running-pnl-tooltip" class="help-tooltip-bubble" role="tooltip">Cumulative realized P&amp;L over time, with deposits and withdrawals tracked separately so cash flows do not distort trading performance.</span>
-                                </span>
-                            </span>
-                        </h2>
-                        <p class="panel-copy">Realized trading performance and cash flow tracked independently.</p>
-                    </div>
-                    <div class="chart-controls">
-                        <div class="chart-control-group">
-                            <label for="runningPnlLines">Lines</label>
-                            <select id="runningPnlLines" aria-label="Running P&amp;L line selection">
-                                <option value="pnl" selected>Trading P&amp;L</option>
-                                <option value="cash">Cash Flow</option>
-                                <option value="both">Both</option>
-                                <option value="net">Net Result</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-                <div class="chart-shell" id="runningPnlChartShell">
-                    <svg id="runningPnlChart" viewBox="0 0 760 280" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Running P&amp;L chart">
-                        <g id="runningPnlGrid"></g>
-                        <line id="runningPnlZero" class="zero-line" x1="0" x2="760" y1="0" y2="0"></line>
-                        <g id="runningPnlYAxis"></g>
-                        <path id="runningPnlPathPnl" class="running-pnl-line running-pnl-line--pnl"></path>
-                        <path id="runningPnlPathCash" class="running-pnl-line running-pnl-line--cash"></path>
-                        <path id="runningPnlPathNet" class="running-pnl-line running-pnl-line--net"></path>
-                        <g id="runningPnlPoints"></g>
-                    </svg>
-                    <div id="runningPnlTooltip" class="chart-tooltip" hidden></div>
-                </div>
-                <div id="runningPnlAxis" class="chart-axis"></div>
-                <div id="runningPnlSummary" class="running-pnl-summary" hidden>
-                    <span class="running-pnl-summary-item" id="runningPnlSummaryPnl"></span>
-                    <span class="running-pnl-summary-item" id="runningPnlSummaryCash"></span>
-                    <span class="running-pnl-summary-item" id="runningPnlSummaryNet"></span>
-                </div>
-                <div id="runningPnlEmpty" class="running-pnl-empty">
-                    <p>No closed trades or cash flow events yet on this account.</p>
-                </div>
-            </article>
-
             <details class="analytics-breakdown-disclosure" data-analytics-breakdown>
                 <summary class="analytics-breakdown-summary">
                     <span class="analytics-breakdown-chevron" aria-hidden="true"></span>
@@ -1429,7 +1375,6 @@
             "equity equity"
             "overview overview"
             "streak streak"
-            "runningpnl runningpnl"
             "breakdown breakdown";
         gap: 0.9rem;
         align-items: stretch;
@@ -1453,50 +1398,6 @@
         padding: 1.1rem 1.15rem 1rem;
     }
 
-    .running-pnl-panel {
-        grid-area: runningpnl;
-    }
-
-    .running-pnl-line {
-        fill: none;
-        stroke-width: 1.5;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-    }
-
-    .running-pnl-line--pnl { stroke: var(--good); }
-    .running-pnl-line--cash { stroke: var(--accent); }
-    .running-pnl-line--net { stroke: var(--ink); opacity: 0.7; }
-
-    .running-pnl-summary {
-        display: flex;
-        gap: 1.2rem;
-        flex-wrap: wrap;
-        margin-top: 0.65rem;
-        font-size: 0.82rem;
-        font-weight: 700;
-        color: var(--muted);
-    }
-
-    .running-pnl-summary-item strong {
-        color: var(--ink);
-    }
-
-    .running-pnl-empty {
-        padding: 0.85rem 0;
-        text-align: center;
-        color: var(--muted);
-        font-size: 0.88rem;
-    }
-
-    .running-pnl-point {
-        fill: color-mix(in srgb, var(--card) 85%, transparent);
-        stroke-width: 1.1;
-    }
-
-    .running-pnl-point--pnl { stroke: var(--good); }
-    .running-pnl-point--cash { stroke: var(--accent); }
-    .running-pnl-point--net { stroke: var(--ink); }
 
     .analytics-breakdown-disclosure {
         grid-area: breakdown;
@@ -2165,7 +2066,6 @@
                 "equity"
                 "overview"
                 "streak"
-                "runningpnl"
                 "breakdown";
         }
 
@@ -2257,5 +2157,4 @@
 
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/analytics_page.js') }}"></script>
-<script src="{{ url_for('static', filename='js/running_pnl.js') }}"></script>
 {% endblock %}
