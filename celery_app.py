@@ -191,19 +191,19 @@ def _create_celery():
             },
             "sync-all-mt5-accounts": {
                 "task": "celery_workers.mt5_sync_tasks.sync_all_active_mt5_accounts",
-                "schedule": 300,
+                "schedule": 30,
             },
             "check-mt5-sync-health": {
                 "task": "celery_workers.mt5_monitoring.check_mt5_sync_health",
-                "schedule": 300,
+                "schedule": 60,
             },
             "check-mt5-worker-staleness": {
                 "task": "celery_workers.mt5_monitoring.check_mt5_worker_staleness",
-                "schedule": 300,
+                "schedule": 60,
             },
             "check-mt5-setup-worker-staleness": {
                 "task": "celery_workers.mt5_monitoring.check_mt5_setup_worker_staleness",
-                "schedule": 300,
+                "schedule": 60,
             },
         },
         "task_routes": {

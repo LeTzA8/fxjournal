@@ -281,6 +281,47 @@ class TradeAccount(db.Model):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    cash_flows = db.relationship(
+        "AccountCashFlow",
+        backref="trade_account",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+CASH_FLOW_TYPES = {"deposit", "withdrawal", "adjustment"}
+
+
+class AccountCashFlow(db.Model):
+    """Deposits, withdrawals, and manual balance adjustments on a trade account."""
+
+    __tablename__ = "account_cash_flows"
+    __table_args__ = (
+        db.Index(
+            "ix_account_cash_flows_account_occurred",
+            "trade_account_id",
+            "occurred_at",
+        ),
+        db.Index("ix_account_cash_flows_user_id", "user_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    trade_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trade_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    flow_type = db.Column(db.String(16), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    note = db.Column(db.String(255), nullable=True)
+    occurred_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
 
 
 class Trade(db.Model):

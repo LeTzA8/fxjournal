@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import func
@@ -25,7 +26,7 @@ from helpers.core import (
     unlink_mt5_sync_for_trade_account,
 )
 from helpers.legal import LEGAL_LAST_UPDATED
-from models import AIGeneratedResponse, MT5AccessRequest, MT5Account, Trade, TradeAccount, User, db
+from models import AccountCashFlow, AIGeneratedResponse, CASH_FLOW_TYPES, MT5AccessRequest, MT5Account, Trade, TradeAccount, User, db
 from trading import get_account_type_choices, normalize_account_type
 from helpers.utils import TRUE_VALUES, encrypt_password, login_required, utcnow_naive
 
@@ -938,3 +939,140 @@ def trade_accounts():
         active_mt5_trade_account_ids=mt5_access_state["active_mt5_trade_account_ids"],
         trade_profile_options=get_user_trade_profiles(user_id),
     )
+
+
+# --- Cash flow CRUD (deposits / withdrawals / adjustments) ---
+
+
+def _parse_cash_flow_datetime(raw):
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+@bp.route("/dashboard/trade-accounts/cash-flows", methods=["GET"])
+@login_required
+def list_cash_flows():
+    user_id = get_effective_user_id()
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    account_id = getattr(active_trade_account, "id", None)
+    if account_id is None:
+        return jsonify({"cash_flows": []})
+
+    try:
+        rows = (
+            AccountCashFlow.query.filter_by(
+                user_id=user_id,
+                trade_account_id=account_id,
+            )
+            .order_by(AccountCashFlow.occurred_at.desc())
+            .all()
+        )
+    except OperationalError:
+        db.session.rollback()
+        rows = []
+
+    return jsonify({
+        "cash_flows": [
+            {
+                "id": row.id,
+                "flow_type": row.flow_type,
+                "amount": row.amount,
+                "note": row.note or "",
+                "occurred_at": row.occurred_at.isoformat() if row.occurred_at else None,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in rows
+        ]
+    })
+
+
+@bp.route("/dashboard/trade-accounts/cash-flows", methods=["POST"])
+@login_required
+def add_cash_flow():
+    from helpers.core import is_support_view_active as _is_support_view
+
+    if _is_support_view():
+        return jsonify({"ok": False, "message": "Not allowed in support view."}), 403
+
+    user_id = get_effective_user_id()
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    account_id = getattr(active_trade_account, "id", None)
+    if account_id is None:
+        return jsonify({"ok": False, "message": "No active trade account."}), 400
+
+    data = request.get_json(silent=True) or {}
+    flow_type = str(data.get("flow_type") or "").strip().lower()
+    if flow_type not in CASH_FLOW_TYPES:
+        return jsonify({"ok": False, "message": f"Invalid flow type. Expected one of: {', '.join(sorted(CASH_FLOW_TYPES))}"}), 400
+
+    try:
+        amount = float(data.get("amount", 0))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "message": "Invalid amount."}), 400
+    if amount <= 0:
+        return jsonify({"ok": False, "message": "Amount must be positive."}), 400
+
+    note = str(data.get("note") or "").strip()[:255]
+    raw_date = data.get("occurred_at")
+    occurred_at = _parse_cash_flow_datetime(raw_date) or utcnow_naive()
+
+    cash_flow = AccountCashFlow(
+        user_id=user_id,
+        trade_account_id=account_id,
+        flow_type=flow_type,
+        amount=amount,
+        note=note or None,
+        occurred_at=occurred_at,
+    )
+    db.session.add(cash_flow)
+    try:
+        db.session.commit()
+    except (IntegrityError, OperationalError) as exc:
+        db.session.rollback()
+        current_app.logger.warning("Cash flow insert failed: %s", exc)
+        return jsonify({"ok": False, "message": "Failed to save cash flow."}), 500
+
+    return jsonify({
+        "ok": True,
+        "cash_flow": {
+            "id": cash_flow.id,
+            "flow_type": cash_flow.flow_type,
+            "amount": cash_flow.amount,
+            "note": cash_flow.note or "",
+            "occurred_at": cash_flow.occurred_at.isoformat() if cash_flow.occurred_at else None,
+        },
+    }), 201
+
+
+@bp.route("/dashboard/trade-accounts/cash-flows/<int:cash_flow_id>", methods=["DELETE"])
+@login_required
+def delete_cash_flow(cash_flow_id):
+    from helpers.core import is_support_view_active as _is_support_view
+
+    if _is_support_view():
+        return jsonify({"ok": False, "message": "Not allowed in support view."}), 403
+
+    user_id = get_effective_user_id()
+    row = AccountCashFlow.query.filter_by(id=cash_flow_id, user_id=user_id).first()
+    if row is None:
+        return jsonify({"ok": False, "message": "Not found."}), 404
+
+    db.session.delete(row)
+    try:
+        db.session.commit()
+    except OperationalError as exc:
+        db.session.rollback()
+        current_app.logger.warning("Cash flow delete failed: %s", exc)
+        return jsonify({"ok": False, "message": "Delete failed."}), 500
+
+    return jsonify({"ok": True})

@@ -131,7 +131,7 @@ Each flow: what happens, what breaks, how you notice.
 
 ### MT5 Sync (every 5 minutes)
 
-1. Celery Beat (on **Render** worker) fires `sync-all-mt5-accounts` on a 300s schedule.
+1. Celery Beat (on **Render** worker) fires `sync-all-mt5-accounts` on a 30s schedule.
 2. Task is routed to queue `mt5_sync` (not the default `celery` queue).
 3. **Hyonix** `mt5_sync` worker runs MetaTrader5 API, then POSTs normalized trades to Flask internal routes with `MT5_SYNC_SECRET`.
 4. **Wrong:** VM worker down → queue grows, users see stale MT5 data. **Wrong:** `REDIS_URL` mismatch → beat fires but nobody consumes. **Wrong:** secret/url mismatch → 401/403 on internal API, logged on web and worker.

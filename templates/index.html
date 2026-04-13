@@ -1119,6 +1119,7 @@
                                     <th>Strategy</th>
                                     <th>Side</th>
                                     <th>PnL</th>
+                                    <th>Running</th>
                                     <th>Session</th>
                                 </tr>
                             </thead>
@@ -1140,6 +1141,7 @@
                                     data-date="{{ trade.date_value }}"
                                     data-opened-at="{{ trade.opened_at_value }}"
                                     data-pnl="{{ trade.pnl if trade.pnl is not none else '' }}"
+                                    data-running-pnl="{{ trade.running_pnl if trade.running_pnl is not none else '' }}"
                                     data-session="{{ trade.session_label }}"
                                     data-bundle="{{ trade.bundle_pubkey or '' }}"
                                 >
@@ -1182,12 +1184,21 @@
                                         <span class="muted">0</span>
                                         {% endif %}
                                     </td>
+                                    <td class="running-pnl-cell">
+                                        {% if trade.running_pnl is not none %}
+                                        <span class="{% if trade.running_pnl > 0 %}good{% elif trade.running_pnl < 0 %}bad{% else %}muted{% endif %}">
+                                            {% if trade.running_pnl > 0 %}+{% endif %}{{ trim_decimal(trade.running_pnl, 2) }}
+                                        </span>
+                                        {% else %}
+                                        <span class="muted">-</span>
+                                        {% endif %}
+                                    </td>
                                     <td>{{ trade.session_label }}</td>
                                 </tr>
                                 {% endfor %}
                                 {% else %}
                                 <tr class="empty-row">
-                                    <td colspan="6">
+                                    <td colspan="7">
                                         <div class="empty-state-copy">
                                             <p>No trades yet.</p>
                                             <p class="empty-state-note">Add your first trade to start building dashboard stats, session breakdowns, and weekly review history.</p>
@@ -3020,7 +3031,14 @@
         border-collapse: collapse;
         min-width: 620px; }
 
-    .trade-log table { min-width: 560px; }
+    .trade-log table { min-width: 640px; }
+
+    .running-pnl-cell {
+        font-variant-numeric: tabular-nums;
+        font-size: 0.88rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
 
     .trade-log tbody tr[data-trade-detail-url] { cursor: pointer; }
 

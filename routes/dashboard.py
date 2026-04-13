@@ -44,11 +44,12 @@ from helpers.core import (
     is_trade_running,
     normalize_timezone_name,
 )
+from helpers.running_pnl import build_running_pnl_events, summarize_running_pnl
 from helpers.trade_analysis import detect_outliers, get_trade_identity
 from helpers.trends import trend_direction_ei_scores, trend_direction_expectancy_weeks, trend_direction_win_rate_weeks
 from auth_account import build_external_url
 from helpers.utils import login_required, utcnow_naive
-from models import AIGeneratedResponse, Trade, UserProfile, WeeklyCheckin, db
+from models import AccountCashFlow, AIGeneratedResponse, Trade, UserProfile, WeeklyCheckin, db
 from trading import (
     SMALL_SAMPLE_MIN_TRADES,
     build_rr_summary,
@@ -514,6 +515,27 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
             or any(item.get("citations") for item in takeaways)
         ),
     }
+
+
+def _build_trade_running_pnl_map(user_trades):
+    """Return {trade_id: cumulative_realized_pnl} for closed trades, ordered by closed_at."""
+    closed = []
+    for trade in (user_trades or []):
+        closed_at = getattr(trade, "closed_at", None)
+        if closed_at is None:
+            continue
+        pnl_value = resolve_net_pnl(trade)
+        if pnl_value is None:
+            continue
+        closed.append((closed_at, getattr(trade, "id", 0) or 0, pnl_value))
+
+    closed.sort(key=lambda row: (row[0], row[1]))
+    running = 0.0
+    result = {}
+    for _, trade_id, pnl in closed:
+        running += pnl
+        result[trade_id] = round(running, 2)
+    return result
 
 
 def _load_user_trades(user_id, active_trade_account):
@@ -1339,6 +1361,8 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         and opened_local.year == now_local.year
     )
 
+    running_pnl_map = _build_trade_running_pnl_map(user_trades)
+
     recent_trades = []
     for trade in user_trades:
         trade_is_running = is_trade_running(trade)
@@ -1353,9 +1377,10 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         opened_at_value = opened_local.isoformat() if opened_local else ""
         trade_profile = getattr(trade, "trade_profile", None)
         trade_profile_version = getattr(trade, "trade_profile_version", None)
+        trade_id = getattr(trade, "id", None)
         recent_trades.append(
             {
-                "trade_id": getattr(trade, "id", None),
+                "trade_id": trade_id,
                 "trade_pubkey": getattr(trade, "pubkey", None) or "",
                 "date": trade_date,
                 "date_value": trade_date_value,
@@ -1368,6 +1393,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
                 ),
                 "side": trade.side,
                 "pnl": pnl_value,
+                "running_pnl": running_pnl_map.get(trade_id),
                 "session_label": classify_trading_session(trade.opened_at) if trade.opened_at else "-",
                 "is_running": trade_is_running,
                 "bundle_pubkey": getattr(trade, "bundle_pubkey", None),
@@ -1590,3 +1616,100 @@ def analytics():
         has_any_trades=bool((analytics_payload.get("summary") or {}).get("total_trades")),
         small_sample_min_trades=SMALL_SAMPLE_MIN_TRADES,
     )
+
+
+@bp.route("/api/running-pnl")
+@login_required
+def running_pnl_api():
+    user_id = get_effective_user_id()
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    account_id = getattr(active_trade_account, "id", None)
+
+    if account_id is None:
+        return jsonify({"events": [], "summary": summarize_running_pnl([])})
+
+    date_from = None
+    date_to = None
+    raw_from = request.args.get("from", "").strip()
+    raw_to = request.args.get("to", "").strip()
+    for raw, setter in [(raw_from, "from"), (raw_to, "to")]:
+        if raw:
+            try:
+                parsed = datetime.fromisoformat(raw)
+                if setter == "from":
+                    date_from = parsed
+                else:
+                    date_to = parsed
+            except ValueError:
+                pass
+
+    try:
+        closed_trades = (
+            Trade.query.filter(
+                Trade.user_id == user_id,
+                Trade.trade_account_id == account_id,
+                Trade.closed_at.isnot(None),
+            )
+            .options(
+                load_only(
+                    Trade.id,
+                    Trade.symbol,
+                    Trade.side,
+                    Trade.pnl,
+                    Trade.commission,
+                    Trade.swap,
+                    Trade.closed_at,
+                    Trade.entry_price,
+                    Trade.exit_price,
+                    Trade.lot_size,
+                ),
+                selectinload(Trade.trade_account),
+            )
+            .all()
+        )
+    except OperationalError:
+        db.session.rollback()
+        closed_trades = []
+
+    try:
+        cash_flows = (
+            AccountCashFlow.query.filter_by(
+                user_id=user_id,
+                trade_account_id=account_id,
+            )
+            .order_by(AccountCashFlow.occurred_at)
+            .all()
+        )
+    except OperationalError:
+        db.session.rollback()
+        cash_flows = []
+
+    events = build_running_pnl_events(
+        closed_trades,
+        cash_flows,
+        resolve_trade_pnl=resolve_net_pnl,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+    timezone_name = get_display_timezone_name()
+    serialized_events = []
+    for event in events:
+        ts = event["timestamp"]
+        local_ts = to_display_timezone(ts, timezone_name)
+        serialized_events.append({
+            "timestamp": ts.isoformat() if ts else None,
+            "timestamp_local": local_ts.isoformat() if local_ts else None,
+            "date_label": local_ts.strftime("%d %b %Y") if local_ts else None,
+            "event_type": event["event_type"],
+            "amount": event["amount"],
+            "description": event["description"],
+            "running_realized_pnl": event["running_realized_pnl"],
+            "running_cash_flow": event["running_cash_flow"],
+            "running_net_result": event["running_net_result"],
+        })
+
+    return jsonify({
+        "events": serialized_events,
+        "summary": summarize_running_pnl(events),
+    })

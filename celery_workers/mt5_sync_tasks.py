@@ -532,6 +532,7 @@ def _log_mt5_sync_api_payload(
     default_retry_delay=30,
     acks_late=True,
     reject_on_worker_lost=True,
+    ignore_result=True,
 )
 def sync_mt5_account(
     self,
