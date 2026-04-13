@@ -25,15 +25,15 @@ def _env_int(name, default):
 
 
 def _alert_threshold_minutes():
-    return _env_int("FXJ_MT5_SYNC_ALERT_THRESHOLD_MINUTES", 10)
+    return _env_int("FXJ_MT5_SYNC_ALERT_THRESHOLD_MINUTES", 5)
 
 
 def _sync_stale_threshold_minutes():
-    return _env_int("FXJ_MT5_STALE_THRESHOLD_MINUTES", 10)
+    return _env_int("FXJ_MT5_STALE_THRESHOLD_MINUTES", 5)
 
 
 def _setup_stale_threshold_minutes():
-    return _env_int("FXJ_MT5_SETUP_STALE_THRESHOLD_MINUTES", 20)
+    return _env_int("FXJ_MT5_SETUP_STALE_THRESHOLD_MINUTES", 15)
 
 
 def _utcnow():
