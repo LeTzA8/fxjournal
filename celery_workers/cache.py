@@ -36,14 +36,18 @@ def _get_redis_url():
 
 
 def _normalize_redis_url(url):
-    # redis-py only accepts lowercase "none"/"optional"/"required" for ssl_cert_reqs in URLs.
-    # Render and some clients emit the Python constant name (e.g. CERT_NONE) which redis-py rejects.
+    # Normalize CERT_* constant names to lowercase values redis-py accepts in URLs.
     import re
-    return re.sub(
+    url = re.sub(
         r'(ssl_cert_reqs=)(CERT_NONE|CERT_OPTIONAL|CERT_REQUIRED)',
         lambda m: m.group(1) + m.group(2).replace("CERT_", "").lower(),
         url,
     )
+    # rediss:// connections require ssl_cert_reqs; default to "none" so the VM
+    # env only needs REDIS_URL without any manual ssl_cert_reqs suffix.
+    if url.startswith("rediss://") and "ssl_cert_reqs=" not in url:
+        url += ("&" if "?" in url else "?") + "ssl_cert_reqs=none"
+    return url
 
 
 def _client():

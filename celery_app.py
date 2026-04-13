@@ -94,10 +94,23 @@ def _configure_celery_trace_logger():
     trace_logger.addFilter(SuppressCeleryTraceTaskLogs())
 
 
+def _normalize_redis_url(url):
+    import re
+    url = re.sub(
+        r'(ssl_cert_reqs=)(CERT_NONE|CERT_OPTIONAL|CERT_REQUIRED)',
+        lambda m: m.group(1) + m.group(2).replace("CERT_", "").lower(),
+        url,
+    )
+    if url.startswith("rediss://") and "ssl_cert_reqs=" not in url:
+        url += ("&" if "?" in url else "?") + "ssl_cert_reqs=none"
+    return url
+
+
 def _resolve_redis_url():
     redis_url = os.getenv("REDIS_URL", "").strip()
     if redis_url:
-        return redis_url, redis_url
+        normalized = _normalize_redis_url(redis_url)
+        return normalized, normalized
     return "memory://", "cache+memory://"
 
 
