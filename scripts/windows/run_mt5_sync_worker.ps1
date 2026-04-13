@@ -8,6 +8,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Set-ConsoleTitleSafely {
+    param(
+        [string]$Title
+    )
+
+    try {
+        if ($host -and $host.UI -and $host.UI.RawUI) {
+            $host.UI.RawUI.WindowTitle = $Title
+        }
+    } catch {
+        return
+    }
+}
+
 function Resolve-PythonExe {
     param(
         [string]$RepoRoot,
@@ -65,6 +79,14 @@ if ($Concurrency -ne 1) {
 
 Set-Location $RepoRoot
 
+# Keep runtime explicit for Windows and make stdout/stderr flush promptly.
+if (-not $env:CELERY_POOL) {
+    $env:CELERY_POOL = "solo"
+}
+if (-not $env:PYTHONUNBUFFERED) {
+    $env:PYTHONUNBUFFERED = "1"
+}
+
 # Windowed consoles: stacked log lines + ~100-col wrap budget (override if needed).
 if (-not $env:FXJ_ASCII_LOG_LAYOUT) {
     $env:FXJ_ASCII_LOG_LAYOUT = "narrow"
@@ -72,9 +94,12 @@ if (-not $env:FXJ_ASCII_LOG_LAYOUT) {
 if (-not $env:FXJ_ASCII_LOG_LINE_MAX) {
     $env:FXJ_ASCII_LOG_LINE_MAX = "100"
 }
+if (-not $env:VM_ID) {
+    Write-Warning "VM_ID is not set. Monitoring will fall back to COMPUTERNAME for vm_id."
+}
 
 while ($true) {
-    $host.UI.RawUI.WindowTitle = "MT5 Sync Window | Starting..."
+    Set-ConsoleTitleSafely "MT5 Sync Window | Starting..."
     $startedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Write-Host "[$startedAt] Starting FX Journal MT5 sync worker pool=solo concurrency=$Concurrency python=$pythonExe"
 
@@ -87,7 +112,7 @@ while ($true) {
 
     $exitCode = $LASTEXITCODE
     $stoppedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $host.UI.RawUI.WindowTitle = "MT5 Sync Window | Restarting in $RestartDelaySeconds s"
+    Set-ConsoleTitleSafely "MT5 Sync Window | Restarting in $RestartDelaySeconds s"
     Write-Warning "[$stoppedAt] FX Journal MT5 sync worker exited with code $exitCode. Restarting in $RestartDelaySeconds second(s)."
 
     Start-Sleep -Seconds $RestartDelaySeconds

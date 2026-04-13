@@ -16,14 +16,26 @@ from celery.app.task import Task as CeleryTask
 from celery.schedules import crontab
 from celery.app import trace as celery_trace
 from celery.signals import (
+    heartbeat_sent,
     task_failure,
     task_postrun,
     task_prerun,
+    task_received,
     task_retry,
     worker_ready,
     worker_shutdown,
 )
 from dotenv import load_dotenv
+
+from celery_workers.worker_monitor import (
+    install_celery_connection_logging,
+    record_celery_heartbeat,
+    record_task_finished,
+    record_task_received,
+    record_task_started,
+    record_worker_ready,
+    record_worker_shutdown,
+)
 
 
 def _load_runtime_env():
@@ -147,6 +159,7 @@ def _create_celery():
             "celery_workers.weekly_tasks",
             "celery_workers.mt5_sync_tasks",
             "celery_workers.mt5_setup_tasks",
+            "celery_workers.mt5_monitoring",
         ],
         task_cls=FlaskTask,
     )
@@ -155,6 +168,8 @@ def _create_celery():
         "result_serializer": "json",
         "accept_content": ["json"],
         "broker_connection_retry_on_startup": True,
+        "broker_connection_retry": True,
+        "broker_connection_max_retries": None,
         "worker_prefetch_multiplier": 1,
         "beat_schedule": {
             "cleanup-weekly-checkins": {
@@ -163,6 +178,18 @@ def _create_celery():
             },
             "sync-all-mt5-accounts": {
                 "task": "celery_workers.mt5_sync_tasks.sync_all_active_mt5_accounts",
+                "schedule": 300,
+            },
+            "check-mt5-sync-health": {
+                "task": "celery_workers.mt5_monitoring.check_mt5_sync_health",
+                "schedule": 300,
+            },
+            "check-mt5-worker-staleness": {
+                "task": "celery_workers.mt5_monitoring.check_mt5_worker_staleness",
+                "schedule": 300,
+            },
+            "check-mt5-setup-worker-staleness": {
+                "task": "celery_workers.mt5_monitoring.check_mt5_setup_worker_staleness",
                 "schedule": 300,
             },
         },
@@ -189,6 +216,7 @@ def _create_celery():
 
 
 celery = _create_celery()
+install_celery_connection_logging()
 
 
 def init_celery(app):
@@ -464,6 +492,11 @@ def _configure_worker_file_logging(sender=None, **kwargs):
 
 
 @worker_ready.connect
+def _record_worker_ready_signal(sender=None, **kwargs):
+    record_worker_ready(sender)
+
+
+@worker_ready.connect
 def _start_mt5_worker_window_title(sender=None, **kwargs):
     config = _get_mt5_worker_window_config(_resolve_worker_hostname(sender))
     if os.name != "nt" or not config:
@@ -505,6 +538,23 @@ def _stop_mt5_worker_window_title(sender=None, **kwargs):
         _set_windows_console_title(f'{config["title_prefix"]} | Stopping...')
 
 
+@worker_shutdown.connect
+def _record_worker_shutdown_signal(sender=None, **kwargs):
+    record_worker_shutdown(sender)
+
+
+@heartbeat_sent.connect
+def _record_celery_heartbeat(sender=None, **kwargs):
+    record_celery_heartbeat(sender)
+
+
+@task_received.connect
+def _record_task_received_signal(request=None, **kwargs):
+    if request is None:
+        return
+    record_task_received(request)
+
+
 @task_prerun.connect
 def _increment_mt5_worker_active_tasks(task=None, sender=None, **kwargs):
     state = _current_mt5_worker_window_state()
@@ -516,6 +566,13 @@ def _increment_mt5_worker_active_tasks(task=None, sender=None, **kwargs):
     with _mt5_worker_window_lock:
         _mt5_worker_window_state["active_tasks"] += 1
     _refresh_mt5_worker_window_title()
+
+
+@task_prerun.connect
+def _record_task_started_signal(task_id=None, task=None, **kwargs):
+    if task is None:
+        return
+    record_task_started(task, task_id)
 
 
 @task_postrun.connect
@@ -532,6 +589,13 @@ def _decrement_mt5_worker_active_tasks(task=None, sender=None, **kwargs):
             0,
         )
     _refresh_mt5_worker_window_title()
+
+
+@task_postrun.connect
+def _record_task_finished_signal(task_id=None, task=None, state=None, **kwargs):
+    if task is None:
+        return
+    record_task_finished(task, task_id, state=state)
 
 
 @task_failure.connect(weak=False)

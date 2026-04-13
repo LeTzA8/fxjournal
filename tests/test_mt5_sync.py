@@ -932,6 +932,49 @@ def test_internal_mt5_sync_empty_payload_keeps_last_synced_null_until_rows_arriv
     assert db.session.get(MT5Account, mt5_account.id).last_synced_at is None
 
 
+def test_internal_mt5_sync_updates_vm_id_on_success(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="sync-vm-id",
+        email="sync-vm-id@example.com",
+    )
+    mt5_account = _create_mt5_account(user_id=user.id, trade_account_id=trade_account.id)
+    db.session.commit()
+
+    response = client.post(
+        "/api/internal/mt5/sync",
+        json={
+            "mt5_account_id": mt5_account.id,
+            "vm_id": "vm-1",
+            "trades": [
+                {
+                    "symbol": "XAUUSD",
+                    "side": "BUY",
+                    "entry_price": 3000.0,
+                    "exit_price": 3012.0,
+                    "lot_size": 0.1,
+                    "pnl": 12.0,
+                    "commission": -0.3,
+                    "swap": 0.0,
+                    "opened_at": "2026-04-10T08:00:00+00:00",
+                    "closed_at": "2026-04-10T09:00:00+00:00",
+                    "mt5_position": 99887766,
+                }
+            ],
+        },
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    assert response.status_code == 200
+    db.session.expire_all()
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert refreshed.last_synced_at is not None
+    assert refreshed.vm_id == "vm-1"
+
+
 def test_chunked_history_deals_get_queries_mt5_in_slices(monkeypatch):
     from celery_workers.mt5_sync_tasks import _chunked_history_deals_get
 

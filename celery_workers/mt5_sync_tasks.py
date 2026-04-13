@@ -13,6 +13,7 @@ import requests
 
 from celery_app import celery
 from celery_workers.logging_utils import duration_label, log_ascii_table
+from celery_workers.worker_monitor import get_vm_id
 from trading import MT5_DEFAULT_SOURCE_TIMEZONE_NAME
 
 logger = logging.getLogger(__name__)
@@ -640,6 +641,7 @@ def sync_mt5_account(
             in {"1", "true", "yes", "on"}
         )
         sync_started_at = datetime.now(timezone.utc)
+        vm_id = get_vm_id(os.getenv("COMPUTERNAME", "").strip())
 
         init_kwargs = {}
         if terminal_path:
@@ -734,6 +736,7 @@ def sync_mt5_account(
 
         sync_payload = {
             "mt5_account_id": mt5_account_id,
+            "vm_id": vm_id,
             "trades": trades,
             "timing_context": vm_timing_context,
             "mt5_server_delta_minutes": mt5_server_delta_minutes,
@@ -818,6 +821,7 @@ def sync_mt5_account(
                 ("Equity", mt5_equity),
                 ("Trigger", trigger_label),
                 ("Mode", sync_mode),
+                ("VM ID", vm_id),
                 ("VM Timezone", vm_timing_context.get("vm_timezone_name")),
                 ("VM UTC Offset (min)", vm_timing_context.get("vm_utc_offset_minutes")),
                 ("Reference Time Source", vm_timing_context.get("reference_time_source")),
@@ -902,7 +906,7 @@ def sync_mt5_account(
         elif idle_noop:
             logger.info(
                 "MT5 sync noop mt5_account_id=%s trade_account_id=%s login=%s server=%s "
-                "trigger=%s skipped=%s duration=%s mode=%s",
+                "trigger=%s skipped=%s duration=%s mode=%s vm_id=%s",
                 mt5_account_id,
                 trade_account_id,
                 mt5_login,
@@ -911,6 +915,7 @@ def sync_mt5_account(
                 skipped_n,
                 duration_label(sync_started_at, sync_finished_at),
                 sync_mode,
+                vm_id,
             )
             _log_mt5_sync_api_payload(
                 mt5_account_id, task_id, trigger_label, result, detail="skip"
@@ -919,7 +924,7 @@ def sync_mt5_account(
             tsr = result.get("timestamp_refreshes")
             logger.info(
                 "MT5 sync mt5_account_id=%s trade_account_id=%s login=%s trigger=%s "
-                "saved=%s updated=%s skipped=%s errors=%s timestamp_refreshes=%s duration=%s mode=%s",
+                "saved=%s updated=%s skipped=%s errors=%s timestamp_refreshes=%s duration=%s mode=%s vm_id=%s",
                 mt5_account_id,
                 trade_account_id,
                 mt5_login,
@@ -931,6 +936,7 @@ def sync_mt5_account(
                 tsr if tsr is not None else "-",
                 duration_label(sync_started_at, sync_finished_at),
                 sync_mode,
+                vm_id,
             )
             _log_mt5_sync_api_payload(
                 mt5_account_id, task_id, trigger_label, result, detail="compact"
@@ -946,6 +952,7 @@ def sync_mt5_account(
                 ("Duration", duration_label(sync_started_at, sync_finished_at)),
                 ("Trigger", trigger_label),
                 ("Mode", sync_mode or "unknown"),
+                ("VM ID", vm_id if "vm_id" in locals() else "unknown"),
                 ("Trade Account", f"{trade_account_name} [ID: {trade_account_id}]"),
                 ("MT5 Account", f"DB {mt5_account_id} / Login {mt5_login or account_suffix}"),
                 ("Raw Deals", raw_deal_count),
@@ -954,7 +961,7 @@ def sync_mt5_account(
             ],
         )
         logger.exception(
-            "MT5 sync failed and will retry. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s",
+            "MT5 sync failed and will retry. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s account_suffix=%s raw_deals=%s aggregated_trades=%s vm_id=%s",
             task_id,
             mt5_account_id,
             user_id,
@@ -962,6 +969,7 @@ def sync_mt5_account(
             account_suffix,
             raw_deal_count,
             aggregated_trade_count,
+            vm_id if "vm_id" in locals() else "unknown",
             exc_info=exc,
         )
         _retry_with_backoff(self, exc, base_delay=30, max_delay=300)

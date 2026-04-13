@@ -27,8 +27,10 @@
             <div class="landing-nav-dropdown site-nav-group" data-nav-dropdown>
                 <button type="button" class="landing-nav-summary" aria-haspopup="true" aria-expanded="false" data-nav-dropdown-toggle>Explore</button>
                 <div class="landing-nav-menu" aria-label="Explore workflows" data-nav-dropdown-menu hidden>
+                    <a href="{{ url_for('trading_journal_page') }}" class="site-nav-link site-nav-sublink">Trading Journal</a>
                     <a href="{{ url_for('free_mt5_sync_page') }}" class="site-nav-link site-nav-sublink">Free MT5 Sync</a>
                     <a href="{{ url_for('weekly_trading_review_page') }}" class="site-nav-link site-nav-sublink">Weekly Trading Review</a>
+                    <a href="{{ url_for('why_not_improving_page') }}" class="site-nav-link site-nav-sublink">Why Am I Not Improving?</a>
                 </div>
             </div>
             <a href="#compare">Compare</a>
@@ -261,28 +263,40 @@
             <h2 id="use-cases-title" class="landing-reveal" data-reveal-delay="110">Find the angle that fits where you are right now.</h2>
 
             <div class="use-case-grid" aria-label="Popular search pages">
-                <a href="{{ url_for('free_mt5_sync_page') }}" class="use-case-card use-case-card-featured landing-reveal" data-reveal-delay="260">
+                <a href="{{ url_for('trading_journal_page') }}" class="use-case-card use-case-card-featured landing-reveal" data-reveal-delay="260">
+                    <p class="use-case-kicker">Start here</p>
+                    <h3>Trading Journal</h3>
+                    <p>Find your biggest trading mistake — without turning trading into a second job.</p>
+                    <span>Open the page</span>
+                </a>
+                <a href="{{ url_for('free_mt5_sync_page') }}" class="use-case-card landing-reveal" data-reveal-delay="320">
                     <p class="use-case-kicker">Featured now</p>
                     <h3>Free MT5 Sync</h3>
                     <p>Request-based and built to feed the weekly review workflow instead of becoming another export routine.</p>
                     <span>Open the page</span>
                 </a>
-                <a href="{{ url_for('mt5_trading_journal_page') }}" class="use-case-card landing-reveal" data-reveal-delay="320">
+                <a href="{{ url_for('mt5_trading_journal_page') }}" class="use-case-card landing-reveal" data-reveal-delay="380">
                     <p class="use-case-kicker">MT5 journal</p>
                     <h3>MT5 Trading Journal</h3>
-                    <p>For traders searching for a journal around MetaTrader 5, not just a raw history dump.</p>
+                    <p>Your MT5 trades reviewed automatically. No exports, no spreadsheets, no homework.</p>
                     <span>Open the page</span>
                 </a>
-                <a href="{{ url_for('forex_trading_journal_page') }}" class="use-case-card landing-reveal" data-reveal-delay="380">
+                <a href="{{ url_for('forex_trading_journal_page') }}" class="use-case-card landing-reveal" data-reveal-delay="440">
                     <p class="use-case-kicker">Forex journal</p>
                     <h3>Forex Trading Journal</h3>
                     <p>Focused on a lighter review habit, behavior context, and carrying one rule into the next week.</p>
                     <span>Open the page</span>
                 </a>
-                <a href="{{ url_for('weekly_trading_review_page') }}" class="use-case-card landing-reveal" data-reveal-delay="440">
+                <a href="{{ url_for('weekly_trading_review_page') }}" class="use-case-card landing-reveal" data-reveal-delay="500">
                     <p class="use-case-kicker">Review loop</p>
                     <h3>Weekly Trading Review</h3>
                     <p>Built around turning the week into takeaways and reusable process rules without turning it into homework.</p>
+                    <span>Open the page</span>
+                </a>
+                <a href="{{ url_for('why_not_improving_page') }}" class="use-case-card landing-reveal" data-reveal-delay="560">
+                    <p class="use-case-kicker">Feel stuck?</p>
+                    <h3>Why Am I Not Improving?</h3>
+                    <p>You're not stuck from lack of knowledge. You're repeating the same mistake without seeing it.</p>
                     <span>Open the page</span>
                 </a>
             </div>

@@ -19,6 +19,11 @@ def _normalize_mt5_position_key(value):
     return text_value or None
 
 
+def _normalize_vm_id(value):
+    text_value = str(value or "").strip()
+    return text_value[:64] or None
+
+
 _SKIP_DEBUG_BENIGN_REASON = "existing_already_closed_or_no_state_change"
 
 
@@ -152,6 +157,7 @@ def sync_mt5_trades():
     include_skip_reasons = bool(payload.get("include_skip_reasons"))
     skip_debug_mode = _resolve_skip_debug_mode(payload)
     refresh_trade_timestamps = bool(payload.get("refresh_closed_trade_timestamps"))
+    sync_vm_id = _normalize_vm_id(payload.get("vm_id"))
     try:
         mt5_account_id = int(payload.get("mt5_account_id"))
     except (TypeError, ValueError):
@@ -486,6 +492,7 @@ def sync_mt5_trades():
         # window and never retries the full-history pull.
         if not (account.last_synced_at is None and len(normalized_rows) == 0):
             account.last_synced_at = utcnow_naive()
+            account.vm_id = sync_vm_id
         broker_account_size = _account_size_from_mt5_sync_payload(payload)
         if broker_account_size is not None:
             account.trade_account.account_size = broker_account_size
@@ -494,7 +501,7 @@ def sync_mt5_trades():
             (
                 "MT5 internal sync summary mt5_account_id=%s user_id=%s trade_account_id=%s "
                 "incoming_rows=%s normalized_rows=%s incoming_positions=%s saved=%s updated=%s skipped=%s errors=%s "
-                "timestamp_refreshes=%s skip_reasons=%s"
+                "timestamp_refreshes=%s vm_id=%s skip_reasons=%s"
             ),
             mt5_account_id,
             account.user_id,
@@ -507,6 +514,7 @@ def sync_mt5_trades():
             skipped_count,
             error_count,
             timestamp_refresh_count,
+            account.vm_id or "unknown",
             skip_reason_counts,
         )
         if saved_count or updated_count or timestamp_refresh_count:

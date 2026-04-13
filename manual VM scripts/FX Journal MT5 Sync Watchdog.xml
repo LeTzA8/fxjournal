@@ -1,16 +1,27 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Date>2026-04-13T00:00:00</Date>
     <Author>MYFXJOURNAL-SG\Administrator</Author>
-    <URI>\MT5 SYNC</URI>
-    <Description>Legacy direct MT5 sync worker launcher. Disabled so the FX Journal MT5 Sync Watchdog task is the only scheduler entry that manages sync worker lifecycle.</Description>
+    <URI>\FX Journal MT5 Sync Watchdog</URI>
   </RegistrationInfo>
   <Triggers>
     <BootTrigger>
-      <Enabled>false</Enabled>
+      <Enabled>true</Enabled>
       <Delay>PT30S</Delay>
     </BootTrigger>
+    <CalendarTrigger>
+      <StartBoundary>2026-01-01T00:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+      <Repetition>
+        <Interval>PT2M</Interval>
+        <Duration>P1D</Duration>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </CalendarTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
@@ -31,7 +42,7 @@
       <RestartOnIdle>false</RestartOnIdle>
     </IdleSettings>
     <AllowStartOnDemand>true</AllowStartOnDemand>
-    <Enabled>false</Enabled>
+    <Enabled>true</Enabled>
     <Hidden>false</Hidden>
     <RunOnlyIfIdle>false</RunOnlyIfIdle>
     <DisallowStartOnRemoteAppSession>false</DisallowStartOnRemoteAppSession>
@@ -47,7 +58,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe</Command>
-      <Arguments>-NoProfile -ExecutionPolicy Bypass -File "C:\Coding Projects\FX Journal\scripts\windows\run_mt5_sync_worker.ps1"</Arguments>
+      <Arguments>-NoProfile -ExecutionPolicy Bypass -File "C:\Coding Projects\FX Journal\scripts\windows\watch_mt5_sync_worker.ps1"</Arguments>
       <WorkingDirectory>C:\Coding Projects\FX Journal</WorkingDirectory>
     </Exec>
   </Actions>

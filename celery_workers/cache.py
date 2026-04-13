@@ -4,6 +4,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
+from datetime import datetime, timezone
 
 from redis import Redis
 from redis.exceptions import RedisError
@@ -12,6 +13,7 @@ ANALYTICS_TTL = 3600
 AI_STATUS_QUEUED_TTL = 900
 AI_STATUS_RUNNING_TTL = 900
 AI_STATUS_FAILED_TTL = 600
+WORKER_MONITOR_TTL = 60 * 60 * 24
 
 _redis_client = None
 _LOCK_RELEASE_SCRIPT = """
@@ -110,6 +112,83 @@ def invalidate(user_id, trade_account_id=None):
         cache_key("dashboard_v3", user_id, trade_account_id),
     ]
     _run_redis(lambda: _client().delete(*keys))
+
+
+def _stringify_cache_value(value):
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        else:
+            value = value.astimezone(timezone.utc)
+        return value.isoformat(timespec="seconds")
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    return str(value)
+
+
+def _write_hash(hash_key, mapping, ttl=WORKER_MONITOR_TTL):
+    cleaned_mapping = {
+        str(key): _stringify_cache_value(value)
+        for key, value in (mapping or {}).items()
+        if value is not None
+    }
+    if not cleaned_mapping:
+        return
+
+    def _write():
+        client = _client()
+        client.hset(str(hash_key), mapping=cleaned_mapping)
+        if ttl:
+            client.expire(str(hash_key), int(ttl))
+
+    _run_redis(_write)
+
+
+def _read_hash(hash_key):
+    return _run_redis(lambda: _client().hgetall(str(hash_key))) or {}
+
+
+def _scan_keys(pattern):
+    return list(_run_redis(lambda: list(_client().scan_iter(match=str(pattern)))))
+
+
+def worker_state_key(worker_kind, worker_id):
+    return f"worker_state:{worker_kind}:{worker_id}"
+
+
+def queue_monitor_key(queue_name):
+    return f"queue_monitor:{queue_name}"
+
+
+def set_worker_state(worker_kind, worker_id, mapping, ttl=WORKER_MONITOR_TTL):
+    _write_hash(worker_state_key(worker_kind, worker_id), mapping, ttl=ttl)
+
+
+def get_worker_state(worker_kind, worker_id):
+    return _read_hash(worker_state_key(worker_kind, worker_id))
+
+
+def list_worker_states(worker_kind):
+    worker_states = []
+    prefix = f"worker_state:{worker_kind}:"
+    for key in _scan_keys(f"{prefix}*"):
+        state = _read_hash(key)
+        if not state:
+            continue
+        worker_id = str(key)[len(prefix):]
+        worker_states.append({"worker_id": worker_id, **state})
+    worker_states.sort(key=lambda row: row.get("worker_id", ""))
+    return worker_states
+
+
+def set_queue_monitor_state(queue_name, mapping, ttl=WORKER_MONITOR_TTL):
+    _write_hash(queue_monitor_key(queue_name), mapping, ttl=ttl)
+
+
+def get_queue_monitor_state(queue_name):
+    return _read_hash(queue_monitor_key(queue_name))
 
 
 def get_ai_status(user_id, trade_account_id=None, period_start_utc=None):

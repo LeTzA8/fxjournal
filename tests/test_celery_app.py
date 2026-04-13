@@ -20,9 +20,21 @@ def test_load_runtime_env_reads_dotenv_when_present(tmp_path, monkeypatch):
 
 def test_celery_routes_and_mt5_task_reliability_flags():
     assert celery_app_module.celery.conf.worker_prefetch_multiplier == 1
+    assert celery_app_module.celery.conf.broker_connection_retry is True
+    assert celery_app_module.celery.conf.broker_connection_retry_on_startup is True
+    assert celery_app_module.celery.conf.broker_connection_max_retries is None
     assert celery_app_module.celery.conf.task_routes["celery_workers.mt5_sync_tasks.sync_mt5_account"]["queue"] == "mt5_sync"
     assert sync_mt5_account.acks_late is True
     assert sync_mt5_account.reject_on_worker_lost is True
+
+
+def test_celery_beat_schedule_includes_mt5_monitoring_tasks():
+    beat_schedule = celery_app_module.celery.conf.beat_schedule
+
+    assert beat_schedule["sync-all-mt5-accounts"]["task"] == "celery_workers.mt5_sync_tasks.sync_all_active_mt5_accounts"
+    assert beat_schedule["check-mt5-sync-health"]["task"] == "celery_workers.mt5_monitoring.check_mt5_sync_health"
+    assert beat_schedule["check-mt5-worker-staleness"]["task"] == "celery_workers.mt5_monitoring.check_mt5_worker_staleness"
+    assert beat_schedule["check-mt5-setup-worker-staleness"]["task"] == "celery_workers.mt5_monitoring.check_mt5_setup_worker_staleness"
 
 
 def test_app_enables_pool_pre_ping():

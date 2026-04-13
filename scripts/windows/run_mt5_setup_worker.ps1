@@ -7,6 +7,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Set-ConsoleTitleSafely {
+    param(
+        [string]$Title
+    )
+
+    try {
+        if ($host -and $host.UI -and $host.UI.RawUI) {
+            $host.UI.RawUI.WindowTitle = $Title
+        }
+    } catch {
+        return
+    }
+}
+
 function Resolve-PythonExe {
     param(
         [string]$RepoRoot,
@@ -55,6 +69,12 @@ $pythonExe = Resolve-PythonExe -RepoRoot $RepoRoot -PythonExe $PythonExe
 
 Set-Location $RepoRoot
 
+if (-not $env:CELERY_POOL) {
+    $env:CELERY_POOL = "solo"
+}
+if (-not $env:PYTHONUNBUFFERED) {
+    $env:PYTHONUNBUFFERED = "1"
+}
 if (-not $env:FXJ_ASCII_LOG_LAYOUT) {
     $env:FXJ_ASCII_LOG_LAYOUT = "narrow"
 }
@@ -63,7 +83,7 @@ if (-not $env:FXJ_ASCII_LOG_LINE_MAX) {
 }
 
 while ($true) {
-    $host.UI.RawUI.WindowTitle = "MT5 Setup Window | Starting..."
+    Set-ConsoleTitleSafely "MT5 Setup Window | Starting..."
     $startedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Write-Host "[$startedAt] Starting FX Journal MT5 setup worker pool=solo concurrency=1 python=$pythonExe"
 
@@ -76,7 +96,7 @@ while ($true) {
 
     $exitCode = $LASTEXITCODE
     $stoppedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $host.UI.RawUI.WindowTitle = "MT5 Setup Window | Restarting in $RestartDelaySeconds s"
+    Set-ConsoleTitleSafely "MT5 Setup Window | Restarting in $RestartDelaySeconds s"
     Write-Warning "[$stoppedAt] FX Journal MT5 setup worker exited with code $exitCode. Restarting in $RestartDelaySeconds second(s)."
 
     Start-Sleep -Seconds $RestartDelaySeconds

@@ -580,6 +580,7 @@ class MT5Account(db.Model):
     appdata_hash = db.Column(db.String(100), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
     last_synced_at = db.Column(db.DateTime, nullable=True)
+    vm_id = db.Column(db.String(64), nullable=True)
     cleanup_marked_at = db.Column(db.DateTime, nullable=True, index=True)
     archived_at = db.Column(db.DateTime, nullable=True, index=True)
     archive_reason = db.Column(db.String(32), nullable=True)
@@ -605,11 +606,20 @@ class MT5Account(db.Model):
         self.account_number = mask_mt5_account_number_for_cleanup(self.account_number)
         self.investor_password_encrypted = None
         self.is_active = False
+        self.vm_id = None
         self.cleanup_marked_at = marked_at or self.cleanup_marked_at or utcnow_naive()
         self.archived_at = None
         self.archive_reason = None
         self.mt5_consent_accepted_at = None
         self.mt5_consent_version = None
+
+
+class MT5SyncVMState(db.Model):
+    __tablename__ = "mt5_sync_vm_state"
+
+    vm_id = db.Column(db.String(64), primary_key=True)
+    vm_alert_sent = db.Column(db.Boolean, nullable=False, default=False)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
 
 
 class MT5AccessRequest(db.Model):
