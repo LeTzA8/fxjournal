@@ -17,4 +17,4 @@ if not exist "%SCRIPT%" (
     exit /b 1
 )
 
-start "FX Journal Monitor" cmd /k ""%PYTHON%" "%SCRIPT%" %*"
+start "FX Journal Monitor" /D "%REPO%" cmd /k ""%PYTHON%" "%SCRIPT%" %*"
