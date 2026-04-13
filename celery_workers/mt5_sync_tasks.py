@@ -1214,6 +1214,25 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
 @celery.task
 def sync_all_active_mt5_accounts():
     from models import MT5Account
+
+    from celery_workers.cache import CacheUnavailableError, get_queue_depth
+
+    # Queue depth gate: if the mt5_sync queue is already backed up beyond
+    # one full beat's worth of tasks, the VM worker is not draining — skip
+    # this beat entirely rather than piling on more tasks.
+    _MAX_QUEUE_DEPTH = 150
+    try:
+        depth = get_queue_depth("mt5_sync")
+        if depth > _MAX_QUEUE_DEPTH:
+            logger.warning(
+                "mt5_sync queue depth %s exceeds %s — skipping beat to avoid buildup",
+                depth,
+                _MAX_QUEUE_DEPTH,
+            )
+            return
+    except CacheUnavailableError:
+        pass  # Redis unavailable: proceed and let the task-level expiry handle it
+
     accounts = (
         MT5Account.query.filter(
             MT5Account.is_active.is_(True),
@@ -1228,4 +1247,7 @@ def sync_all_active_mt5_accounts():
             args=[account.id],
             kwargs={"trigger_source": "beat"},
             queue="mt5_sync",
+            # Tasks not picked up before the next beat fires are stale — discard
+            # them so a recovering worker always starts with fresh work only.
+            expires=28,
         )
