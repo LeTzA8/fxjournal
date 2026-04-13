@@ -35,11 +35,24 @@ def _get_redis_url():
     return redis_url
 
 
+def _normalize_redis_url(url):
+    # redis-py only accepts lowercase "none"/"optional"/"required" for ssl_cert_reqs in URLs.
+    # Render and some clients emit the Python constant name (e.g. CERT_NONE) which redis-py rejects.
+    import re
+    return re.sub(
+        r'(ssl_cert_reqs=)(CERT_NONE|CERT_OPTIONAL|CERT_REQUIRED)',
+        lambda m: m.group(1) + m.group(2).replace("CERT_", "").lower(),
+        url,
+    )
+
+
 def _client():
     global _redis_client
     if _redis_client is None:
         try:
-            _redis_client = Redis.from_url(_get_redis_url(), decode_responses=True)
+            _redis_client = Redis.from_url(
+                _normalize_redis_url(_get_redis_url()), decode_responses=True
+            )
         except RedisError as exc:
             raise CacheUnavailableError(f"Redis unavailable: {exc}") from exc
     return _redis_client
