@@ -158,7 +158,7 @@ def get_trade_size_label(account_type):
 
 
 def trade_has_close_signal(*, exit_price=None, closed_at=None, pnl=None):
-    return closed_at is not None or exit_price is not None or pnl is not None
+    return closed_at is not None or exit_price is not None
 
 
 def is_trade_running(trade):
