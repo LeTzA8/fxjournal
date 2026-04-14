@@ -276,27 +276,6 @@ def claim_lock(lock_key, token, ttl):
     )
 
 
-def try_set_nx_ttl(key, ttl_seconds):
-    """
-    SET key to "1" with NX and EX. Returns True if this call acquired the key
-    (first writer in the TTL window). False if key already exists or Redis
-    is unavailable.
-    """
-    try:
-        return bool(
-            _run_redis(
-                lambda: _client().set(
-                    str(key),
-                    "1",
-                    ex=int(ttl_seconds),
-                    nx=True,
-                )
-            )
-        )
-    except CacheUnavailableError:
-        return False
-
-
 def release_lock(lock_key, token):
     _run_redis(
         lambda: _client().eval(
