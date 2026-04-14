@@ -426,6 +426,56 @@ def test_build_trade_analytics_uses_close_time_for_realized_curves_and_weekly_pn
     )
 
 
+def test_build_trade_analytics_keeps_open_trade_with_running_pnl_out_of_closed_records():
+    trade_account = SimpleNamespace(account_type="CFD", account_size=None)
+    open_trade = SimpleNamespace(
+        id=1,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=None,
+        stop_loss=None,
+        take_profit=None,
+        lot_size=1.0,
+        contract_code=None,
+        trade_account=trade_account,
+        pnl=150.0,
+        commission=0.0,
+        swap=0.0,
+        opened_at=datetime(2026, 3, 23, 9, 0, 0),
+        closed_at=None,
+    )
+    closed_trade = SimpleNamespace(
+        id=2,
+        symbol="GBPUSD",
+        side="SELL",
+        entry_price=1.2500,
+        exit_price=1.2450,
+        stop_loss=None,
+        take_profit=None,
+        lot_size=1.0,
+        contract_code=None,
+        trade_account=trade_account,
+        pnl=80.0,
+        commission=0.0,
+        swap=0.0,
+        opened_at=datetime(2026, 3, 22, 9, 0, 0),
+        closed_at=datetime(2026, 3, 23, 10, 0, 0),
+    )
+
+    analytics = build_trade_analytics(
+        [open_trade, closed_trade],
+        display_timezone_name="UTC",
+        now_utc=datetime(2026, 3, 23, 12, 0, 0, tzinfo=timezone.utc),
+    )
+
+    assert analytics["summary"]["open_trades"] == 1
+    assert analytics["summary"]["closed_trades"] == 1
+    assert analytics["summary"]["weekly_pnl"] == pytest.approx(80.0)
+    assert len(analytics["closed_records"]) == 1
+    assert analytics["closed_records"][0]["trade"].id == 2
+
+
 def test_build_trade_analytics_merges_bundled_trades_without_losing_fee_math():
     trade_account = SimpleNamespace(account_type="CFD", account_size=None)
     bundled_trades = [

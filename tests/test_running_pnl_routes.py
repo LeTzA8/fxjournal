@@ -33,18 +33,18 @@ def _create_account(user, name="Main"):
     return account
 
 
-def _create_trade(user, account, *, pnl=100.0, closed_at=None):
+def _create_trade(user, account, *, pnl=100.0, opened_at=None, closed_at=None, exit_price=1.105):
     trade = Trade(
         user_id=user.id,
         trade_account_id=account.id,
         symbol="EURUSD",
         side="BUY",
         entry_price=1.1,
-        exit_price=1.105,
+        exit_price=exit_price,
         lot_size=1.0,
         pnl=pnl,
-        opened_at=closed_at or datetime(2026, 4, 1),
-        closed_at=closed_at or datetime(2026, 4, 1, 12, 0),
+        opened_at=opened_at or closed_at or datetime(2026, 4, 1),
+        closed_at=closed_at,
     )
     db.session.add(trade)
     db.session.flush()
@@ -93,7 +93,13 @@ class TestRunningPnlApi:
     def test_trades_and_cash_flows_appear(self, client, app_ctx):
         user = _create_user()
         account = _create_account(user)
-        _create_trade(user, account, pnl=200.0, closed_at=datetime(2026, 4, 2))
+        _create_trade(
+            user,
+            account,
+            pnl=200.0,
+            opened_at=datetime(2026, 4, 2, 9, 0),
+            closed_at=datetime(2026, 4, 2, 12, 0),
+        )
         _create_cash_flow(user, account, flow_type="deposit", amount=5000, occurred_at=datetime(2026, 4, 1))
         db.session.commit()
         _login(client, user.id)
@@ -110,8 +116,20 @@ class TestRunningPnlApi:
     def test_date_range_filter(self, client, app_ctx):
         user = _create_user()
         account = _create_account(user)
-        _create_trade(user, account, pnl=100.0, closed_at=datetime(2026, 3, 15))
-        _create_trade(user, account, pnl=200.0, closed_at=datetime(2026, 4, 5))
+        _create_trade(
+            user,
+            account,
+            pnl=100.0,
+            opened_at=datetime(2026, 3, 15, 9, 0),
+            closed_at=datetime(2026, 3, 15, 12, 0),
+        )
+        _create_trade(
+            user,
+            account,
+            pnl=200.0,
+            opened_at=datetime(2026, 4, 5, 9, 0),
+            closed_at=datetime(2026, 4, 5, 12, 0),
+        )
         db.session.commit()
         _login(client, user.id)
 
@@ -119,6 +137,46 @@ class TestRunningPnlApi:
         data = resp.get_json()
         assert len(data["events"]) == 1
         assert data["events"][0]["amount"] == pytest.approx(200.0)
+
+    def test_open_trade_with_pnl_but_no_close_signal_is_excluded(self, client, app_ctx):
+        user = _create_user()
+        account = _create_account(user)
+        _create_trade(
+            user,
+            account,
+            pnl=150.0,
+            opened_at=datetime(2026, 4, 3, 9, 0),
+            closed_at=None,
+            exit_price=None,
+        )
+        db.session.commit()
+        _login(client, user.id)
+
+        resp = client.get("/api/running-pnl")
+        data = resp.get_json()
+        assert data["events"] == []
+        assert data["summary"]["total_realized_pnl"] == pytest.approx(0.0)
+
+    def test_exit_price_only_trade_is_treated_as_closed(self, client, app_ctx):
+        user = _create_user()
+        account = _create_account(user)
+        _create_trade(
+            user,
+            account,
+            pnl=90.0,
+            opened_at=datetime(2026, 4, 4, 9, 15),
+            closed_at=None,
+            exit_price=1.104,
+        )
+        db.session.commit()
+        _login(client, user.id)
+
+        resp = client.get("/api/running-pnl")
+        data = resp.get_json()
+        assert len(data["events"]) == 1
+        assert data["events"][0]["event_type"] == "trade_close"
+        assert data["events"][0]["amount"] == pytest.approx(90.0)
+        assert data["events"][0]["timestamp"] == "2026-04-04T09:15:00"
 
 
 class TestCashFlowCrud:

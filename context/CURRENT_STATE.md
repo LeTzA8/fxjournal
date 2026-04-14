@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-Last Updated: 2026-04-13
+Last Updated: 2026-04-14
 
 Short-term operational memory.
 
@@ -25,6 +25,8 @@ Short-term operational memory.
 - Weekly AI onboarding vs returning users: `get_latest_trade_week_period` still falls back to the latest closed trade when every close is after the dashboard week boundary so a review window exists for new data. **Returning** trade accounts (any prior `AIGeneratedResponse` with weekly dashboard kind on that account) only auto-queue / auto-generate after **Friday 5:30 PM New York** for that review week (`eligible_at_utc`); the **first** weekly review on an account may still run immediately after import/sync or dashboard visit. Ingest hook: `queue_weekly_ai_review_after_ingest` (`helpers/weekly_ai_queue.py`, `routes/trades.py`, `routes/mt5_internal.py`). Admin `force_regenerate` bypasses the cutoff (`maybe_generate_weekly_dashboard_advice`).
 
 ## Active Areas
+
+- **Running/open-trade close-state fix:** shared helper `helpers/trade_state.py::trade_is_closed` now drives running/open-trade decisions so `pnl` alone never implies closure, open trades with live P&L stay open, and running-P&L event inclusion follows real close signals with `closed_at` preferred over the weaker `exit_price` fallback. Regression coverage added in `test_running_pnl.py`, `test_running_pnl_routes.py`, and `test_trading_math.py`.
 
 - **Running P&L feature:** `AccountCashFlow` model (`account_cash_flows` table) tracks deposits, withdrawals, and adjustments per trade account (migration `20260413_0047`). `helpers/running_pnl.py` builds a chronological event stream from closed trades + cash flows with cumulative running realized P&L, running cash flow, and running net result — trading performance and cash flows are never mixed. API endpoint `GET /api/running-pnl` serves the event data with optional `?from=`/`?to=` date range. Cash flow CRUD at `/dashboard/trade-accounts/cash-flows` (POST/GET/DELETE). Analytics page now includes a Running P&L chart panel with line toggles (Trading P&L / Cash Flow / Both / Net) and summary stats, driven by `static/js/running_pnl.js` fetching the API. 31 tests (`test_running_pnl.py` + `test_running_pnl_routes.py`) cover cumulative P&L, deposit/withdrawal isolation, mixed ordering, identical timestamps, open-trade exclusion, date filtering, and CRUD.
 

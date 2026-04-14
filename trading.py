@@ -14,6 +14,7 @@ from flask import has_app_context
 from openpyxl import load_workbook
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
+from helpers.trade_state import trade_is_closed
 from models import CFDSymbol, FuturesSymbol
 
 
@@ -2550,6 +2551,7 @@ def build_trade_analytics(
     open_trades = 0
 
     for trade in sorted(trades, key=lambda item: ((item.opened_at or datetime.min), item.id or 0)):
+        trade_closed = trade_is_closed(trade)
         raw_pnl_value = resolve_pnl(trade)
         pnl_value = calculate_trade_net_pnl(
             raw_pnl_value,
@@ -2580,8 +2582,11 @@ def build_trade_analytics(
                         getattr(trade, "id", "unknown"),
                     )
 
-        if pnl_value is None:
+        if not trade_closed:
             open_trades += 1
+            continue
+
+        if pnl_value is None:
             continue
 
         opened_local = opened_at_utc.astimezone(display_timezone) if opened_at_utc else None
@@ -2608,7 +2613,7 @@ def build_trade_analytics(
             "duration_minutes": duration_minutes,
             "duration_is_extreme": duration_is_extreme,
             "duration_label": format_duration_minutes(duration_minutes),
-            "status": "Closed" if trade.exit_price is not None else "Running",
+            "status": "Closed" if trade_closed else "Running",
         }
         closed_records.append(record)
 

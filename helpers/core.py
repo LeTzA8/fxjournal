@@ -34,6 +34,7 @@ from trading import (
     resolve_pnl,
     to_display_timezone,
 )
+from .trade_state import trade_is_closed
 from .utils import env_bool, env_int, utcnow_naive
 
 SUPPORT_VIEW_TARGET_USER_SESSION_KEY = "support_view_target_user_id"
@@ -157,18 +158,34 @@ def get_trade_size_label(account_type):
     return "Contracts" if normalize_account_type(account_type) == "FUTURES" else "Lots"
 
 
-def trade_has_close_signal(*, exit_price=None, closed_at=None, pnl=None):
-    return closed_at is not None or exit_price is not None
+def trade_has_close_signal(
+    *,
+    exit_price=None,
+    closed_at=None,
+    pnl=None,
+    is_open=None,
+    is_closed=None,
+    remaining_size=None,
+    remaining_volume=None,
+    open_volume=None,
+):
+    return trade_is_closed(
+        {
+            "exit_price": exit_price,
+            "closed_at": closed_at,
+            "is_open": is_open,
+            "is_closed": is_closed,
+            "remaining_size": remaining_size,
+            "remaining_volume": remaining_volume,
+            "open_volume": open_volume,
+        }
+    )
 
 
 def is_trade_running(trade):
     if trade is None:
         return False
-    return not trade_has_close_signal(
-        exit_price=getattr(trade, "exit_price", None),
-        closed_at=getattr(trade, "closed_at", None),
-        pnl=resolve_pnl(trade),
-    )
+    return not trade_is_closed(trade)
 
 
 def is_weekly_checkin_complete(checkin):

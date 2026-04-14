@@ -1,4 +1,4 @@
-"""Tests for helpers/running_pnl.py — Running P&L event builder."""
+"""Tests for running PnL events and trade-close detection helpers."""
 
 from datetime import datetime
 from types import SimpleNamespace
@@ -6,17 +6,39 @@ from types import SimpleNamespace
 import pytest
 
 from helpers.running_pnl import build_running_pnl_events, summarize_running_pnl
+from helpers.trade_state import trade_is_closed
+
+_MISSING = object()
 
 
-def _trade(*, id=1, pnl=100.0, commission=None, swap=None, closed_at=None, symbol="EURUSD", side="BUY"):
+def _trade(
+    *,
+    id=1,
+    pnl=100.0,
+    commission=None,
+    swap=None,
+    opened_at=None,
+    closed_at=_MISSING,
+    exit_price=1.105,
+    symbol="EURUSD",
+    side="BUY",
+    **extra,
+):
+    if opened_at is None:
+        opened_at = datetime(2026, 4, 1, 9, 0)
+    if closed_at is _MISSING:
+        closed_at = datetime(2026, 4, 1, 12, 0)
     return SimpleNamespace(
         id=id,
         pnl=pnl,
         commission=commission,
         swap=swap,
-        closed_at=closed_at or datetime(2026, 4, 1, 12, 0),
+        opened_at=opened_at,
+        closed_at=closed_at,
+        exit_price=exit_price,
         symbol=symbol,
         side=side,
+        **extra,
     )
 
 
@@ -50,12 +72,13 @@ class TestSimpleCumulativePnl:
     def test_commission_and_swap_deducted(self):
         trades = [_trade(pnl=500.0, commission=10.0, swap=-3.0)]
         events = build_running_pnl_events(trades, [])
-        assert events[0]["amount"] == pytest.approx(487.0)  # 500 - 10 + (-3)
+        assert events[0]["amount"] == pytest.approx(487.0)
 
     def test_net_pnl_resolver_overrides_default_math(self):
         trades = [_trade(pnl=500.0, commission=10.0)]
         events = build_running_pnl_events(
-            trades, [],
+            trades,
+            [],
             resolve_trade_pnl=lambda t: 42.0,
         )
         assert events[0]["amount"] == 42.0
@@ -116,9 +139,7 @@ class TestMixedEventOrdering:
             _trade(id=10, pnl=100, closed_at=ts),
             _trade(id=20, pnl=200, closed_at=ts),
         ]
-        cfs = [
-            _cf(id=5, flow_type="deposit", amount=500, occurred_at=ts),
-        ]
+        cfs = [_cf(id=5, flow_type="deposit", amount=500, occurred_at=ts)]
         events = build_running_pnl_events(trades, cfs)
         assert len(events) == 3
         assert events[0]["event_type"] == "deposit"
@@ -131,13 +152,50 @@ class TestMixedEventOrdering:
 class TestOpenTradesExcluded:
     def test_open_trade_not_in_events(self):
         open_trade = SimpleNamespace(
-            id=99, pnl=1000.0, commission=None, swap=None,
-            closed_at=None, symbol="GBPUSD", side="SELL",
+            id=99,
+            pnl=1000.0,
+            commission=None,
+            swap=None,
+            opened_at=datetime(2026, 4, 1, 9, 0),
+            closed_at=None,
+            exit_price=None,
+            symbol="GBPUSD",
+            side="SELL",
         )
         closed_trade = _trade(id=1, pnl=50.0)
         events = build_running_pnl_events([open_trade, closed_trade], [])
         assert len(events) == 1
         assert events[0]["amount"] == 50.0
+
+    def test_open_trade_with_running_pnl_is_still_open(self):
+        open_trade = SimpleNamespace(
+            id=99,
+            pnl=125.0,
+            commission=None,
+            swap=None,
+            opened_at=datetime(2026, 4, 1, 9, 0),
+            closed_at=None,
+            exit_price=None,
+            symbol="GBPUSD",
+            side="SELL",
+        )
+        closed_trade = _trade(id=1, pnl=50.0)
+        events = build_running_pnl_events([open_trade, closed_trade], [])
+        assert len(events) == 1
+        assert events[0]["amount"] == 50.0
+
+    def test_exit_price_only_trade_is_included_with_open_time_fallback(self):
+        trade = _trade(
+            id=4,
+            pnl=75.0,
+            opened_at=datetime(2026, 4, 2, 9, 30),
+            closed_at=None,
+            exit_price=1.104,
+        )
+        events = build_running_pnl_events([trade], [])
+        assert len(events) == 1
+        assert events[0]["timestamp"] == datetime(2026, 4, 2, 9, 30)
+        assert events[0]["amount"] == 75.0
 
 
 class TestIdenticalTimestamps:
@@ -169,8 +227,15 @@ class TestEdgeCases:
 
     def test_null_pnl_trade_skipped(self):
         trade = SimpleNamespace(
-            id=1, pnl=None, commission=None, swap=None,
-            closed_at=datetime(2026, 4, 1), symbol="EURUSD", side="BUY",
+            id=1,
+            pnl=None,
+            commission=None,
+            swap=None,
+            opened_at=datetime(2026, 4, 1, 9, 0),
+            closed_at=datetime(2026, 4, 1, 12, 0),
+            exit_price=1.105,
+            symbol="EURUSD",
+            side="BUY",
         )
         events = build_running_pnl_events([trade], [])
         assert events == []
@@ -189,7 +254,8 @@ class TestEdgeCases:
             _trade(id=3, pnl=300, closed_at=datetime(2026, 4, 20)),
         ]
         events = build_running_pnl_events(
-            trades, [],
+            trades,
+            [],
             date_from=datetime(2026, 4, 1),
             date_to=datetime(2026, 4, 10),
         )
@@ -198,8 +264,11 @@ class TestEdgeCases:
 
     def test_invalid_flow_type_ignored(self):
         cf = SimpleNamespace(
-            id=1, flow_type="bonus", amount=500,
-            occurred_at=datetime(2026, 4, 1), note="",
+            id=1,
+            flow_type="bonus",
+            amount=500,
+            occurred_at=datetime(2026, 4, 1),
+            note="",
         )
         events = build_running_pnl_events([], [cf])
         assert events == []
@@ -229,3 +298,17 @@ class TestSummarize:
         assert summary["trade_close_count"] == 2
         assert summary["deposit_count"] == 1
         assert summary["withdrawal_count"] == 1
+
+
+class TestTradeClosureHelper:
+    def test_closed_at_marks_trade_closed(self):
+        assert trade_is_closed(_trade(closed_at=datetime(2026, 4, 1, 12, 0), exit_price=None)) is True
+
+    def test_explicit_is_open_false_marks_trade_closed(self):
+        assert trade_is_closed(_trade(closed_at=None, exit_price=None, is_open=False)) is True
+
+    def test_exit_price_is_weak_fallback(self):
+        assert trade_is_closed(_trade(closed_at=None, exit_price=1.105)) is True
+
+    def test_pnl_alone_never_marks_trade_closed(self):
+        assert trade_is_closed(_trade(closed_at=None, exit_price=None, pnl=42.0)) is False

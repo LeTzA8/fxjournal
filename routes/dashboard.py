@@ -3,6 +3,7 @@ import re
 from datetime import datetime, timedelta
 
 from flask import Blueprint, current_app, g, jsonify, render_template, request, session, url_for
+from sqlalchemy import or_
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import load_only, selectinload
 
@@ -1633,7 +1634,10 @@ def running_pnl_api():
             Trade.query.filter(
                 Trade.user_id == user_id,
                 Trade.trade_account_id == account_id,
-                Trade.closed_at.isnot(None),
+                or_(
+                    Trade.closed_at.isnot(None),
+                    Trade.exit_price.isnot(None),
+                ),
             )
             .options(
                 load_only(
@@ -1643,6 +1647,7 @@ def running_pnl_api():
                     Trade.pnl,
                     Trade.commission,
                     Trade.swap,
+                    Trade.opened_at,
                     Trade.closed_at,
                     Trade.entry_price,
                     Trade.exit_price,

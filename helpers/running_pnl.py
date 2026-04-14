@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from helpers.trade_state import trade_is_closed
+
 
 def _safe_float(value, default=0.0):
     if value is None:
@@ -47,8 +49,9 @@ def build_running_pnl_events(
     Parameters
     ----------
     closed_trades : iterable
-        Trade-like objects that are closed (``closed_at`` is not None).
-        Each must expose ``closed_at``, ``pnl`` (raw), ``commission``, ``swap``,
+        Trade-like objects. Only rows that satisfy ``trade_is_closed(trade)``
+        are included. Each must expose the trade-close signals used by
+        ``trade_is_closed`` plus ``pnl`` (raw), ``commission``, ``swap``,
         and ``id`` (used as a tiebreaker).
     cash_flows : iterable
         AccountCashFlow-like objects.  Each must expose ``occurred_at``,
@@ -71,8 +74,11 @@ def build_running_pnl_events(
     raw_events = []
 
     for trade in (closed_trades or []):
-        closed_at = getattr(trade, "closed_at", None)
-        if closed_at is None:
+        if not trade_is_closed(trade):
+            continue
+
+        event_timestamp = getattr(trade, "closed_at", None) or getattr(trade, "opened_at", None)
+        if event_timestamp is None:
             continue
 
         if resolve_trade_pnl is not None:
@@ -92,7 +98,7 @@ def build_running_pnl_events(
         side = str(getattr(trade, "side", "") or "").strip().upper() or "?"
 
         raw_events.append({
-            "timestamp": closed_at,
+            "timestamp": event_timestamp,
             "event_type": "trade_close",
             "amount": round(pnl_value, 2),
             "description": f"{side} {symbol}",
