@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 from cryptography.fernet import Fernet
 
+import celery_workers.mt5_sync_tasks as mt5_sync_module
 from celery_workers.mt5_sync_tasks import (
     _adjust_mt5_unix_epoch,
     aggregate_deals_to_trades,
@@ -654,6 +655,7 @@ def test_sync_mt5_account_warns_when_history_is_stale_but_db_still_has_open_mt5_
     assert "history_stale=1" in caplog.text
     assert "MT5 sync soft reconnect" in caplog.text
     assert "soft_reconnect=1" in caplog.text
+    assert "terminal_bootstrap=0" in caplog.text
 
 
 def test_sync_mt5_account_soft_reconnect_refetches_history_once(app_ctx, monkeypatch, caplog):
@@ -737,6 +739,7 @@ def test_sync_mt5_account_soft_reconnect_refetches_history_once(app_ctx, monkeyp
 
     assert len(init_calls) == 2
     assert "MT5 sync soft reconnect" in caplog.text
+    assert "terminal_bootstrap=0" in caplog.text
 
 
 def test_sync_mt5_account_soft_reconnect_disabled_by_env(app_ctx, monkeypatch, caplog):
@@ -824,6 +827,208 @@ def test_sync_mt5_account_soft_reconnect_disabled_by_env(app_ctx, monkeypatch, c
     assert len(init_calls) == 1
     assert "MT5 sync soft reconnect" not in caplog.text
     assert "soft_reconnect=0" in caplog.text
+    assert "terminal_bootstrap=0" in caplog.text
+
+
+def test_sync_mt5_account_stale_triggers_terminal_bootstrap_popen(app_ctx, monkeypatch, caplog, tmp_path):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+    monkeypatch.setenv("FXJ_MT5_TERMINAL_LAUNCH_POST_SLEEP_SECONDS", "0")
+    monkeypatch.setattr(mt5_sync_module.os, "name", "nt")
+
+    terminal_exe = tmp_path / "terminal64.exe"
+    terminal_exe.write_bytes(b"")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-bootstrap-user",
+        email="mt5-bootstrap@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="45454545",
+    )
+    mt5_account.last_synced_at = datetime(2024, 6, 1, 12, 0, 0)
+    mt5_account.terminal_path = str(terminal_exe)
+    db.session.add(mt5_account)
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1,
+            exit_price=None,
+            lot_size=0.1,
+            opened_at=datetime(2026, 4, 14, 12, 0, 0),
+            closed_at=None,
+            mt5_position="9999",
+        )
+    )
+    db.session.commit()
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.try_set_nx_ttl", lambda *args, **kwargs: True)
+
+    popen_calls = []
+
+    def _fake_popen(args, **kwargs):
+        popen_calls.append((args, kwargs))
+        return SimpleNamespace()
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.subprocess.Popen", _fake_popen)
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.time.sleep", lambda _s: None)
+
+    init_calls = []
+
+    def _initialize(**kwargs):
+        init_calls.append(1)
+        return True
+
+    fake_mt5 = SimpleNamespace(
+        DEAL_ENTRY_IN=0,
+        DEAL_ENTRY_OUT=1,
+        DEAL_ENTRY_INOUT=2,
+        DEAL_ENTRY_OUT_BY=3,
+        DEAL_TYPE_BUY=0,
+        initialize=_initialize,
+        login=lambda *args, **kwargs: True,
+        account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
+        history_deals_get=lambda *args, **kwargs: [
+            _deal(position_id=4004, price=1.25, time=1_710_000_000, symbol="EURUSD"),
+        ],
+        positions_get=lambda: [],
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "saved": 0,
+                "updated": 0,
+                "skipped": 0,
+                "errors": 0,
+                "skip_reasons": {},
+            }
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", lambda *args, **kwargs: DummyResponse())
+
+    caplog.set_level(logging.WARNING, logger="celery_workers.mt5_sync_tasks")
+
+    sync_mt5_account.run(mt5_account.id)
+
+    assert len(popen_calls) == 1
+    assert popen_calls[0][0][0] == str(terminal_exe)
+    assert "MT5 sync terminal bootstrap launch" in caplog.text
+    assert len(init_calls) == 2
+    assert "terminal_bootstrap=1" in caplog.text
+
+
+def test_sync_mt5_account_bootstrap_recycles_session_when_soft_reconnect_disabled(
+    app_ctx, monkeypatch, caplog, tmp_path
+):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+    monkeypatch.setenv("FXJ_MT5_SOFT_RECONNECT_ON_STALE", "0")
+    monkeypatch.setenv("FXJ_MT5_TERMINAL_LAUNCH_POST_SLEEP_SECONDS", "0")
+    monkeypatch.setattr(mt5_sync_module.os, "name", "nt")
+
+    terminal_exe = tmp_path / "terminal64.exe"
+    terminal_exe.write_bytes(b"")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-bootstrap-only-user",
+        email="mt5-bootstrap-only@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="46464646",
+    )
+    mt5_account.last_synced_at = datetime(2024, 6, 1, 12, 0, 0)
+    mt5_account.terminal_path = str(terminal_exe)
+    db.session.add(mt5_account)
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1,
+            exit_price=None,
+            lot_size=0.1,
+            opened_at=datetime(2026, 4, 14, 12, 0, 0),
+            closed_at=None,
+            mt5_position="101010",
+        )
+    )
+    db.session.commit()
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.try_set_nx_ttl", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        "celery_workers.mt5_sync_tasks.subprocess.Popen",
+        lambda *args, **kwargs: SimpleNamespace(),
+    )
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.time.sleep", lambda _s: None)
+
+    init_calls = []
+
+    def _initialize(**kwargs):
+        init_calls.append(1)
+        return True
+
+    fake_mt5 = SimpleNamespace(
+        DEAL_ENTRY_IN=0,
+        DEAL_ENTRY_OUT=1,
+        DEAL_ENTRY_INOUT=2,
+        DEAL_ENTRY_OUT_BY=3,
+        DEAL_TYPE_BUY=0,
+        initialize=_initialize,
+        login=lambda *args, **kwargs: True,
+        account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
+        history_deals_get=lambda *args, **kwargs: [
+            _deal(position_id=4004, price=1.25, time=1_710_000_000, symbol="EURUSD"),
+        ],
+        positions_get=lambda: [],
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "saved": 0,
+                "updated": 0,
+                "skipped": 0,
+                "errors": 0,
+                "skip_reasons": {},
+            }
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", lambda *args, **kwargs: DummyResponse())
+
+    caplog.set_level(logging.WARNING, logger="celery_workers.mt5_sync_tasks")
+
+    sync_mt5_account.run(mt5_account.id)
+
+    assert len(init_calls) == 2
+    assert "MT5 sync soft reconnect" in caplog.text
+    assert "terminal_bootstrap=1" in caplog.text
 
 
 def test_internal_mt5_sync_worrisome_skip_debug_omits_benign_skips(app_ctx, client, monkeypatch):
