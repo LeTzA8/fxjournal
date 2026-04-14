@@ -80,6 +80,14 @@ def _shift_datetime_by_minutes(value, *, minutes=0):
     return value + timedelta(minutes=int(minutes or 0))
 
 
+def _debug_use_broker_offset_end_time():
+    """TEST ONLY: shift end_time forward by the broker offset before passing to
+    history_deals_get. Set FXJ_MT5_DEBUG_BROKER_OFFSET_END_TIME=1 to enable.
+    Remove / unset after the experiment."""
+    raw = os.getenv("FXJ_MT5_DEBUG_BROKER_OFFSET_END_TIME", "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 def _mt5_debug_resolve_log_dir():
     """Mirror the same log-dir resolution used by celery_app._configure_worker_file_logging."""
     import re as _re
@@ -98,7 +106,8 @@ def _mt5_debug_resolve_log_dir():
 
 
 def _mt5_debug_log_raw_snapshot(mt5_account_id, trade_account_id, open_positions, deals,
-                                latest_deal_utc, now_utc, mt5, from_date, to_date):
+                                latest_deal_utc, now_utc, mt5, from_date, to_date,
+                                utc_to_date=None):
     """
     Write one raw MT5 broker snapshot to a new per-sync file in the worker log dir.
     Also runs a group="*" comparison call to test whether the terminal's per-symbol
@@ -154,13 +163,19 @@ def _mt5_debug_log_raw_snapshot(mt5_account_id, trade_account_id, open_positions
             grouped_error = repr(exc)
 
         # --- end_time diagnostics ---
-        utc_now_at_log = datetime.now(timezone.utc)
-        end_time_repr       = repr(to_date)
-        end_time_iso        = to_date.isoformat() if hasattr(to_date, "isoformat") else str(to_date)
-        end_time_tzinfo     = str(getattr(to_date, "tzinfo", "N/A"))
-        end_time_utcoffset  = str(to_date.utcoffset()) if hasattr(to_date, "utcoffset") and to_date.utcoffset() is not None else "None (naive)"
-        end_time_timestamp  = to_date.timestamp() if hasattr(to_date, "timestamp") else "N/A"
-        end_time_gap_sec    = round((utc_now_at_log - to_date).total_seconds(), 1) if hasattr(to_date, "utcoffset") else "N/A"
+        utc_now_at_log  = datetime.now(timezone.utc)
+        _effective_end  = to_date                          # what was actually passed to history_deals_get
+        _original_utc   = utc_to_date if utc_to_date is not None else to_date
+        _offset_applied = _effective_end != _original_utc
+
+        end_time_repr       = repr(_effective_end)
+        end_time_iso        = _effective_end.isoformat() if hasattr(_effective_end, "isoformat") else str(_effective_end)
+        end_time_tzinfo     = str(getattr(_effective_end, "tzinfo", "N/A"))
+        end_time_utcoffset  = str(_effective_end.utcoffset()) if hasattr(_effective_end, "utcoffset") and _effective_end.utcoffset() is not None else "None (naive)"
+        end_time_timestamp  = _effective_end.timestamp() if hasattr(_effective_end, "timestamp") else "N/A"
+        end_time_gap_sec    = round((utc_now_at_log - _effective_end).total_seconds(), 1) if hasattr(_effective_end, "utcoffset") else "N/A"
+        utc_end_iso         = _original_utc.isoformat() if hasattr(_original_utc, "isoformat") else str(_original_utc)
+        broker_shift_sec    = round((_effective_end - _original_utc).total_seconds()) if _offset_applied else 0
 
         block = "\n".join([
             "==== SYNC START ====",
@@ -171,8 +186,10 @@ def _mt5_debug_log_raw_snapshot(mt5_account_id, trade_account_id, open_positions
             f"query_to: {to_date.isoformat() if hasattr(to_date, 'isoformat') else str(to_date)}",
             "",
             "--- end_time diagnostics ---",
+            f"end_time (used):      {end_time_iso}",
+            f"end_time (pure UTC):  {utc_end_iso}",
+            f"broker_offset_applied:{_offset_applied}  (shift: {broker_shift_sec}s)",
             f"end_time repr:        {end_time_repr}",
-            f"end_time isoformat:   {end_time_iso}",
             f"end_time tzinfo:      {end_time_tzinfo}",
             f"end_time utcoffset:   {end_time_utcoffset}",
             f"end_time timestamp:   {end_time_timestamp}",
@@ -959,6 +976,12 @@ def sync_mt5_account(
                     applied_offset_minutes = mt5_server_delta_minutes
                     mt5_from_date = from_date
                     mt5_to_date = to_date
+                    # EXPERIMENT: optionally shift end_time by broker offset
+                    # to test whether timezone mismatch causes recent deals to be excluded.
+                    # Enable with FXJ_MT5_DEBUG_BROKER_OFFSET_END_TIME=1. Remove when done.
+                    _utc_to_date = to_date  # always keep original UTC for logging
+                    if _debug_use_broker_offset_end_time() and mt5_server_delta_minutes:
+                        mt5_to_date = to_date + timedelta(minutes=mt5_server_delta_minutes)
                     vm_timing_context = _vm_timezone_context()
                     vm_timing_context.update(
                         {
@@ -1026,6 +1049,7 @@ def sync_mt5_account(
                             mt5=mt5,
                             from_date=mt5_from_date,
                             to_date=mt5_to_date,
+                            utc_to_date=_utc_to_date,
                         )
 
                 _load_broker_snapshot()
