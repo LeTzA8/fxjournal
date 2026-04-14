@@ -153,6 +153,15 @@ def _mt5_debug_log_raw_snapshot(mt5_account_id, trade_account_id, open_positions
         except Exception as exc:
             grouped_error = repr(exc)
 
+        # --- end_time diagnostics ---
+        utc_now_at_log = datetime.now(timezone.utc)
+        end_time_repr       = repr(to_date)
+        end_time_iso        = to_date.isoformat() if hasattr(to_date, "isoformat") else str(to_date)
+        end_time_tzinfo     = str(getattr(to_date, "tzinfo", "N/A"))
+        end_time_utcoffset  = str(to_date.utcoffset()) if hasattr(to_date, "utcoffset") and to_date.utcoffset() is not None else "None (naive)"
+        end_time_timestamp  = to_date.timestamp() if hasattr(to_date, "timestamp") else "N/A"
+        end_time_gap_sec    = round((utc_now_at_log - to_date).total_seconds(), 1) if hasattr(to_date, "utcoffset") else "N/A"
+
         block = "\n".join([
             "==== SYNC START ====",
             f"time: {now_iso}",
@@ -160,6 +169,15 @@ def _mt5_debug_log_raw_snapshot(mt5_account_id, trade_account_id, open_positions
             f"mt5_account_id: {mt5_account_id}",
             f"query_from: {from_date.isoformat() if hasattr(from_date, 'isoformat') else str(from_date)}",
             f"query_to: {to_date.isoformat() if hasattr(to_date, 'isoformat') else str(to_date)}",
+            "",
+            "--- end_time diagnostics ---",
+            f"end_time repr:        {end_time_repr}",
+            f"end_time isoformat:   {end_time_iso}",
+            f"end_time tzinfo:      {end_time_tzinfo}",
+            f"end_time utcoffset:   {end_time_utcoffset}",
+            f"end_time timestamp:   {end_time_timestamp}",
+            f"utc_now at log time:  {utc_now_at_log.isoformat(timespec='seconds')}",
+            f"end_time gap vs now:  {end_time_gap_sec}s  (positive = end_time is in the past)",
             "",
             f"open_position_count: {len(open_positions)}",
             f"deal_count (unfiltered): {len(deals)}",
@@ -405,6 +423,19 @@ def _mt5_soft_reconnect_on_stale_enabled():
     """One extra shutdown→initialize→login→refetch when broker view looks stale vs DB."""
     raw = os.getenv("FXJ_MT5_SOFT_RECONNECT_ON_STALE", "1").strip().lower()
     return raw not in {"", "0", "false", "no", "off"}
+
+
+def _stale_reconnect_wait_seconds():
+    """Seconds to wait after mt5.shutdown() before reinitializing on a stale reconnect.
+    Gives the terminal process time to pull fresh history from the broker before we
+    reconnect and query it. Override with FXJ_MT5_STALE_RECONNECT_WAIT_SECONDS."""
+    raw = os.getenv("FXJ_MT5_STALE_RECONNECT_WAIT_SECONDS", "").strip()
+    if not raw:
+        return 15
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 15
 
 
 def _precheck_mt5_history_stale_vs_db(
@@ -1014,6 +1045,15 @@ def sync_mt5_account(
                         mt5_login,
                     )
                     mt5.shutdown()
+                    _wait = _stale_reconnect_wait_seconds()
+                    if _wait > 0:
+                        logger.info(
+                            "MT5 stale reconnect: waiting %ss for terminal to refresh history "
+                            "mt5_account_id=%s",
+                            _wait,
+                            mt5_account_id,
+                        )
+                        time.sleep(_wait)
                     if not mt5.initialize(**init_kwargs):
                         raise RuntimeError(
                             f"MT5 init failed after soft reconnect: {mt5.last_error()}"
