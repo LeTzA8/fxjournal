@@ -53,6 +53,16 @@ def _to_utc_iso(timestamp_value, *, offset_minutes=0):
     return datetime.fromtimestamp(adjusted_timestamp, tz=timezone.utc).isoformat(timespec="seconds")
 
 
+def _to_broker_time(dt, offset_minutes):
+    """Shift a UTC datetime to broker server time for use as MT5 API query boundaries.
+    history_deals_get expects time in the broker's server timezone, not UTC.
+    offset_minutes is positive when broker clock is ahead of UTC (e.g. +180 = UTC+3).
+    Returns dt unchanged when offset_minutes is 0 or None."""
+    if not offset_minutes:
+        return dt
+    return dt + timedelta(minutes=int(offset_minutes))
+
+
 def _naive_utc_to_aware(value):
     """Trade datetimes are naive UTC in DB; MT5 Python treats naive datetimes as *local* time."""
     if value is None:
@@ -79,13 +89,6 @@ def _shift_datetime_by_minutes(value, *, minutes=0):
         return None
     return value + timedelta(minutes=int(minutes or 0))
 
-
-def _debug_use_broker_offset_end_time():
-    """TEST ONLY: shift end_time forward by the broker offset before passing to
-    history_deals_get. Set FXJ_MT5_DEBUG_BROKER_OFFSET_END_TIME=1 to enable.
-    Remove / unset after the experiment."""
-    raw = os.getenv("FXJ_MT5_DEBUG_BROKER_OFFSET_END_TIME", "").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
 
 
 def _mt5_debug_resolve_log_dir():
@@ -974,14 +977,13 @@ def sync_mt5_account(
                         mt5, mt5_account_id
                     )
                     applied_offset_minutes = mt5_server_delta_minutes
-                    mt5_from_date = from_date
-                    mt5_to_date = to_date
-                    # EXPERIMENT: optionally shift end_time by broker offset
-                    # to test whether timezone mismatch causes recent deals to be excluded.
-                    # Enable with FXJ_MT5_DEBUG_BROKER_OFFSET_END_TIME=1. Remove when done.
-                    _utc_to_date = to_date  # always keep original UTC for logging
-                    if _debug_use_broker_offset_end_time() and mt5_server_delta_minutes:
-                        mt5_to_date = to_date + timedelta(minutes=mt5_server_delta_minutes)
+                    # MT5 history_deals_get expects broker server time, not UTC.
+                    # Apply the measured broker offset to both boundaries so the
+                    # query window aligns with what the terminal actually serves.
+                    # Internal from_date / to_date remain UTC for DB storage.
+                    _utc_to_date = to_date  # kept for debug logging comparison
+                    mt5_from_date = _to_broker_time(from_date, mt5_server_delta_minutes)
+                    mt5_to_date = _to_broker_time(to_date, mt5_server_delta_minutes)
                     vm_timing_context = _vm_timezone_context()
                     vm_timing_context.update(
                         {
