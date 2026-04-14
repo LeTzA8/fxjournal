@@ -6,7 +6,9 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 import json
 import logging
+import subprocess
 import threading
+import time
 import uuid
 
 import requests
@@ -286,6 +288,90 @@ def _mt5_soft_reconnect_on_stale_enabled():
     """One extra shutdown→initialize→login→refetch when broker view looks stale vs DB."""
     raw = os.getenv("FXJ_MT5_SOFT_RECONNECT_ON_STALE", "1").strip().lower()
     return raw not in {"", "0", "false", "no", "off"}
+
+
+def _mt5_terminal_launch_on_stale_enabled():
+    """Nudge the same terminal64.exe as setup via Popen (no process kill). Windows only."""
+    raw = os.getenv("FXJ_MT5_TERMINAL_LAUNCH_ON_STALE", "1").strip().lower()
+    return raw not in {"", "0", "false", "no", "off"}
+
+
+def _mt5_terminal_launch_cooldown_seconds():
+    raw = os.getenv("FXJ_MT5_TERMINAL_LAUNCH_COOLDOWN_SECONDS", "").strip()
+    if not raw:
+        return 900
+    try:
+        return max(int(raw), 60)
+    except (TypeError, ValueError):
+        return 900
+
+
+def _mt5_terminal_launch_post_sleep_seconds():
+    raw = os.getenv("FXJ_MT5_TERMINAL_LAUNCH_POST_SLEEP_SECONDS", "").strip()
+    if not raw:
+        return 5
+    try:
+        return min(max(int(raw), 0), 60)
+    except (TypeError, ValueError):
+        return 5
+
+
+def _maybe_launch_terminal_exe_for_stale_sync(terminal_path, mt5_account_id):
+    """
+    Like setup bootstrap: start terminal64.exe from the account's portable folder.
+    Does not terminate existing processes. Cooldown via Redis NX so 30s sync beats
+    do not spawn repeatedly.
+    """
+    if os.name != "nt":
+        return False
+    if not _mt5_terminal_launch_on_stale_enabled():
+        return False
+    path = str(terminal_path or "").strip()
+    if not path or not os.path.isfile(path):
+        return False
+    if os.path.basename(path).lower() != "terminal64.exe":
+        logger.warning(
+            "MT5 sync terminal bootstrap skipped (expected terminal64.exe) mt5_account_id=%s path=%s",
+            mt5_account_id,
+            path,
+        )
+        return False
+    from celery_workers.cache import try_set_nx_ttl
+
+    cooldown = _mt5_terminal_launch_cooldown_seconds()
+    redis_key = f"fxj:mt5_terminal_bootstrap:{mt5_account_id}"
+    if not try_set_nx_ttl(redis_key, cooldown):
+        logger.info(
+            "MT5 sync terminal bootstrap skipped (cooldown) mt5_account_id=%s cooldown_s=%s",
+            mt5_account_id,
+            cooldown,
+        )
+        return False
+    terminal_dir = os.path.dirname(path) or "."
+    try:
+        subprocess.Popen(
+            [path],
+            cwd=terminal_dir,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        logger.warning(
+            "MT5 sync terminal bootstrap Popen failed mt5_account_id=%s err=%s",
+            mt5_account_id,
+            exc,
+        )
+        return False
+    logger.warning(
+        "MT5 sync terminal bootstrap launch mt5_account_id=%s path=%s cooldown_s=%s",
+        mt5_account_id,
+        path,
+        cooldown,
+    )
+    post_sleep = _mt5_terminal_launch_post_sleep_seconds()
+    if post_sleep:
+        time.sleep(post_sleep)
+    return True
 
 
 def _precheck_mt5_history_stale_vs_db(
@@ -691,6 +777,7 @@ def sync_mt5_account(
     db_open_mt5_count = None
     history_stale = False
     mt5_soft_reconnect_done = False
+    mt5_terminal_bootstrap_done = False
     try:
         try:
             lock_acquired = claim_lock(_sync_lock_key(mt5_account_id), lock_token, ttl=600)
@@ -863,45 +950,55 @@ def sync_mt5_account(
 
                 _load_broker_snapshot()
                 now_probe = datetime.now(timezone.utc)
-                if _mt5_soft_reconnect_on_stale_enabled() and _precheck_mt5_history_stale_vs_db(
+                if _precheck_mt5_history_stale_vs_db(
                     open_position_count=open_position_count,
                     latest_deal_utc=latest_deal_utc,
                     user_id=user_id,
                     trade_account_id=trade_account_id,
                     now_utc=now_probe,
                 ):
-                    logger.warning(
-                        "MT5 sync soft reconnect mt5_account_id=%s trade_account_id=%s login=%s "
-                        "reason=broker_flat_history_lagging_db_open_mt5",
-                        mt5_account_id,
-                        trade_account_id,
-                        mt5_login,
+                    bootstrap_done = _maybe_launch_terminal_exe_for_stale_sync(
+                        terminal_path, mt5_account_id
                     )
-                    mt5.shutdown()
-                    if not mt5.initialize(**init_kwargs):
-                        raise RuntimeError(
-                            f"MT5 init failed after soft reconnect: {mt5.last_error()}"
+                    if bootstrap_done:
+                        mt5_terminal_bootstrap_done = True
+                    recover_session = (
+                        _mt5_soft_reconnect_on_stale_enabled() or bootstrap_done
+                    )
+                    if recover_session:
+                        logger.warning(
+                            "MT5 sync soft reconnect mt5_account_id=%s trade_account_id=%s login=%s "
+                            "reason=broker_flat_history_lagging_db_open_mt5 terminal_bootstrap=%s",
+                            mt5_account_id,
+                            trade_account_id,
+                            mt5_login,
+                            1 if bootstrap_done else 0,
                         )
-                    if not mt5.login(expected_login, password=investor_password, server=server):
-                        raise RuntimeError(
-                            f"MT5 login failed after soft reconnect: {mt5.last_error()}"
-                        )
-                    account_info = mt5.account_info()
-                    if account_info is None:
-                        raise RuntimeError(
-                            "MT5 account_info returned None after soft reconnect: "
-                            f"{mt5.last_error()}"
-                        )
-                    actual_login = getattr(account_info, "login", None)
-                    if actual_login != expected_login:
-                        raise RuntimeError(
-                            "Wrong MT5 account logged in during sync after soft reconnect: "
-                            f"expected {expected_login}, got {actual_login}"
-                        )
-                    mt5_balance = getattr(account_info, "balance", None)
-                    mt5_equity = getattr(account_info, "equity", None)
-                    mt5_soft_reconnect_done = True
-                    _load_broker_snapshot()
+                        mt5.shutdown()
+                        if not mt5.initialize(**init_kwargs):
+                            raise RuntimeError(
+                                f"MT5 init failed after soft reconnect: {mt5.last_error()}"
+                            )
+                        if not mt5.login(expected_login, password=investor_password, server=server):
+                            raise RuntimeError(
+                                f"MT5 login failed after soft reconnect: {mt5.last_error()}"
+                            )
+                        account_info = mt5.account_info()
+                        if account_info is None:
+                            raise RuntimeError(
+                                "MT5 account_info returned None after soft reconnect: "
+                                f"{mt5.last_error()}"
+                            )
+                        actual_login = getattr(account_info, "login", None)
+                        if actual_login != expected_login:
+                            raise RuntimeError(
+                                "Wrong MT5 account logged in during sync after soft reconnect: "
+                                f"expected {expected_login}, got {actual_login}"
+                            )
+                        mt5_balance = getattr(account_info, "balance", None)
+                        mt5_equity = getattr(account_info, "equity", None)
+                        mt5_soft_reconnect_done = True
+                        _load_broker_snapshot()
             finally:
                 mt5.shutdown()
 
@@ -1008,6 +1105,7 @@ def sync_mt5_account(
                     "db_open_mt5_count": db_open_mt5_count,
                     "history_stale": history_stale,
                     "soft_reconnect": mt5_soft_reconnect_done,
+                    "terminal_bootstrap": mt5_terminal_bootstrap_done,
                     "updated_at": sync_finished_at,
                 },
             )
@@ -1064,6 +1162,7 @@ def sync_mt5_account(
                 ("DB Open MT5 Trades", db_open_mt5_count),
                 ("History Stale", history_stale),
                 ("Soft reconnect", mt5_soft_reconnect_done),
+                ("Terminal bootstrap", mt5_terminal_bootstrap_done),
                 ("Finished", sync_finished_at),
                 ("Duration", duration_label(sync_started_at, sync_finished_at)),
                 ("Saved New", result.get("saved")),
@@ -1143,7 +1242,7 @@ def sync_mt5_account(
                 "MT5 sync noop mt5_account_id=%s trade_account_id=%s login=%s server=%s "
                 "trigger=%s skipped=%s latest_deal_utc=%s latest_deal_position=%s "
                 "open_positions=%s open_position_ids=%s latest_deal_lag_min=%s "
-                "db_open_mt5=%s history_stale=%s soft_reconnect=%s duration=%s mode=%s vm_id=%s",
+                "db_open_mt5=%s history_stale=%s soft_reconnect=%s terminal_bootstrap=%s duration=%s mode=%s vm_id=%s",
                 mt5_account_id,
                 trade_account_id,
                 mt5_login,
@@ -1158,6 +1257,7 @@ def sync_mt5_account(
                 db_open_mt5_count if db_open_mt5_count is not None else "-",
                 1 if history_stale else 0,
                 1 if mt5_soft_reconnect_done else 0,
+                1 if mt5_terminal_bootstrap_done else 0,
                 duration_label(sync_started_at, sync_finished_at),
                 sync_mode,
                 vm_id,
@@ -1173,7 +1273,7 @@ def sync_mt5_account(
                 "saved=%s updated=%s skipped=%s errors=%s timestamp_refreshes=%s "
                 "latest_deal_utc=%s latest_deal_position=%s open_positions=%s "
                 "open_position_ids=%s latest_deal_lag_min=%s db_open_mt5=%s "
-                "history_stale=%s soft_reconnect=%s duration=%s mode=%s vm_id=%s",
+                "history_stale=%s soft_reconnect=%s terminal_bootstrap=%s duration=%s mode=%s vm_id=%s",
                 mt5_account_id,
                 trade_account_id,
                 mt5_login,
@@ -1191,6 +1291,7 @@ def sync_mt5_account(
                 db_open_mt5_count if db_open_mt5_count is not None else "-",
                 1 if history_stale else 0,
                 1 if mt5_soft_reconnect_done else 0,
+                1 if mt5_terminal_bootstrap_done else 0,
                 duration_label(sync_started_at, sync_finished_at),
                 sync_mode,
                 vm_id,
