@@ -128,6 +128,9 @@
                         <h2>{% if form_mode == 'view' %}Full record{% elif form_mode == 'edit' %}Fields{% else %}Form{% endif %}</h2>
                         <span class="soft">{% if form_mode == 'view' %}View only{% else %}{{ "Futures" if account_type == "FUTURES" else "CFD" }}{% endif %}</span>
                     </div>
+                    {% if form_mode == 'view' and trade %}
+                    <a class="submit-btn trade-entry-panel-edit-link" href="{{ url_for('trades.edit_trade', trade_pubkey=trade.pubkey) }}">Edit trade</a>
+                    {% endif %}
                 </div>
 
                 {% if form_mode == 'edit' and trade %}
@@ -620,6 +623,11 @@
         max-width: 100%;
     }
 
+    /* App layout hides .head-actions in base.html; trade view/edit still need Edit / View details. */
+    body.app-layout section.dash-wrap.trade-detail-fullbleed .head-actions {
+        display: flex !important;
+    }
+
     .trade-detail-body--new {
         max-width: none;
     }
@@ -738,6 +746,15 @@
         align-items: flex-start;
         justify-content: space-between;
         gap: 0.65rem 1rem; }
+
+    .trade-entry-panel-edit-link {
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        align-self: center;
+        flex-shrink: 0;
+    }
 
     .trade-entry-panel-head-text { display: grid;
         gap: 0.22rem;
