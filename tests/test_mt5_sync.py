@@ -409,6 +409,20 @@ def test_sync_mt5_account_logs_skip_debug_after_table_not_inside_ascii_cell(app_
     monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
     monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
 
+    open_position = SimpleNamespace(
+        identifier=9001,
+        type=0,
+        symbol="EURUSD",
+        price_open=1.085,
+        volume=0.1,
+        commission=-0.5,
+        swap=0.0,
+        sl=0.0,
+        tp=0.0,
+        time=1_710_000_100,
+        comment="",
+    )
+
     fake_mt5 = SimpleNamespace(
         DEAL_ENTRY_IN=0,
         DEAL_ENTRY_OUT=1,
@@ -418,8 +432,10 @@ def test_sync_mt5_account_logs_skip_debug_after_table_not_inside_ascii_cell(app_
         initialize=lambda **kwargs: True,
         login=lambda *args, **kwargs: True,
         account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
-        history_deals_get=lambda *args, **kwargs: [],
-        positions_get=lambda: [],
+        history_deals_get=lambda *args, **kwargs: [
+            _deal(position_id=4004, price=1.25, time=1_710_000_000, symbol="EURUSD"),
+        ],
+        positions_get=lambda: [open_position],
         shutdown=lambda: True,
         last_error=lambda: (0, "ok"),
     )
@@ -484,6 +500,20 @@ def test_sync_mt5_account_quiet_idle_noop_skips_ascii_table(app_ctx, monkeypatch
     monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
     monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
 
+    open_position = SimpleNamespace(
+        identifier=9001,
+        type=0,
+        symbol="EURUSD",
+        price_open=1.085,
+        volume=0.1,
+        commission=-0.5,
+        swap=0.0,
+        sl=0.0,
+        tp=0.0,
+        time=1_710_000_100,
+        comment="",
+    )
+
     fake_mt5 = SimpleNamespace(
         DEAL_ENTRY_IN=0,
         DEAL_ENTRY_OUT=1,
@@ -493,8 +523,10 @@ def test_sync_mt5_account_quiet_idle_noop_skips_ascii_table(app_ctx, monkeypatch
         initialize=lambda **kwargs: True,
         login=lambda *args, **kwargs: True,
         account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
-        history_deals_get=lambda *args, **kwargs: [],
-        positions_get=lambda: [],
+        history_deals_get=lambda *args, **kwargs: [
+            _deal(position_id=4004, price=1.25, time=1_710_000_000, symbol="EURUSD"),
+        ],
+        positions_get=lambda: [open_position],
         shutdown=lambda: True,
         last_error=lambda: (0, "ok"),
     )
@@ -528,6 +560,10 @@ def test_sync_mt5_account_quiet_idle_noop_skips_ascii_table(app_ctx, monkeypatch
 
     assert "MT5 sync noop mt5_account_id=" in caplog.text
     assert "skipped=46" in caplog.text
+    assert "latest_deal_utc=2024-03-09T16:00:00+00:00" in caplog.text
+    assert "latest_deal_position=4004" in caplog.text
+    assert "open_positions=1" in caplog.text
+    assert "open_position_ids=9001" in caplog.text
     assert "Skip Reasons" not in caplog.text
 
 

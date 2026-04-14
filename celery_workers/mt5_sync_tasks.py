@@ -240,6 +240,38 @@ def _positions_to_open_trades(positions, *, position_type_buy=0, offset_minutes=
     return trades
 
 
+def _latest_deal_context(deals, *, offset_minutes=0):
+    latest_deal = None
+    latest_time = None
+    for deal in deals or []:
+        deal_time = getattr(deal, "time", None)
+        if not deal_time:
+            continue
+        if latest_time is None or deal_time > latest_time:
+            latest_time = deal_time
+            latest_deal = deal
+    if latest_deal is None:
+        return "-", "-"
+    return (
+        _to_utc_iso(latest_time, offset_minutes=offset_minutes) or "-",
+        str(getattr(latest_deal, "position_id", "") or "-"),
+    )
+
+
+def _open_position_ids_preview(positions, *, limit=5):
+    position_ids = []
+    for pos in positions or []:
+        pos_id = getattr(pos, "identifier", None) or getattr(pos, "ticket", None)
+        if pos_id in {None, ""}:
+            continue
+        position_ids.append(str(pos_id))
+    if not position_ids:
+        return "-"
+    if len(position_ids) <= limit:
+        return ",".join(position_ids)
+    return f"{','.join(position_ids[:limit])},+{len(position_ids) - limit}_more"
+
+
 def aggregate_deals_to_trades(
     deals,
     *,
@@ -571,6 +603,10 @@ def sync_mt5_account(
     trigger_label = str(trigger_source or "unknown").strip() or "unknown"
     history_chunks_fetched = 0
     sync_mode = None
+    latest_deal_utc = "-"
+    latest_deal_position = "-"
+    open_position_count = 0
+    open_position_ids_preview = "-"
     try:
         try:
             lock_acquired = claim_lock(_sync_lock_key(mt5_account_id), lock_token, ttl=600)
@@ -698,6 +734,10 @@ def sync_mt5_account(
                     log_chunk_merges=verbose_mt5_sync_logs,
                 )
                 raw_deal_count = len(deals)
+                latest_deal_utc, latest_deal_position = _latest_deal_context(
+                    deals,
+                    offset_minutes=applied_offset_minutes,
+                )
 
                 deal_type_buy = getattr(mt5, "DEAL_TYPE_BUY", 0)
                 trades = aggregate_deals_to_trades(
@@ -717,6 +757,8 @@ def sync_mt5_account(
                 # when they were opened, so it catches trades that fall outside the
                 # history_deals_get window or whose entry deals are filtered out.
                 open_positions = mt5.positions_get() or []
+                open_position_count = len(open_positions)
+                open_position_ids_preview = _open_position_ids_preview(open_positions)
                 position_trades = _positions_to_open_trades(
                     open_positions,
                     position_type_buy=deal_type_buy,
@@ -835,9 +877,13 @@ def sync_mt5_account(
                 ("History chunk days", _history_chunk_days()),
                 ("History API Chunks", history_chunks_fetched),
                 ("Raw Deals", raw_deal_count),
+                ("Latest Deal (UTC)", latest_deal_utc),
+                ("Latest Deal Position", latest_deal_position),
                 ("Trade Rows", aggregated_trade_count),
                 ("Open Rows", open_trade_count),
                 ("Closed Rows", closed_trade_count),
+                ("Open Positions", open_position_count),
+                ("Open Position IDs", open_position_ids_preview),
                 ("Finished", sync_finished_at),
                 ("Duration", duration_label(sync_started_at, sync_finished_at)),
                 ("Saved New", result.get("saved")),
@@ -907,13 +953,18 @@ def sync_mt5_account(
         elif idle_noop:
             logger.info(
                 "MT5 sync noop mt5_account_id=%s trade_account_id=%s login=%s server=%s "
-                "trigger=%s skipped=%s duration=%s mode=%s vm_id=%s",
+                "trigger=%s skipped=%s latest_deal_utc=%s latest_deal_position=%s "
+                "open_positions=%s open_position_ids=%s duration=%s mode=%s vm_id=%s",
                 mt5_account_id,
                 trade_account_id,
                 mt5_login,
                 server,
                 trigger_label,
                 skipped_n,
+                latest_deal_utc,
+                latest_deal_position,
+                open_position_count,
+                open_position_ids_preview,
                 duration_label(sync_started_at, sync_finished_at),
                 sync_mode,
                 vm_id,
@@ -925,7 +976,9 @@ def sync_mt5_account(
             tsr = result.get("timestamp_refreshes")
             logger.info(
                 "MT5 sync mt5_account_id=%s trade_account_id=%s login=%s trigger=%s "
-                "saved=%s updated=%s skipped=%s errors=%s timestamp_refreshes=%s duration=%s mode=%s vm_id=%s",
+                "saved=%s updated=%s skipped=%s errors=%s timestamp_refreshes=%s "
+                "latest_deal_utc=%s latest_deal_position=%s open_positions=%s "
+                "open_position_ids=%s duration=%s mode=%s vm_id=%s",
                 mt5_account_id,
                 trade_account_id,
                 mt5_login,
@@ -935,6 +988,10 @@ def sync_mt5_account(
                 skipped_n,
                 errors_n,
                 tsr if tsr is not None else "-",
+                latest_deal_utc,
+                latest_deal_position,
+                open_position_count,
+                open_position_ids_preview,
                 duration_label(sync_started_at, sync_finished_at),
                 sync_mode,
                 vm_id,
