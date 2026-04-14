@@ -91,6 +91,52 @@ def test_format_mt5_worker_window_title_for_sync_worker():
     assert title == "MT5 Sync Window | 5 Accounts Active | 4 In Queue | 1 Running"
 
 
+def test_summarize_mt5_sync_diag_states_prefers_worst_lag():
+    summary = celery_app_module._summarize_mt5_sync_diag_states(
+        [
+            {
+                "mt5_account_id": "18",
+                "history_stale": "1",
+                "latest_deal_lag_minutes": "461",
+            },
+            {
+                "mt5_account_id": "22",
+                "history_stale": "1",
+                "latest_deal_lag_minutes": "35",
+            },
+            {
+                "mt5_account_id": "9",
+                "history_stale": "0",
+                "latest_deal_lag_minutes": "800",
+            },
+        ]
+    )
+
+    assert summary == {
+        "history_stale_accounts": 2,
+        "history_stale_mt5_account_id": "18",
+        "history_stale_max_lag_minutes": 461,
+    }
+
+
+def test_format_mt5_worker_window_title_for_sync_worker_includes_history_stale_summary():
+    config = celery_app_module._get_mt5_worker_window_config("mt5-sync@test-host")
+
+    title = celery_app_module._format_mt5_worker_window_title(
+        config,
+        stats={
+            "active_accounts": 5,
+            "history_stale_accounts": 1,
+            "history_stale_mt5_account_id": "18",
+            "history_stale_max_lag_minutes": 461,
+        },
+        queue_depth=4,
+        active_tasks=1,
+    )
+
+    assert title == "MT5 Sync Window | 5 Accounts Active | 4 In Queue | 1 Running | 1 Hist Stale | MT5 18 7h41m"
+
+
 def test_format_mt5_worker_window_title_for_setup_worker():
     config = celery_app_module._get_mt5_worker_window_config("mt5-setup@test-host")
 

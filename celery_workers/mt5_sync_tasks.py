@@ -272,6 +272,49 @@ def _open_position_ids_preview(positions, *, limit=5):
     return f"{','.join(position_ids[:limit])},+{len(position_ids) - limit}_more"
 
 
+def _history_stale_threshold_minutes():
+    raw_value = os.getenv("FXJ_MT5_HISTORY_STALE_THRESHOLD_MINUTES", "").strip()
+    if not raw_value:
+        return 30
+    try:
+        return max(int(raw_value), 1)
+    except (TypeError, ValueError):
+        return 30
+
+
+def _lag_minutes_from_utc_iso(utc_iso_value, *, now=None):
+    text_value = str(utc_iso_value or "").strip()
+    if not text_value or text_value == "-":
+        return None
+    try:
+        parsed = datetime.fromisoformat(text_value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    else:
+        parsed = parsed.astimezone(timezone.utc)
+    reference = now or datetime.now(timezone.utc)
+    lag_seconds = max((reference - parsed).total_seconds(), 0)
+    return int(lag_seconds // 60)
+
+
+def _count_open_mt5_db_trades(*, user_id, trade_account_id):
+    from models import Trade  # noqa: PLC0415
+
+    return (
+        Trade.query.filter_by(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+        )
+        .filter(
+            Trade.mt5_position.isnot(None),
+            Trade.closed_at.is_(None),
+        )
+        .count()
+    )
+
+
 def aggregate_deals_to_trades(
     deals,
     *,
@@ -573,7 +616,12 @@ def sync_mt5_account(
     trigger_source="unknown",
     recalibrate_trade_timestamps=False,
 ):
-    from celery_workers.cache import CacheUnavailableError, claim_lock, release_lock
+    from celery_workers.cache import (
+        CacheUnavailableError,
+        claim_lock,
+        release_lock,
+        set_worker_state,
+    )
 
     task_id = getattr(getattr(self, "request", None), "id", None)
     lock_token = uuid.uuid4().hex
@@ -605,8 +653,11 @@ def sync_mt5_account(
     sync_mode = None
     latest_deal_utc = "-"
     latest_deal_position = "-"
+    latest_deal_lag_minutes = None
     open_position_count = 0
     open_position_ids_preview = "-"
+    db_open_mt5_count = None
+    history_stale = False
     try:
         try:
             lock_acquired = claim_lock(_sync_lock_key(mt5_account_id), lock_token, ttl=600)
@@ -834,6 +885,20 @@ def sync_mt5_account(
         saved_n = int(result.get("saved") or 0)
         updated_n = int(result.get("updated") or 0)
         errors_n = int(result.get("errors") or 0)
+        latest_deal_lag_minutes = _lag_minutes_from_utc_iso(
+            latest_deal_utc,
+            now=sync_finished_at,
+        )
+        if open_position_count == 0 and (
+            latest_deal_lag_minutes is None
+            or latest_deal_lag_minutes >= _history_stale_threshold_minutes()
+        ):
+            db.session.expire_all()
+            db_open_mt5_count = _count_open_mt5_db_trades(
+                user_id=user_id,
+                trade_account_id=trade_account_id,
+            )
+            history_stale = db_open_mt5_count > 0
         skip_reasons = result.get("skip_reasons") or {}
         worrisome_skip_n = _worrisome_skip_total(skip_reasons)
         # Beat/incremental runs often re-post the same closed positions; every row
@@ -843,6 +908,31 @@ def sync_mt5_account(
             skipped_n > 0 and saved_n == 0 and updated_n == 0 and not idle_noop
         )
         skip_debug_rows = result.get("skip_debug") or []
+        try:
+            set_worker_state(
+                "mt5_sync_diag",
+                str(mt5_account_id),
+                {
+                    "mt5_account_id": mt5_account_id,
+                    "trade_account_id": trade_account_id,
+                    "latest_deal_utc": latest_deal_utc,
+                    "latest_deal_position": latest_deal_position,
+                    "latest_deal_lag_minutes": latest_deal_lag_minutes,
+                    "open_positions": open_position_count,
+                    "open_position_ids": open_position_ids_preview,
+                    "db_open_mt5_count": db_open_mt5_count,
+                    "history_stale": history_stale,
+                    "updated_at": sync_finished_at,
+                },
+            )
+        except CacheUnavailableError:
+            pass
+        except Exception as exc:
+            logger.debug(
+                "MT5 sync diag state update failed mt5_account_id=%s: %s",
+                mt5_account_id,
+                exc,
+            )
 
         want_full_worker_log = (
             verbose_mt5_sync_logs
@@ -879,11 +969,14 @@ def sync_mt5_account(
                 ("Raw Deals", raw_deal_count),
                 ("Latest Deal (UTC)", latest_deal_utc),
                 ("Latest Deal Position", latest_deal_position),
+                ("Latest Deal Lag (min)", latest_deal_lag_minutes),
                 ("Trade Rows", aggregated_trade_count),
                 ("Open Rows", open_trade_count),
                 ("Closed Rows", closed_trade_count),
                 ("Open Positions", open_position_count),
                 ("Open Position IDs", open_position_ids_preview),
+                ("DB Open MT5 Trades", db_open_mt5_count),
+                ("History Stale", history_stale),
                 ("Finished", sync_finished_at),
                 ("Duration", duration_label(sync_started_at, sync_finished_at)),
                 ("Saved New", result.get("saved")),
@@ -900,6 +993,13 @@ def sync_mt5_account(
                         f"idle noop — {skipped_n} broker row(s) matched DB (benign)",
                     )
                 )
+                if history_stale:
+                    summary_rows.append(
+                        (
+                            "Alert",
+                            "broker positions are flat, DB still has MT5 trades open, and deal history is lagging",
+                        )
+                    )
             elif worrisome_no_save:
                 summary_rows.extend(
                     [
@@ -917,7 +1017,7 @@ def sync_mt5_account(
                 logger,
                 "MT5 Sync",
                 summary_rows,
-                level=logging.WARNING if worrisome_no_save else logging.INFO,
+                level=logging.WARNING if (worrisome_no_save or history_stale) else logging.INFO,
             )
             if worrisome_no_save and skip_debug_rows:
                 try:
@@ -951,10 +1051,12 @@ def sync_mt5_account(
                 mt5_account_id, task_id, trigger_label, result, detail="full"
             )
         elif idle_noop:
-            logger.info(
+            logger.log(
+                logging.WARNING if history_stale else logging.INFO,
                 "MT5 sync noop mt5_account_id=%s trade_account_id=%s login=%s server=%s "
                 "trigger=%s skipped=%s latest_deal_utc=%s latest_deal_position=%s "
-                "open_positions=%s open_position_ids=%s duration=%s mode=%s vm_id=%s",
+                "open_positions=%s open_position_ids=%s latest_deal_lag_min=%s "
+                "db_open_mt5=%s history_stale=%s duration=%s mode=%s vm_id=%s",
                 mt5_account_id,
                 trade_account_id,
                 mt5_login,
@@ -965,6 +1067,9 @@ def sync_mt5_account(
                 latest_deal_position,
                 open_position_count,
                 open_position_ids_preview,
+                latest_deal_lag_minutes if latest_deal_lag_minutes is not None else "-",
+                db_open_mt5_count if db_open_mt5_count is not None else "-",
+                1 if history_stale else 0,
                 duration_label(sync_started_at, sync_finished_at),
                 sync_mode,
                 vm_id,
@@ -974,11 +1079,13 @@ def sync_mt5_account(
             )
         else:
             tsr = result.get("timestamp_refreshes")
-            logger.info(
+            logger.log(
+                logging.WARNING if history_stale else logging.INFO,
                 "MT5 sync mt5_account_id=%s trade_account_id=%s login=%s trigger=%s "
                 "saved=%s updated=%s skipped=%s errors=%s timestamp_refreshes=%s "
                 "latest_deal_utc=%s latest_deal_position=%s open_positions=%s "
-                "open_position_ids=%s duration=%s mode=%s vm_id=%s",
+                "open_position_ids=%s latest_deal_lag_min=%s db_open_mt5=%s "
+                "history_stale=%s duration=%s mode=%s vm_id=%s",
                 mt5_account_id,
                 trade_account_id,
                 mt5_login,
@@ -992,6 +1099,9 @@ def sync_mt5_account(
                 latest_deal_position,
                 open_position_count,
                 open_position_ids_preview,
+                latest_deal_lag_minutes if latest_deal_lag_minutes is not None else "-",
+                db_open_mt5_count if db_open_mt5_count is not None else "-",
+                1 if history_stale else 0,
                 duration_label(sync_started_at, sync_finished_at),
                 sync_mode,
                 vm_id,

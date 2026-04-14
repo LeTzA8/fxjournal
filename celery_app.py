@@ -278,6 +278,58 @@ def _format_mt5_worker_title_count(value, label):
     return f"{int(value)} {label}"
 
 
+def _parse_worker_stat_int(value):
+    text_value = str(value or "").strip()
+    if not text_value:
+        return None
+    try:
+        return int(text_value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_worker_stat_bool(value):
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _format_mt5_worker_lag_label(minutes):
+    parsed = _parse_worker_stat_int(minutes)
+    if parsed is None:
+        return "?"
+    hours, mins = divmod(max(parsed, 0), 60)
+    if hours > 0:
+        return f"{hours}h{mins:02d}m"
+    return f"{mins}m"
+
+
+def _summarize_mt5_sync_diag_states(diag_states):
+    stale_states = []
+    for row in diag_states or []:
+        if not _parse_worker_stat_bool(row.get("history_stale")):
+            continue
+        stale_states.append(row)
+
+    if not stale_states:
+        return {
+            "history_stale_accounts": 0,
+            "history_stale_mt5_account_id": None,
+            "history_stale_max_lag_minutes": None,
+        }
+
+    def _sort_key(row):
+        lag_minutes = _parse_worker_stat_int(row.get("latest_deal_lag_minutes"))
+        return lag_minutes if lag_minutes is not None else -1
+
+    worst_state = max(stale_states, key=_sort_key)
+    return {
+        "history_stale_accounts": len(stale_states),
+        "history_stale_mt5_account_id": worst_state.get("mt5_account_id"),
+        "history_stale_max_lag_minutes": _parse_worker_stat_int(
+            worst_state.get("latest_deal_lag_minutes")
+        ),
+    }
+
+
 def _format_mt5_worker_window_title(config, *, stats=None, queue_depth=None, active_tasks=0):
     stats = stats or {}
     title_parts = [config["title_prefix"]]
@@ -289,6 +341,15 @@ def _format_mt5_worker_window_title(config, *, stats=None, queue_depth=None, act
     )
     title_parts.append(_format_mt5_worker_title_count(queue_depth, "In Queue"))
     title_parts.append(_format_mt5_worker_title_count(active_tasks, "Running"))
+    if config["worker_kind"] == "mt5_sync":
+        history_stale_accounts = _parse_worker_stat_int(stats.get("history_stale_accounts"))
+        stale_mt5_account_id = stats.get("history_stale_mt5_account_id")
+        if history_stale_accounts:
+            title_parts.append(f"{history_stale_accounts} Hist Stale")
+            if stale_mt5_account_id:
+                title_parts.append(
+                    f"MT5 {stale_mt5_account_id} {_format_mt5_worker_lag_label(stats.get('history_stale_max_lag_minutes'))}"
+                )
     return " | ".join(title_parts)
 
 
@@ -308,6 +369,7 @@ def _set_windows_console_title(title_text):
 
 def _load_mt5_worker_window_stats(config):
     flask_app = _resolve_flask_app()
+    active_account_ids = set()
     with flask_app.app_context():
         from models import MT5Account, db
 
@@ -315,11 +377,14 @@ def _load_mt5_worker_window_stats(config):
             MT5Account.user_id.isnot(None),
             MT5Account.trade_account_id.isnot(None),
         )
-        active_accounts = (
+        active_account_rows = (
             db.session.query(MT5Account.id)
             .filter(*linked_filters, MT5Account.is_active.is_(True))
-            .count()
+            .all()
         )
+        active_accounts = len(active_account_rows)
+        if config["worker_kind"] == "mt5_sync":
+            active_account_ids = {str(row[0]) for row in active_account_rows}
         pending_accounts = (
             db.session.query(MT5Account.id)
             .filter(*linked_filters, MT5Account.is_active.is_(False))
@@ -327,10 +392,19 @@ def _load_mt5_worker_window_stats(config):
         )
 
     queue_depth = None
+    diag_summary = {}
     try:
-        from celery_workers.cache import CacheUnavailableError, get_queue_depth
+        from celery_workers.cache import CacheUnavailableError, get_queue_depth, list_worker_states
 
         queue_depth = get_queue_depth(config["queue_name"])
+        if config["worker_kind"] == "mt5_sync":
+            diag_summary = _summarize_mt5_sync_diag_states(
+                [
+                    row
+                    for row in list_worker_states("mt5_sync_diag")
+                    if str(row.get("mt5_account_id") or row.get("worker_id") or "").strip() in active_account_ids
+                ]
+            )
     except CacheUnavailableError:
         queue_depth = None
     except Exception as exc:
@@ -340,6 +414,7 @@ def _load_mt5_worker_window_stats(config):
         "active_accounts": active_accounts,
         "pending_accounts": pending_accounts,
         "queue_depth": queue_depth,
+        **diag_summary,
     }
 
 
