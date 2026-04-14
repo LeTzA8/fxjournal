@@ -19,9 +19,12 @@ from trading import MT5_DEFAULT_SOURCE_TIMEZONE_NAME
 logger = logging.getLogger(__name__)
 
 # ── DEBUG: raw MT5 snapshot logger ──────────────────────────────────────────
-# Set to the integer MT5Account.id you want to trace.
-# Leave as None to disable entirely (zero overhead for all other accounts).
-_MT5_DEBUG_TARGET_ACCOUNT_ID = None
+# Set FXJ_MT5_DEBUG_ACCOUNT_ID=<TradeAccount.id> in the VM env to enable.
+# This is the Trade Account ID visible in the UI — not the internal MT5Account row id.
+# Leave unset (or empty) to disable entirely — zero overhead for all others.
+_raw = os.getenv("FXJ_MT5_DEBUG_ACCOUNT_ID", "").strip()
+_MT5_DEBUG_TARGET_ACCOUNT_ID = int(_raw) if _raw.isdigit() else None
+del _raw
 # ────────────────────────────────────────────────────────────────────────────
 
 
@@ -77,17 +80,36 @@ def _shift_datetime_by_minutes(value, *, minutes=0):
     return value + timedelta(minutes=int(minutes or 0))
 
 
-def _mt5_debug_log_raw_snapshot(mt5_account_id, open_positions, deals, latest_deal_utc, now_utc):
+def _mt5_debug_resolve_log_dir():
+    """Mirror the same log-dir resolution used by celery_app._configure_worker_file_logging."""
+    import re as _re
+    configured = os.getenv("FXJ_WORKER_LOG_DIR", "").strip()
+    if configured:
+        log_root = os.path.abspath(configured)
+    else:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        log_root = os.path.join(repo_root, "logs", "workers")
+    computername = os.getenv("COMPUTERNAME", "vm").strip() or "vm"
+    raw_hostname = f"mt5-sync@{computername}"
+    safe_name = raw_hostname.replace("@", "_at_")
+    safe_name = _re.sub(r'[:*?"<>|]+', "_", safe_name)
+    safe_name = _re.sub(r"\s+", "_", safe_name).strip("._")[:120] or "celery"
+    return os.path.join(log_root, safe_name)
+
+
+def _mt5_debug_log_raw_snapshot(mt5_account_id, trade_account_id, open_positions, deals, latest_deal_utc, now_utc):
     """
-    Append a full raw MT5 broker snapshot to logs/debug/mt5_debug_<id>.log.
-    Only called when mt5_account_id == _MT5_DEBUG_TARGET_ACCOUNT_ID.
+    Write one raw MT5 broker snapshot to a new per-sync file in the worker log dir.
+    Only called when trade_account_id == _MT5_DEBUG_TARGET_ACCOUNT_ID.
     All exceptions are silently swallowed — this must never interrupt a sync.
     """
     try:
-        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        log_dir = os.path.join(repo_root, "logs", "debug")
+        ref = now_utc if now_utc else datetime.now(timezone.utc)
+        ts = ref.strftime("%Y%m%d_%H%M%SZ")
+
+        log_dir = _mt5_debug_resolve_log_dir()
         os.makedirs(log_dir, exist_ok=True)
-        log_path = os.path.join(log_dir, f"mt5_debug_{mt5_account_id}.log")
+        log_path = os.path.join(log_dir, f"mt5_debug_trade{trade_account_id}_mt5acct{mt5_account_id}_{ts}.log")
 
         def _ser(obj):
             if obj is None:
@@ -98,7 +120,7 @@ def _mt5_debug_log_raw_snapshot(mt5_account_id, open_positions, deals, latest_de
                 return {k: v for k, v in obj.__dict__.items() if not k.startswith("_")}
             return repr(obj)
 
-        now_iso = now_utc.isoformat(timespec="seconds") if now_utc else datetime.now(timezone.utc).isoformat(timespec="seconds")
+        now_iso = ref.isoformat(timespec="seconds")
 
         delta_seconds = None
         if latest_deal_utc and latest_deal_utc != "-":
@@ -106,16 +128,15 @@ def _mt5_debug_log_raw_snapshot(mt5_account_id, open_positions, deals, latest_de
                 deal_dt = datetime.fromisoformat(latest_deal_utc)
                 if deal_dt.tzinfo is None:
                     deal_dt = deal_dt.replace(tzinfo=timezone.utc)
-                ref = now_utc if now_utc else datetime.now(timezone.utc)
                 delta_seconds = int((ref - deal_dt).total_seconds())
             except Exception:
                 pass
 
         block = "\n".join([
-            "",
             "==== SYNC START ====",
             f"time: {now_iso}",
-            f"account_id: {mt5_account_id}",
+            f"trade_account_id: {trade_account_id}",
+            f"mt5_account_id: {mt5_account_id}",
             "",
             f"open_position_count: {len(open_positions)}",
             f"deal_count: {len(deals)}",
@@ -134,7 +155,7 @@ def _mt5_debug_log_raw_snapshot(mt5_account_id, open_positions, deals, latest_de
             "",
         ])
 
-        with open(log_path, "a", encoding="utf-8") as fh:
+        with open(log_path, "w", encoding="utf-8") as fh:
             fh.write(block + "\n")
     except Exception:
         pass  # Never break sync
@@ -933,10 +954,11 @@ def sync_mt5_account(
                     # DEBUG: raw snapshot log — no-op unless _MT5_DEBUG_TARGET_ACCOUNT_ID is set
                     if (
                         _MT5_DEBUG_TARGET_ACCOUNT_ID is not None
-                        and mt5_account_id == _MT5_DEBUG_TARGET_ACCOUNT_ID
+                        and trade_account_id == _MT5_DEBUG_TARGET_ACCOUNT_ID
                     ):
                         _mt5_debug_log_raw_snapshot(
                             mt5_account_id=mt5_account_id,
+                            trade_account_id=trade_account_id,
                             open_positions=open_positions,
                             deals=deals,
                             latest_deal_utc=latest_deal_utc,
