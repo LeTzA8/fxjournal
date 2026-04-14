@@ -97,9 +97,12 @@ def _mt5_debug_resolve_log_dir():
     return os.path.join(log_root, safe_name)
 
 
-def _mt5_debug_log_raw_snapshot(mt5_account_id, trade_account_id, open_positions, deals, latest_deal_utc, now_utc):
+def _mt5_debug_log_raw_snapshot(mt5_account_id, trade_account_id, open_positions, deals,
+                                latest_deal_utc, now_utc, mt5, from_date, to_date):
     """
     Write one raw MT5 broker snapshot to a new per-sync file in the worker log dir.
+    Also runs a group="*" comparison call to test whether the terminal's per-symbol
+    cache returns deals that the unfiltered history_deals_get missed.
     Only called when trade_account_id == _MT5_DEBUG_TARGET_ACCOUNT_ID.
     All exceptions are silently swallowed — this must never interrupt a sync.
     """
@@ -132,20 +135,46 @@ def _mt5_debug_log_raw_snapshot(mt5_account_id, trade_account_id, open_positions
             except Exception:
                 pass
 
+        # --- group="*" comparison probe ---
+        # Ask the terminal for the same window but with an explicit wildcard group
+        # filter. This uses a different internal code path and can surface deals
+        # that the unfiltered call misses due to terminal cache divergence.
+        grouped_deals = []
+        grouped_error = None
+        grouped_extra_tickets = []
+        try:
+            grouped_deals = list(mt5.history_deals_get(from_date, to_date, group="*") or [])
+            original_tickets = {d.get("ticket") if isinstance(d, dict) else getattr(d, "ticket", None) for d in deals}
+            grouped_extra_tickets = [
+                _ser(d) for d in grouped_deals
+                if (d.get("ticket") if isinstance(d, dict) else getattr(d, "ticket", None))
+                not in original_tickets
+            ]
+        except Exception as exc:
+            grouped_error = repr(exc)
+
         block = "\n".join([
             "==== SYNC START ====",
             f"time: {now_iso}",
             f"trade_account_id: {trade_account_id}",
             f"mt5_account_id: {mt5_account_id}",
+            f"query_from: {from_date.isoformat() if hasattr(from_date, 'isoformat') else str(from_date)}",
+            f"query_to: {to_date.isoformat() if hasattr(to_date, 'isoformat') else str(to_date)}",
             "",
             f"open_position_count: {len(open_positions)}",
-            f"deal_count: {len(deals)}",
+            f"deal_count (unfiltered): {len(deals)}",
+            f"deal_count (group=*): {len(grouped_deals)}",
+            f"deals_only_in_grouped: {len(grouped_extra_tickets)}",
             "",
             "positions:",
             json.dumps([_ser(p) for p in open_positions], indent=2, default=str),
             "",
-            "deals:",
+            "deals (unfiltered):",
             json.dumps([_ser(d) for d in deals], indent=2, default=str),
+            "",
+            "deals only in group=* (missing from unfiltered):",
+            json.dumps(grouped_extra_tickets, indent=2, default=str)
+            if grouped_error is None else f"ERROR: {grouped_error}",
             "",
             "--- summary ---",
             f"latest_deal_time: {latest_deal_utc}",
@@ -963,6 +992,9 @@ def sync_mt5_account(
                             deals=deals,
                             latest_deal_utc=latest_deal_utc,
                             now_utc=datetime.now(timezone.utc),
+                            mt5=mt5,
+                            from_date=mt5_from_date,
+                            to_date=mt5_to_date,
                         )
 
                 _load_broker_snapshot()
