@@ -30,7 +30,7 @@
                     <a href="{{ url_for('trading_journal_page') }}" class="site-nav-link site-nav-sublink">Trading Journal</a>
                     <a href="{{ url_for('free_mt5_sync_page') }}" class="site-nav-link site-nav-sublink">Free MT5 Sync</a>
                     <a href="{{ url_for('weekly_trading_review_page') }}" class="site-nav-link site-nav-sublink">Weekly Trading Review</a>
-                    <a href="{{ url_for('trade_replay_chart_page') }}" class="site-nav-link site-nav-sublink">Trade replay chart</a>
+                    <a href="{{ url_for('trade_replay_chart_page') }}" class="site-nav-link site-nav-sublink">Trade replay <span class="site-nav-soon">Soon</span></a>
                     <a href="{{ url_for('why_not_improving_page') }}" class="site-nav-link site-nav-sublink">Why Am I Not Improving?</a>
                 </div>
             </div>
@@ -295,9 +295,9 @@
                     <span>Open the page</span>
                 </a>
                 <a href="{{ url_for('trade_replay_chart_page') }}" class="use-case-card landing-reveal" data-reveal-delay="530">
-                    <p class="use-case-kicker">Chart context</p>
+                    <p class="use-case-kicker">Coming soon</p>
                     <h3>Trade replay chart</h3>
-                    <p>Replay trades on price inside the journal—see entries, exits, and the path between them in one view.</p>
+                    <p>Chart replay is in admin preview today; wider access when rollout opens. Read what is on the way.</p>
                     <span>Open the page</span>
                 </a>
                 <a href="{{ url_for('why_not_improving_page') }}" class="use-case-card landing-reveal" data-reveal-delay="590">
@@ -318,6 +318,7 @@
                 Import trades cleanly, review one account with context, and spot recurring mistakes without creating more journal admin around it.
             </p>
 
+            <div class="feature-showcase-stack">
             <div class="feature-showcase-grid" role="list" aria-label="MyFXJournal feature showcase">
                 <article class="feature-showcase-card landing-reveal" data-reveal-delay="260">
                     <div class="feature-showcase-copy">
@@ -371,30 +372,6 @@
                 </article>
                 <article class="feature-showcase-card landing-reveal" data-reveal-delay="420">
                     <div class="feature-showcase-copy">
-                        <p class="feature-kicker">📉 Trade replay</p>
-                        <h3><span class="feature-title-accent">My replay chart</span> Put entries and exits back on price for clearer review</h3>
-                        <p>
-                            The trade replay chart shows your fills on the market path so you can see how the move developed around your entry and exit—not only the row in a trade list.
-                        </p>
-                        <p class="feature-detail">Use it when you want the session story on a chart, then keep using analytics and weekly AI review for the bigger pattern. <a href="{{ url_for('trade_replay_chart_page') }}">More on trade replay</a></p>
-                    </div>
-                    <figure class="feature-shot">
-                        <button
-                            type="button"
-                            class="feature-shot-trigger"
-                            data-feature-shot-trigger
-                            aria-label="Expand the trade replay chart screenshot"
-                        >
-                            <img
-                                src="{{ url_for('static', filename='images/features/replay-chart.png') }}"
-                                alt="MyFXJournal trade replay chart showing price action with trade entry and exit markers."
-                                loading="lazy"
-                            >
-                        </button>
-                    </figure>
-                </article>
-                <article class="feature-showcase-card landing-reveal" data-reveal-delay="500">
-                    <div class="feature-showcase-copy">
                         <p class="feature-kicker">📥 Import</p>
                         <h3><span class="feature-title-accent">Less cleanup</span> Bring broker history in without rebuilding everything by hand</h3>
                         <p>
@@ -418,7 +395,7 @@
                         </button>
                     </figure>
                 </article>
-                <article class="feature-showcase-card feature-showcase-card-sync landing-reveal" data-reveal-delay="580">
+                <article class="feature-showcase-card feature-showcase-card-sync landing-reveal" data-reveal-delay="500">
                     <div class="feature-showcase-copy">
                         <div class="feature-kicker-row">
                             <p class="feature-kicker">🔄 Automatic MT5 Sync</p>
@@ -458,6 +435,37 @@
                                 <span>Open beta slots</span>
                             </div>
                         </div>
+                    </figure>
+                </article>
+            </div>
+
+                <article class="feature-showcase-card feature-showcase-card-replay-panel landing-reveal" data-reveal-delay="620" aria-label="Trade replay chart feature, coming soon">
+                    <div class="feature-replay-panel-head">
+                        <div class="feature-showcase-copy feature-replay-panel-copy">
+                            <div class="feature-kicker-row">
+                                <p class="feature-kicker">📉 Trade replay</p>
+                                <span class="feature-coming-soon-pill">Coming soon</span>
+                            </div>
+                            <h3><span class="feature-title-accent">My replay chart</span> Put entries and exits back on price for clearer review</h3>
+                            <p>
+                                We are building a trade replay chart so you can see fills on the market path—not only a row in a trade list. It is in <strong>admin-only preview</strong> today; everyone else gets it when we open the rollout.
+                            </p>
+                            <p class="feature-detail">Until then, analytics and weekly AI review stay fully available. <a href="{{ url_for('trade_replay_chart_page') }}">What trade replay will do</a></p>
+                        </div>
+                    </div>
+                    <figure class="feature-shot feature-shot--wide">
+                        <button
+                            type="button"
+                            class="feature-shot-trigger"
+                            data-feature-shot-trigger
+                            aria-label="Expand the trade replay chart preview screenshot"
+                        >
+                            <img
+                                src="{{ url_for('static', filename='images/features/replay-chart.png') }}"
+                                alt="Preview of the MyFXJournal trade replay chart with price action and trade markers."
+                                loading="lazy"
+                            >
+                        </button>
                     </figure>
                 </article>
             </div>
@@ -1030,6 +1038,21 @@
         text-transform: none;
         letter-spacing: 0.01em;
         font-size: 0.8rem;
+    }
+
+    .site-nav-soon {
+        display: inline-block;
+        margin-left: 0.28rem;
+        padding: 0.06rem 0.32rem;
+        border-radius: 4px;
+        font-size: 0.62em;
+        font-weight: 800;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        vertical-align: 0.12em;
+        background: color-mix(in srgb, var(--accent) 14%, transparent);
+        color: color-mix(in srgb, var(--accent) 82%, var(--ink));
+        border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
     }
 
     .landing-auth-links {
@@ -1935,9 +1958,13 @@
     }
 
     #ai-demo,
-    #features,
     #compare {
         width: min(86vw, 1520px);
+        max-width: 100%;
+    }
+
+    #features {
+        width: min(94vw, 1760px);
         max-width: 100%;
     }
 
@@ -2224,12 +2251,21 @@
         font-size: 0.92rem;
     }
 
+    .feature-showcase-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 1.05rem;
+        width: 100%;
+        max-width: min(100%, 1720px);
+        margin: 0 auto;
+    }
+
     .feature-showcase-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 1rem;
-        margin: 0 auto 1rem;
-        width: min(100%, 1440px);
+        margin: 0;
+        width: 100%;
         max-width: 100%;
     }
 
@@ -2464,6 +2500,66 @@
         background:
             radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 16%, transparent), transparent 38%),
             color-mix(in srgb, var(--surface) 82%, transparent);
+    }
+
+    .feature-showcase-card-replay-panel {
+        grid-template-columns: 1fr;
+        gap: 1.1rem;
+        padding: 1.15rem 1.2rem 1.25rem;
+        align-items: stretch;
+        background:
+            radial-gradient(ellipse 120% 80% at 50% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 55%),
+            color-mix(in srgb, var(--surface) 82%, transparent);
+    }
+
+    .feature-replay-panel-head {
+        width: 100%;
+        max-width: min(68ch, 100%);
+    }
+
+    .feature-replay-panel-copy {
+        max-width: none;
+    }
+
+    .feature-coming-soon-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+        border-radius: 999px;
+        padding: 0.24rem 0.64rem;
+        background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+        color: color-mix(in srgb, var(--accent) 78%, var(--ink));
+        box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 10%, transparent);
+        font-family: var(--landing-font-mono);
+        font-size: 0.66rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .feature-shot--wide {
+        aspect-ratio: unset;
+        width: 100%;
+        min-height: clamp(200px, 36vw, 420px);
+        max-height: min(72vh, 720px);
+        height: auto;
+        padding: 0.55rem 0.75rem 0.85rem;
+        align-self: stretch;
+    }
+
+    .feature-shot--wide .feature-shot-trigger {
+        height: auto;
+        min-height: 0;
+    }
+
+    .feature-shot--wide img {
+        width: 100%;
+        height: auto;
+        max-height: min(68vh, 680px);
+        object-fit: contain;
+        object-position: center;
     }
 
     .feature-access-pill {
@@ -3167,12 +3263,22 @@
             gap: 0.85rem;
         }
 
-        .feature-shot,
+        .feature-shot:not(.feature-shot--wide),
         .feature-shot-sync-card {
             order: -1;
             height: auto;
             min-height: 0;
             aspect-ratio: 16 / 9;
+        }
+
+        .feature-shot--wide {
+            order: 0;
+            min-height: clamp(180px, 48vw, 360px);
+            max-height: min(58vh, 520px);
+        }
+
+        .feature-shot--wide img {
+            max-height: min(56vh, 500px);
         }
 
         .feature-shot-lightbox-dialog {

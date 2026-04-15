@@ -81,7 +81,7 @@ def test_trade_replay_chart_page_has_indexable_metadata(client):
     response = client.get("/trade-replay-chart")
 
     assert response.status_code == 200
-    assert b"Trade Replay Chart for Review" in response.data
+    assert b"Trade Replay Chart (Coming Soon)" in response.data
     assert b'<meta name="robots" content="index, follow">' in response.data
     assert b'href="http://localhost:5000/trade-replay-chart"' in response.data
 

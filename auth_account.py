@@ -815,59 +815,67 @@ SEO_PAGE_DEFINITIONS = {
         ),
     },
     "trade-replay-chart": {
-        "title": "Trade Replay Chart for Review | MyFXJournal",
+        "title": "Trade Replay Chart (Coming Soon) | MyFXJournal",
         "meta_description": (
-            "Replay trades on a price chart inside MyFXJournal. See entries, exits, and context in one view so review is about what happened on the chart—not just rows in a table."
+            "Trade replay on a price chart is coming to MyFXJournal: see entries, exits, and context on the chart—not just rows in a table. "
+            "In limited admin preview today; wider access when rollout opens."
         ),
-        "eyebrow": "Trade replay",
+        "eyebrow": "Trade replay · Coming soon",
         "hero_title": "Replay the trade on the chart—not just the spreadsheet row.",
         "hero_body": (
-            "MyFXJournal’s trade replay chart puts each trade back onto price so you can see where you entered, "
-            "where you exited, and how the move developed. Built for review sessions when you want the chart story, not only the numbers."
+            "We are building a trade replay chart that puts each trade back onto price so you can see entry, exit, and how the move developed. "
+            "It is in internal admin preview now and will open to everyone once the rollout is ready."
         ),
-        "chips": ("Chart-native review", "Entry & exit context", "Works with imported & synced history"),
-        "intro_title": "When the table view is not enough",
+        "chips": ("Coming soon", "Admin preview today", "Chart-native review"),
+        "intro_title": "Why we are building it",
         "intro_body": (
             "Closed-trade lists are fast for totals, but they rarely show the sequence you felt in the session. "
-            "Replay ties the journal back to the market structure you traded so the same mistake is easier to recognise next time."
+            "Replay will tie the journal back to the market structure you traded so the same mistake is easier to recognise next time."
         ),
         "fit_points": (
             "You already log or import trades and want review to feel closer to how you experienced the session.",
             "You want a single place to scan entries and exits against price instead of jumping between the journal and a separate platform.",
-            "You use weekly AI review for themes—and replay when you need the picture of one trade or one session.",
+            "You use weekly AI review for themes today—and will use replay when you need the picture of one trade or one session.",
         ),
         "cards": (
             {
                 "title": "See the trade in context",
-                "body": "Entries and exits sit on the chart timeline so you can relate fills to the move that was unfolding.",
+                "body": "Entries and exits on a chart timeline so you can relate fills to the move that was unfolding—planned for general access after preview.",
             },
             {
                 "title": "Faster post-session recall",
-                "body": "Skip mentally rebuilding the candle sequence from a flat list of prices and times.",
+                "body": "Skip mentally rebuilding the candle sequence from a flat list of prices and times once replay ships broadly.",
             },
             {
                 "title": "Same data as the journal",
-                "body": "Replay uses the trades already in your account—whether they came from import or optional MT5 sync.",
+                "body": "Replay will use the trades already in your account—whether they came from import or optional MT5 sync.",
             },
         ),
         "workflow_steps": (
             {
                 "title": "Get trades into the journal",
-                "body": "Import MT5 or Tradovate files, add manual trades, or use read-only MT5 sync when a slot is open.",
+                "body": "Import MT5 or Tradovate files, add manual trades, or use read-only MT5 sync when a slot is open—replay will sit on top of that history.",
             },
             {
-                "title": "Open replay on a trade",
-                "body": "From your trade list or detail view, jump into the replay chart for that position.",
+                "title": "Open replay on a trade (after launch)",
+                "body": "From your trade list or detail view, jump into the replay chart for that position once the feature leaves admin-only preview.",
             },
             {
                 "title": "Review with the chart in view",
                 "body": "Walk the path from entry to exit, then carry the takeaway into your weekly review or next-week rules.",
             },
         ),
-        "workflow_heading": "From history row to chart story.",
-        "cta_heading": "Review trades the way you remember them.",
-        "cta_body": "Start free, bring in your history, and use trade replay when you want the chart—not just the log.",
+        "workflow_heading": "How it will work when replay opens up.",
+        "cta_heading": "Get ready on the journal side today.",
+        "cta_body": "Start free and bring in your history now. When trade replay opens beyond admin preview, your trades will already be in place.",
         "faq": (
+            {
+                "question": "Can I use trade replay today?",
+                "answer": (
+                    "Not yet for normal accounts. The chart replay is in admin-gated preview while we finish it. "
+                    "We will open it more broadly when the rollout is ready—this page describes what is coming."
+                ),
+            },
             {
                 "question": "Is trade replay the same as live charting software?",
                 "answer": (
@@ -875,8 +883,10 @@ SEO_PAGE_DEFINITIONS = {
                 ),
             },
             {
-                "question": "Does replay work without MT5 sync?",
-                "answer": "Yes. Any trades in your journal—imports or manual entries—can be used for review features that depend on stored trade data.",
+                "question": "Will replay need MT5 sync?",
+                "answer": (
+                    "No. When it launches for your account, any trades already in your journal—imports or manual entries—can feed replay the same way other review features do."
+                ),
             },
             {
                 "question": "Does this give trade signals?",
