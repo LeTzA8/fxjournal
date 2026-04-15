@@ -23,12 +23,12 @@
     <meta property="og:locale" content="en_GB">
     <meta property="og:site_name" content="MyFXJournal">
     <meta property="og:url" content="{{ resolved_canonical_url }}">
-    <meta property="og:image" content="{{ url_for('static', filename='dashboard.png', v='1', _external=True) }}">
+    <meta property="og:image" content="{{ url_for('static', filename='images/features/dashboard.png', v='1', _external=True) }}">
     <meta property="og:image:alt" content="MyFXJournal dashboard and weekly AI review preview">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ title or 'MyFXJournal | Free Forex Trading Journal With Weekly AI Review' }}">
     <meta name="twitter:description" content="{{ meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
-    <meta name="twitter:image" content="{{ url_for('static', filename='dashboard.png', v='1', _external=True) }}">
+    <meta name="twitter:image" content="{{ url_for('static', filename='images/features/dashboard.png', v='1', _external=True) }}">
     {% if google_analytics_measurement_id %}
     <script async src="https://www.googletagmanager.com/gtag/js?id={{ google_analytics_measurement_id }}"></script>
     <script>

@@ -814,6 +814,76 @@ SEO_PAGE_DEFINITIONS = {
             },
         ),
     },
+    "trade-replay-chart": {
+        "title": "Trade Replay Chart for Review | MyFXJournal",
+        "meta_description": (
+            "Replay trades on a price chart inside MyFXJournal. See entries, exits, and context in one view so review is about what happened on the chart—not just rows in a table."
+        ),
+        "eyebrow": "Trade replay",
+        "hero_title": "Replay the trade on the chart—not just the spreadsheet row.",
+        "hero_body": (
+            "MyFXJournal’s trade replay chart puts each trade back onto price so you can see where you entered, "
+            "where you exited, and how the move developed. Built for review sessions when you want the chart story, not only the numbers."
+        ),
+        "chips": ("Chart-native review", "Entry & exit context", "Works with imported & synced history"),
+        "intro_title": "When the table view is not enough",
+        "intro_body": (
+            "Closed-trade lists are fast for totals, but they rarely show the sequence you felt in the session. "
+            "Replay ties the journal back to the market structure you traded so the same mistake is easier to recognise next time."
+        ),
+        "fit_points": (
+            "You already log or import trades and want review to feel closer to how you experienced the session.",
+            "You want a single place to scan entries and exits against price instead of jumping between the journal and a separate platform.",
+            "You use weekly AI review for themes—and replay when you need the picture of one trade or one session.",
+        ),
+        "cards": (
+            {
+                "title": "See the trade in context",
+                "body": "Entries and exits sit on the chart timeline so you can relate fills to the move that was unfolding.",
+            },
+            {
+                "title": "Faster post-session recall",
+                "body": "Skip mentally rebuilding the candle sequence from a flat list of prices and times.",
+            },
+            {
+                "title": "Same data as the journal",
+                "body": "Replay uses the trades already in your account—whether they came from import or optional MT5 sync.",
+            },
+        ),
+        "workflow_steps": (
+            {
+                "title": "Get trades into the journal",
+                "body": "Import MT5 or Tradovate files, add manual trades, or use read-only MT5 sync when a slot is open.",
+            },
+            {
+                "title": "Open replay on a trade",
+                "body": "From your trade list or detail view, jump into the replay chart for that position.",
+            },
+            {
+                "title": "Review with the chart in view",
+                "body": "Walk the path from entry to exit, then carry the takeaway into your weekly review or next-week rules.",
+            },
+        ),
+        "workflow_heading": "From history row to chart story.",
+        "cta_heading": "Review trades the way you remember them.",
+        "cta_body": "Start free, bring in your history, and use trade replay when you want the chart—not just the log.",
+        "faq": (
+            {
+                "question": "Is trade replay the same as live charting software?",
+                "answer": (
+                    "No. It is for journaling and review: reconstructing your trade on price for context, not for placing new trades or live analysis."
+                ),
+            },
+            {
+                "question": "Does replay work without MT5 sync?",
+                "answer": "Yes. Any trades in your journal—imports or manual entries—can be used for review features that depend on stored trade data.",
+            },
+            {
+                "question": "Does this give trade signals?",
+                "answer": "No. MyFXJournal is for review and process clarity, not recommendations or signals.",
+            },
+        ),
+    },
 }
 
 
@@ -1643,6 +1713,10 @@ def register_public_auth_routes(
     @app.route("/why-am-i-not-improving-in-trading")
     def why_not_improving_page():
         return _render_public_seo_page("why-am-i-not-improving-in-trading")
+
+    @app.route("/trade-replay-chart")
+    def trade_replay_chart_page():
+        return _render_public_seo_page("trade-replay-chart")
 
     @app.route("/robots.txt")
     def robots_txt():

@@ -30,6 +30,7 @@
                     <a href="{{ url_for('trading_journal_page') }}" class="site-nav-link site-nav-sublink">Trading Journal</a>
                     <a href="{{ url_for('free_mt5_sync_page') }}" class="site-nav-link site-nav-sublink">Free MT5 Sync</a>
                     <a href="{{ url_for('weekly_trading_review_page') }}" class="site-nav-link site-nav-sublink">Weekly Trading Review</a>
+                    <a href="{{ url_for('trade_replay_chart_page') }}" class="site-nav-link site-nav-sublink">Trade replay chart</a>
                     <a href="{{ url_for('why_not_improving_page') }}" class="site-nav-link site-nav-sublink">Why Am I Not Improving?</a>
                 </div>
             </div>
@@ -206,6 +207,21 @@
                 what slipped, and the one adjustment worth carrying into the next week.
             </p>
 
+            <figure class="ai-demo-screenshot landing-reveal" data-reveal-delay="220">
+                <button
+                    type="button"
+                    class="feature-shot-trigger"
+                    data-feature-shot-trigger
+                    aria-label="Expand the weekly AI review screenshot"
+                >
+                    <img
+                        src="{{ url_for('static', filename='images/features/ai-review.png') }}"
+                        alt="MyFXJournal weekly AI review interface showing coaching output built from trade history."
+                        loading="lazy"
+                    >
+                </button>
+            </figure>
+
             <div class="ai-demo-card landing-reveal" data-reveal-delay="260" data-typewriter-target>
                 <div class="ai-demo-card-head">
                     <span class="ai-demo-label">Latest Weekly Review</span>
@@ -293,7 +309,13 @@
                     <p>Built around turning the week into takeaways and reusable process rules without turning it into homework.</p>
                     <span>Open the page</span>
                 </a>
-                <a href="{{ url_for('why_not_improving_page') }}" class="use-case-card landing-reveal" data-reveal-delay="560">
+                <a href="{{ url_for('trade_replay_chart_page') }}" class="use-case-card landing-reveal" data-reveal-delay="530">
+                    <p class="use-case-kicker">Chart context</p>
+                    <h3>Trade replay chart</h3>
+                    <p>Replay trades on price inside the journal—see entries, exits, and the path between them in one view.</p>
+                    <span>Open the page</span>
+                </a>
+                <a href="{{ url_for('why_not_improving_page') }}" class="use-case-card landing-reveal" data-reveal-delay="590">
                     <p class="use-case-kicker">Feel stuck?</p>
                     <h3>Why Am I Not Improving?</h3>
                     <p>You're not stuck from lack of knowledge. You're repeating the same mistake without seeing it.</p>
@@ -330,7 +352,7 @@
                             aria-label="Expand the dashboard screenshot"
                         >
                             <img
-                                src="{{ url_for('static', filename='dashboard.png') }}"
+                                src="{{ url_for('static', filename='images/features/dashboard.png') }}"
                                 alt="MyFXJournal dashboard showing the equity curve, account summary, and recent trade data."
                                 loading="lazy"
                             >
@@ -355,7 +377,7 @@
                             aria-label="Expand the analytics screenshot"
                         >
                             <img
-                                src="{{ url_for('static', filename='analytics.png') }}"
+                                src="{{ url_for('static', filename='images/features/analytics.png') }}"
                                 alt="MyFXJournal analytics page with detailed performance tables and breakdown charts."
                                 loading="lazy"
                             >
@@ -363,6 +385,30 @@
                     </figure>
                 </article>
                 <article class="feature-showcase-card landing-reveal" data-reveal-delay="420">
+                    <div class="feature-showcase-copy">
+                        <p class="feature-kicker">📉 Trade replay</p>
+                        <h3><span class="feature-title-accent">My replay chart</span> Put entries and exits back on price for clearer review</h3>
+                        <p>
+                            The trade replay chart shows your fills on the market path so you can see how the move developed around your entry and exit—not only the row in a trade list.
+                        </p>
+                        <p class="feature-detail">Use it when you want the session story on a chart, then keep using analytics and weekly AI review for the bigger pattern. <a href="{{ url_for('trade_replay_chart_page') }}">More on trade replay</a></p>
+                    </div>
+                    <figure class="feature-shot">
+                        <button
+                            type="button"
+                            class="feature-shot-trigger"
+                            data-feature-shot-trigger
+                            aria-label="Expand the trade replay chart screenshot"
+                        >
+                            <img
+                                src="{{ url_for('static', filename='images/features/replay-chart.png') }}"
+                                alt="MyFXJournal trade replay chart showing price action with trade entry and exit markers."
+                                loading="lazy"
+                            >
+                        </button>
+                    </figure>
+                </article>
+                <article class="feature-showcase-card landing-reveal" data-reveal-delay="500">
                     <div class="feature-showcase-copy">
                         <p class="feature-kicker">📥 Import</p>
                         <h3><span class="feature-title-accent">Less cleanup</span> Bring broker history in without rebuilding everything by hand</h3>
@@ -380,14 +426,14 @@
                             aria-label="Expand the import screenshot"
                         >
                             <img
-                                src="{{ url_for('static', filename='import.png') }}"
+                                src="{{ url_for('static', filename='images/features/import.png') }}"
                                 alt="MyFXJournal import page showing upload options, import rules, and account destination controls."
                                 loading="lazy"
                             >
                         </button>
                     </figure>
                 </article>
-                <article class="feature-showcase-card feature-showcase-card-sync landing-reveal" data-reveal-delay="500">
+                <article class="feature-showcase-card feature-showcase-card-sync landing-reveal" data-reveal-delay="580">
                     <div class="feature-showcase-copy">
                         <div class="feature-kicker-row">
                             <p class="feature-kicker">🔄 Automatic MT5 Sync</p>
@@ -1953,6 +1999,22 @@
         margin: 0 auto;
         padding-top: 0.2rem;
         padding-bottom: 0.2rem;
+    }
+
+    .ai-demo-screenshot {
+        margin: 0 auto 1.1rem;
+        max-width: min(720px, 100%);
+    }
+
+    .ai-demo-screenshot .feature-shot-trigger {
+        width: 100%;
+    }
+
+    .ai-demo-screenshot img {
+        width: 100%;
+        height: auto;
+        display: block;
+        border-radius: 14px;
     }
 
     .ai-demo-chip-row {
