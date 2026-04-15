@@ -244,6 +244,7 @@ def test_trade_list_and_detail_show_trade_flags(app_ctx, client):
     detail_response = client.get(f"/dashboard/trades/{trade.pubkey}")
 
     assert list_response.status_code == 200
+    assert f'data-trade-detail-url="/dashboard/trades/{trade.pubkey}"'.encode() in list_response.data
     assert b'title="Revenge Trade"' in list_response.data
     assert b'title="Reactive Trade"' in list_response.data
     assert b'title="Corrective Trade"' in list_response.data

@@ -1078,6 +1078,20 @@ body.app-layout .trade-accounts-page .helper-note {
         border-bottom: 1px solid var(--surface-divider);
         font-size: 0.84rem; }
 
+    .trades-page .trade-log tbody tr[data-trade-detail-url] { cursor: pointer; }
+
+    .trades-page .trade-log tbody tr[data-trade-detail-url]:hover td {
+        background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+    }
+
+    .trades-page .trade-log tbody tr.bundle-row[data-trade-detail-url]:hover td {
+        background: color-mix(in srgb, var(--bundle-accent, var(--accent)) 18%, var(--surface));
+    }
+
+    .trades-page .trade-log tbody tr.running-trade[data-trade-detail-url]:hover td {
+        background: color-mix(in srgb, var(--good) 16%, var(--surface));
+    }
+
     .trades-page tbody tr.running-trade td {
         background: color-mix(in srgb, var(--good) 10%, var(--surface));
         border-top: 1px solid color-mix(in srgb, var(--good) 30%, var(--border));
@@ -1150,6 +1164,14 @@ body.app-layout .trade-accounts-page .helper-note {
         background: color-mix(
             in srgb,
             var(--bundle-accent, var(--accent)) 14%,
+            color-mix(in srgb, var(--good) 10%, var(--surface))
+        );
+    }
+
+    .trades-page .trade-log tbody tr.running-trade.bundle-row[data-trade-detail-url]:hover td {
+        background: color-mix(
+            in srgb,
+            var(--bundle-accent, var(--accent)) 18%,
             color-mix(in srgb, var(--good) 10%, var(--surface))
         );
     }

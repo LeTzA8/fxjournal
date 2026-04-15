@@ -15,8 +15,69 @@
     const summaryCopy = document.querySelector("[data-mt5-panel-copy]");
     const softLabel = document.querySelector("#mt5-access .soft");
     const defaultSubmitText = submitButton ? submitButton.textContent.trim() : "Start MT5 Sync";
+    const serverInput = form.querySelector("[data-mt5-server-input]");
+    const serverWarning = form.querySelector("[data-mt5-server-warning]");
 
     let isSubmitting = false;
+
+    const KNOWN_BROKER_NAMES = new Set([
+        "exness",
+        "ic markets",
+        "icmarkets",
+        "pepperstone",
+        "xm",
+        "fbs",
+        "hotforex",
+        "fxpro",
+        "tickmill",
+        "octafx",
+        "hantec",
+    ]);
+
+    const SERVERISH_SUFFIX = /(live|demo|real|ecn|edge|mt5|mt4|sc|pro)$/i;
+
+    const normalizeBrokerGuess = (value) => value.trim().toLowerCase().replace(/\s+/g, " ");
+
+    const looksLikeBrokerNameNotServer = (raw) => {
+        const trimmed = raw.trim();
+        if (!trimmed) {
+            return false;
+        }
+        if (/[-_]/.test(trimmed) || /\d/.test(trimmed)) {
+            return false;
+        }
+        const norm = normalizeBrokerGuess(raw);
+        if (KNOWN_BROKER_NAMES.has(norm)) {
+            return true;
+        }
+        const words = norm.split(" ");
+        if (words.length === 1) {
+            const w = words[0];
+            if (!/^[a-z]+$/.test(w) || w.length < 3 || w.length > 14) {
+                return false;
+            }
+            if (SERVERISH_SUFFIX.test(w)) {
+                return false;
+            }
+            return true;
+        }
+        return false;
+    };
+
+    const syncServerWarning = () => {
+        if (!serverInput || !serverWarning) {
+            return;
+        }
+        const show = looksLikeBrokerNameNotServer(serverInput.value);
+        serverWarning.hidden = !show;
+        serverInput.setAttribute("aria-invalid", show ? "true" : "false");
+        const helperId = "mt5-server-helper";
+        const warnId = "mt5-server-warning";
+        serverInput.setAttribute(
+            "aria-describedby",
+            show ? `${helperId} ${warnId}` : helperId,
+        );
+    };
 
     const setAlert = (message, tone) => {
         if (!alertBanner) {
@@ -99,6 +160,12 @@
         consentInput.addEventListener("change", syncSubmitState);
     }
     syncSubmitState();
+
+    if (serverInput) {
+        serverInput.addEventListener("input", syncServerWarning);
+        serverInput.addEventListener("blur", syncServerWarning);
+        syncServerWarning();
+    }
 
     if (passwordToggle && passwordInput) {
         passwordToggle.addEventListener("click", () => {

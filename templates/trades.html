@@ -191,6 +191,7 @@
                             {% if trade.bundle_pubkey %}{% set _ = row_classes.append("bundle-row") %}{% endif %}
                             <tr
                                 {% if row_classes %}class="{{ row_classes|join(' ') }}"{% endif %}
+                                data-trade-detail-url="{{ url_for('trades.trade_detail', trade_pubkey=trade.pubkey) }}"
                                 data-pair="{{ trade.symbol }}"
                                 data-strategy="{{ trade.trade_profile_label }}"
                                 data-side="{{ trade.side }}"

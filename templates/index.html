@@ -622,16 +622,53 @@
                                     </div>
                                 </div>
 
-                                <div class="mt5-form-field">
-                                    <label for="mt5_server">Server name</label>
+                                <div class="mt5-form-field mt5-form-field--server" data-mt5-server-field>
+                                    <div class="mt5-field-label-row">
+                                        <label for="mt5_server">MT5 server (NOT your broker name)</label>
+                                        <span class="help-tooltip">
+                                            <button
+                                                type="button"
+                                                class="help-tooltip-button"
+                                                aria-label="Where to find your MT5 server name"
+                                                aria-describedby="mt5-server-field-tooltip"
+                                            >?</button>
+                                            <span id="mt5-server-field-tooltip" class="help-tooltip-bubble help-tooltip-bubble--mt5-server" role="tooltip">
+                                                You can find your server in MT5:<br>
+                                                Login → Trade Account → Server dropdown
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <p id="mt5-server-helper" class="mt5-card-helper">
+                                        Enter the exact server name from MT5 (e.g. Exness-MT5Real, ICMarketsSC-Demo). Do NOT enter just your broker name.
+                                    </p>
                                     <input
                                         id="mt5_server"
                                         name="server"
                                         type="text"
                                         maxlength="100"
-                                        placeholder="e.g. Broker-Server"
+                                        placeholder="Exness-MT5Real"
                                         required
+                                        autocomplete="off"
+                                        aria-describedby="mt5-server-helper"
+                                        aria-invalid="false"
+                                        data-mt5-server-input
                                     >
+                                    <p id="mt5-server-warning" class="mt5-server-input-warning" role="status" aria-live="polite" hidden data-mt5-server-warning>
+                                        This looks like a broker name, not a server. Please copy the exact server from MT5.
+                                    </p>
+                                    <ul class="mt5-server-examples" aria-label="Broker name versus MT5 server examples">
+                                        <li><span class="mt5-server-examples__wrong">Exness</span> → <span class="mt5-server-examples__ok">Exness-MT5Real</span></li>
+                                        <li><span class="mt5-server-examples__wrong">IC Markets</span> → <span class="mt5-server-examples__ok">ICMarketsSC-Live</span></li>
+                                        <li><span class="mt5-server-examples__wrong">Pepperstone</span> → <span class="mt5-server-examples__ok">Pepperstone-Edge</span></li>
+                                    </ul>
+                                    <div class="mt5-server-howto">
+                                        <p class="mt5-server-howto__title">How to find your server</p>
+                                        <ol class="mt5-server-howto__list">
+                                            <li>Open MetaTrader 5</li>
+                                            <li>Click &lsquo;Login to Trade Account&rsquo;</li>
+                                            <li>Copy the server exactly as shown</li>
+                                        </ol>
+                                    </div>
                                 </div>
                             </div>
 
@@ -2753,6 +2790,118 @@
         display: grid;
         gap: 0.34rem;
         min-width: 0;
+    }
+
+    .mt5-field-label-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.45rem;
+        flex-wrap: wrap;
+    }
+
+    .mt5-field-label-row label {
+        flex: 1 1 auto;
+        min-width: 0;
+        margin: 0;
+    }
+
+    /* MT5 sync panel: left-anchored tooltip so the bubble stays on-screen in the narrow card */
+    .mt5-field-label-row .help-tooltip-bubble--mt5-server {
+        left: auto;
+        right: 0;
+        width: max-content;
+        max-width: min(17.5rem, calc(100vw - 2rem));
+        transform: translate(0, -0.22rem);
+    }
+
+    .mt5-field-label-row .help-tooltip:hover .help-tooltip-bubble--mt5-server,
+    .mt5-field-label-row .help-tooltip:focus-within .help-tooltip-bubble--mt5-server {
+        transform: translate(0, 0);
+    }
+
+    .mt5-field-label-row .help-tooltip-bubble--mt5-server::before {
+        left: auto;
+        right: 0.55rem;
+        transform: translateX(0) rotate(45deg);
+    }
+
+    .mt5-server-input-warning {
+        margin: 0;
+        padding: 0.52rem 0.62rem;
+        border-radius: 10px;
+        border: 1px solid color-mix(in srgb, var(--bad) 38%, var(--border));
+        background: color-mix(in srgb, var(--bad) 10%, var(--surface));
+        font-size: 0.74rem;
+        line-height: 1.45;
+        color: color-mix(in srgb, var(--bad) 72%, var(--ink));
+        overflow-wrap: anywhere;
+    }
+
+    .mt5-server-input-warning[hidden] {
+        display: none !important;
+    }
+
+    .mt5-server-examples {
+        margin: 0;
+        padding: 0.48rem 0.58rem;
+        list-style: none;
+        border-radius: 10px;
+        border: 1px solid color-mix(in srgb, var(--border) 92%, transparent);
+        background: color-mix(in srgb, var(--surface) 96%, var(--card));
+        font-size: 0.72rem;
+        line-height: 1.55;
+        color: color-mix(in srgb, var(--muted) 86%, var(--ink));
+    }
+
+    .mt5-server-examples li + li {
+        margin-top: 0.28rem;
+    }
+
+    .mt5-server-examples__wrong {
+        font-weight: 700;
+        color: color-mix(in srgb, var(--muted) 70%, var(--ink));
+    }
+
+    .mt5-server-examples__ok {
+        font-weight: 700;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.9em;
+        color: color-mix(in srgb, var(--accent) 42%, var(--ink));
+    }
+
+    .mt5-server-howto {
+        margin: 0;
+        padding: 0.52rem 0.62rem;
+        border-radius: 10px;
+        border: 1px dashed color-mix(in srgb, var(--border) 88%, var(--accent) 12%);
+        background: color-mix(in srgb, var(--surface) 98%, transparent);
+    }
+
+    .mt5-server-howto__title {
+        margin: 0 0 0.38rem 0;
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: color-mix(in srgb, var(--muted) 88%, var(--ink));
+    }
+
+    .mt5-server-howto__list {
+        margin: 0;
+        padding-left: 1.1rem;
+        font-size: 0.74rem;
+        line-height: 1.5;
+        color: color-mix(in srgb, var(--muted) 84%, var(--ink));
+    }
+
+    .mt5-server-howto__list li + li {
+        margin-top: 0.22rem;
+    }
+
+    .mt5-access-panel.panel:has(.mt5-field-label-row .help-tooltip:hover),
+    .mt5-access-panel.panel:has(.mt5-field-label-row .help-tooltip:focus-within) {
+        z-index: 40;
     }
 
     .mt5-password-row {

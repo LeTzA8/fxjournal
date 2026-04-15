@@ -51,6 +51,32 @@
     }
 
     const tbody = table.querySelector("tbody");
+    if (tbody) {
+        tbody.addEventListener("click", (event) => {
+            if (event.button !== 0) {
+                return;
+            }
+            const target = event.target;
+            if (target.closest("a, button, input, select, textarea, label")) {
+                return;
+            }
+            const row = target.closest("tr[data-trade-detail-url]");
+            if (!row || row.classList.contains("empty-row") || row.classList.contains("no-match-row")) {
+                return;
+            }
+            const url = row.dataset.tradeDetailUrl;
+            if (!url) {
+                return;
+            }
+            if (event.metaKey || event.ctrlKey) {
+                event.preventDefault();
+                window.open(url, "_blank", "noopener,noreferrer");
+                return;
+            }
+            window.location.assign(url);
+        });
+    }
+
     const rows = Array.from(tbody.querySelectorAll("tr:not(.empty-row)"));
     if (!rows.length) {
         return;
