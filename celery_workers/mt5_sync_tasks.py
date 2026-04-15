@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 import json
+import time
 import logging
 import threading
 import uuid
@@ -1032,9 +1033,49 @@ def sync_mt5_account(
                         offset_minutes=applied_offset_minutes,
                     )
                     deals_positions = {t["mt5_position"] for t in trades if t.get("mt5_position")}
+                    # Open rows from deal aggregation use pnl=None (deal profit is not floating P&L).
+                    # positions_get() must still win for running P&L when the position is already
+                    # represented in the deal-derived list — otherwise the internal API skips DB
+                    # updates (row_pnl is None) and the dashboard never shows live P&L.
+                    position_row_by_id = {
+                        t["mt5_position"]: t
+                        for t in position_trades
+                        if t.get("mt5_position")
+                    }
+                    pnl_overlay_count = 0
+                    for row in trades:
+                        if not row.get("is_open"):
+                            continue
+                        pos_key = row.get("mt5_position")
+                        if not pos_key:
+                            continue
+                        live = position_row_by_id.get(pos_key)
+                        if live is None or live.get("pnl") is None:
+                            continue
+                        row["pnl"] = live["pnl"]
+                        pnl_overlay_count += 1
                     trades = trades + [
                         t for t in position_trades if t.get("mt5_position") not in deals_positions
                     ]
+                    # Pipeline trace: positions + live P&L merge (30s beat — keep one line).
+                    pos_detail_parts = []
+                    for pos in (open_positions or [])[:8]:
+                        pid = getattr(pos, "identifier", None) or getattr(pos, "ticket", None)
+                        sym = getattr(pos, "symbol", None)
+                        cur = getattr(pos, "price_current", None)
+                        prof = getattr(pos, "profit", None)
+                        if pid is not None:
+                            pos_detail_parts.append(
+                                f"{sym}:{pid} profit={prof} current={cur}"
+                            )
+                    logger.info(
+                        "MT5 sync positions mt5_account_id=%s fetched=%s "
+                        "running_pnl_overlay_rows=%s detail=[%s]",
+                        mt5_account_id,
+                        open_position_count,
+                        pnl_overlay_count,
+                        "; ".join(pos_detail_parts) if pos_detail_parts else "-",
+                    )
 
                     # DEBUG: raw snapshot log — no-op unless _MT5_DEBUG_TARGET_ACCOUNT_ID is set
                     if (

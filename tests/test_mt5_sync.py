@@ -1026,6 +1026,93 @@ def test_sync_mt5_account_picks_up_running_trade_from_positions_get(app_ctx, mon
     assert trades_sent[0]["closed_at"] is None
 
 
+def test_sync_mt5_account_overlays_positions_profit_onto_open_deal_row(app_ctx, monkeypatch):
+    """Open rows from deal history use pnl=None; live profit from positions_get must be merged."""
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-overlay-user",
+        email="mt5-overlay@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="55557777",
+    )
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+
+    entry_deal = _deal(
+        position_id=9001,
+        symbol="EURUSD",
+        price=1.085,
+        volume=0.1,
+        time=1_710_000_000,
+        entry=0,
+        type=0,
+        profit=0.0,
+    )
+
+    open_position = SimpleNamespace(
+        identifier=9001,
+        type=0,
+        symbol="EURUSD",
+        price_open=1.085,
+        price_current=1.091,
+        volume=0.1,
+        commission=-0.5,
+        swap=0.0,
+        profit=42.5,
+        sl=0.0,
+        tp=0.0,
+        time=1_710_000_000,
+        comment="",
+    )
+
+    captured_payload = {}
+
+    fake_mt5 = SimpleNamespace(
+        DEAL_ENTRY_IN=0,
+        DEAL_ENTRY_OUT=1,
+        DEAL_ENTRY_INOUT=2,
+        DEAL_ENTRY_OUT_BY=3,
+        DEAL_TYPE_BUY=0,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
+        history_deals_get=lambda *args, **kwargs: [entry_deal],
+        positions_get=lambda: [open_position],
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"saved": 0, "updated": 0, "skipped": 0, "errors": 0}
+
+    def capture_post(url, json=None, **kwargs):
+        captured_payload.update(json or {})
+        return DummyResponse()
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", capture_post)
+
+    sync_mt5_account.run(mt5_account.id)
+
+    trades_sent = captured_payload.get("trades", [])
+    assert len(trades_sent) == 1
+    assert trades_sent[0]["mt5_position"] == "9001"
+    assert trades_sent[0]["is_open"] is True
+    assert trades_sent[0]["pnl"] == pytest.approx(42.5)
+
+
 def test_sync_mt5_account_retries_when_mt5_session_is_on_wrong_login(app_ctx, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)

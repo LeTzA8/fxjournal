@@ -358,9 +358,25 @@ def sync_mt5_trades():
             if existing_trade.closed_at is None and row.get("closed_at") is None:
                 row_pnl = row.get("pnl")
                 if row_pnl is not None:
+                    previous_pnl = existing_trade.pnl
                     existing_trade.pnl = float(row_pnl)
                     updated_count += 1
+                    current_app.logger.info(
+                        "MT5 sync DB open running pnl mt5_account_id=%s mt5_position=%s "
+                        "written_pnl=%s previous_pnl=%s",
+                        mt5_account_id,
+                        mt5_position,
+                        existing_trade.pnl,
+                        previous_pnl,
+                    )
                 else:
+                    current_app.logger.warning(
+                        "MT5 sync DB open row skipped no pnl mt5_account_id=%s mt5_position=%s "
+                        "symbol=%s",
+                        mt5_account_id,
+                        mt5_position,
+                        row.get("symbol"),
+                    )
                     skipped_count += 1
                 continue
 
