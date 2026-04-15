@@ -669,6 +669,9 @@
                                             <li>Copy the server exactly as shown</li>
                                         </ol>
                                     </div>
+                                    <p class="mt5-server-faq-link">
+                                        <a href="{{ url_for('faq_mt5_server') }}" target="_blank" rel="noopener noreferrer">FAQ: where your server appears in MT5 (desktop &amp; mobile screenshots)</a>
+                                    </p>
                                 </div>
                             </div>
 
@@ -2897,6 +2900,23 @@
 
     .mt5-server-howto__list li + li {
         margin-top: 0.22rem;
+    }
+
+    .mt5-server-faq-link {
+        margin: 0;
+        font-size: 0.74rem;
+        line-height: 1.45;
+    }
+
+    .mt5-server-faq-link a {
+        font-weight: 700;
+        color: color-mix(in srgb, var(--accent) 52%, var(--ink));
+        text-decoration: underline;
+        text-underline-offset: 0.12em;
+    }
+
+    .mt5-server-faq-link a:hover {
+        color: var(--accent);
     }
 
     .mt5-access-panel.panel:has(.mt5-field-label-row .help-tooltip:hover),

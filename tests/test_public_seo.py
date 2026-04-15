@@ -33,6 +33,7 @@ def test_sitemap_xml_lists_public_pages(client):
     assert b"<loc>http://localhost:5000/contact</loc>" in response.data
     assert b"<loc>http://localhost:5000/privacy</loc>" in response.data
     assert b"<loc>http://localhost:5000/terms</loc>" in response.data
+    assert b"<loc>http://localhost:5000/faq/mt5-server</loc>" in response.data
     assert b"<loc>http://localhost:5000/free-mt5-sync</loc>" in response.data
     assert b"<loc>http://localhost:5000/mt5-trading-journal</loc>" in response.data
     assert b"<loc>http://localhost:5000/forex-trading-journal</loc>" in response.data
@@ -64,6 +65,15 @@ def test_dashboard_public_gate_has_indexable_metadata(client):
     assert b"Trading dashboard" in response.data
     assert b'<meta name="robots" content="index, follow">' in response.data
     assert b'href="http://localhost:5000/dashboard"' in response.data
+
+
+def test_faq_mt5_server_page_reachable_and_shows_help_images(client):
+    response = client.get("/faq/mt5-server")
+
+    assert response.status_code == 200
+    assert b"Where to find your MT5 server name" in response.data
+    assert b"images/help/mt5-desktop-titlebar.png" in response.data
+    assert b"images/help/mt5-mobile-settings.png" in response.data
 
 
 def test_free_mt5_sync_page_has_indexable_metadata(client):

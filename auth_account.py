@@ -1667,6 +1667,7 @@ def register_public_auth_routes(
             build_external_url("/contact"),
             build_external_url("/privacy"),
             build_external_url("/terms"),
+            build_external_url("/faq/mt5-server"),
         ) + tuple(build_external_url(f"/{slug}") for slug in SEO_PAGE_DEFINITIONS)
         sitemap_items = "\n".join(f"  <url><loc>{url}</loc></url>" for url in public_urls)
         sitemap = (
@@ -1697,6 +1698,15 @@ def register_public_auth_routes(
             meta_description="Review the terms for using MyFXJournal, including account responsibilities, acceptable use, MT5 sync conditions, and service limitations.",
             canonical_url=build_external_url("/terms"),
             last_updated=legal_last_updated,
+        )
+
+    @app.route("/faq/mt5-server")
+    def faq_mt5_server():
+        return render_template(
+            "faq_mt5_server.html",
+            title="Where to find your MT5 server | MyFXJournal help",
+            meta_description="See where your MT5 server name appears in MetaTrader 5 desktop and mobile so you can paste the correct value into MyFXJournal MT5 sync.",
+            canonical_url=build_external_url("/faq/mt5-server"),
         )
 
     @app.route("/login", methods=["GET", "POST"])

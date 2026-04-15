@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="legal-shell">
+    <article class="legal-card faq-mt5-server-card">
+        <p class="legal-eyebrow">Help</p>
+        <h1>Where to find your MT5 server name</h1>
+        <p class="legal-updated">For MyFXJournal MT5 sync, enter the <strong>exact server</strong> from MetaTrader 5—not only your broker’s company name.</p>
+
+        <p>
+            The server often looks like <code>BrokerName-Live</code> or <code>BrokerName-Real</code> with a hyphen.
+            It is <strong>not</strong> the same as the legal company name shown elsewhere in the app (for example at the end of the desktop title bar).
+        </p>
+
+        <h2>MetaTrader 5 (desktop)</h2>
+        <p>
+            In the window title bar, MetaTrader usually shows your <strong>account number</strong>, then your <strong>server</strong>, then account type and other details.
+            Copy the <strong>server segment</strong> (the part that looks like a broker server code, often with a hyphen)—not the company name at the end.
+        </p>
+        <figure class="faq-mt5-figure">
+            <img
+                src="{{ url_for('static', filename='images/help/mt5-desktop-titlebar.png') }}"
+                width="920"
+                height="120"
+                loading="lazy"
+                decoding="async"
+                alt="MetaTrader 5 desktop title bar example: account number, server name with hyphen, then account type and broker company name at the end"
+            >
+            <figcaption class="faq-mt5-caption">Example layout—the server is the segment after your login and the first hyphen, before account type labels.</figcaption>
+        </figure>
+
+        <h2>MetaTrader 5 (mobile)</h2>
+        <p>
+            Open <strong>Settings</strong>. Under your profile, the line that shows <strong>login – server</strong> contains the server name after the hyphen.
+            The broker company name shown above that line is not what you paste into the server field.
+        </p>
+        <figure class="faq-mt5-figure">
+            <img
+                src="{{ url_for('static', filename='images/help/mt5-mobile-settings.png') }}"
+                width="390"
+                height="844"
+                loading="lazy"
+                decoding="async"
+                alt="MetaTrader 5 mobile Settings screen: broker name on top, then a line with account number hyphen server name"
+            >
+            <figcaption class="faq-mt5-caption">Use the server on the <strong>number – server</strong> line, not the broker title alone.</figcaption>
+        </figure>
+
+        <p class="faq-mt5-footnote">
+            Layouts vary by broker build; always copy the server string exactly as MT5 shows it when you use <strong>Login to Trade Account</strong> or your account details.
+        </p>
+
+        <p>
+            <a href="{{ url_for('dashboard.home', _anchor='mt5-access') }}">Back to dashboard MT5 sync</a>
+            ·
+            <a href="{{ url_for('contact.contact') }}">Contact support</a>
+        </p>
+    </article>
+</section>
+
+<style>
+    .faq-mt5-server-card code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.88em;
+        padding: 0.12rem 0.28rem;
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--surface) 88%, var(--border));
+    }
+
+    .faq-mt5-figure {
+        margin: 0.75rem 0 1.25rem;
+        padding: 0;
+    }
+
+    .faq-mt5-figure img {
+        display: block;
+        width: 100%;
+        max-width: 52rem;
+        height: auto;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        box-shadow: 0 10px 28px rgba(2, 6, 23, 0.12);
+    }
+
+    .faq-mt5-caption {
+        margin: 0.45rem 0 0;
+        font-size: 0.82rem;
+        line-height: 1.45;
+        color: var(--muted);
+    }
+
+    .faq-mt5-footnote {
+        margin: 1rem 0;
+        font-size: 0.88rem;
+        color: color-mix(in srgb, var(--muted) 92%, var(--ink));
+    }
+
+    .legal-shell {
+        padding: clamp(1.2rem, 2.5vw, 2rem) 0;
+    }
+
+    .legal-card {
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        border-radius: 16px;
+        background: color-mix(in srgb, var(--card) 92%, transparent);
+        box-shadow: 0 14px 34px rgba(2, 6, 23, 0.12);
+        padding: clamp(1.15rem, 2.5vw, 1.9rem);
+    }
+
+    .legal-eyebrow {
+        margin: 0;
+        font-size: 0.74rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-weight: 800;
+        color: var(--muted);
+    }
+
+    .legal-card h1 {
+        margin: 0.35rem 0 0.35rem;
+        color: var(--ink);
+        font-size: clamp(1.65rem, 2.7vw, 2.2rem);
+    }
+
+    .legal-updated {
+        margin: 0 0 1rem;
+        color: var(--muted);
+        font-size: 0.95rem;
+        line-height: 1.5;
+    }
+
+    .legal-card h2 {
+        margin: 1.2rem 0 0.4rem;
+        font-size: 1.02rem;
+        color: var(--ink);
+    }
+
+    .legal-card p {
+        margin: 0.4rem 0;
+        line-height: 1.55;
+    }
+</style>
+{% endblock %}
