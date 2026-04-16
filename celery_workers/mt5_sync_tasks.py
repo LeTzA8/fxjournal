@@ -905,7 +905,7 @@ def sync_mt5_account(
     mt5_soft_reconnect_done = False
     try:
         try:
-            lock_acquired = claim_lock(_sync_lock_key(mt5_account_id), lock_token, ttl=600)
+            lock_acquired = claim_lock(_sync_lock_key(mt5_account_id), lock_token, ttl=120)
         except CacheUnavailableError:
             lock_enabled = False
             lock_acquired = True
