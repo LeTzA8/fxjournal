@@ -991,29 +991,12 @@ def sync_mt5_account(
                         "MT5 sync IPC send failed — ensuring terminal is running mt5_account_id=%s",
                         mt5_account_id,
                     )
+                    # Kill the broken terminal and launch a fresh one, then fail
+                    # immediately so the distributed lock is released and Celery's
+                    # retry delay (30 s → 60 s) gives the new process time to start.
+                    # Do NOT poll here — polling holds the lock for the entire wait.
                     _ensure_terminal_launched(terminal_path)
-                    _IPC_POLL_TIMEOUT = 45
-                    _IPC_POLL_INTERVAL = 3
-                    deadline = time.time() + _IPC_POLL_TIMEOUT
-                    initialized = False
-                    while time.time() < deadline:
-                        time.sleep(_IPC_POLL_INTERVAL)
-                        if mt5.initialize(**init_kwargs):
-                            initialized = True
-                            break
-                        poll_err = mt5.last_error()
-                        poll_code = poll_err[0] if isinstance(poll_err, (tuple, list)) else None
-                        try:
-                            mt5.shutdown()
-                        except Exception:
-                            pass
-                        if poll_code != -10001:
-                            # Different error (bad credentials, wrong server, etc.) — fail fast.
-                            raise RuntimeError(f"MT5 init failed after relaunch: {poll_err}")
-                    if not initialized:
-                        raise RuntimeError(
-                            f"MT5 IPC not ready after {_IPC_POLL_TIMEOUT}s — terminal may have crashed"
-                        )
+                    raise RuntimeError("MT5 IPC send failed — terminal relaunched, will retry")
                 else:
                     raise RuntimeError(f"MT5 init failed: {err}")
 
