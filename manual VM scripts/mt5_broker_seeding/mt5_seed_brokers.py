@@ -2,14 +2,11 @@
 Seed MT5's broker/server discovery cache by driving the built-in UI search flow.
 
 - Does not log into any account and does not touch servers.dat on disk.
-- Types each search term into the **already-open** “Open an Account” wizard’s
-  company search field. The File menu is **not** used by default. The script
-  finds the wizard by scanning **all top-level windows** of the MT5 process (not
-  only app.window), which fixes many “dialog is visible but not found” cases.
-- If UIA still cannot see the dialog (e.g. some RDP setups), set
-  MANUAL_FOCUS_SECONDS or pass `--manual-focus 10`: click the company search
-  field during the countdown; the script then sends keystrokes to the focused
-  control (no window handle required).
+- **Default:** “manual focus” — you click the **company search** field in MT5 during
+  a short countdown; the script then sends keystrokes there (no UIA dialog lookup).
+- **Optional:** set `MANUAL_FOCUS_SECONDS = 0` or run with `--manual-focus 0` to use
+  UI automation to find the Open an Account window instead. The File menu is not
+  used unless `USE_FILE_MENU = True`.
 """
 
 from __future__ import annotations
@@ -60,11 +57,10 @@ MENU_OPEN_RETRY_DELAY_S = 1.2
 # If True, press Esc once after the last broker (optional).
 CLOSE_DIALOG_AT_END = False
 
-# If > 0: skip finding the dialog in UIA. Script sleeps this many seconds — click the
-# company search field in MT5 so it has keyboard focus — then sends Ctrl+A, types each
-# term, waits (same as normal). Use when the wizard is on screen but pywinauto cannot
-# see it (e.g. some RDP / session quirks). CLI: --manual-focus 10
-MANUAL_FOCUS_SECONDS = 0.0
+# Default > 0: “manual focus” — sleep this many seconds while you click the MT5 company
+# search field; then keystrokes go to whatever has focus. Set to 0 (or run
+# `--manual-focus 0`) to find the dialog via UI automation instead.
+MANUAL_FOCUS_SECONDS = 10.0
 
 # English UI default. Must match the exact menu path MT5 exposes to accessibility.
 # If this fails, run once with: python mt5_seed_brokers.py --dump-dialog
@@ -263,9 +259,8 @@ def _ensure_open_account_dialog(app):
         return _open_account_dialog_via_menu(app)
     raise RuntimeError(
         "Open an Account dialog not found by UI automation. Leave the wizard open, "
-        "increase EXISTING_DIALOG_WAIT_S, widen OPEN_ACCOUNT_DIALOG_TITLE_RE, or set "
-        "MANUAL_FOCUS_SECONDS = 10 (or run with --manual-focus 10) and click the "
-        "company search field when the countdown starts so keystrokes go to MT5. "
+        "increase EXISTING_DIALOG_WAIT_S, widen OPEN_ACCOUNT_DIALOG_TITLE_RE, or use "
+        "the default manual-focus mode (MANUAL_FOCUS_SECONDS > 0). "
         "Optional: USE_FILE_MENU = True to open the wizard via the File menu."
     )
 
@@ -449,7 +444,11 @@ def main(argv: list[str] | None = None) -> int:
         type=float,
         default=None,
         metavar="SEC",
-        help="Skip dialog lookup; wait SEC seconds (click MT5 company search), then type each term to foreground.",
+        help=(
+            "Wait SEC seconds (click MT5 company search); then type to foreground. "
+            "Default uses MANUAL_FOCUS_SECONDS in this file (10). Pass 0 to find the "
+            "dialog with UI automation instead."
+        ),
     )
     args = parser.parse_args(argv)
 
