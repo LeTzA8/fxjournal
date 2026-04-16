@@ -40,6 +40,55 @@ def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
     raise task.retry(exc=exc, countdown=countdown)
 
 
+def _relaunch_terminal_if_dead(terminal_path: str) -> None:
+    """
+    Called only after an IPC-send-failed error (-10001).  Checks whether the
+    terminal process is actually running; if not, launches it and waits up to
+    15 s for the process to appear before returning so the caller can retry
+    mt5.initialize().  Zero overhead on the normal path — only invoked on error.
+    """
+    import subprocess
+
+    terminal_dir = os.path.dirname(terminal_path)
+    norm_path = os.path.normcase(os.path.abspath(terminal_path))
+
+    def _is_running():
+        try:
+            import psutil
+            return any(
+                proc.info.get("exe")
+                and os.path.normcase(os.path.abspath(proc.info["exe"])) == norm_path
+                for proc in psutil.process_iter(["exe"])
+            )
+        except Exception:
+            return False
+
+    if _is_running():
+        # Still running — IPC failure was transient; let the caller retry.
+        logger.info("MT5 relaunch: terminal still running terminal=%s", terminal_path)
+        return
+
+    logger.warning("MT5 relaunch: terminal not running — launching terminal=%s", terminal_path)
+    try:
+        subprocess.Popen([terminal_path], cwd=terminal_dir)
+    except OSError as exc:
+        logger.error("MT5 relaunch: Popen failed terminal=%s exc=%s", terminal_path, exc)
+        return
+
+    # Wait up to 15 s for the process to appear, then an extra 3 s for its
+    # IPC socket to open before handing control back to mt5.initialize().
+    deadline = time.time() + 15
+    while time.time() < deadline:
+        time.sleep(2)
+        if _is_running():
+            time.sleep(3)
+            logger.info("MT5 relaunch: terminal started terminal=%s", terminal_path)
+            return
+
+    # Process not confirmed, but give it a chance anyway — IPC might still open.
+    logger.warning("MT5 relaunch: terminal not confirmed after 15s terminal=%s", terminal_path)
+
+
 def _adjust_mt5_unix_epoch(timestamp_value, *, offset_minutes=0):
     """Subtract broker/server-ahead delta from raw MT5 Unix epoch (deal/bar times)."""
     if timestamp_value is None:
@@ -941,7 +990,21 @@ def sync_mt5_account(
 
         with _MT5_API_SESSION_LOCK:
             if not mt5.initialize(**init_kwargs):
-                raise RuntimeError(f"MT5 init failed: {mt5.last_error()}")
+                err = mt5.last_error()
+                err_code = err[0] if isinstance(err, (tuple, list)) else None
+                # -10001 = IPC send failed: terminal process likely died.
+                # Relaunch it, wait for it to start, then retry initialize once.
+                if err_code == -10001 and terminal_path and os.path.isfile(terminal_path):
+                    logger.warning(
+                        "MT5 sync IPC send failed — relaunching terminal mt5_account_id=%s terminal=%s",
+                        mt5_account_id,
+                        terminal_path,
+                    )
+                    _relaunch_terminal_if_dead(terminal_path)
+                    if not mt5.initialize(**init_kwargs):
+                        raise RuntimeError(f"MT5 init failed after relaunch: {mt5.last_error()}")
+                else:
+                    raise RuntimeError(f"MT5 init failed: {err}")
 
             try:
                 expected_login = int(account_number)
