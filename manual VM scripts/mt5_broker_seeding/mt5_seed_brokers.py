@@ -3,17 +3,20 @@ Seed MT5's broker/server discovery cache by driving the built-in UI search flow.
 
 - Does not log into any account and does not touch servers.dat on disk.
 - Types each search term into the **already-open** “Open an Account” wizard’s
-  company search field. The File menu is **not** used by default (MT5 often
-  disables the main window while this dialog is open). All lines in
-  brokers_to_seed.txt are run in the **same** dialog without closing it between
-  terms. Set USE_FILE_MENU = True only if you need to open the wizard via
-  File → Open an Account (e.g. dialog was closed between runs).
+  company search field. The File menu is **not** used by default. The script
+  finds the wizard by scanning **all top-level windows** of the MT5 process (not
+  only app.window), which fixes many “dialog is visible but not found” cases.
+- If UIA still cannot see the dialog (e.g. some RDP setups), set
+  MANUAL_FOCUS_SECONDS or pass `--manual-focus 10`: click the company search
+  field during the countdown; the script then sends keystrokes to the focused
+  control (no window handle required).
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -56,6 +59,12 @@ MENU_OPEN_RETRY_DELAY_S = 1.2
 
 # If True, press Esc once after the last broker (optional).
 CLOSE_DIALOG_AT_END = False
+
+# If > 0: skip finding the dialog in UIA. Script sleeps this many seconds — click the
+# company search field in MT5 so it has keyboard focus — then sends Ctrl+A, types each
+# term, waits (same as normal). Use when the wizard is on screen but pywinauto cannot
+# see it (e.g. some RDP / session quirks). CLI: --manual-focus 10
+MANUAL_FOCUS_SECONDS = 0.0
 
 # English UI default. Must match the exact menu path MT5 exposes to accessibility.
 # If this fails, run once with: python mt5_seed_brokers.py --dump-dialog
@@ -140,20 +149,98 @@ def _open_account_dialog_spec(app):
     return app.window(title_re=OPEN_ACCOUNT_DIALOG_TITLE_RE, found_index=0)
 
 
+def _app_process_id(app) -> int | None:
+    try:
+        return int(app.process)
+    except Exception:
+        return None
+
+
+def _element_title(el) -> str:
+    try:
+        return (el.name or "").strip()
+    except Exception:
+        return ""
+
+
+def _title_matches_visible_or_uia(name: str | None) -> bool:
+    if not name:
+        return False
+    return bool(re.search(OPEN_ACCOUNT_DIALOG_TITLE_RE, name, re.I | re.DOTALL))
+
+
+def _wrap_dialog_element(el):
+    """Turn a UIA element from find_elements into something with set_focus / descendants."""
+    try:
+        from pywinauto.controls.uiawrapper import UIAWrapper
+
+        return UIAWrapper(el)
+    except Exception:
+        return None
+
+
+def _find_dialog_via_process_scan(app) -> object | None:
+    """Scan all top-level UIA windows of the MT5 process (app.window often misses the wizard)."""
+    from pywinauto.findwindows import find_elements
+
+    pid = _app_process_id(app)
+    if pid is None:
+        return None
+    try:
+        elems = find_elements(
+            process=pid,
+            backend=PYWINAUTO_BACKEND,
+            top_level_only=True,
+        )
+    except Exception:
+        return None
+    for el in elems:
+        if not _title_matches_visible_or_uia(_element_title(el)):
+            continue
+        try:
+            hw = int(el.handle)
+        except Exception:
+            hw = None
+        if hw:
+            try:
+                w = app.window(handle=hw)
+                if w.exists(timeout=0.4):
+                    logger.info("Found wizard via process scan + handle (title=%r).", _element_title(el))
+                    return w
+            except Exception:
+                pass
+        wrap = _wrap_dialog_element(el)
+        if wrap is not None:
+            logger.info("Found wizard via process scan + UIAWrapper (title=%r).", _element_title(el))
+            return wrap
+    return None
+
+
 def _find_open_account_dialog(app, total_wait_s: float):
-    """Return a dialog window spec if it appears within total_wait_s seconds."""
+    """Return dialog wrapper/spec if it appears within total_wait_s seconds."""
     if total_wait_s <= 0:
         return None
-    dlg = _open_account_dialog_spec(app)
+    dlg_spec = _open_account_dialog_spec(app)
     deadline = time.monotonic() + total_wait_s
     while time.monotonic() < deadline:
         remaining = deadline - time.monotonic()
         try:
-            if dlg.exists(timeout=max(0.05, min(1.0, remaining))):
-                return dlg
+            if dlg_spec.exists(timeout=max(0.05, min(1.0, remaining))):
+                logger.info("Found wizard via app.window(title_re=...).")
+                return dlg_spec
         except Exception:
             pass
-        time.sleep(0.2)
+        try:
+            for w in app.windows(title_re=OPEN_ACCOUNT_DIALOG_TITLE_RE):
+                if w.exists(timeout=0.35):
+                    logger.info("Found wizard via app.windows(title_re=...).")
+                    return w
+        except Exception:
+            pass
+        found = _find_dialog_via_process_scan(app)
+        if found is not None:
+            return found
+        time.sleep(0.25)
     return None
 
 
@@ -175,9 +262,11 @@ def _ensure_open_account_dialog(app):
         logger.warning("Wizard not found in time; trying File menu (USE_FILE_MENU=True).")
         return _open_account_dialog_via_menu(app)
     raise RuntimeError(
-        "Open an Account dialog not found. Leave the wizard open before running, "
-        "or increase EXISTING_DIALOG_WAIT_S. To drive the File menu instead, set "
-        "USE_FILE_MENU = True in mt5_seed_brokers.py."
+        "Open an Account dialog not found by UI automation. Leave the wizard open, "
+        "increase EXISTING_DIALOG_WAIT_S, widen OPEN_ACCOUNT_DIALOG_TITLE_RE, or set "
+        "MANUAL_FOCUS_SECONDS = 10 (or run with --manual-focus 10) and click the "
+        "company search field when the countdown starts so keystrokes go to MT5. "
+        "Optional: USE_FILE_MENU = True to open the wizard via the File menu."
     )
 
 
@@ -221,7 +310,19 @@ def _type_search_term(dialog, term: str) -> None:
     from pywinauto.keyboard import send_keys
 
     edits = [w for w in dialog.descendants(control_type="Edit")]
-    target = edits[0] if edits else None
+    target = None
+    for ed in edits:
+        try:
+            ei = getattr(ed, "element_info", None)
+            en = getattr(ei, "name", None) if ei is not None else None
+            label = (ed.window_text() or "") + " " + (en or "")
+        except Exception:
+            label = ""
+        if "company" in label.lower() or "company.com" in label.lower():
+            target = ed
+            break
+    if target is None and edits:
+        target = edits[0]
     if target is not None:
         try:
             target.set_focus()
@@ -242,6 +343,31 @@ def _type_search_term(dialog, term: str) -> None:
     time.sleep(AFTER_TYPING_S)
 
 
+def _type_terms_foreground_focus(terms: list[str], lead_seconds: float) -> None:
+    """Send keys to whatever control is focused (user must click MT5 search box first)."""
+    from pywinauto.keyboard import send_keys
+
+    logger.warning(
+        "MANUAL_FOCUS mode: in %.0fs click the MT5 **company search** field so it has "
+        "keyboard focus — then the script types each broker name.",
+        lead_seconds,
+    )
+    print(
+        f"\n>>> Click the company search box in MT5 within {lead_seconds:.0f} seconds… <<<\n",
+        flush=True,
+    )
+    time.sleep(lead_seconds)
+    for term in terms:
+        send_keys("^a{BACKSPACE}", pause=0.05)
+        send_keys(term.replace("{", "{{").replace("}", "}}"), with_spaces=True, pause=0.03)
+        time.sleep(AFTER_TYPING_S)
+        logger.info(
+            'SEARCH ok (foreground keys) term=%r — ensure focus stayed in the search field',
+            term,
+        )
+        time.sleep(BETWEEN_BROKERS_S)
+
+
 def _close_open_account_dialog(app) -> None:
     from pywinauto.keyboard import send_keys
 
@@ -254,7 +380,7 @@ def _close_open_account_dialog(app) -> None:
     time.sleep(0.5)
 
 
-def run_once() -> int:
+def run_once(manual_focus_override: float | None = None) -> int:
     started = datetime.now(timezone.utc)
     _configure_logging(LOG_FILE)
     logger.info("=== run start (UTC %s) ===", started.isoformat())
@@ -277,24 +403,31 @@ def run_once() -> int:
         logger.exception("Failed to start/connect MT5: %s", exc)
         return 1
 
-    try:
-        dlg = _ensure_open_account_dialog(app)
-    except RuntimeError as exc:
-        logger.error("%s", exc)
-        return 1
-
-    for term in terms:
+    manual_secs = MANUAL_FOCUS_SECONDS if manual_focus_override is None else float(manual_focus_override)
+    if manual_secs > 0:
+        _type_terms_foreground_focus(terms, manual_secs)
+    else:
         try:
+            dlg = _ensure_open_account_dialog(app)
+        except RuntimeError as exc:
+            logger.error("%s", exc)
+            return 1
+
+        for term in terms:
             try:
-                dlg.set_focus()
-            except Exception:
-                pass
-            _type_search_term(dlg, term)
-            logger.info('SEARCH ok term=%r (MT5 should have triggered a lookup; no login performed)', term)
-            time.sleep(BETWEEN_BROKERS_S)
-        except Exception as exc:
-            logger.exception('SEARCH fail term=%r err=%s', term, exc)
-            time.sleep(BETWEEN_BROKERS_S)
+                try:
+                    dlg.set_focus()
+                except Exception:
+                    pass
+                _type_search_term(dlg, term)
+                logger.info(
+                    'SEARCH ok term=%r (MT5 should have triggered a lookup; no login performed)',
+                    term,
+                )
+                time.sleep(BETWEEN_BROKERS_S)
+            except Exception as exc:
+                logger.exception('SEARCH fail term=%r err=%s', term, exc)
+                time.sleep(BETWEEN_BROKERS_S)
 
     if CLOSE_DIALOG_AT_END:
         _close_open_account_dialog(app)
@@ -311,10 +444,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print UIA control tree for the Open an Account dialog (wizard must be visible, or USE_FILE_MENU).",
     )
+    parser.add_argument(
+        "--manual-focus",
+        type=float,
+        default=None,
+        metavar="SEC",
+        help="Skip dialog lookup; wait SEC seconds (click MT5 company search), then type each term to foreground.",
+    )
     args = parser.parse_args(argv)
 
     if not args.dump_dialog:
-        return run_once()
+        return run_once(manual_focus_override=args.manual_focus)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     exe = MT5_EXE_PATH
