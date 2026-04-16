@@ -2,8 +2,11 @@
 Seed MT5's broker/server discovery cache by driving the built-in UI search flow.
 
 - Does not log into any account and does not touch servers.dat on disk.
-- Uses File -> Open an Account (configurable) and types each search term so
-  MetaQuotes' lookup can run. Adjust menu/title regex if your UI language differs.
+- Types each search term into the broker search field. If the “Open an Account”
+  wizard is already visible (common on first launch), that dialog is used and
+  the File menu is skipped — the main window is often disabled while the wizard
+  is open, which breaks menu automation. Otherwise uses File -> Open an Account
+  (configurable). Adjust menu/title regex if your UI language differs.
 """
 
 from __future__ import annotations
@@ -38,6 +41,17 @@ AFTER_TYPING_S = 6.0
 BETWEEN_BROKERS_S = 2.0
 CONNECT_RETRY_S = 2.0
 CONNECT_RETRIES = 15
+
+# When True, look for an already-open wizard before using the File menu.
+PREFER_EXISTING_OPEN_ACCOUNT_DIALOG = True
+# How long to poll for the wizard after connect/start (first broker only).
+EXISTING_DIALOG_FIRST_WAIT_S = 35.0
+# After ESC, the wizard is usually gone — only brief poll before File menu.
+EXISTING_DIALOG_QUICK_WAIT_S = 1.5
+
+# Retries when opening via menu (main window may need a moment after wizard closes).
+MENU_OPEN_RETRIES = 6
+MENU_OPEN_RETRY_DELAY_S = 1.2
 
 # English UI default. Must match the exact menu path MT5 exposes to accessibility.
 # If this fails, run once with: python mt5_seed_brokers.py --dump-dialog
@@ -118,15 +132,79 @@ def _main_window(app):
     return app.window(title_re=MT5_MAIN_TITLE_RE, found_index=0)
 
 
-def _open_account_dialog(app):
-    main = _main_window(app)
-    try:
-        main.set_focus()
-    except Exception:
-        pass
-    main.menu_select(FILE_MENU_OPEN_ACCOUNT)
-    time.sleep(AFTER_MENU_OPEN_S)
+def _open_account_dialog_spec(app):
     return app.window(title_re=OPEN_ACCOUNT_DIALOG_TITLE_RE, found_index=0)
+
+
+def _find_open_account_dialog(app, total_wait_s: float):
+    """Return a dialog window spec if it appears within total_wait_s seconds."""
+    if total_wait_s <= 0:
+        return None
+    dlg = _open_account_dialog_spec(app)
+    deadline = time.monotonic() + total_wait_s
+    while time.monotonic() < deadline:
+        remaining = deadline - time.monotonic()
+        try:
+            if dlg.exists(timeout=max(0.05, min(1.0, remaining))):
+                return dlg
+        except Exception:
+            pass
+        time.sleep(0.2)
+    return None
+
+
+def _open_account_dialog_via_menu(app):
+    from pywinauto.base_wrapper import ElementNotEnabled
+
+    last_exc: Exception | None = None
+    for attempt in range(1, MENU_OPEN_RETRIES + 1):
+        main = _main_window(app)
+        try:
+            try:
+                main.restore()
+            except Exception:
+                pass
+            main.set_focus()
+        except Exception:
+            pass
+        time.sleep(0.5)
+        try:
+            main.menu_select(FILE_MENU_OPEN_ACCOUNT)
+            time.sleep(AFTER_MENU_OPEN_S)
+            dlg = _open_account_dialog_spec(app)
+            if dlg.exists(timeout=8):
+                return dlg
+            last_exc = RuntimeError("Menu opened but Open Account dialog not found")
+        except (ElementNotEnabled, IndexError, AttributeError, Exception) as exc:
+            last_exc = exc
+            logger.warning(
+                "File menu open attempt %s/%s failed: %s",
+                attempt,
+                MENU_OPEN_RETRIES,
+                exc,
+            )
+        time.sleep(MENU_OPEN_RETRY_DELAY_S)
+    raise RuntimeError(
+        f"Could not open account dialog via menu after {MENU_OPEN_RETRIES} tries"
+    ) from last_exc
+
+
+def _open_account_dialog(app, *, wait_for_existing_s: float):
+    if PREFER_EXISTING_OPEN_ACCOUNT_DIALOG and wait_for_existing_s > 0:
+        dlg = _find_open_account_dialog(app, wait_for_existing_s)
+        if dlg is not None:
+            logger.info(
+                "Using already-open Open Account dialog (skipped File menu; "
+                "waited up to %.1fs).",
+                wait_for_existing_s,
+            )
+            try:
+                dlg.set_focus()
+            except Exception:
+                pass
+            time.sleep(AFTER_MENU_OPEN_S)
+            return dlg
+    return _open_account_dialog_via_menu(app)
 
 
 def _type_search_term(dialog, term: str) -> None:
@@ -158,7 +236,7 @@ def _close_open_account_dialog(app) -> None:
     from pywinauto.keyboard import send_keys
 
     try:
-        dlg = app.window(title_re=OPEN_ACCOUNT_DIALOG_TITLE_RE, found_index=0)
+        dlg = _open_account_dialog_spec(app)
         dlg.set_focus()
     except Exception:
         pass
@@ -189,9 +267,10 @@ def run_once() -> int:
         logger.exception("Failed to start/connect MT5: %s", exc)
         return 1
 
-    for term in terms:
+    for idx, term in enumerate(terms):
         try:
-            dlg = _open_account_dialog(app)
+            wait_existing = EXISTING_DIALOG_FIRST_WAIT_S if idx == 0 else EXISTING_DIALOG_QUICK_WAIT_S
+            dlg = _open_account_dialog(app, wait_for_existing_s=wait_existing)
             _type_search_term(dlg, term)
             logger.info('SEARCH ok term=%r (MT5 should have triggered a lookup; no login performed)', term)
             _close_open_account_dialog(app)
@@ -232,10 +311,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Failed to start/connect MT5: {exc}", file=sys.stderr)
         return 1
 
-    main_w = _main_window(app)
-    main_w.menu_select(FILE_MENU_OPEN_ACCOUNT)
-    time.sleep(AFTER_MENU_OPEN_S)
-    dlg = app.window(title_re=OPEN_ACCOUNT_DIALOG_TITLE_RE, found_index=0)
+    dlg = _open_account_dialog(app, wait_for_existing_s=EXISTING_DIALOG_FIRST_WAIT_S)
     out_path = Path(__file__).resolve().parent / "mt5_open_account_uia_tree.txt"
     dlg.print_control_identifiers(depth=None, filename=str(out_path))
     print(f"Wrote {out_path}")
