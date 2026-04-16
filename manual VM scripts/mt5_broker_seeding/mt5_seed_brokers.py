@@ -2,11 +2,12 @@
 Seed MT5's broker/server discovery cache by driving the built-in UI search flow.
 
 - Does not log into any account and does not touch servers.dat on disk.
-- Types each search term into the broker search field. If the “Open an Account”
-  wizard is already visible (common on first launch), that dialog is used and
-  the File menu is skipped — the main window is often disabled while the wizard
-  is open, which breaks menu automation. Otherwise uses File -> Open an Account
-  (configurable). Adjust menu/title regex if your UI language differs.
+- Types each search term into the **already-open** “Open an Account” wizard’s
+  company search field. The File menu is **not** used by default (MT5 often
+  disables the main window while this dialog is open). All lines in
+  brokers_to_seed.txt are run in the **same** dialog without closing it between
+  terms. Set USE_FILE_MENU = True only if you need to open the wizard via
+  File → Open an Account (e.g. dialog was closed between runs).
 """
 
 from __future__ import annotations
@@ -42,16 +43,19 @@ BETWEEN_BROKERS_S = 2.0
 CONNECT_RETRY_S = 2.0
 CONNECT_RETRIES = 15
 
-# When True, look for an already-open wizard before using the File menu.
-PREFER_EXISTING_OPEN_ACCOUNT_DIALOG = True
-# How long to poll for the wizard after connect/start (first broker only).
-EXISTING_DIALOG_FIRST_WAIT_S = 35.0
-# After ESC, the wizard is usually gone — only brief poll before File menu.
-EXISTING_DIALOG_QUICK_WAIT_S = 1.5
+# Wait for the Open an Account window (must already be visible unless USE_FILE_MENU).
+EXISTING_DIALOG_WAIT_S = 45.0
 
-# Retries when opening via menu (main window may need a moment after wizard closes).
+# When False (default): never touch the File menu; wizard must stay open for all terms.
+# When True: if the wizard is missing at start, try File → Open an Account (with retries).
+USE_FILE_MENU = False
+
+# Retries when opening via menu only (USE_FILE_MENU True).
 MENU_OPEN_RETRIES = 6
 MENU_OPEN_RETRY_DELAY_S = 1.2
+
+# If True, press Esc once after the last broker (optional).
+CLOSE_DIALOG_AT_END = False
 
 # English UI default. Must match the exact menu path MT5 exposes to accessibility.
 # If this fails, run once with: python mt5_seed_brokers.py --dump-dialog
@@ -153,6 +157,30 @@ def _find_open_account_dialog(app, total_wait_s: float):
     return None
 
 
+def _ensure_open_account_dialog(app):
+    """Return the wizard window; optional File-menu fallback only when USE_FILE_MENU."""
+    dlg = _find_open_account_dialog(app, EXISTING_DIALOG_WAIT_S)
+    if dlg is not None:
+        logger.info(
+            "Found Open an Account dialog (waited up to %.1fs). File menu not used.",
+            EXISTING_DIALOG_WAIT_S,
+        )
+        try:
+            dlg.set_focus()
+        except Exception:
+            pass
+        time.sleep(AFTER_MENU_OPEN_S)
+        return dlg
+    if USE_FILE_MENU:
+        logger.warning("Wizard not found in time; trying File menu (USE_FILE_MENU=True).")
+        return _open_account_dialog_via_menu(app)
+    raise RuntimeError(
+        "Open an Account dialog not found. Leave the wizard open before running, "
+        "or increase EXISTING_DIALOG_WAIT_S. To drive the File menu instead, set "
+        "USE_FILE_MENU = True in mt5_seed_brokers.py."
+    )
+
+
 def _open_account_dialog_via_menu(app):
     from pywinauto.base_wrapper import ElementNotEnabled
 
@@ -187,24 +215,6 @@ def _open_account_dialog_via_menu(app):
     raise RuntimeError(
         f"Could not open account dialog via menu after {MENU_OPEN_RETRIES} tries"
     ) from last_exc
-
-
-def _open_account_dialog(app, *, wait_for_existing_s: float):
-    if PREFER_EXISTING_OPEN_ACCOUNT_DIALOG and wait_for_existing_s > 0:
-        dlg = _find_open_account_dialog(app, wait_for_existing_s)
-        if dlg is not None:
-            logger.info(
-                "Using already-open Open Account dialog (skipped File menu; "
-                "waited up to %.1fs).",
-                wait_for_existing_s,
-            )
-            try:
-                dlg.set_focus()
-            except Exception:
-                pass
-            time.sleep(AFTER_MENU_OPEN_S)
-            return dlg
-    return _open_account_dialog_via_menu(app)
 
 
 def _type_search_term(dialog, term: str) -> None:
@@ -267,21 +277,27 @@ def run_once() -> int:
         logger.exception("Failed to start/connect MT5: %s", exc)
         return 1
 
-    for idx, term in enumerate(terms):
+    try:
+        dlg = _ensure_open_account_dialog(app)
+    except RuntimeError as exc:
+        logger.error("%s", exc)
+        return 1
+
+    for term in terms:
         try:
-            wait_existing = EXISTING_DIALOG_FIRST_WAIT_S if idx == 0 else EXISTING_DIALOG_QUICK_WAIT_S
-            dlg = _open_account_dialog(app, wait_for_existing_s=wait_existing)
+            try:
+                dlg.set_focus()
+            except Exception:
+                pass
             _type_search_term(dlg, term)
             logger.info('SEARCH ok term=%r (MT5 should have triggered a lookup; no login performed)', term)
-            _close_open_account_dialog(app)
             time.sleep(BETWEEN_BROKERS_S)
         except Exception as exc:
             logger.exception('SEARCH fail term=%r err=%s', term, exc)
-            try:
-                _close_open_account_dialog(app)
-            except Exception:
-                pass
             time.sleep(BETWEEN_BROKERS_S)
+
+    if CLOSE_DIALOG_AT_END:
+        _close_open_account_dialog(app)
 
     finished = datetime.now(timezone.utc)
     logger.info("=== run finish (UTC %s) ===", finished.isoformat())
@@ -293,7 +309,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dump-dialog",
         action="store_true",
-        help="Open File->Open an Account once and print UIA control tree, then exit (for tuning selectors).",
+        help="Print UIA control tree for the Open an Account dialog (wizard must be visible, or USE_FILE_MENU).",
     )
     args = parser.parse_args(argv)
 
@@ -311,7 +327,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Failed to start/connect MT5: {exc}", file=sys.stderr)
         return 1
 
-    dlg = _open_account_dialog(app, wait_for_existing_s=EXISTING_DIALOG_FIRST_WAIT_S)
+    try:
+        dlg = _ensure_open_account_dialog(app)
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
+        return 1
     out_path = Path(__file__).resolve().parent / "mt5_open_account_uia_tree.txt"
     dlg.print_control_identifiers(depth=None, filename=str(out_path))
     print(f"Wrote {out_path}")
