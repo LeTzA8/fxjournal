@@ -2,11 +2,13 @@
 Seed MT5's broker/server discovery cache by driving the built-in UI search flow.
 
 - Does not log into any account and does not touch servers.dat on disk.
-- After the Open an Account dialog is found, a **CLI countdown** runs (default 10s).
-  Click the **company search** field in MT5 during that time; when the countdown ends,
-  the script **types each broker and clicks “Find your company”** for every line.
-- Set `CLI_COUNTDOWN_SECONDS = 0` or `--countdown 0` to skip the countdown. The File
-  menu is not used unless `USE_FILE_MENU = True`.
+- By default the script **does not attach to terminal64.exe**; it finds the Open an
+  Account window via **Desktop UIA** (so it will not hang on process connect).
+- A **CLI countdown** runs first (default 10s): open MT5 and click the **company search**
+  field during that time. Then the script **types each broker and clicks “Find your
+  company”** for every line.
+- Set `ATTACH_MT5_TERMINAL_PROCESS = True` only if you need File-menu open or process
+  scoped search. `CLI_COUNTDOWN_SECONDS = 0` or `--countdown 0` skips the countdown.
 """
 
 from __future__ import annotations
@@ -48,6 +50,10 @@ CONNECT_RETRIES = 15
 
 # Wait for the Open an Account window (must already be visible unless USE_FILE_MENU).
 EXISTING_DIALOG_WAIT_S = 45.0
+
+# When False (default): do not Application.connect() to MT5; locate the wizard with
+# Desktop UIA (avoids hanging on terminal attach). Set True for USE_FILE_MENU / process scan.
+ATTACH_MT5_TERMINAL_PROCESS = False
 
 # When False (default): never touch the File menu; wizard must stay open for all terms.
 # When True: if the wizard is missing at start, try File → Open an Account (with retries).
@@ -142,6 +148,37 @@ def _attach_application(exe: Path):
                 logger.warning("Waiting for MT5 process… (%s/%s)", attempt, CONNECT_RETRIES)
                 time.sleep(CONNECT_RETRY_S)
         raise RuntimeError(f"Could not connect to MT5 after start: {last_exc}") from last_exc
+
+
+def _find_open_account_dialog_desktop(total_wait_s: float):
+    """Locate the wizard by top-level window title (no MT5 process attach)."""
+    from pywinauto import Desktop
+
+    if total_wait_s <= 0:
+        return None
+    spec = Desktop(backend=PYWINAUTO_BACKEND).window(
+        title_re=OPEN_ACCOUNT_DIALOG_TITLE_RE,
+        found_index=0,
+    )
+    deadline = time.monotonic() + total_wait_s
+    last_log = 0.0
+    while time.monotonic() < deadline:
+        remaining = deadline - time.monotonic()
+        try:
+            if spec.exists(timeout=max(0.05, min(1.0, remaining))):
+                logger.info("Found Open an Account via Desktop UIA (no terminal attach).")
+                return spec
+        except Exception:
+            pass
+        now = time.monotonic()
+        if now - last_log >= 5.0:
+            logger.info(
+                "Still looking for Open an Account (Desktop UIA, ~%.0fs left)…",
+                max(0.0, remaining),
+            )
+            last_log = now
+        time.sleep(0.25)
+    return None
 
 
 def _cli_countdown(seconds: float) -> None:
@@ -244,6 +281,7 @@ def _find_open_account_dialog(app, total_wait_s: float):
         return None
     dlg_spec = _open_account_dialog_spec(app)
     deadline = time.monotonic() + total_wait_s
+    last_log = 0.0
     while time.monotonic() < deadline:
         remaining = deadline - time.monotonic()
         try:
@@ -262,6 +300,13 @@ def _find_open_account_dialog(app, total_wait_s: float):
         found = _find_dialog_via_process_scan(app)
         if found is not None:
             return found
+        now = time.monotonic()
+        if now - last_log >= 5.0:
+            logger.info(
+                "Still looking for Open an Account (process attach, ~%.0fs left)…",
+                max(0.0, remaining),
+            )
+            last_log = now
         time.sleep(0.25)
     return None
 
@@ -284,9 +329,11 @@ def _ensure_open_account_dialog(app):
         logger.warning("Wizard not found in time; trying File menu (USE_FILE_MENU=True).")
         return _open_account_dialog_via_menu(app)
     raise RuntimeError(
-        "Open an Account dialog not found by UI automation. Leave the wizard open, "
-        "increase EXISTING_DIALOG_WAIT_S, widen OPEN_ACCOUNT_DIALOG_TITLE_RE, or set "
-        "USE_FILE_MENU = True to open the wizard via the File menu."
+        "Open an Account dialog not found by UI automation (process-attached search). "
+        "Leave the wizard open, increase EXISTING_DIALOG_WAIT_S, widen "
+        "OPEN_ACCOUNT_DIALOG_TITLE_RE, or set USE_FILE_MENU = True. "
+        "Or set ATTACH_MT5_TERMINAL_PROCESS = False to use Desktop UIA instead of "
+        "connecting to terminal64.exe."
     )
 
 
@@ -419,14 +466,20 @@ def _broker_seed_cycle(dlg, term: str) -> None:
     time.sleep(AFTER_FIND_CLICK_S)
 
 
-def _close_open_account_dialog(app) -> None:
+def _close_open_account_dialog(app=None, dlg=None) -> None:
     from pywinauto.keyboard import send_keys
 
-    try:
-        dlg = _open_account_dialog_spec(app)
-        dlg.set_focus()
-    except Exception:
-        pass
+    target = dlg
+    if target is None and app is not None:
+        try:
+            target = _open_account_dialog_spec(app)
+        except Exception:
+            target = None
+    if target is not None:
+        try:
+            target.set_focus()
+        except Exception:
+            pass
     send_keys("{ESC}", pause=0.05)
     time.sleep(0.5)
 
@@ -448,30 +501,53 @@ def run_once(countdown_override: float | None = None) -> int:
         logger.error("No broker search terms after skipping blanks/comments: %s", BROKERS_FILE)
         return 2
 
-    try:
-        app = _attach_application(MT5_EXE_PATH)
-    except Exception as exc:
-        logger.exception("Failed to start/connect MT5: %s", exc)
-        return 1
-
     countdown = (
         CLI_COUNTDOWN_SECONDS if countdown_override is None else float(countdown_override)
     )
+    logger.info(
+        "Broker seeding mode: ATTACH_MT5_TERMINAL_PROCESS=%s countdown_sec=%.1f",
+        ATTACH_MT5_TERMINAL_PROCESS,
+        countdown,
+    )
+    if countdown > 0:
+        _cli_countdown(countdown)
 
-    try:
-        dlg = _ensure_open_account_dialog(app)
-    except RuntimeError as exc:
-        logger.error("%s", exc)
-        return 1
+    app = None
+    dlg = None
+    if ATTACH_MT5_TERMINAL_PROCESS:
+        try:
+            app = _attach_application(MT5_EXE_PATH)
+        except Exception as exc:
+            logger.exception("Failed to start/connect MT5: %s", exc)
+            return 1
+        try:
+            dlg = _ensure_open_account_dialog(app)
+        except RuntimeError as exc:
+            logger.error("%s", exc)
+            return 1
+    else:
+        logger.info(
+            "Skipping Application.connect to MT5 executable; locating wizard via Desktop UIA."
+        )
+        dlg = _find_open_account_dialog_desktop(EXISTING_DIALOG_WAIT_S)
+        if dlg is None:
+            if USE_FILE_MENU:
+                logger.error(
+                    "Open an Account not found. USE_FILE_MENU requires "
+                    "ATTACH_MT5_TERMINAL_PROCESS = True."
+                )
+            else:
+                logger.error(
+                    "Open an Account window not found (Desktop UIA). Leave the wizard open, "
+                    "increase EXISTING_DIALOG_WAIT_S, or widen OPEN_ACCOUNT_DIALOG_TITLE_RE."
+                )
+            return 1
 
     try:
         dlg.set_focus()
     except Exception:
         pass
     time.sleep(AFTER_MENU_OPEN_S)
-
-    if countdown > 0:
-        _cli_countdown(countdown)
 
     for term in terms:
         try:
@@ -486,7 +562,7 @@ def run_once(countdown_override: float | None = None) -> int:
             time.sleep(BETWEEN_BROKERS_S)
 
     if CLOSE_DIALOG_AT_END:
-        _close_open_account_dialog(app)
+        _close_open_account_dialog(app=app, dlg=dlg)
 
     finished = datetime.now(timezone.utc)
     logger.info("=== run finish (UTC %s) ===", finished.isoformat())
@@ -520,24 +596,35 @@ def main(argv: list[str] | None = None) -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     exe = MT5_EXE_PATH
-    if not exe.is_file():
-        print(f"MT5 executable not found: {exe}", file=sys.stderr)
-        return 2
-    try:
-        app = _attach_application(exe)
-    except Exception as exc:
-        print(f"Failed to start/connect MT5: {exc}", file=sys.stderr)
-        return 1
-
-    try:
-        dlg = _ensure_open_account_dialog(app)
-    except RuntimeError as exc:
-        print(exc, file=sys.stderr)
-        return 1
+    app = None
+    dlg = None
+    if ATTACH_MT5_TERMINAL_PROCESS:
+        if not exe.is_file():
+            print(f"MT5 executable not found: {exe}", file=sys.stderr)
+            return 2
+        try:
+            app = _attach_application(exe)
+        except Exception as exc:
+            print(f"Failed to start/connect MT5: {exc}", file=sys.stderr)
+            return 1
+        try:
+            dlg = _ensure_open_account_dialog(app)
+        except RuntimeError as exc:
+            print(exc, file=sys.stderr)
+            return 1
+    else:
+        dlg = _find_open_account_dialog_desktop(EXISTING_DIALOG_WAIT_S)
+        if dlg is None:
+            print(
+                "Open an Account window not found (Desktop UIA). Open the wizard or set "
+                "ATTACH_MT5_TERMINAL_PROCESS = True.",
+                file=sys.stderr,
+            )
+            return 1
     out_path = Path(__file__).resolve().parent / "mt5_open_account_uia_tree.txt"
     dlg.print_control_identifiers(depth=None, filename=str(out_path))
     print(f"Wrote {out_path}")
-    _close_open_account_dialog(app)
+    _close_open_account_dialog(app=app, dlg=dlg)
     return 0
 
 
