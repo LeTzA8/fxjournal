@@ -2,11 +2,11 @@
 Seed MT5's broker/server discovery cache by driving the built-in UI search flow.
 
 - Does not log into any account and does not touch servers.dat on disk.
-- **Default:** short countdown — you click the **company search** field once so MT5
-  is ready; the script attaches to the Open an Account dialog, then for each broker:
-  **re-click the search field → type → click “Find your company” → wait** (repeat).
-- Set `MANUAL_FOCUS_SECONDS = 0` or `--manual-focus 0` to skip the countdown (dialog
-  must still be found via UIA). The File menu is not used unless `USE_FILE_MENU = True`.
+- After the Open an Account dialog is found, the script **waits until the company
+  search field has keyboard focus** (you click into it). No fixed sleep — it polls UIA.
+- Then for each broker: **re-click the search field → type → Find your company → wait**.
+- Set `COMPANY_FIELD_FOCUS_TIMEOUT_S = 0` or `--focus-timeout 0` to skip waiting (the
+  script will focus the edit itself). The File menu is not used unless `USE_FILE_MENU`.
 """
 
 from __future__ import annotations
@@ -60,9 +60,10 @@ MENU_OPEN_RETRY_DELAY_S = 1.2
 # If True, press Esc once after the last broker (optional).
 CLOSE_DIALOG_AT_END = False
 
-# Countdown (seconds) so you can click the company search field before automation runs.
-# Set to 0 (or `--manual-focus 0`) to skip this step.
-MANUAL_FOCUS_SECONDS = 10.0
+# Max seconds to wait for you to click the company search field (UIA keyboard focus).
+# 0 = skip (first cycle uses script click to focus the edit).
+COMPANY_FIELD_FOCUS_TIMEOUT_S = 120.0
+FOCUS_POLL_INTERVAL_S = 0.2
 
 # “Find your company” button (UIA title/name). Regex, case-insensitive.
 FIND_COMPANY_BUTTON_TITLE_RE = r"Find.*your.*company"
@@ -140,6 +141,103 @@ def _attach_application(exe: Path):
                 logger.warning("Waiting for MT5 process… (%s/%s)", attempt, CONNECT_RETRIES)
                 time.sleep(CONNECT_RETRY_S)
         raise RuntimeError(f"Could not connect to MT5 after start: {last_exc}") from last_exc
+
+
+def _uia_raw_element(ctrl) -> object | None:
+    """Return the underlying IUIAutomationElement for a pywinauto control, if available."""
+    try:
+        w = ctrl.wrapper_object() if hasattr(ctrl, "wrapper_object") else ctrl
+        ei = getattr(w, "element_info", None)
+        if ei is None:
+            return None
+        for attr in ("_element", "element", "iface", "interface"):
+            el = getattr(ei, attr, None)
+            if el is None:
+                continue
+            try:
+                _ = el.CurrentHasKeyboardFocus
+                return el
+            except Exception:
+                continue
+    except Exception:
+        return None
+    return None
+
+
+def _control_has_keyboard_focus(ctrl) -> bool:
+    el = _uia_raw_element(ctrl)
+    if el is None:
+        return False
+    try:
+        return bool(el.CurrentHasKeyboardFocus)
+    except Exception:
+        return False
+
+
+def _uia_get_focused_element():
+    try:
+        from pywinauto.uia_defines import IUIA
+
+        core = IUIA()
+        if hasattr(core, "iuia") and hasattr(core.iuia, "GetFocusedElement"):
+            return core.iuia.GetFocusedElement()
+        if hasattr(core, "GetFocusedElement"):
+            return core.GetFocusedElement()
+        iuia = getattr(core, "iuia", None)
+        if iuia is not None:
+            return iuia.GetFocusedElement()
+    except Exception:
+        return None
+    return None
+
+
+def _uia_runtime_ids_equal(a, b) -> bool:
+    if a is None or b is None:
+        return False
+    try:
+        ra = list(a.GetRuntimeId())
+        rb = list(b.GetRuntimeId())
+        return bool(ra) and ra == rb
+    except Exception:
+        return False
+
+
+def _focused_element_is_company_edit(edit) -> bool:
+    mine = _uia_raw_element(edit)
+    focused = _uia_get_focused_element()
+    if mine is None or focused is None:
+        return False
+    return _uia_runtime_ids_equal(focused, mine)
+
+
+def _wait_until_company_edit_focused(dlg, timeout_s: float) -> bool:
+    if timeout_s <= 0:
+        return True
+    logger.info(
+        "Waiting up to %.0fs for keyboard focus in the company search field (click it when ready)…",
+        timeout_s,
+    )
+    print(
+        "\n>>> Click the company search box in Open an Account — script continues when it has focus… <<<\n",
+        flush=True,
+    )
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            edit = _pick_company_search_edit(dlg)
+            if edit is not None and (
+                _control_has_keyboard_focus(edit) or _focused_element_is_company_edit(edit)
+            ):
+                logger.info("Company search field has keyboard focus — starting broker list.")
+                return True
+        except Exception:
+            pass
+        time.sleep(FOCUS_POLL_INTERVAL_S)
+    logger.error(
+        "Timed out after %.0fs — the company search field never received keyboard focus.",
+        timeout_s,
+    )
+    return False
 
 
 def _main_window(app):
@@ -264,7 +362,7 @@ def _ensure_open_account_dialog(app):
         return _open_account_dialog_via_menu(app)
     raise RuntimeError(
         "Open an Account dialog not found by UI automation. Leave the wizard open, "
-        "click the company search field during the countdown if you use MANUAL_FOCUS_SECONDS, "
+        "click the company search field (or increase COMPANY_FIELD_FOCUS_TIMEOUT_S), "
         "increase EXISTING_DIALOG_WAIT_S, widen OPEN_ACCOUNT_DIALOG_TITLE_RE, or set "
         "USE_FILE_MENU = True to open the wizard via the File menu."
     )
@@ -399,21 +497,6 @@ def _broker_seed_cycle(dlg, term: str) -> None:
     time.sleep(AFTER_FIND_CLICK_S)
 
 
-def _manual_focus_countdown(lead_seconds: float) -> None:
-    if lead_seconds <= 0:
-        return
-    logger.warning(
-        "MANUAL_FOCUS: in %.0fs click the MT5 **company search** field once — then "
-        "the script drives refocus → type → Find for each broker.",
-        lead_seconds,
-    )
-    print(
-        f"\n>>> Click the company search box in MT5 within {lead_seconds:.0f} seconds… <<<\n",
-        flush=True,
-    )
-    time.sleep(lead_seconds)
-
-
 def _close_open_account_dialog(app) -> None:
     from pywinauto.keyboard import send_keys
 
@@ -426,7 +509,7 @@ def _close_open_account_dialog(app) -> None:
     time.sleep(0.5)
 
 
-def run_once(manual_focus_override: float | None = None) -> int:
+def run_once(focus_timeout_override: float | None = None) -> int:
     started = datetime.now(timezone.utc)
     _configure_logging(LOG_FILE)
     logger.info("=== run start (UTC %s) ===", started.isoformat())
@@ -449,9 +532,11 @@ def run_once(manual_focus_override: float | None = None) -> int:
         logger.exception("Failed to start/connect MT5: %s", exc)
         return 1
 
-    manual_secs = MANUAL_FOCUS_SECONDS if manual_focus_override is None else float(manual_focus_override)
-    if manual_secs > 0:
-        _manual_focus_countdown(manual_secs)
+    focus_timeout = (
+        COMPANY_FIELD_FOCUS_TIMEOUT_S
+        if focus_timeout_override is None
+        else float(focus_timeout_override)
+    )
 
     try:
         dlg = _ensure_open_account_dialog(app)
@@ -464,6 +549,9 @@ def run_once(manual_focus_override: float | None = None) -> int:
     except Exception:
         pass
     time.sleep(AFTER_MENU_OPEN_S)
+
+    if focus_timeout > 0 and not _wait_until_company_edit_focused(dlg, focus_timeout):
+        return 1
 
     for term in terms:
         try:
@@ -493,20 +581,21 @@ def main(argv: list[str] | None = None) -> int:
         help="Print UIA control tree for the Open an Account dialog (wizard must be visible, or USE_FILE_MENU).",
     )
     parser.add_argument(
+        "--focus-timeout",
         "--manual-focus",
         type=float,
         default=None,
+        dest="focus_timeout",
         metavar="SEC",
         help=(
-            "Wait SEC seconds and click the MT5 company search field once before "
-            "automation. Default uses MANUAL_FOCUS_SECONDS in this file (10). Pass 0 "
-            "to skip the countdown."
+            "Max seconds to wait for you to click the company search field (UIA focus). "
+            "Default uses COMPANY_FIELD_FOCUS_TIMEOUT_S in this file. Pass 0 to skip."
         ),
     )
     args = parser.parse_args(argv)
 
     if not args.dump_dialog:
-        return run_once(manual_focus_override=args.manual_focus)
+        return run_once(focus_timeout_override=args.focus_timeout)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     exe = MT5_EXE_PATH
