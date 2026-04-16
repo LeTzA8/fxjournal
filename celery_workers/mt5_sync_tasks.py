@@ -964,20 +964,126 @@ def sync_mt5_account(
             init_kwargs["path"] = terminal_path
 
         with _MT5_API_SESSION_LOCK:
-            if not mt5.initialize(**init_kwargs):
+            _init_result = mt5.initialize(**init_kwargs)
+            if not _init_result:
                 err = mt5.last_error()
                 err_code = err[0] if isinstance(err, (tuple, list)) else None
-                # -10001 = IPC send failed: terminal process likely died or is still starting.
-                # Ensure it's launched, then poll initialize() until IPC is ready (up to 45 s).
+                logger.warning(
+                    "MT5 sync initialize failed mt5_account_id=%s result=%s err=%s terminal=%s",
+                    mt5_account_id, _init_result, err, terminal_path,
+                )
+                # -10001 = IPC send failed: terminal crashed or has stale session state.
+                #
+                # Root-cause (A vs B comparison):
+                #   Fresh setup works because setup_mt5_terminal runs a subprocess.Popen
+                #   bootstrap BEFORE mt5.initialize() — this lets the terminal clear stale
+                #   crash markers / session locks from a previous run and exit cleanly so
+                #   the next credential initialize sees a clean slate.
+                #   Prior sync recovery skipped the bootstrap, hitting the stale state and
+                #   crashing in ~6 s.  Fix: replicate the same bootstrap sequence here.
                 if err_code == -10001 and terminal_path and os.path.isfile(terminal_path):
                     logger.warning(
-                        "MT5 sync IPC send failed — killing terminal and reinitialising with credentials mt5_account_id=%s",
-                        mt5_account_id,
+                        "MT5 sync IPC recovery: starting bootstrap sequence "
+                        "(kill → Popen → servers.dat → clear charts → credential init) "
+                        "mt5_account_id=%s terminal=%s",
+                        mt5_account_id, terminal_path,
                     )
                     _kill_terminal_if_running(terminal_path)
-                    # Use credential-based initialize exactly like the setup task:
-                    # mt5.initialize() with path+login+password+server launches the
-                    # terminal, waits for IPC, and authenticates — all in one blocking call.
+
+                    # ── Bootstrap phase ─────────────────────────────────────────────
+                    # Mirrors setup_mt5_terminal's Popen step.  For existing accounts
+                    # the AppData folder is already present so _find_base_appdata()
+                    # returns on the first check and the bootstrap terminates quickly.
+                    import subprocess as _subprocess  # noqa: PLC0415
+                    import shutil as _shutil  # noqa: PLC0415
+
+                    terminal_dir = os.path.dirname(terminal_path)
+                    bootstrap_proc = None
+                    new_appdata = None
+                    _find_base_appdata = None  # resolved below if import succeeds
+                    _clear_chart_profiles = None
+                    _MT5_BASE_PATH = None
+
+                    try:
+                        bootstrap_proc = _subprocess.Popen([terminal_path], cwd=terminal_dir)
+                        logger.info(
+                            "MT5 sync IPC recovery: bootstrap launched pid=%s mt5_account_id=%s",
+                            bootstrap_proc.pid, mt5_account_id,
+                        )
+                        try:
+                            from celery_workers.mt5_setup_tasks import (  # noqa: PLC0415
+                                MT5_BASE_PATH as _MT5_BASE_PATH,
+                                _clear_chart_profiles,
+                                _find_base_appdata,
+                            )
+                            deadline = time.time() + 30
+                            while time.time() < deadline:
+                                new_appdata = _find_base_appdata(terminal_dir)
+                                if new_appdata:
+                                    break
+                                time.sleep(2)
+                            logger.info(
+                                "MT5 sync IPC recovery: bootstrap appdata=%s mt5_account_id=%s",
+                                new_appdata, mt5_account_id,
+                            )
+                        except Exception as _setup_import_exc:
+                            logger.warning(
+                                "MT5 sync IPC recovery: setup helpers import failed mt5_account_id=%s: %s "
+                                "(bootstrap ran; skipping servers.dat/chart-profile refresh)",
+                                mt5_account_id, _setup_import_exc,
+                            )
+                    finally:
+                        if bootstrap_proc is not None:
+                            try:
+                                bootstrap_proc.terminate()
+                                bootstrap_proc.wait(timeout=10)
+                            except Exception:
+                                try:
+                                    bootstrap_proc.kill()
+                                except Exception:
+                                    pass
+                            logger.info(
+                                "MT5 sync IPC recovery: bootstrap terminated mt5_account_id=%s",
+                                mt5_account_id,
+                            )
+
+                    # ── Refresh servers.dat + clear chart profiles ───────────────────
+                    if new_appdata and _find_base_appdata is not None:
+                        try:
+                            base_appdata = _find_base_appdata(_MT5_BASE_PATH)
+                            if base_appdata:
+                                src_servers = os.path.join(base_appdata, "config", "servers.dat")
+                                if os.path.isfile(src_servers):
+                                    dst_config = os.path.join(new_appdata, "config")
+                                    terminal_config = os.path.join(terminal_dir, "config")
+                                    os.makedirs(dst_config, exist_ok=True)
+                                    os.makedirs(terminal_config, exist_ok=True)
+                                    _shutil.copy2(src_servers, os.path.join(dst_config, "servers.dat"))
+                                    _shutil.copy2(src_servers, os.path.join(terminal_config, "servers.dat"))
+                                    logger.info(
+                                        "MT5 sync IPC recovery: servers.dat refreshed mt5_account_id=%s",
+                                        mt5_account_id,
+                                    )
+                            if _clear_chart_profiles is not None:
+                                _clear_chart_profiles(new_appdata)
+                                logger.info(
+                                    "MT5 sync IPC recovery: chart profiles cleared mt5_account_id=%s",
+                                    mt5_account_id,
+                                )
+                        except Exception as _prep_exc:
+                            logger.warning(
+                                "MT5 sync IPC recovery: servers.dat/chart-profile step failed "
+                                "mt5_account_id=%s: %s (continuing with credential initialize)",
+                                mt5_account_id, _prep_exc,
+                            )
+
+                    # ── Credential initialize ────────────────────────────────────────
+                    # Same as _verify_mt5_terminal_login in setup_mt5_terminal.
+                    logger.info(
+                        "MT5 sync IPC recovery: credential initialize mt5_account_id=%s "
+                        "terminal=%s server=%s",
+                        mt5_account_id, terminal_path, server,
+                    )
                     if not mt5.initialize(
                         path=terminal_path,
                         login=int(account_number),
@@ -985,9 +1091,12 @@ def sync_mt5_account(
                         server=server,
                         timeout=60000,
                     ):
-                        raise RuntimeError(f"MT5 IPC recovery failed: {mt5.last_error()}")
+                        raise RuntimeError(
+                            f"MT5 IPC recovery failed after bootstrap: {mt5.last_error()} "
+                            f"(mt5_account_id={mt5_account_id})"
+                        )
                     logger.info(
-                        "MT5 sync IPC recovered — terminal relaunched and ready mt5_account_id=%s",
+                        "MT5 sync IPC recovery: succeeded — terminal relaunched mt5_account_id=%s",
                         mt5_account_id,
                     )
                     # Fall through to the login/account_info block below.
@@ -996,12 +1105,26 @@ def sync_mt5_account(
 
             try:
                 expected_login = int(account_number)
-                if not mt5.login(expected_login, password=investor_password, server=server):
-                    raise RuntimeError(f"MT5 login failed: {mt5.last_error()}")
+                _login_result = mt5.login(expected_login, password=investor_password, server=server)
+                _login_err = mt5.last_error() if not _login_result else None
+                logger.info(
+                    "MT5 sync login mt5_account_id=%s result=%s error=%s",
+                    mt5_account_id, _login_result, _login_err,
+                )
+                if not _login_result:
+                    raise RuntimeError(f"MT5 login failed: {_login_err}")
 
                 account_info = mt5.account_info()
                 if account_info is None:
                     raise RuntimeError(f"MT5 account_info returned None: {mt5.last_error()}")
+                logger.info(
+                    "MT5 sync account_info mt5_account_id=%s login=%s balance=%s equity=%s trade_allowed=%s",
+                    mt5_account_id,
+                    getattr(account_info, "login", None),
+                    getattr(account_info, "balance", None),
+                    getattr(account_info, "equity", None),
+                    getattr(account_info, "trade_allowed", None),
+                )
 
                 actual_login = getattr(account_info, "login", None)
                 mt5_login = actual_login

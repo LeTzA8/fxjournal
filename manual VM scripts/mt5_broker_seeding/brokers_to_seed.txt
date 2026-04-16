@@ -1,0 +1,7 @@
+# One search term per line (broker or server name fragment).
+# Blank lines and lines starting with # are ignored.
+
+Exness
+IC Markets
+Pepperstone
+Eightcap

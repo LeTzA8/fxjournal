@@ -181,7 +181,7 @@ Each flow: what happens, what breaks, how you notice.
 | `routes/dashboard.py`, `routes/trades.py`, `routes/checkin.py` | Primary UX surfaces | Broken flows |
 | `migrations/` | Alembic history | Deploy mismatch against DB |
 | `scripts/windows/run_mt5_*.ps1` | VM worker entrypoints | MT5 stops if paths/commands wrong |
-| `manual VM scripts/` | Operator-only helpers (e.g. `gitpull.bat`) | Not run automatically — document schedules yourself |
+| `manual VM scripts/` | Operator-only helpers (`gitpull.bat`, `monitor.bat`, `run_mt5_broker_seeding.bat`, `mt5_broker_seeding/`, Task Scheduler XML exports) | Not run automatically — document schedules yourself |
 
 **Sensitive:** `auth_account.py`, `routes/trade_accounts.py`, `routes/mt5_internal.py`, MT5 worker modules, `models.py`, `ai_service.py`.
 

@@ -2,10 +2,27 @@
 
 Last Updated: 2026-04-16
 
+## Recent Fix — MT5 sync IPC self-healing (2026-04-16)
+
+**Root cause (A vs B comparison — delete+re-setup works, reuse doesn't):**
+`setup_mt5_terminal` runs a `subprocess.Popen` bootstrap before `mt5.initialize()`. This lets the terminal clear stale crash markers / session locks from a previous run and exit cleanly. The next credential-based initialize then sees a clean slate. The sync IPC recovery previously skipped the bootstrap and went straight to `mt5.initialize()`, hitting the stale state and crashing in ~6 s (hence `-10001`). Both workers run in Session 0 (`<LogonType>Password</LogonType>` in Task Scheduler XML) — session isolation is NOT the cause.
+
+**Fix (`celery_workers/mt5_sync_tasks.py`):**
+On `-10001` IPC failure, the sync worker now runs the same bootstrap sequence as `setup_mt5_terminal`:
+1. Kill broken process
+2. `subprocess.Popen([terminal_path])` bootstrap → wait for AppData (already exists → exits immediately) → terminate cleanly
+3. Refresh `servers.dat` from base AppData
+4. Clear chart profiles (`MQL5/Profiles/Charts`)
+5. `mt5.initialize(path, login, password, server, timeout=60000)` credential init
+6. Fall through to normal `mt5.login()` + `mt5.account_info()` block
+
+Also added diagnostic logging for `mt5.initialize()` result, `mt5.login()` result, and `mt5.account_info()` output on every sync.
+
 Short-term operational memory.
 
 ## Current Focus
 
+- **Manual VM helper:** `manual VM scripts/run_mt5_broker_seeding.bat` → `manual VM scripts/mt5_broker_seeding/mt5_seed_brokers.py` drives MT5’s **File → Open an Account** search from `brokers_to_seed.txt` for broker/server discovery only (no login, no `servers.dat` edits). Dependencies: `manual VM scripts/mt5_broker_seeding/requirements.txt`.
 - MT5 **connection state system**: `MT5Account` gains `connection_status` (`pending` / `connected` / `failed`) and `connection_error_message` (Text nullable); migration `20260416_0048`. Setup task writes `connected` on success; writes `failed` + user-friendly message after final retry exhausted (`_classify_setup_error` maps MT5 error strings to human copy). New `POST /dashboard/trade-accounts/mt5/retry` route updates credentials in-place on a failed account, resets status to `pending`, and re-queues setup — no new DB row, no delete required. Dashboard status logic adds `"failed"` state (checked before `setting_up`/`queued`). Dashboard MT5 card shows error message + pre-filled retry form when failed; trade accounts page shows `"MT5 Connection Failed"` chip + error text + link to dashboard to fix. JS `syncSubmitState` updated to not require consent checkbox (retry form omits it). (`models.py`, `celery_workers/mt5_setup_tasks.py`, `routes/trade_accounts.py`, `routes/dashboard.py`, `templates/index.html`, `templates/trade_accounts.html`, `static/css/app_pages.css`, `static/js/mt5_request_form.js`) — **Admin + monitor visibility also added**: `_build_admin_mt5_status` now returns "Connection Failed" chip before "Setting Up" fallback; `admin_mt5_accounts` route computes `failed_mt5_count` passed to template; admin MT5 stat bar shows a red "Connection Failed" tile when count > 0; MT5 accounts table shows `connection_error_message` inline under failed accounts; MT5 monitor `_fetch_accounts` now selects `connection_status` + `connection_error_message`; `_stats_block` shows `failed` count in red; `_accounts_block` shows `FAIL` in red instead of `INACTV` for failed accounts; new `_failed_setups_block` renders a dedicated FAILED SETUPS section with error message per account when any failures exist. (`auth_account.py`, `templates/partials/admin_shell_start.html`, `templates/admin_signup_access.html`, `scripts/windows/mt5_monitor.py`)
 - MT5 **running / live P&L** on sync: deal-aggregated open rows used `pnl=None` and `positions_get()` rows were skipped when the same `mt5_position` was already in the deal list, so the internal API never wrote `Trade.pnl` for open MT5 trades. The worker now overlays `positions_get().profit` onto open deal-derived rows before POST; worker logs `MT5 sync positions … running_pnl_overlay_rows=…`, internal sync logs each open `written_pnl` / warns when pnl missing (`celery_workers/mt5_sync_tasks.py`, `routes/mt5_internal.py`, `tests/test_mt5_sync.py`). Also: `import time` restored for stale-reconnect `time.sleep`.
 - MT5 sync **soft reconnect** on stale broker view: when the broker reports no open positions and deal history is missing or older than `FXJ_MT5_HISTORY_STALE_THRESHOLD_MINUTES` while the DB still has open MT5-linked trades, the worker performs one extra `mt5.shutdown()` → `initialize` → `login` and refetches before POST; no process kill, disable with `FXJ_MT5_SOFT_RECONNECT_ON_STALE=0`; logs and `mt5_sync_diag` Redis state include `soft_reconnect` (`celery_workers/mt5_sync_tasks.py`, `tests/test_mt5_sync.py`)
