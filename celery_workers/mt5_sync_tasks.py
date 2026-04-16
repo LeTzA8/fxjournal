@@ -40,53 +40,45 @@ def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
     raise task.retry(exc=exc, countdown=countdown)
 
 
-def _relaunch_terminal_if_dead(terminal_path: str) -> None:
+def _ensure_terminal_launched(terminal_path: str) -> None:
     """
-    Called only after an IPC-send-failed error (-10001).  Checks whether the
-    terminal process is actually running; if not, launches it and waits up to
-    15 s for the process to appear before returning so the caller can retry
-    mt5.initialize().  Zero overhead on the normal path — only invoked on error.
+    Called only after a confirmed IPC-send-failed error (-10001).
+    Kills any existing terminal process at that path (the IPC pipe is broken
+    regardless of whether the process is running) then launches a fresh instance.
+    Does NOT wait for IPC readiness — the caller polls mt5.initialize() instead.
     """
     import subprocess
 
     terminal_dir = os.path.dirname(terminal_path)
     norm_path = os.path.normcase(os.path.abspath(terminal_path))
 
-    def _is_running():
-        try:
-            import psutil
-            return any(
-                proc.info.get("exe")
-                and os.path.normcase(os.path.abspath(proc.info["exe"])) == norm_path
-                for proc in psutil.process_iter(["exe"])
-            )
-        except Exception:
-            return False
+    # Always kill any existing instance — if IPC send failed, the pipe is broken
+    # and a running process won't recover it. A fresh start is the only fix.
+    try:
+        import psutil
+        for proc in psutil.process_iter(["exe"]):
+            try:
+                if (
+                    proc.info.get("exe")
+                    and os.path.normcase(os.path.abspath(proc.info["exe"])) == norm_path
+                ):
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=10)
+                    except psutil.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=5)
+                    logger.info("MT5 relaunch: killed stale process terminal=%s", terminal_path)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+    except ImportError:
+        pass  # psutil unavailable — Popen will fail-fast if exe is locked
 
-    if _is_running():
-        # Still running — IPC failure was transient; let the caller retry.
-        logger.info("MT5 relaunch: terminal still running terminal=%s", terminal_path)
-        return
-
-    logger.warning("MT5 relaunch: terminal not running — launching terminal=%s", terminal_path)
+    logger.warning("MT5 relaunch: launching fresh terminal=%s", terminal_path)
     try:
         subprocess.Popen([terminal_path], cwd=terminal_dir)
     except OSError as exc:
         logger.error("MT5 relaunch: Popen failed terminal=%s exc=%s", terminal_path, exc)
-        return
-
-    # Wait up to 15 s for the process to appear, then an extra 3 s for its
-    # IPC socket to open before handing control back to mt5.initialize().
-    deadline = time.time() + 15
-    while time.time() < deadline:
-        time.sleep(2)
-        if _is_running():
-            time.sleep(3)
-            logger.info("MT5 relaunch: terminal started terminal=%s", terminal_path)
-            return
-
-    # Process not confirmed, but give it a chance anyway — IPC might still open.
-    logger.warning("MT5 relaunch: terminal not confirmed after 15s terminal=%s", terminal_path)
 
 
 def _adjust_mt5_unix_epoch(timestamp_value, *, offset_minutes=0):
@@ -992,17 +984,36 @@ def sync_mt5_account(
             if not mt5.initialize(**init_kwargs):
                 err = mt5.last_error()
                 err_code = err[0] if isinstance(err, (tuple, list)) else None
-                # -10001 = IPC send failed: terminal process likely died.
-                # Relaunch it, wait for it to start, then retry initialize once.
+                # -10001 = IPC send failed: terminal process likely died or is still starting.
+                # Ensure it's launched, then poll initialize() until IPC is ready (up to 45 s).
                 if err_code == -10001 and terminal_path and os.path.isfile(terminal_path):
                     logger.warning(
-                        "MT5 sync IPC send failed — relaunching terminal mt5_account_id=%s terminal=%s",
+                        "MT5 sync IPC send failed — ensuring terminal is running mt5_account_id=%s",
                         mt5_account_id,
-                        terminal_path,
                     )
-                    _relaunch_terminal_if_dead(terminal_path)
-                    if not mt5.initialize(**init_kwargs):
-                        raise RuntimeError(f"MT5 init failed after relaunch: {mt5.last_error()}")
+                    _ensure_terminal_launched(terminal_path)
+                    _IPC_POLL_TIMEOUT = 45
+                    _IPC_POLL_INTERVAL = 3
+                    deadline = time.time() + _IPC_POLL_TIMEOUT
+                    initialized = False
+                    while time.time() < deadline:
+                        time.sleep(_IPC_POLL_INTERVAL)
+                        if mt5.initialize(**init_kwargs):
+                            initialized = True
+                            break
+                        poll_err = mt5.last_error()
+                        poll_code = poll_err[0] if isinstance(poll_err, (tuple, list)) else None
+                        try:
+                            mt5.shutdown()
+                        except Exception:
+                            pass
+                        if poll_code != -10001:
+                            # Different error (bad credentials, wrong server, etc.) — fail fast.
+                            raise RuntimeError(f"MT5 init failed after relaunch: {poll_err}")
+                    if not initialized:
+                        raise RuntimeError(
+                            f"MT5 IPC not ready after {_IPC_POLL_TIMEOUT}s — terminal may have crashed"
+                        )
                 else:
                     raise RuntimeError(f"MT5 init failed: {err}")
 
