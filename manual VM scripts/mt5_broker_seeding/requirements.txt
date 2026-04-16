@@ -1,3 +1,3 @@
-# Windows VM / local operator helper. Keeps GUI automation out of the main app requirements.txt (Render).
+# Windows VM helper — pywinauto used only for keyboard.send_keys (no UIA window code).
 # From repo root: python -m pip install -r "manual VM scripts/mt5_broker_seeding/requirements.txt"
 pywinauto==0.6.9
