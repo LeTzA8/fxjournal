@@ -2,11 +2,11 @@
 Seed MT5's broker/server discovery cache by driving the built-in UI search flow.
 
 - Does not log into any account and does not touch servers.dat on disk.
-- **Default:** “manual focus” — you click the **company search** field in MT5 during
-  a short countdown; the script then sends keystrokes there (no UIA dialog lookup).
-- **Optional:** set `MANUAL_FOCUS_SECONDS = 0` or run with `--manual-focus 0` to use
-  UI automation to find the Open an Account window instead. The File menu is not
-  used unless `USE_FILE_MENU = True`.
+- **Default:** short countdown — you click the **company search** field once so MT5
+  is ready; the script attaches to the Open an Account dialog, then for each broker:
+  **re-click the search field → type → click “Find your company” → wait** (repeat).
+- Set `MANUAL_FOCUS_SECONDS = 0` or `--manual-focus 0` to skip the countdown (dialog
+  must still be found via UIA). The File menu is not used unless `USE_FILE_MENU = True`.
 """
 
 from __future__ import annotations
@@ -38,7 +38,10 @@ MT5_DATA_FOLDER_HINT: Path | None = None  # e.g. Path(r"C:\Users\You\AppData\Roa
 # Seconds
 STARTUP_WAIT_S = 18.0
 AFTER_MENU_OPEN_S = 2.5
-AFTER_TYPING_S = 6.0
+# After clicking “Find your company”, give MT5 time to query before the next broker.
+AFTER_FIND_CLICK_S = 6.0
+# Brief pause after typing, before pressing Find (lets the field settle).
+PAUSE_BEFORE_FIND_CLICK_S = 0.25
 BETWEEN_BROKERS_S = 2.0
 CONNECT_RETRY_S = 2.0
 CONNECT_RETRIES = 15
@@ -57,10 +60,12 @@ MENU_OPEN_RETRY_DELAY_S = 1.2
 # If True, press Esc once after the last broker (optional).
 CLOSE_DIALOG_AT_END = False
 
-# Default > 0: “manual focus” — sleep this many seconds while you click the MT5 company
-# search field; then keystrokes go to whatever has focus. Set to 0 (or run
-# `--manual-focus 0`) to find the dialog via UI automation instead.
+# Countdown (seconds) so you can click the company search field before automation runs.
+# Set to 0 (or `--manual-focus 0`) to skip this step.
 MANUAL_FOCUS_SECONDS = 10.0
+
+# “Find your company” button (UIA title/name). Regex, case-insensitive.
+FIND_COMPANY_BUTTON_TITLE_RE = r"Find.*your.*company"
 
 # English UI default. Must match the exact menu path MT5 exposes to accessibility.
 # If this fails, run once with: python mt5_seed_brokers.py --dump-dialog
@@ -259,9 +264,9 @@ def _ensure_open_account_dialog(app):
         return _open_account_dialog_via_menu(app)
     raise RuntimeError(
         "Open an Account dialog not found by UI automation. Leave the wizard open, "
-        "increase EXISTING_DIALOG_WAIT_S, widen OPEN_ACCOUNT_DIALOG_TITLE_RE, or use "
-        "the default manual-focus mode (MANUAL_FOCUS_SECONDS > 0). "
-        "Optional: USE_FILE_MENU = True to open the wizard via the File menu."
+        "click the company search field during the countdown if you use MANUAL_FOCUS_SECONDS, "
+        "increase EXISTING_DIALOG_WAIT_S, widen OPEN_ACCOUNT_DIALOG_TITLE_RE, or set "
+        "USE_FILE_MENU = True to open the wizard via the File menu."
     )
 
 
@@ -301,11 +306,10 @@ def _open_account_dialog_via_menu(app):
     ) from last_exc
 
 
-def _type_search_term(dialog, term: str) -> None:
-    from pywinauto.keyboard import send_keys
-
-    edits = [w for w in dialog.descendants(control_type="Edit")]
-    target = None
+def _pick_company_search_edit(dlg) -> object | None:
+    edits = [w for w in dlg.descendants(control_type="Edit")]
+    if not edits:
+        return None
     for ed in edits:
         try:
             ei = getattr(ed, "element_info", None)
@@ -314,37 +318,93 @@ def _type_search_term(dialog, term: str) -> None:
         except Exception:
             label = ""
         if "company" in label.lower() or "company.com" in label.lower():
-            target = ed
-            break
-    if target is None and edits:
-        target = edits[0]
+            return ed
+    return edits[0]
+
+
+def _focus_company_search_edit(dlg) -> None:
+    target = _pick_company_search_edit(dlg)
+    if target is None:
+        try:
+            dlg.set_focus()
+        except Exception:
+            pass
+        return
+    try:
+        target.click_input()
+    except Exception:
+        try:
+            target.set_focus()
+        except Exception:
+            pass
+
+
+def _clear_and_type_company_term(dlg, term: str) -> None:
+    from pywinauto.keyboard import send_keys
+
+    target = _pick_company_search_edit(dlg)
     if target is not None:
         try:
             target.set_focus()
         except Exception:
             pass
-        # Clear field then type the term (Unicode-safe for most broker names).
         send_keys("^a{BACKSPACE}", pause=0.05)
         target.type_keys(term, with_spaces=True, pause=0.03)
     else:
-        # Fallback: focus dialog and type (less reliable if focus order changes).
         try:
-            dialog.set_focus()
+            dlg.set_focus()
         except Exception:
             pass
         send_keys("^a{BACKSPACE}", pause=0.05)
         send_keys(term.replace("{", "{{").replace("}", "}}"), with_spaces=True, pause=0.03)
 
-    time.sleep(AFTER_TYPING_S)
+
+def _button_label(btn) -> str:
+    try:
+        ei = getattr(btn, "element_info", None)
+        en = getattr(ei, "name", None) if ei is not None else None
+        return ((btn.window_text() or "") + " " + (en or "")).strip()
+    except Exception:
+        return (btn.window_text() or "").strip()
 
 
-def _type_terms_foreground_focus(terms: list[str], lead_seconds: float) -> None:
-    """Send keys to whatever control is focused (user must click MT5 search box first)."""
-    from pywinauto.keyboard import send_keys
+def _click_find_company_button(dlg) -> None:
+    try:
+        btn = dlg.child_window(title_re=FIND_COMPANY_BUTTON_TITLE_RE, control_type="Button")
+        if btn.exists(timeout=2):
+            btn.click_input()
+            logger.info("Clicked Find-company button (child_window title_re).")
+            return
+    except Exception:
+        pass
+    for w in dlg.descendants(control_type="Button"):
+        label = _button_label(w)
+        if not label:
+            continue
+        if re.search(FIND_COMPANY_BUTTON_TITLE_RE, label, re.I):
+            w.click_input()
+            logger.info("Clicked Find-company button (matched %r).", label)
+            return
+    raise RuntimeError(
+        "Could not find the 'Find your company' button — run --dump-dialog and adjust "
+        "FIND_COMPANY_BUTTON_TITLE_RE if your UI language differs."
+    )
 
+
+def _broker_seed_cycle(dlg, term: str) -> None:
+    _focus_company_search_edit(dlg)
+    _clear_and_type_company_term(dlg, term)
+    time.sleep(PAUSE_BEFORE_FIND_CLICK_S)
+    _click_find_company_button(dlg)
+    time.sleep(AFTER_FIND_CLICK_S)
+
+
+def _manual_focus_countdown(lead_seconds: float) -> None:
+    if lead_seconds <= 0:
+        return
     logger.warning(
-        "MANUAL_FOCUS mode: in %.0fs click the MT5 **company search** field so it has "
-        "keyboard focus — then the script types each broker name.",
+        "MANUAL_FOCUS: in %.0fs click the MT5 **company search** field once — then "
+        "the script drives refocus → type → Find for each broker.",
         lead_seconds,
     )
     print(
@@ -352,15 +412,6 @@ def _type_terms_foreground_focus(terms: list[str], lead_seconds: float) -> None:
         flush=True,
     )
     time.sleep(lead_seconds)
-    for term in terms:
-        send_keys("^a{BACKSPACE}", pause=0.05)
-        send_keys(term.replace("{", "{{").replace("}", "}}"), with_spaces=True, pause=0.03)
-        time.sleep(AFTER_TYPING_S)
-        logger.info(
-            'SEARCH ok (foreground keys) term=%r — ensure focus stayed in the search field',
-            term,
-        )
-        time.sleep(BETWEEN_BROKERS_S)
 
 
 def _close_open_account_dialog(app) -> None:
@@ -400,29 +451,31 @@ def run_once(manual_focus_override: float | None = None) -> int:
 
     manual_secs = MANUAL_FOCUS_SECONDS if manual_focus_override is None else float(manual_focus_override)
     if manual_secs > 0:
-        _type_terms_foreground_focus(terms, manual_secs)
-    else:
-        try:
-            dlg = _ensure_open_account_dialog(app)
-        except RuntimeError as exc:
-            logger.error("%s", exc)
-            return 1
+        _manual_focus_countdown(manual_secs)
 
-        for term in terms:
-            try:
-                try:
-                    dlg.set_focus()
-                except Exception:
-                    pass
-                _type_search_term(dlg, term)
-                logger.info(
-                    'SEARCH ok term=%r (MT5 should have triggered a lookup; no login performed)',
-                    term,
-                )
-                time.sleep(BETWEEN_BROKERS_S)
-            except Exception as exc:
-                logger.exception('SEARCH fail term=%r err=%s', term, exc)
-                time.sleep(BETWEEN_BROKERS_S)
+    try:
+        dlg = _ensure_open_account_dialog(app)
+    except RuntimeError as exc:
+        logger.error("%s", exc)
+        return 1
+
+    try:
+        dlg.set_focus()
+    except Exception:
+        pass
+    time.sleep(AFTER_MENU_OPEN_S)
+
+    for term in terms:
+        try:
+            _broker_seed_cycle(dlg, term)
+            logger.info(
+                'SEARCH ok term=%r (typed + Find clicked; no login performed)',
+                term,
+            )
+            time.sleep(BETWEEN_BROKERS_S)
+        except Exception as exc:
+            logger.exception('SEARCH fail term=%r err=%s', term, exc)
+            time.sleep(BETWEEN_BROKERS_S)
 
     if CLOSE_DIALOG_AT_END:
         _close_open_account_dialog(app)
@@ -445,9 +498,9 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         metavar="SEC",
         help=(
-            "Wait SEC seconds (click MT5 company search); then type to foreground. "
-            "Default uses MANUAL_FOCUS_SECONDS in this file (10). Pass 0 to find the "
-            "dialog with UI automation instead."
+            "Wait SEC seconds and click the MT5 company search field once before "
+            "automation. Default uses MANUAL_FOCUS_SECONDS in this file (10). Pass 0 "
+            "to skip the countdown."
         ),
     )
     args = parser.parse_args(argv)
