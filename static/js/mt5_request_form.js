@@ -98,7 +98,8 @@
         if (!submitButton) {
             return;
         }
-        const consentGiven = Boolean(consentInput && consentInput.checked);
+        // consentInput is optional — retry form has no consent checkbox
+        const consentGiven = !consentInput || consentInput.checked;
         submitButton.disabled = isSubmitting || !consentGiven;
         submitButton.textContent = isSubmitting ? "Saving..." : defaultSubmitText;
     };

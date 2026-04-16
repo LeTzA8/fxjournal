@@ -50,7 +50,8 @@
                     {% set mt5_is_linked = trade_account.id in linked_mt5_trade_account_ids %}
                     {% set mt5_is_active_linked = trade_account.id in active_mt5_trade_account_ids %}
                     {% set mt5_is_archived = mt5_account and mt5_account.is_archived %}
-                    {% set mt5_has_setup_artifacts = mt5_account and ((mt5_account.terminal_path or '') or (mt5_account.appdata_hash or '')) %}
+                    {% set mt5_is_failed = mt5_account and mt5_account.is_connection_failed and not mt5_is_active_linked and not mt5_is_archived %}
+                    {% set mt5_has_setup_artifacts = mt5_account and not mt5_is_failed and ((mt5_account.terminal_path or '') or (mt5_account.appdata_hash or '')) %}
                     <article
                         class="account-card {% if active_trade_account and trade_account.id == active_trade_account.id %}active{% endif %}"
                         data-trade-account-card
@@ -89,6 +90,8 @@
                                 <span class="chip default">MT5 Linked</span>
                                 {% elif trade_account.account_type == "CFD" and mt5_is_archived %}
                                 <span class="chip default">MT5 Sync Inactive</span>
+                                {% elif trade_account.account_type == "CFD" and mt5_is_failed %}
+                                <span class="chip chip--error">MT5 Connection Failed</span>
                                 {% elif trade_account.account_type == "CFD" and mt5_is_linked and mt5_has_setup_artifacts %}
                                 <span class="chip default">MT5 Setting Up</span>
                                 {% elif trade_account.account_type == "CFD" and mt5_is_linked %}
@@ -165,6 +168,10 @@
                             {% elif mt5_is_archived %}
                             <p class="account-meta">MT5 sync is inactive due to inactivity for this account.</p>
                             <p class="account-meta">Reactivate it when you want MyFXJournal to rebuild the VM terminal and resume automatic sync.</p>
+                            {% elif mt5_is_failed %}
+                            <p class="account-meta account-meta--error">{{ mt5_account.connection_error_message or 'MT5 connection failed. Fix your details and retry.' }}</p>
+                            <p class="account-meta">Open the dashboard MT5 card to correct your details and retry the connection.</p>
+                            <a href="{{ url_for('dashboard.home', _anchor='mt5-access') }}" class="ghost-link btn-link">Fix on Dashboard</a>
                             {% elif mt5_is_linked and mt5_has_setup_artifacts %}
                             <p class="account-meta">Terminal setup is already in progress for this account.</p>
                             {% if pending_mt5_request and pending_mt5_request.request_note %}

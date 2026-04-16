@@ -202,6 +202,64 @@ class PermanentSetupError(RuntimeError):
     """Raised when setup is running on the wrong host or missing required local config."""
 
 
+class TradingPasswordDetectedError(Exception):
+    """
+    Raised when account_info().trade_allowed is True after a successful MT5 login,
+    indicating the user submitted a master/trading password instead of the required
+    investor (read-only) password.  This error is never retried.
+    """
+
+
+def _classify_setup_error(error_str: str) -> str:
+    """Map a raw MT5 error string to a user-facing connection error message."""
+    s = str(error_str).lower()
+    if any(k in s for k in ("trading/master password", "trading password", "trade_allowed")):
+        return (
+            "A master/trading password was detected and rejected. "
+            "Please resubmit using your MT5 investor (read-only) password."
+        )
+    if "wrong account" in s or ("expected" in s and "got" in s):
+        return (
+            "Account mismatch. Check that the account number you entered matches your MT5 login."
+        )
+    if any(k in s for k in ("auth_failed", "auth failed", "authorization", "invalid password", "invalid account")):
+        return (
+            "Login failed. Please check your account number and investor password."
+        )
+    if any(k in s for k in ("no_ipc", "no ipc", "ipc connection", "timeout", "timed out", "connection refused", "network")):
+        return (
+            "Connection timeout. Check that the server name is exact (e.g. Exness-MT5Real) and try again."
+        )
+    if any(k in s for k in ("unsupported", "version", "not found", "invalid server", "res_x")):
+        return (
+            "Invalid server. Enter the exact MT5 server name from your broker (e.g. Exness-MT5Real, ICMarketsSC-Live)."
+        )
+    return (
+        "Connection failed. Check your server name, account number, and investor password, then retry."
+    )
+
+
+def _write_mt5_account_status(mt5_account_id: int, status: str, error_message=None):
+    """Write connection_status (and optional error message) to the MT5Account row."""
+    from models import MT5Account, db
+
+    try:
+        account = db.session.get(MT5Account, mt5_account_id)
+        if account is None:
+            return
+        account.connection_status = status
+        account.connection_error_message = error_message
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.warning(
+            "MT5 status write failed mt5_account_id=%s status=%s error=%s",
+            mt5_account_id,
+            status,
+            exc,
+        )
+
+
 def _mask_account_number_for_log(account_number):
     text_value = str(account_number or "").strip()
     if not text_value:
@@ -246,6 +304,93 @@ def _send_mt5_ready_email(account):
                 ("MT5 Account ID", account.id),
                 ("User ID", user.id),
                 ("Account", _mask_account_number_for_log(getattr(account, "account_number", None))),
+                ("Error", exc),
+            ],
+            level=logging.WARNING,
+        )
+
+
+def _send_mt5_setup_failed_email(account, user_message: str):
+    user = getattr(account, "user", None)
+    if user is None or not getattr(user, "email", None):
+        return
+
+    from auth_account import get_public_base_url, render_app_template, send_email_placeholder
+
+    try:
+        base_url = get_public_base_url()
+        html_body = render_app_template(
+            "emails/mt5-setup-failed.html",
+            name=user.username,
+            error_message=user_message,
+            dashboard_url=f"{base_url}/dashboard",
+            logo_url=f"{base_url}/static/site-logo.png",
+        )
+        send_email_placeholder(
+            user.email,
+            "MT5 connection setup failed — fix & retry",
+            (
+                f"Hi {user.username}, we weren't able to connect to your MT5 account. "
+                f"{user_message} "
+                "Open the dashboard to fix your details and retry."
+            ),
+            html_body=html_body,
+        )
+    except Exception as exc:
+        log_ascii_table(
+            logger,
+            "MT5 Setup Failed Email Failed",
+            [
+                ("MT5 Account ID", account.id),
+                ("User ID", user.id),
+                ("Error", exc),
+            ],
+            level=logging.WARNING,
+        )
+
+
+def _send_trading_password_warning_email(account):
+    user = getattr(account, "user", None)
+    if user is None or not getattr(user, "email", None):
+        return
+
+    from auth_account import get_public_base_url, send_email_placeholder
+
+    try:
+        base_url = get_public_base_url()
+        dashboard_url = f"{base_url}/dashboard"
+        subject = "Action required: MT5 trading password detected — your credentials were cleared"
+        text_body = (
+            f"Hi {user.username},\n\n"
+            "We detected that the password you submitted for MT5 sync was a "
+            "MASTER or TRADING password, not an investor (read-only) password.\n\n"
+            "To protect your account, we have:\n"
+            "  1. Immediately terminated the MT5 connection.\n"
+            "  2. Deleted the stored password from our system.\n"
+            "  3. Removed the terminal files from our server.\n\n"
+            "WHAT YOU NEED TO DO:\n"
+            "  • Open your MT5 platform and locate your INVESTOR password "
+            "(not your master / trading password).\n"
+            "  • In MT5: right-click your account → Manage Account → "
+            "you will find the investor password there.\n"
+            f"  • Return to your dashboard and re-enter your details: {dashboard_url}\n\n"
+            "If you are unsure which password to use, contact your broker. "
+            "The investor password is read-only and cannot place trades. "
+            "Never share your master/trading password with any third-party service.\n\n"
+            "MyFXJournal"
+        )
+        send_email_placeholder(
+            user.email,
+            subject,
+            text_body,
+        )
+    except Exception as exc:
+        log_ascii_table(
+            logger,
+            "MT5 Trading Password Warning Email Failed",
+            [
+                ("MT5 Account ID", account.id),
+                ("User ID", user.id),
                 ("Error", exc),
             ],
             level=logging.WARNING,
@@ -300,7 +445,19 @@ def _verify_mt5_terminal_login(
                     f"Wrong account logged in: expected {login}, got {actual_login}"
                 )
 
+            # Investor (read-only) password always yields trade_allowed=False.
+            # If True, the user submitted a master/trading password — reject immediately.
+            # Note: some brokers disable trading at account level even with master password,
+            # so this is a safe check (no false positives, rare false negatives only).
+            if getattr(account_info, "trade_allowed", False):
+                raise TradingPasswordDetectedError(
+                    f"trading/master password detected for login {_mask_account_number_for_log(login)} "
+                    f"on server {server}"
+                )
+
             return
+        except TradingPasswordDetectedError:
+            raise  # propagate immediately, do not retry inside the loop
         except RuntimeError as exc:
             if attempt >= MT5_SETUP_VERIFY_ATTEMPTS:
                 raise
@@ -519,6 +676,8 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         account.is_active = True
         account.archived_at = None
         account.archive_reason = None
+        account.connection_status = "connected"
+        account.connection_error_message = None
         db.session.commit()
         if not was_active:
             _send_mt5_ready_email(account)
@@ -548,6 +707,75 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             "status": "setup complete",
             "account": login,
         }
+    except TradingPasswordDetectedError as exc:
+        db.session.rollback()
+        finished_at = datetime.now(timezone.utc)
+
+        # 1. Clear the stored password immediately and record the failure.
+        try:
+            account = db.session.get(MT5Account, mt5_account_id)
+            if account is not None:
+                account.investor_password_encrypted = None
+                account.connection_status = "failed"
+                account.connection_error_message = (
+                    "A master/trading password was detected and rejected. "
+                    "For your security the connection was terminated and your credentials were cleared. "
+                    "Please resubmit using your MT5 investor (read-only) password — "
+                    "not your master or trading password."
+                )
+                db.session.commit()
+        except Exception as clear_exc:
+            db.session.rollback()
+            logger.warning(
+                "MT5 trading password — failed to clear credentials mt5_account_id=%s: %s",
+                mt5_account_id,
+                clear_exc,
+            )
+
+        # 2. Queue terminal file cleanup (same path as account delete).
+        if terminal_exe:
+            try:
+                cleanup_mt5_terminal.apply_async(
+                    args=[terminal_exe, appdata_hash or ""],
+                    queue="mt5_setup",
+                )
+            except Exception as cleanup_exc:
+                logger.warning(
+                    "MT5 trading password — terminal cleanup queue failed mt5_account_id=%s: %s",
+                    mt5_account_id,
+                    cleanup_exc,
+                )
+
+        # 3. Email the user.
+        try:
+            account_for_email = db.session.get(MT5Account, mt5_account_id)
+            if account_for_email is not None:
+                _send_trading_password_warning_email(account_for_email)
+        except Exception as email_exc:
+            logger.warning(
+                "MT5 trading password — warning email failed mt5_account_id=%s: %s",
+                mt5_account_id,
+                email_exc,
+            )
+
+        log_ascii_table(
+            logger,
+            "MT5 Setup — Trading Password Detected",
+            [
+                ("Finished", finished_at),
+                ("Duration", duration_label(started_at, finished_at)),
+                ("Task ID", task_id),
+                ("MT5 Account ID", mt5_account_id),
+                ("User ID", user_id),
+                ("Trade Account ID", trade_account_id),
+                ("Account", _mask_account_number_for_log(login)),
+                ("Server", server),
+                ("Action", "password cleared, terminal cleanup queued, user emailed"),
+            ],
+            level=logging.ERROR,
+        )
+        raise  # no retry
+
     except PermanentSetupError as exc:
         db.session.rollback()
         finished_at = datetime.now(timezone.utc)
@@ -596,13 +824,35 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             ],
             level=logging.ERROR,
         )
-        logger.exception(
-            "MT5 setup failed and will retry. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s",
-            task_id,
-            mt5_account_id,
-            user_id,
-            trade_account_id,
-        )
+        current_retry = getattr(getattr(self, "request", None), "retries", 0)
+        at_max_retries = current_retry >= getattr(self, "max_retries", 2)
+        if at_max_retries:
+            logger.error(
+                "MT5 setup exhausted retries — marking failed. task_id=%s mt5_account_id=%s user_id=%s",
+                task_id,
+                mt5_account_id,
+                user_id,
+            )
+            user_message = _classify_setup_error(str(exc))
+            _write_mt5_account_status(mt5_account_id, "failed", user_message)
+            try:
+                failed_account = db.session.get(MT5Account, mt5_account_id)
+                if failed_account is not None:
+                    _send_mt5_setup_failed_email(failed_account, user_message)
+            except Exception as email_exc:
+                logger.warning(
+                    "MT5 setup failed email error mt5_account_id=%s: %s",
+                    mt5_account_id,
+                    email_exc,
+                )
+        else:
+            logger.exception(
+                "MT5 setup failed and will retry. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s",
+                task_id,
+                mt5_account_id,
+                user_id,
+                trade_account_id,
+            )
         _retry_with_backoff(self, exc, base_delay=30, max_delay=300)
 
 

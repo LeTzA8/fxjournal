@@ -627,7 +627,17 @@ class MT5Account(db.Model):
     archive_reason = db.Column(db.String(32), nullable=True)
     mt5_consent_accepted_at = db.Column(db.DateTime, nullable=True)
     mt5_consent_version = db.Column(db.String(32), nullable=True)
+    connection_status = db.Column(db.String(16), nullable=False, default="pending")
+    connection_error_message = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+
+    CONNECTION_STATUS_PENDING = "pending"
+    CONNECTION_STATUS_CONNECTED = "connected"
+    CONNECTION_STATUS_FAILED = "failed"
+
+    @property
+    def is_connection_failed(self):
+        return self.connection_status == self.CONNECTION_STATUS_FAILED
 
     @property
     def is_orphaned(self):
@@ -653,6 +663,8 @@ class MT5Account(db.Model):
         self.archive_reason = None
         self.mt5_consent_accepted_at = None
         self.mt5_consent_version = None
+        self.connection_status = self.CONNECTION_STATUS_PENDING
+        self.connection_error_message = None
 
 
 class MT5SyncVMState(db.Model):

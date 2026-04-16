@@ -561,6 +561,9 @@
                                         <span>{{ account.server }}</span>
                                         <span>{{ account.terminal_path or "Terminal not set up yet" }}</span>
                                         <span>{{ account.appdata_hash or "AppData hash pending" }}</span>
+                                        {% if account.connection_status == "failed" and account.connection_error_message %}
+                                        <span class="account-meta--error">{{ account.connection_error_message }}</span>
+                                        {% endif %}
                                         {% if account.is_archived %}
                                         <span>Archived due to inactivity: {{ account.archived_at.strftime("%Y-%m-%d %H:%M UTC") if account.archived_at else "Pending timestamp" }}</span>
                                         {% endif %}

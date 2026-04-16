@@ -1,0 +1,49 @@
+{% extends "emails/_base.html" %}
+{% set title = "MT5 connection setup failed" %}
+{% set preheader = "Your MT5 setup hit a problem — fix your details and retry from the dashboard." %}
+
+{% block card_content %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+  <tr>
+    <td align="center">
+      <div style="display:inline-block;padding:10px 14px;border-radius:999px;background-color:#fff0f0;border:1px solid #fad4d4;font-size:12px;font-weight:700;letter-spacing:0.7px;text-transform:uppercase;color:#c0392b;">MT5 setup failed</div>
+    </td>
+  </tr>
+</table>
+<p class="email-text" style="margin:0 0 8px 0;font-size:24px;font-weight:700;color:#182538;letter-spacing:-0.3px;text-align:center;">Your MT5 setup hit a problem.</p>
+<p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#66758f;line-height:1.7;text-align:center;">Hi {{ name }}, we weren't able to connect to your MT5 account. Fix your details on the dashboard and retry — it only takes a moment.</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+  <tr>
+    <td style="border-radius:14px;background-color:#fff8f8;border:1px solid #fad4d4;padding:18px 20px;">
+      <p style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#c0392b;letter-spacing:0.7px;text-transform:uppercase;">What went wrong</p>
+      <p class="email-text" style="margin:0;font-size:14px;color:#182538;line-height:1.6;">{{ error_message }}</p>
+    </td>
+  </tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+  <tr>
+    <td style="border-radius:14px;background-color:#eef4ff;border:1px solid #dce4f0;padding:18px 20px;">
+      <p class="email-accent" style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#3658e8;letter-spacing:0.7px;text-transform:uppercase;">How to fix it</p>
+      <p class="email-text" style="margin:0 0 6px 0;font-size:14px;font-weight:700;color:#182538;">Open the dashboard and use the retry form.</p>
+      <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">Your previous details are pre-filled. Correct the server name, account number, or investor password — whichever needs fixing — and hit retry. No need to start from scratch.</p>
+    </td>
+  </tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
+  <tr>
+    <td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td class="email-button-cell" bgcolor="#3658e8" align="center" style="background-color:#3658e8;border-radius:10px;">
+            <a href="{{ dashboard_url }}" class="email-button-link" style="display:block;padding:14px 36px;border:1px solid #3658e8;border-radius:10px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">Fix &amp; Retry on Dashboard</a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
+  <tr><td class="email-divider" style="height:1px;background-color:#dce4f0;"></td></tr>
+</table>
+<p class="email-muted" style="margin:0;font-size:13px;color:#66758f;text-align:center;line-height:1.6;">If you keep seeing this, reply to this email and we'll help you get connected.</p>
+{% endblock %}

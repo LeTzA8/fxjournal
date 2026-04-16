@@ -86,6 +86,12 @@
             <span class="admin-stat-label">MT5 accounts</span>
             <span class="admin-stat-value">{{ overview.mt5_accounts }}</span>
           </span>
+          {% if failed_mt5_count is defined and failed_mt5_count %}
+          <span class="admin-stat-tile admin-stat-tile--alert">
+            <span class="admin-stat-label">Connection Failed</span>
+            <span class="admin-stat-value">{{ failed_mt5_count }}</span>
+          </span>
+          {% endif %}
           {% if orphaned_mt5_count is defined and orphaned_mt5_count %}
           <span class="admin-stat-tile admin-stat-tile--static admin-stat-tile--warn">
             <span class="admin-stat-label">Cleanup-only</span>

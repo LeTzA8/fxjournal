@@ -1209,6 +1209,13 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
                 f"MT5 sync was archived due to inactivity on {archive_date_label}. "
                 "Reactivate to rebuild the VM terminal using your saved read-only credentials."
             )
+        elif is_linked and getattr(mt5_account, "connection_status", None) == "failed":
+            status = "failed"
+            status_label = "Connection Failed"
+            note = (
+                getattr(mt5_account, "connection_error_message", None)
+                or "MT5 connection failed. Update your details and retry."
+            )
         elif has_setup_artifacts:
             status = "setting_up"
             status_label = "Setting Up"

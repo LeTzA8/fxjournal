@@ -657,6 +657,156 @@ def request_mt5_access(trade_account_pubkey=None):
     return _submit_mt5_sync_request(trade_account_pubkey=trade_account_pubkey)
 
 
+@bp.route("/dashboard/trade-accounts/mt5/retry", methods=["POST"])
+@limiter.limit(
+    "5 per minute;20 per day",
+    methods=["POST"],
+    error_message="Too many MT5 retry attempts. Please wait and try again later.",
+)
+@login_required
+def retry_mt5_setup():
+    """
+    Update credentials on an existing MT5Account that is in 'failed' status and
+    re-queue terminal setup WITHOUT creating a new DB row.
+    """
+    from helpers.core import is_support_view_active as _is_support_view
+
+    if _is_support_view():
+        return _build_mt5_request_response(
+            ok=False,
+            message="Not allowed in support view.",
+            status="error",
+            status_code=403,
+        )
+
+    user_id = session["user_id"]
+    pubkey = (request.form.get("trade_account_pubkey") or "").strip()
+    if not pubkey:
+        return _build_mt5_request_response(
+            ok=False,
+            message="Trade account not specified.",
+            status="error",
+            status_code=400,
+        )
+
+    account = get_user_trade_account_by_pubkey(user_id, pubkey)
+    if not account:
+        return _build_mt5_request_response(
+            ok=False,
+            message="Trade account not found.",
+            status="error",
+            status_code=404,
+        )
+
+    mt5_account = MT5Account.query.filter_by(
+        trade_account_id=account.id,
+        user_id=user_id,
+    ).first()
+    if mt5_account is None:
+        return _build_mt5_request_response(
+            ok=False,
+            message="No MT5 account found to retry. Please use the setup form.",
+            status="error",
+            status_code=404,
+        )
+
+    if mt5_account.connection_status != MT5Account.CONNECTION_STATUS_FAILED:
+        return _build_mt5_request_response(
+            ok=False,
+            message="This MT5 account is not in a failed state. No retry needed.",
+            status="error",
+            status_code=409,
+        )
+
+    account_number = (request.form.get("account_number") or "").strip()
+    investor_password = request.form.get("investor_password") or ""
+    server = (request.form.get("server") or "").strip()
+
+    if not account_number or not investor_password or not server:
+        return _build_mt5_request_response(
+            ok=False,
+            message="MT5 account number, investor password, and server are required.",
+            status="error",
+            status_code=400,
+        )
+    if len(account_number) > 50 or not account_number.isdigit():
+        return _build_mt5_request_response(
+            ok=False,
+            message="MT5 account number must contain digits only and be 50 characters or less.",
+            status="error",
+            status_code=400,
+        )
+    if len(server) > 100:
+        return _build_mt5_request_response(
+            ok=False,
+            message="MT5 server must be 100 characters or less.",
+            status="error",
+            status_code=400,
+        )
+
+    try:
+        mt5_account.account_number = account_number
+        mt5_account.investor_password_encrypted = encrypt_password(investor_password)
+        mt5_account.server = server
+        mt5_account.connection_status = MT5Account.CONNECTION_STATUS_PENDING
+        mt5_account.connection_error_message = None
+        # Clear stale VM terminal metadata so setup starts fresh
+        mt5_account.terminal_path = None
+        mt5_account.appdata_hash = None
+        mt5_account.is_active = False
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.warning(
+            "MT5 retry credential update failed for mt5_account_id=%s: %s",
+            mt5_account.id,
+            exc,
+        )
+        return _build_mt5_request_response(
+            ok=False,
+            message="Could not update MT5 details. Please try again.",
+            status="error",
+            status_code=503,
+        )
+
+    setup_queued = False
+    try:
+        from celery_workers.mt5_setup_tasks import setup_mt5_terminal
+
+        setup_mt5_terminal.apply_async(
+            args=[mt5_account.id],
+            queue="mt5_setup",
+        )
+        setup_queued = True
+    except Exception as exc:
+        current_app.logger.warning(
+            "MT5 retry queue failed for mt5_account_id=%s: %s",
+            mt5_account.id,
+            exc,
+        )
+
+    if setup_queued:
+        message = "Retrying MT5 setup with your updated details. We'll email you when sync is ready."
+        status_label = "Setup Queued"
+        progress_stage = 2
+    else:
+        message = "MT5 details updated but setup could not be queued. Please contact support."
+        status_label = "Saved"
+        progress_stage = 1
+
+    return _build_mt5_request_response(
+        ok=True,
+        message=message,
+        status="success",
+        extra={
+            "account_name": account.name,
+            "status_label": status_label,
+            "status_note": message,
+            "progress_stage": progress_stage,
+        },
+    )
+
+
 @bp.route("/dashboard/trade-accounts/<string:trade_account_pubkey>/delete", methods=["POST"])
 @limiter.limit(
     "3 per minute;10 per hour",

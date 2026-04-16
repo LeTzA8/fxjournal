@@ -382,6 +382,11 @@ def _build_admin_mt5_status(*, account, request_row=None):
             "label": "Archived",
             "chip_class": "default",
         }
+    if getattr(account, "connection_status", None) == "failed":
+        return {
+            "label": "Connection Failed",
+            "chip_class": "danger-chip",
+        }
 
     terminal_exists = bool(
         str(getattr(account, "terminal_path", "") or "").strip()
@@ -3161,6 +3166,12 @@ def register_public_auth_routes(
                 request_row=request_row,
             )
         orphaned_mt5_count = sum(1 for account in mt5_accounts if account.is_orphaned)
+        failed_mt5_count = sum(
+            1
+            for account in mt5_accounts
+            if getattr(account, "connection_status", None) == "failed"
+            and not account.is_orphaned
+        )
         mt5_batches = (
             MT5SyncBatch.query.order_by(
                 MT5SyncBatch.created_at.desc(),
@@ -3214,6 +3225,7 @@ def register_public_auth_routes(
             mt5_trade_counts_by_account=mt5_trade_counts_by_account,
             mt5_statuses_by_account_id=mt5_statuses_by_account_id,
             orphaned_mt5_count=orphaned_mt5_count,
+            failed_mt5_count=failed_mt5_count,
             mt5_batches=mt5_batches,
             mt5_batches_history=mt5_batches_history,
             active_mt5_batch=active_mt5_batch,

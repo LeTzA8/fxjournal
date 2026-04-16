@@ -550,6 +550,17 @@ body.app-layout .trade-accounts-page .chip.default {
     color: var(--warning-ink);
 }
 
+body.app-layout .trade-accounts-page .chip.chip--error {
+    border-color: color-mix(in srgb, var(--danger, #c0392b) 45%, transparent);
+    background: color-mix(in srgb, var(--danger, #c0392b) 12%, transparent);
+    color: color-mix(in srgb, var(--danger, #c0392b) 85%, var(--ink));
+}
+
+body.app-layout .trade-accounts-page .account-meta--error {
+    color: color-mix(in srgb, var(--danger, #c0392b) 85%, var(--ink));
+    font-weight: 600;
+}
+
 body.app-layout .trade-accounts-page .inline-actions {
     display: inline-flex;
     align-items: center;

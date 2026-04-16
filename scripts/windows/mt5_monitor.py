@@ -145,6 +145,8 @@ def _fetch_accounts():
             m.archived_at,
             m.archive_reason,
             m.vm_id,
+            m.connection_status,
+            m.connection_error_message,
             t.name        AS account_name,
             t.account_size
         FROM mt5_account m
@@ -354,13 +356,28 @@ def _stats_block(now, snapshots, accounts, sync_diag):
 
     if accounts is not None:
         active_n = sum(1 for r in accounts if r.is_active and not r.archived_at)
-        inactive_n = sum(1 for r in accounts if not r.is_active and not r.archived_at)
+        failed_n = sum(
+            1
+            for r in accounts
+            if not r.is_active
+            and not r.archived_at
+            and (r.connection_status or "") == "failed"
+        )
+        inactive_n = sum(
+            1
+            for r in accounts
+            if not r.is_active
+            and not r.archived_at
+            and (r.connection_status or "") != "failed"
+        )
         archived_n = sum(1 for r in accounts if r.archived_at)
         total_n = len(accounts)
         parts = [
             _c(GRN, f"{active_n} active"),
             _c(DIM, f"{total_n} total"),
         ]
+        if failed_n:
+            parts.append(_c(RED, f"{failed_n} failed"))
         if inactive_n:
             parts.append(_c(YLW, f"{inactive_n} inactive"))
         if archived_n:
@@ -449,6 +466,48 @@ def _sync_diag_block(sync_diag, max_rows=5):
     return lines
 
 
+def _failed_setups_block(accounts):
+    lines = []
+    if accounts is None:
+        return lines
+
+    failed = [
+        r
+        for r in accounts
+        if not r.archived_at
+        and (r.connection_status or "") == "failed"
+    ]
+    if not failed:
+        return lines
+
+    lines.append(_c(RED, _b(f"  FAILED SETUPS  .  {len(failed)} account(s) need attention")))
+    lines.append(_c(DIM, "  " + BAR))
+
+    CW_ERR = 55
+    hdr = (
+        f"  {_c(DIM, _cell('ID', CW_ID))}  "
+        f"{_c(DIM, _cell('User', CW_USER))}  "
+        f"{_c(DIM, _cell('Login', CW_LOGIN))}  "
+        f"{_c(DIM, _cell('Server', CW_SVR))}  "
+        f"{_c(DIM, _cell('Error', CW_ERR))}"
+    )
+    lines.append(hdr)
+
+    for r in failed:
+        err = str(r.connection_error_message or "-")
+        if len(err) > CW_ERR:
+            err = err[: CW_ERR - 1] + "."
+        lines.append(
+            f"  {_cell(r.id, CW_ID)}  "
+            f"{_cell(r.user_id, CW_USER)}  "
+            f"{_cell(r.account_number, CW_LOGIN)}  "
+            f"{_cell(r.server, CW_SVR)}  "
+            f"{_c(RED, err)}"
+        )
+
+    return lines
+
+
 def _accounts_block(now, accounts, max_rows=None):
     lines = []
 
@@ -492,6 +551,9 @@ def _accounts_block(now, accounts, max_rows=None):
 
         if r.archived_at:
             stat_str = _c(DIM, "ARCHVD")
+            sync_col = _c(DIM, _cell(sync_ago, CW_SYNC, right=True))
+        elif not r.is_active and (r.connection_status or "") == "failed":
+            stat_str = _c(RED, "FAIL  ")
             sync_col = _c(DIM, _cell(sync_ago, CW_SYNC, right=True))
         elif not r.is_active:
             stat_str = _c(YLW, "INACTV")
@@ -560,6 +622,11 @@ def _render(interval):
 
     out.extend(_sync_diag_block(sync_diag))
     out.append("")
+
+    failed_block = _failed_setups_block(accounts)
+    if failed_block:
+        out.extend(failed_block)
+        out.append("")
 
     if accounts is None:
         out.append(_c(RED, f"  DB ERROR: {accounts_err}"))
