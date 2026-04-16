@@ -40,70 +40,28 @@ def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
     raise task.retry(exc=exc, countdown=countdown)
 
 
-_TERMINAL_RECENTLY_STARTED_THRESHOLD = 90  # seconds
-
-
-def _ensure_terminal_launched(terminal_path: str) -> None:
-    """
-    Called only after a confirmed IPC-send-failed error (-10001).
-
-    - If no process is running: launch a fresh one.
-    - If a process is running but was started recently (< 90 s ago): leave it
-      alone — it's still initialising and just needs more time. The Celery retry
-      delay gives it that time without killing what we just launched.
-    - If a process is running and is old (>= 90 s): it's a stale broken process;
-      kill it and launch a fresh one.
-    """
-    import subprocess
-
-    terminal_dir = os.path.dirname(terminal_path)
+def _kill_terminal_if_running(terminal_path: str) -> None:
+    """Kill any running terminal64.exe process at terminal_path (best-effort)."""
     norm_path = os.path.normcase(os.path.abspath(terminal_path))
-
     try:
         import psutil
-        running = []
-        for proc in psutil.process_iter(["exe", "create_time"]):
+        for proc in psutil.process_iter(["exe"]):
             try:
                 if (
                     proc.info.get("exe")
                     and os.path.normcase(os.path.abspath(proc.info["exe"])) == norm_path
                 ):
-                    running.append(proc)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-
-        if running:
-            age = time.time() - min(p.info.get("create_time", 0) for p in running)
-            if age < _TERMINAL_RECENTLY_STARTED_THRESHOLD:
-                # Just launched — give it more time; retry delay handles the wait.
-                logger.info(
-                    "MT5 relaunch: terminal started %.0fs ago, waiting for IPC terminal=%s",
-                    age,
-                    terminal_path,
-                )
-                return
-
-            # Old broken process — kill and relaunch.
-            for proc in running:
-                try:
                     proc.terminate()
                     try:
                         proc.wait(timeout=10)
                     except psutil.TimeoutExpired:
                         proc.kill()
                         proc.wait(timeout=5)
-                    logger.info("MT5 relaunch: killed stale process (age=%.0fs) terminal=%s", age, terminal_path)
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    pass
-
+                    logger.info("MT5 IPC recovery: killed stale process terminal=%s", terminal_path)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
     except ImportError:
-        pass  # psutil unavailable — attempt launch; Popen fails fast if exe is locked
-
-    logger.warning("MT5 relaunch: launching fresh terminal=%s", terminal_path)
-    try:
-        subprocess.Popen([terminal_path], cwd=terminal_dir)
-    except OSError as exc:
-        logger.error("MT5 relaunch: Popen failed terminal=%s exc=%s", terminal_path, exc)
+        pass
 
 
 def _adjust_mt5_unix_epoch(timestamp_value, *, offset_minutes=0):
@@ -1013,15 +971,26 @@ def sync_mt5_account(
                 # Ensure it's launched, then poll initialize() until IPC is ready (up to 45 s).
                 if err_code == -10001 and terminal_path and os.path.isfile(terminal_path):
                     logger.warning(
-                        "MT5 sync IPC send failed — ensuring terminal is running mt5_account_id=%s",
+                        "MT5 sync IPC send failed — killing terminal and reinitialising with credentials mt5_account_id=%s",
                         mt5_account_id,
                     )
-                    # Kill the broken terminal and launch a fresh one, then fail
-                    # immediately so the distributed lock is released and Celery's
-                    # retry delay (30 s → 60 s) gives the new process time to start.
-                    # Do NOT poll here — polling holds the lock for the entire wait.
-                    _ensure_terminal_launched(terminal_path)
-                    raise RuntimeError("MT5 IPC send failed — terminal relaunched, will retry")
+                    _kill_terminal_if_running(terminal_path)
+                    # Use credential-based initialize exactly like the setup task:
+                    # mt5.initialize() with path+login+password+server launches the
+                    # terminal, waits for IPC, and authenticates — all in one blocking call.
+                    if not mt5.initialize(
+                        path=terminal_path,
+                        login=int(account_number),
+                        password=investor_password,
+                        server=server,
+                        timeout=60000,
+                    ):
+                        raise RuntimeError(f"MT5 IPC recovery failed: {mt5.last_error()}")
+                    logger.info(
+                        "MT5 sync IPC recovered — terminal relaunched and ready mt5_account_id=%s",
+                        mt5_account_id,
+                    )
+                    # Fall through to the login/account_info block below.
                 else:
                     raise RuntimeError(f"MT5 init failed: {err}")
 
