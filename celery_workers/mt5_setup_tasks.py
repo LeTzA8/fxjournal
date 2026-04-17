@@ -135,11 +135,36 @@ def _is_terminal_process_running(terminal_path):
     return False, None
 
 
-def _launch_terminal_process(terminal_path):
-    """Launch terminal64.exe with UI visible.  Returns (pid, success)."""
-    terminal_dir = os.path.dirname(terminal_path)
+def _build_visible_terminal_launch_kwargs():
+    """Best-effort request for a normal visible MT5 window on Windows."""
+    if os.name != "nt":
+        return {}
+
+    startupinfo_factory = getattr(subprocess, "STARTUPINFO", None)
+    if startupinfo_factory is None:
+        return {}
+
     try:
-        proc = subprocess.Popen([terminal_path], cwd=terminal_dir)
+        startupinfo = startupinfo_factory()
+        startupinfo.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
+        startupinfo.wShowWindow = getattr(subprocess, "SW_SHOWNORMAL", 1)
+    except Exception:
+        return {}
+
+    return {"startupinfo": startupinfo}
+
+
+def _start_terminal_process(terminal_path):
+    terminal_dir = os.path.dirname(terminal_path)
+    popen_kwargs = {"cwd": terminal_dir}
+    popen_kwargs.update(_build_visible_terminal_launch_kwargs())
+    return subprocess.Popen([terminal_path], **popen_kwargs)
+
+
+def _launch_terminal_process(terminal_path):
+    """Launch terminal64.exe and request a normal visible window."""
+    try:
+        proc = _start_terminal_process(terminal_path)
         logger.info(
             "MT5 terminal launched pid=%s terminal=%s",
             proc.pid, terminal_path,
@@ -765,7 +790,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         )
 
         # Launch the terminal briefly — this causes MT5 to create its AppData folder
-        proc = subprocess.Popen([terminal_exe], cwd=terminal_dir)
+        proc = _start_terminal_process(terminal_exe)
         logger.info(
             "MT5 setup bootstrap_launch mt5_account_id=%s terminal_dir=%s",
             mt5_account_id,

@@ -19,6 +19,12 @@ class FakeProcess:
         return 0
 
 
+class FakeStartupInfo:
+    def __init__(self):
+        self.dwFlags = 0
+        self.wShowWindow = 0
+
+
 class RecordingMt5Module:
     """Fake MT5 module that records API call events for ordering assertions.
 
@@ -126,6 +132,38 @@ def _create_mt5_account(user_id, trade_account_id, account_number="12345678"):
     return mt5_account
 
 
+def test_launch_terminal_process_requests_normal_visible_window_on_windows(monkeypatch, tmp_path):
+    terminal_dir = tmp_path / "mt5-terminal"
+    terminal_dir.mkdir()
+    terminal_exe = terminal_dir / "terminal64.exe"
+    terminal_exe.write_text("", encoding="ascii")
+
+    popen_calls = []
+
+    monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    monkeypatch.setattr(mt5_setup_module.subprocess, "STARTUPINFO", FakeStartupInfo, raising=False)
+    monkeypatch.setattr(mt5_setup_module.subprocess, "STARTF_USESHOWWINDOW", 1, raising=False)
+    monkeypatch.setattr(mt5_setup_module.subprocess, "SW_SHOWNORMAL", 1, raising=False)
+
+    def _fake_popen(args, **kwargs):
+        popen_calls.append({"args": args, **kwargs})
+        return FakeProcess()
+
+    monkeypatch.setattr(mt5_setup_module.subprocess, "Popen", _fake_popen)
+
+    pid, ok = mt5_setup_module._launch_terminal_process(str(terminal_exe))
+
+    assert ok is True
+    assert pid == FakeProcess.pid
+    assert len(popen_calls) == 1
+    assert popen_calls[0]["args"] == [str(terminal_exe)]
+    assert popen_calls[0]["cwd"] == str(terminal_dir)
+
+    startupinfo = popen_calls[0]["startupinfo"]
+    assert startupinfo.dwFlags & 1
+    assert startupinfo.wShowWindow == 1
+
+
 def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monkeypatch, tmp_path):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
 
@@ -158,7 +196,7 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
     monkeypatch.setattr(
         mt5_setup_module.subprocess,
         "Popen",
-        lambda args, cwd: FakeProcess(),
+        lambda args, **kwargs: FakeProcess(),
     )
 
     events = []
@@ -233,7 +271,7 @@ def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, m
     monkeypatch.setattr(
         mt5_setup_module.subprocess,
         "Popen",
-        lambda args, cwd: FakeProcess(),
+        lambda args, **kwargs: FakeProcess(),
     )
 
     monkeypatch.setattr(

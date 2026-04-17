@@ -32,6 +32,12 @@ Reusable function implementing a consistent pipeline: **LAUNCH → WAIT → INIT
 
 **Removed:** `_verify_mt5_terminal_login` (replaced by ensure), `_kill_terminal_if_running` (ensure handles terminal launch).
 
+## MT5 launch visibility hint (2026-04-18)
+
+MT5 launch paths now use a shared helper that starts `terminal64.exe` with an explicit Windows "show normal window" hint instead of a bare `subprocess.Popen(...)`. This applies to both the short bootstrap launch in `setup_mt5_terminal` and the long-lived launch in `ensure_mt5_terminal_ready`, so local/manual setup runs are more likely to surface the actual MT5 UI window.
+
+**Important ops caveat:** this is still only a best-effort code hint. If the MT5 setup worker is started by Task Scheduler in a non-interactive session, Windows will not show the MT5 desktop window to the logged-in user even though the process launches successfully. In that case the scheduler/session model must be changed separately; code alone cannot force a desktop UI into a non-interactive session.
+
 Short-term operational memory.
 
 ## Admin — MT5 Reset Terminal State (2026-04-17)
