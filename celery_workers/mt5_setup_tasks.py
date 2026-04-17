@@ -160,6 +160,18 @@ def _is_terminal_process_running(terminal_path):
     return False, None
 
 
+def _wait_until_terminal_stopped(terminal_exe: str, *, timeout_sec: float = 30.0) -> bool:
+    """Return True once *terminal_exe* is no longer running, else False on timeout."""
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        running, _pid = _is_terminal_process_running(terminal_exe)
+        if not running:
+            return True
+        time.sleep(0.4)
+    running, _pid = _is_terminal_process_running(terminal_exe)
+    return not running
+
+
 def _build_visible_terminal_launch_kwargs():
     """Best-effort request for a normal visible MT5 window on Windows."""
     if os.name != "nt":
@@ -943,6 +955,31 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                         proc_boot.wait(timeout=10)
                     except Exception:
                         pass
+
+        # Bootstrap often leaves terminal64.exe alive (``terminate()`` is weak vs MT5).
+        # If ``ensure_mt5_terminal_ready`` sees a running process it skips
+        # ``os.startfile`` / relaunch and can hang in ``mt5.initialize``. Hard-stop
+        # and wait until the exe is gone so the ensure path always opens the terminal
+        # again before any Python API init.
+        logger.info(
+            "MT5 setup stopping bootstrap terminal before ensure "
+            "mt5_account_id=%s terminal=%s",
+            mt5_account_id,
+            terminal_exe,
+        )
+        _terminate_mt5_processes(terminal_exe)
+        if not _wait_until_terminal_stopped(terminal_exe, timeout_sec=30):
+            logger.warning(
+                "MT5 setup bootstrap terminal still running after terminate; "
+                "retrying kill mt5_account_id=%s",
+                mt5_account_id,
+            )
+            _terminate_mt5_processes(terminal_exe)
+            if not _wait_until_terminal_stopped(terminal_exe, timeout_sec=15):
+                raise PermanentSetupError(
+                    "Could not stop the bootstrap MetaTrader terminal. "
+                    "Close any running terminals for this installation path and retry setup."
+                )
 
         # Clear the default chart workspace after the bootstrap launch and
         # before the Python API logs into the account.

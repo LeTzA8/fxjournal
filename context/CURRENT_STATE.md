@@ -17,7 +17,7 @@ Single pipeline for setup, sync, and bar fetch: **LAUNCH → WAIT → INITIALIZE
 5. Does NOT call `mt5.shutdown()` on success (caller manages session); DOES shutdown on failure after successful init.
 6. Returns dict with `success`, `account_info`, `error`, `attempts`, `elapsed_seconds`, `terminal_launched`, `pid`.
 
-After copy + AppData bootstrap, `setup_mt5_terminal` uses the same **open exe first, then `mt5.initialize`** order as everyone else.
+After copy + AppData bootstrap, `setup_mt5_terminal` **hard-stops** the bootstrap `terminal64.exe` (`_terminate_mt5_processes` + wait until gone) so `ensure_mt5_terminal_ready` does not see “already running” and skip `os.startfile`. Then the same **open exe first, then `mt5.initialize`** order as everyone else.
 
 **Setup flow changes (`setup_mt5_terminal`):**
 - On Celery retry (`retries > 0`): fully cleans per-user terminal state (kill process, delete terminal dir, delete AppData) before re-running — setup retries always start from clean state.
