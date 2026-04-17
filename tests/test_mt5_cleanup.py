@@ -2,6 +2,8 @@ import os
 from types import SimpleNamespace
 
 import celery_workers.mt5_setup_tasks as mt5_setup_module
+import pytest
+from helpers.utils import utcnow_naive
 from models import MT5Account, db
 
 
@@ -127,6 +129,120 @@ def test_cleanup_mt5_terminal_deletes_db_row_on_success(app_ctx, monkeypatch, tm
     assert result["status"] == "cleanup complete"
     assert result["db_deleted"] is True
     assert db.session.get(MT5Account, mt5_account_id) is None
+
+
+def test_cleanup_mt5_terminal_clears_cleanup_mark_without_deleting_row(app_ctx, monkeypatch, tmp_path):
+    terminal_dir = tmp_path / "terminals" / "mt5_clear_mark"
+    terminal_dir.mkdir(parents=True)
+    terminal_exe = terminal_dir / "terminal64.exe"
+    terminal_exe.write_text("", encoding="ascii")
+
+    appdata_root = tmp_path / "appdata" / "MetaQuotes" / "Terminal"
+    appdata_hash = "F" * 32
+    appdata_folder = appdata_root / appdata_hash
+    appdata_folder.mkdir(parents=True)
+
+    monkeypatch.setattr(mt5_setup_module, "APPDATA_TERMINAL_PATH", str(appdata_root))
+    monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    _set_missing_psutil(monkeypatch)
+    monkeypatch.setattr(
+        mt5_setup_module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+
+    mt5_account = MT5Account(
+        user_id=None,
+        trade_account_id=None,
+        account_number="CLEANUP_88888888",
+        server="TestServer",
+        terminal_path=None,
+        appdata_hash=None,
+        is_active=False,
+        cleanup_marked_at=utcnow_naive(),
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+    mt5_account_id = mt5_account.id
+    mark_token = db.session.get(MT5Account, mt5_account_id).cleanup_marked_at.isoformat()
+
+    result = mt5_setup_module.cleanup_mt5_terminal.run(
+        str(terminal_exe),
+        appdata_hash,
+        mt5_account_id=mt5_account_id,
+        delete_account_row=False,
+        clear_cleanup_mark=True,
+        cleanup_marked_at=mark_token,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account_id)
+    assert result["status"] == "cleanup complete"
+    assert result["db_deleted"] is False
+    assert result["cleanup_mark_cleared"] is True
+    assert refreshed is not None
+    assert refreshed.cleanup_marked_at is None
+
+
+def test_cleanup_mt5_terminal_keeps_cleanup_mark_when_terminal_dir_survives(
+    app_ctx, monkeypatch, tmp_path
+):
+    terminal_dir = tmp_path / "terminals" / "mt5_cleanup_survives"
+    terminal_dir.mkdir(parents=True)
+    terminal_exe = terminal_dir / "terminal64.exe"
+    terminal_exe.write_text("", encoding="ascii")
+
+    appdata_root = tmp_path / "appdata" / "MetaQuotes" / "Terminal"
+    appdata_hash = "G" * 32
+    appdata_folder = appdata_root / appdata_hash
+    appdata_folder.mkdir(parents=True)
+
+    monkeypatch.setattr(mt5_setup_module, "APPDATA_TERMINAL_PATH", str(appdata_root))
+    monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    _set_missing_psutil(monkeypatch)
+    monkeypatch.setattr(
+        mt5_setup_module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+
+    original_rmtree = mt5_setup_module.shutil.rmtree
+
+    def _fake_rmtree(path, *args, **kwargs):
+        if os.path.normcase(os.path.abspath(path)) == os.path.normcase(os.path.abspath(str(terminal_dir))):
+            return None
+        return original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(mt5_setup_module.shutil, "rmtree", _fake_rmtree)
+
+    mt5_account = MT5Account(
+        user_id=None,
+        trade_account_id=None,
+        account_number="CLEANUP_77777777",
+        server="TestServer",
+        terminal_path=None,
+        appdata_hash=None,
+        is_active=False,
+        cleanup_marked_at=utcnow_naive(),
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+    mt5_account_id = mt5_account.id
+    mark_token = db.session.get(MT5Account, mt5_account_id).cleanup_marked_at.isoformat()
+
+    with pytest.raises(OSError, match="terminal dir still exists after cleanup"):
+        mt5_setup_module.cleanup_mt5_terminal.run(
+            str(terminal_exe),
+            appdata_hash,
+            mt5_account_id=mt5_account_id,
+            delete_account_row=False,
+            clear_cleanup_mark=True,
+            cleanup_marked_at=mark_token,
+        )
+
+    refreshed = db.session.get(MT5Account, mt5_account_id)
+    assert refreshed is not None
+    assert refreshed.cleanup_marked_at is not None
+    assert terminal_dir.exists()
 
 
 def test_cleanup_mt5_terminal_without_account_id_skips_db_delete(monkeypatch, tmp_path):

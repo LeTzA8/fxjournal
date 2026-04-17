@@ -378,6 +378,11 @@ def _build_admin_mt5_status(*, account, request_row=None):
             "label": "Cleanup Pending",
             "chip_class": "default",
         }
+    if getattr(account, "cleanup_marked_at", None):
+        return {
+            "label": "Cleanup Pending",
+            "chip_class": "warning-chip",
+        }
     if getattr(account, "is_archived", False):
         return {
             "label": "Archived",
@@ -3572,6 +3577,12 @@ def register_public_auth_routes(
             return build_admin_redirect(
                 "mt5",
                 "That MT5 account is archived. Use Reactivate to rebuild its VM terminal.",
+                "error",
+            )
+        if account.cleanup_marked_at is not None:
+            return build_admin_redirect(
+                "mt5",
+                "That MT5 account is still waiting for VM cleanup to finish. Try Setup Terminal again after cleanup completes.",
                 "error",
             )
 

@@ -1369,16 +1369,25 @@ def test_root_admin_can_reset_mt5_account_with_only_terminal_path(app_ctx, clien
     assert refreshed.appdata_hash is None
     assert refreshed.vm_id is None
     assert refreshed.is_active is False
+    assert refreshed.cleanup_marked_at is not None
     assert refreshed.connection_status == MT5Account.CONNECTION_STATUS_PENDING
     assert refreshed.connection_error_message is None
     assert cleanup_calls == [
         {
             "args": [r"C:\MT5 User Terminals\reset\terminal64.exe", ""],
-            "kwargs": {"mt5_account_id": None},
+            "kwargs": {
+                "mt5_account_id": mt5_account.id,
+                "delete_account_row": False,
+                "clear_cleanup_mark": True,
+                "cleanup_marked_at": refreshed.cleanup_marked_at.isoformat(),
+            },
             "queue": "mt5_setup",
         }
     ]
-    assert b"Terminal state reset. Run Setup Terminal to retry from a clean slate." in response.data
+    assert (
+        b"Terminal reset started. VM cleanup is running; wait for it to finish before clicking Setup Terminal again."
+        in response.data
+    )
 
 
 def test_root_admin_can_reset_mt5_account_with_only_appdata_hash(app_ctx, client, monkeypatch):
@@ -1432,16 +1441,78 @@ def test_root_admin_can_reset_mt5_account_with_only_appdata_hash(app_ctx, client
     assert refreshed.terminal_path is None
     assert refreshed.appdata_hash is None
     assert refreshed.is_active is False
+    assert refreshed.cleanup_marked_at is not None
     assert refreshed.connection_status == MT5Account.CONNECTION_STATUS_PENDING
     assert refreshed.connection_error_message is None
     assert cleanup_calls == [
         {
             "args": ["", "A" * 32],
-            "kwargs": {"mt5_account_id": None},
+            "kwargs": {
+                "mt5_account_id": mt5_account.id,
+                "delete_account_row": False,
+                "clear_cleanup_mark": True,
+                "cleanup_marked_at": refreshed.cleanup_marked_at.isoformat(),
+            },
             "queue": "mt5_setup",
         }
     ]
-    assert b"Terminal state reset. Run Setup Terminal to retry from a clean slate." in response.data
+    assert (
+        b"Terminal reset started. VM cleanup is running; wait for it to finish before clicking Setup Terminal again."
+        in response.data
+    )
+
+
+def test_root_admin_cannot_setup_mt5_account_while_reset_cleanup_is_pending(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-reset-pending-root@example.com",
+        username="mt5-reset-pending-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-reset-pending-user",
+        email="mt5-reset-pending-user@example.com",
+        account_name="Reset Pending Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119995",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Reset-Pending",
+        terminal_path=None,
+        appdata_hash=None,
+        is_active=False,
+        cleanup_marked_at=utcnow_naive(),
+        connection_status=MT5Account.CONNECTION_STATUS_PENDING,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    setup_calls = []
+
+    def _fake_setup_apply_async(args=None, kwargs=None, queue=None):
+        setup_calls.append({"args": list(args or []), "kwargs": dict(kwargs or {}), "queue": queue})
+        return {"id": "setup-task"}
+
+    monkeypatch.setattr(
+        "celery_workers.mt5_setup_tasks.setup_mt5_terminal.apply_async",
+        _fake_setup_apply_async,
+    )
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/setup",
+        data={},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert setup_calls == []
+    assert (
+        b"That MT5 account is still waiting for VM cleanup to finish. Try Setup Terminal again after cleanup completes."
+        in response.data
+    )
 
 
 def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, monkeypatch):

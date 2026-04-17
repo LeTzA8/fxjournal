@@ -567,6 +567,9 @@
                                         {% if account.is_archived %}
                                         <span>Archived due to inactivity: {{ account.archived_at.strftime("%Y-%m-%d %H:%M UTC") if account.archived_at else "Pending timestamp" }}</span>
                                         {% endif %}
+                                        {% if account.cleanup_marked_at and not is_orphaned %}
+                                        <span>Reset cleanup queued: {{ account.cleanup_marked_at.strftime("%Y-%m-%d %H:%M UTC") }}</span>
+                                        {% endif %}
                                         {% if is_orphaned %}
                                         <span>Cleanup-only record awaiting manual delete</span>
                                         <span>Marked for cleanup: {{ account.cleanup_marked_at.strftime("%Y-%m-%d %H:%M UTC") if account.cleanup_marked_at else "Pending timestamp" }}</span>
@@ -583,7 +586,15 @@
                                     <div class="inline-actions">
                                         <form action="{{ url_for('admin_mt5_reactivate_account', mt5_account_id=account.id) if account.is_archived else url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="submit-btn" {% if is_orphaned %}disabled aria-disabled="true" title="Cleanup-only MT5 records cannot be set up."{% endif %}>{{ "Reactivate" if account.is_archived else "Setup Terminal" }}</button>
+                                            <button
+                                                type="submit"
+                                                class="submit-btn"
+                                                {% if is_orphaned or account.cleanup_marked_at %}
+                                                disabled
+                                                aria-disabled="true"
+                                                title="{{ 'Cleanup-only MT5 records cannot be set up.' if is_orphaned else 'VM cleanup is still running for this MT5 account.' }}"
+                                                {% endif %}
+                                            >{{ "Reactivate" if account.is_archived else "Setup Terminal" }}</button>
                                         </form>
                                         <form action="{{ url_for('admin_mt5_archive_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Archive this MT5 account due to inactivity? The VM terminal files will be removed, but the saved read-only credentials will stay available for reactivation.');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -597,7 +608,7 @@
                                                 {% endif %}
                                             >Archive</button>
                                         </form>
-                                        <form action="{{ url_for('admin_mt5_reset_terminal', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Reset terminal state for this MT5 account? VM terminal files will be queued for removal and all terminal-related DB fields will be cleared so Setup Terminal can be retried. Credentials and account details are kept.');">
+                                        <form action="{{ url_for('admin_mt5_reset_terminal', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Reset terminal state for this MT5 account? VM terminal files will be queued for removal and all terminal-related DB fields will be cleared. Wait for cleanup to finish before running Setup Terminal again. Credentials and account details are kept.');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button
                                                 type="submit"

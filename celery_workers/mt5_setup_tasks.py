@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import re
 import shutil
+import stat
 import subprocess
 import time
 import logging
@@ -117,6 +118,26 @@ def _terminate_mt5_processes_via_powershell(terminal_exe: str):
         )
     except OSError:
         pass
+
+
+def _retry_remove_readonly(func, path, exc_info):
+    try:
+        os.chmod(path, stat.S_IWRITE)
+    except OSError:
+        raise exc_info[1]
+    func(path)
+
+
+def _remove_tree_strict(path: str, *, label: str):
+    if not str(path or "").strip():
+        return False
+    if not os.path.exists(path):
+        return False
+
+    shutil.rmtree(path, onerror=_retry_remove_readonly)
+    if os.path.exists(path):
+        raise OSError(f"{label} still exists after cleanup: {path}")
+    return True
 
 
 def _is_terminal_process_running(terminal_path):
@@ -1075,20 +1096,32 @@ def setup_mt5_terminal(self, mt5_account_id: int):
 
 
 @celery.task(bind=True, max_retries=2, default_retry_delay=10, queue="mt5_setup")
-def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str, mt5_account_id=None):
+def cleanup_mt5_terminal(
+    self,
+    terminal_path: str,
+    appdata_hash: str,
+    mt5_account_id=None,
+    delete_account_row=None,
+    clear_cleanup_mark=False,
+    cleanup_marked_at=None,
+):
     """
     Clean up MT5 terminal files when an MT5Account is deleted or unlinked.
     Runs on VM only — kills process, deletes terminal folder and AppData hash
     folder.
 
-    When *mt5_account_id* is provided the MT5Account DB row is deleted **after**
-    the file cleanup succeeds.  If cleanup fails the row stays so admins can
-    see the pending cleanup state and retry.
+    When *delete_account_row* is true the MT5Account DB row is deleted **after**
+    the file cleanup succeeds. When it is omitted, legacy callers that pass only
+    *mt5_account_id* still delete the row unless *clear_cleanup_mark* is set.
+    Otherwise the task can optionally clear `cleanup_marked_at` on the
+    still-linked row after reset cleanup finishes.
     """
     task_id = getattr(getattr(self, "request", None), "id", None)
     started_at = datetime.now(timezone.utc)
     finished_at = None
     terminal_dir = os.path.dirname(terminal_path) if str(terminal_path or "").strip() else ""
+    if delete_account_row is None:
+        delete_account_row = mt5_account_id is not None and not clear_cleanup_mark
 
     try:
         if os.name != "nt":
@@ -1114,32 +1147,54 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str, mt5_accoun
         if str(terminal_exe or "").strip():
             _terminate_mt5_processes(terminal_exe)
 
-        if terminal_dir and os.path.exists(terminal_dir):
-            shutil.rmtree(terminal_dir, ignore_errors=True)
+        if terminal_dir:
+            _remove_tree_strict(terminal_dir, label="terminal dir")
 
         # Prefer the stored MT5 hash when it is valid, but fall back to origin.txt lookup.
         appdata_folder = _resolve_cleanup_appdata_folder(terminal_dir, appdata_hash)
-        if appdata_folder and os.path.exists(appdata_folder):
-            shutil.rmtree(appdata_folder, ignore_errors=True)
+        if appdata_folder:
+            _remove_tree_strict(appdata_folder, label="appdata folder")
 
-        # --- DB row deletion (only after file cleanup succeeds) ---
+        # --- DB row follow-up (only after file cleanup succeeds) ---
         db_deleted = False
+        cleanup_mark_cleared = False
         if mt5_account_id is not None:
             try:
                 from models import MT5Account, db
 
                 account = db.session.get(MT5Account, mt5_account_id)
                 if account is not None:
-                    db.session.delete(account)
-                    db.session.commit()
-                    db_deleted = True
+                    if delete_account_row:
+                        db.session.delete(account)
+                        db.session.commit()
+                        db_deleted = True
+                    elif clear_cleanup_mark:
+                        current_mark = getattr(account, "cleanup_marked_at", None)
+                        current_mark_token = (
+                            current_mark.isoformat() if current_mark is not None else None
+                        )
+                        if cleanup_marked_at and current_mark_token not in {cleanup_marked_at, None}:
+                            logger.warning(
+                                "MT5 cleanup skipped cleanup_mark clear due to mark mismatch "
+                                "mt5_account_id=%s expected=%s actual=%s",
+                                mt5_account_id,
+                                cleanup_marked_at,
+                                current_mark_token,
+                            )
+                        else:
+                            account.cleanup_marked_at = None
+                            db.session.commit()
+                            cleanup_mark_cleared = True
                 else:
-                    db_deleted = True  # already gone
+                    db_deleted = bool(delete_account_row)
+                    cleanup_mark_cleared = bool(clear_cleanup_mark)
             except Exception as db_exc:
                 db.session.rollback()
                 logger.warning(
-                    "MT5 cleanup succeeded but DB row delete failed mt5_account_id=%s: %s",
+                    "MT5 cleanup succeeded but DB follow-up failed mt5_account_id=%s delete_row=%s clear_mark=%s: %s",
                     mt5_account_id,
+                    delete_account_row,
+                    clear_cleanup_mark,
                     db_exc,
                 )
 
@@ -1156,6 +1211,7 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str, mt5_accoun
                 ("AppData Folder", appdata_folder),
                 ("MT5 Account ID", mt5_account_id),
                 ("DB Row Deleted", db_deleted if mt5_account_id else "n/a"),
+                ("Cleanup Mark Cleared", cleanup_mark_cleared if mt5_account_id else "n/a"),
                 ("Status", "cleanup complete"),
             ],
         )
@@ -1165,6 +1221,7 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str, mt5_accoun
             "appdata_hash": appdata_hash,
             "mt5_account_id": mt5_account_id,
             "db_deleted": db_deleted,
+            "cleanup_mark_cleared": cleanup_mark_cleared,
             "status": "cleanup complete",
         }
     except Exception as exc:

@@ -8,10 +8,12 @@ echo  NOTE: MetaTrader terminals (terminal64.exe
 echo  etc.) are NEVER stopped by this script.
 echo.
 
-REM --- 1) Scheduled-task watchdogs (stops Task Scheduler from holding runners) ---
-echo [1/4] Stopping Task Scheduler watchdogs...
+REM --- 1) Scheduled-task watchdogs + direct worker tasks (stops Task Scheduler from holding runners) ---
+echo [1/4] Stopping Task Scheduler MT5 tasks...
 schtasks /End /TN "FX Journal MT5 Sync Watchdog" >nul 2>&1
 schtasks /End /TN "FX Journal MT5 Setup Watchdog" >nul 2>&1
+schtasks /End /TN "FX Journal MT5 Sync Worker Direct" >nul 2>&1
+schtasks /End /TN "FX Journal MT5 Setup Worker Direct" >nul 2>&1
 echo       Done.
 
 REM --- 2) PowerShell: launchers + file watchers (by script name in command line) ---

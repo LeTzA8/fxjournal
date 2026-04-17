@@ -882,11 +882,12 @@ def reset_mt5_terminal_state(*, mt5_account, log_context="reset-terminal"):
             "That MT5 account no longer has saved credentials, so terminal reset is not possible.",
         )
 
-    # Queue cleanup BEFORE clearing paths — helper reads them from the object.
-    cleanup_warning = queue_mt5_account_cleanup(
-        mt5_account=mt5_account,
-        log_context=log_context,
-    )
+    from flask import current_app
+
+    terminal_path = str(getattr(mt5_account, "terminal_path", "") or "").strip()
+    appdata_hash = str(getattr(mt5_account, "appdata_hash", "") or "").strip()
+    has_runtime_state = bool(terminal_path or appdata_hash)
+    cleanup_marked_at = utcnow_naive() if has_runtime_state else None
 
     try:
         mt5_account.terminal_path = None
@@ -895,7 +896,7 @@ def reset_mt5_terminal_state(*, mt5_account, log_context="reset-terminal"):
         mt5_account.is_active = False
         mt5_account.archived_at = None
         mt5_account.archive_reason = None
-        mt5_account.cleanup_marked_at = None
+        mt5_account.cleanup_marked_at = cleanup_marked_at
         mt5_account.connection_status = MT5Account.CONNECTION_STATUS_PENDING
         mt5_account.connection_error_message = None
         db.session.commit()
@@ -903,7 +904,48 @@ def reset_mt5_terminal_state(*, mt5_account, log_context="reset-terminal"):
         db.session.rollback()
         return False, "Could not reset that MT5 account right now. Please try again."
 
-    message = "Terminal state reset. Run Setup Terminal to retry from a clean slate."
+    cleanup_warning = None
+    if has_runtime_state:
+        try:
+            from celery_workers.mt5_setup_tasks import cleanup_mt5_terminal
+
+            cleanup_mt5_terminal.apply_async(
+                args=[terminal_path, appdata_hash],
+                kwargs={
+                    "mt5_account_id": mt5_account.id,
+                    "delete_account_row": False,
+                    "clear_cleanup_mark": True,
+                    "cleanup_marked_at": cleanup_marked_at.isoformat() if cleanup_marked_at else None,
+                },
+                queue="mt5_setup",
+            )
+        except Exception as exc:
+            current_app.logger.warning(
+                "MT5 cleanup queue failed for %s mt5_account_id=%s: %s",
+                log_context,
+                getattr(mt5_account, "id", None),
+                sanitize_error_message(exc),
+            )
+            cleanup_warning = (
+                "Cleanup could not be queued; VM terminal files may need manual removal before Setup Terminal is run again."
+            )
+            try:
+                mt5_account.cleanup_marked_at = None
+                db.session.commit()
+            except (OperationalError, IntegrityError):
+                db.session.rollback()
+                current_app.logger.warning(
+                    "MT5 reset cleanup mark rollback failed for %s mt5_account_id=%s",
+                    log_context,
+                    getattr(mt5_account, "id", None),
+                )
+
+    if has_runtime_state and not cleanup_warning:
+        message = (
+            "Terminal reset started. VM cleanup is running; wait for it to finish before clicking Setup Terminal again."
+        )
+    else:
+        message = "Terminal state reset. Run Setup Terminal to retry from a clean slate."
     if cleanup_warning:
         message = f"{message} {cleanup_warning}"
     return True, message
