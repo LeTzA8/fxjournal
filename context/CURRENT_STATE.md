@@ -10,7 +10,7 @@ Last Updated: 2026-04-18
 
 **New helper (`celery_workers/mt5_setup_tasks.py: ensure_mt5_terminal_ready`):**
 Reusable function implementing a consistent pipeline: **LAUNCH → WAIT → INITIALIZE → LOGIN → VERIFY**.
-1. Check if `terminal64.exe` is running (via psutil); if not → launch via `subprocess.Popen` (UI visible).
+1. Check if `terminal64.exe` is running (via psutil); if not → on Windows launch via `os.startfile` (shell-style), else `subprocess.Popen`; if `startfile` fails, fall back to `Popen` with a visible-window hint.
 2. Bounded retry loop (8 attempts, 3s delay): call `mt5.initialize(path=...)` until IPC connects.
 3. Explicit `mt5.login(login, password, server)` — never rely on MT5 auto-login.
 4. Verify with `mt5.account_info()` (login match check).
@@ -34,7 +34,7 @@ Reusable function implementing a consistent pipeline: **LAUNCH → WAIT → INIT
 
 ## MT5 launch visibility hint (2026-04-18)
 
-MT5 launch paths now use a shared helper that starts `terminal64.exe` with an explicit Windows "show normal window" hint instead of a bare `subprocess.Popen(...)`. This applies to both the short bootstrap launch in `setup_mt5_terminal` and the long-lived launch in `ensure_mt5_terminal_ready`, so local/manual setup runs are more likely to surface the actual MT5 UI window.
+MT5 launch paths prefer `os.startfile` on Windows (closer to double-click behavior), with `subprocess.Popen` + `STARTUPINFO` as fallback if `startfile` raises. This applies to both the short bootstrap launch in `setup_mt5_terminal` and the long-lived launch in `ensure_mt5_terminal_ready`.
 
 **Important ops caveat:** this is still only a best-effort code hint. If the MT5 setup worker is started by Task Scheduler in a non-interactive session, Windows will not show the MT5 desktop window to the logged-in user even though the process launches successfully. In that case the scheduler/session model must be changed separately; code alone cannot force a desktop UI into a non-interactive session.
 

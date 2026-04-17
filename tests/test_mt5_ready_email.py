@@ -109,6 +109,7 @@ def test_setup_mt5_terminal_sends_ready_email_when_account_becomes_active(app_ct
     monkeypatch.setattr(mt5_setup_module, "MT5_BASE_PATH", str(base_dir))
     monkeypatch.setattr(mt5_setup_module, "MT5_TERMINALS_ROOT", str(tmp_path / "terminals"))
     monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    monkeypatch.setattr(mt5_setup_module.os, "startfile", lambda *a, **k: None)
     monkeypatch.setattr(mt5_setup_module.time, "sleep", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         mt5_setup_module,

@@ -180,7 +180,32 @@ def _build_visible_terminal_launch_kwargs():
 
 
 def _start_terminal_process(terminal_path):
+    """Launch terminal64.exe.
+
+    On Windows, prefer ``os.startfile`` so the shell launches the executable
+    (often closer to double-click behavior than raw ``CreateProcess``). Fall
+    back to :func:`subprocess.Popen` with a visible-window hint if ``startfile``
+    fails or on non-Windows.
+
+    Returns:
+        ``subprocess.Popen`` when the Popen path is used; ``None`` when
+        ``os.startfile`` was used (no process handle).
+    """
     terminal_dir = os.path.dirname(terminal_path)
+    if os.name == "nt" and hasattr(os, "startfile"):
+        try:
+            try:
+                os.startfile(terminal_path, cwd=terminal_dir)
+            except TypeError:
+                # Python < 3.13: os.startfile has no *cwd* keyword.
+                os.startfile(terminal_path)
+            return None
+        except OSError as exc:
+            logger.info(
+                "MT5 terminal os.startfile failed, falling back to Popen terminal=%s err=%s",
+                terminal_path,
+                exc,
+            )
     popen_kwargs = {"cwd": terminal_dir}
     popen_kwargs.update(_build_visible_terminal_launch_kwargs())
     return subprocess.Popen([terminal_path], **popen_kwargs)
@@ -190,11 +215,26 @@ def _launch_terminal_process(terminal_path):
     """Launch terminal64.exe and request a normal visible window."""
     try:
         proc = _start_terminal_process(terminal_path)
+        if proc is not None:
+            logger.info(
+                "MT5 terminal launched pid=%s terminal=%s",
+                proc.pid, terminal_path,
+            )
+            return proc.pid, True
         logger.info(
-            "MT5 terminal launched pid=%s terminal=%s",
-            proc.pid, terminal_path,
+            "MT5 terminal launched via os.startfile terminal=%s",
+            terminal_path,
         )
-        return proc.pid, True
+        time.sleep(0.2)
+        running, resolved_pid = _is_terminal_process_running(terminal_path)
+        if running and resolved_pid:
+            logger.info(
+                "MT5 terminal resolved pid=%s terminal=%s",
+                resolved_pid,
+                terminal_path,
+            )
+            return resolved_pid, True
+        return None, True
     except OSError as exc:
         logger.error(
             "MT5 terminal launch failed terminal=%s error=%s",
@@ -821,7 +861,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         )
 
         # Launch the terminal briefly — this causes MT5 to create its AppData folder
-        proc = _start_terminal_process(terminal_exe)
+        launcher_proc = _start_terminal_process(terminal_exe)
         logger.info(
             "MT5 setup bootstrap_launch mt5_account_id=%s terminal_dir=%s",
             mt5_account_id,
@@ -869,8 +909,23 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             account.appdata_hash = new_hash
             appdata_hash = new_hash
         finally:
-            proc.terminate()
-            proc.wait(timeout=10)
+            if launcher_proc is not None:
+                try:
+                    launcher_proc.terminate()
+                    launcher_proc.wait(timeout=10)
+                except Exception:
+                    pass
+            else:
+                _running, bootstrap_pid = _is_terminal_process_running(terminal_exe)
+                if _running and bootstrap_pid:
+                    try:
+                        import psutil
+
+                        proc_boot = psutil.Process(bootstrap_pid)
+                        proc_boot.terminate()
+                        proc_boot.wait(timeout=10)
+                    except Exception:
+                        pass
 
         # Clear the default chart workspace after the bootstrap launch and
         # before the Python API logs into the account.

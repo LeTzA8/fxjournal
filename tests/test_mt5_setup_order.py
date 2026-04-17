@@ -132,7 +132,38 @@ def _create_mt5_account(user_id, trade_account_id, account_number="12345678"):
     return mt5_account
 
 
-def test_launch_terminal_process_requests_normal_visible_window_on_windows(monkeypatch, tmp_path):
+def test_launch_terminal_process_uses_os_startfile_on_windows(monkeypatch, tmp_path):
+    terminal_dir = tmp_path / "mt5-terminal"
+    terminal_dir.mkdir()
+    terminal_exe = terminal_dir / "terminal64.exe"
+    terminal_exe.write_text("", encoding="ascii")
+
+    startfile_calls = []
+
+    def _fake_startfile(path, **kwargs):
+        startfile_calls.append({"path": path, **kwargs})
+
+    monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    monkeypatch.setattr(mt5_setup_module.os, "startfile", _fake_startfile)
+    monkeypatch.setattr(mt5_setup_module.time, "sleep", lambda *_a, **_kw: None)
+    monkeypatch.setattr(
+        mt5_setup_module,
+        "_is_terminal_process_running",
+        lambda p: (True, 4242) if p == str(terminal_exe) else (False, None),
+    )
+
+    pid, ok = mt5_setup_module._launch_terminal_process(str(terminal_exe))
+
+    assert ok is True
+    assert pid == 4242
+    assert len(startfile_calls) == 1
+    assert startfile_calls[0]["path"] == str(terminal_exe)
+    assert startfile_calls[0].get("cwd") == str(terminal_dir)
+
+
+def test_launch_terminal_process_falls_back_to_popen_when_startfile_raises_oserror(
+    monkeypatch, tmp_path,
+):
     terminal_dir = tmp_path / "mt5-terminal"
     terminal_dir.mkdir()
     terminal_exe = terminal_dir / "terminal64.exe"
@@ -140,7 +171,11 @@ def test_launch_terminal_process_requests_normal_visible_window_on_windows(monke
 
     popen_calls = []
 
+    def _fake_startfile(*_a, **_kw):
+        raise OSError("access denied")
+
     monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    monkeypatch.setattr(mt5_setup_module.os, "startfile", _fake_startfile)
     monkeypatch.setattr(mt5_setup_module.subprocess, "STARTUPINFO", FakeStartupInfo, raising=False)
     monkeypatch.setattr(mt5_setup_module.subprocess, "STARTF_USESHOWWINDOW", 1, raising=False)
     monkeypatch.setattr(mt5_setup_module.subprocess, "SW_SHOWNORMAL", 1, raising=False)
@@ -183,6 +218,7 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
     monkeypatch.setattr(mt5_setup_module, "MT5_BASE_PATH", str(base_dir))
     monkeypatch.setattr(mt5_setup_module, "MT5_TERMINALS_ROOT", str(terminals_root))
     monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    monkeypatch.setattr(mt5_setup_module.os, "startfile", lambda *a, **k: None)
     monkeypatch.setattr(mt5_setup_module.time, "sleep", lambda *_args, **_kwargs: None)
 
     def _fake_find_base_appdata(path):
@@ -256,6 +292,7 @@ def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, m
     monkeypatch.setattr(mt5_setup_module, "MT5_BASE_PATH", str(base_dir))
     monkeypatch.setattr(mt5_setup_module, "MT5_TERMINALS_ROOT", str(terminals_root))
     monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    monkeypatch.setattr(mt5_setup_module.os, "startfile", lambda *a, **k: None)
 
     sleep_calls = []
     monkeypatch.setattr(mt5_setup_module.time, "sleep", lambda seconds: sleep_calls.append(seconds))
