@@ -3,7 +3,7 @@ param(
     [string]$PythonExe = "",
     [int]$CheckIntervalSeconds = 60,
     [int]$RestartDelaySeconds = 5,
-    [ValidateSet("Normal", "Minimized", "Maximized", "Hidden")]
+    [ValidateSet("Normal", "Minimized", "Maximized")]
     [string]$LauncherWindowStyle = "",
     [switch]$RunOnce
 )
@@ -90,6 +90,10 @@ function Start-Mt5SetupLauncher {
         } else {
             $resolvedWindowStyle = "Normal"
         }
+    }
+    if ($resolvedWindowStyle -eq "Hidden") {
+        $resolvedWindowStyle = "Normal"
+        Write-WatchdogLog "Ignored hidden setup launcher window style override; forcing Normal for visible MT5 setup worker." "WARN"
     }
     $arguments = @(
         "-NoProfile",

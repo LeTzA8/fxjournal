@@ -43,7 +43,7 @@ MT5 launch paths now use a shared helper that starts `terminal64.exe` with an ex
 Follow-up to the April 11 comparison: the strongest regression signal was the **worker session model**, not the MT5 Python calls. The setup watchdog path is now adjusted back toward the earlier working shape:
 
 - `manual VM scripts/FX Journal MT5 Setup Watchdog.xml` now targets the interactive Administrator desktop session with `LogonTrigger` + `InteractiveToken` instead of password/background scheduling.
-- `scripts/windows/watch_mt5_setup_worker.ps1` no longer hardcodes `Start-Process ... -WindowStyle Hidden`; it now defaults to `Normal` and can still be overridden with `FXJ_MT5_SETUP_LAUNCHER_WINDOW_STYLE` when needed.
+- `scripts/windows/watch_mt5_setup_worker.ps1` no longer hardcodes `Start-Process ... -WindowStyle Hidden`; it now forces a visible worker launch (`Normal` by default). Existing hidden env overrides are ignored for the setup worker path so the watchdog does not accidentally relaunch setup invisibly.
 - Scope is intentionally narrow: this change is for the **setup** worker path so MT5 setup/bootstrap can surface the real terminal window again. Sync watchdog behavior is unchanged.
 
 **Operational note:** importing/replacing the Task Scheduler entry on the VM is still required; editing the XML export in the repo does not change the live scheduler by itself.
