@@ -8,16 +8,6 @@ from helpers.utils import encrypt_password
 from models import MT5Account, TradeAccount, User, db
 
 
-class _FakeProcess:
-    pid = 9999
-
-    def terminate(self):
-        return None
-
-    def wait(self, timeout=None):
-        return 0
-
-
 class _FakeMt5Module:
     def __init__(self, expected_login):
         self.expected_login = expected_login
@@ -109,14 +99,12 @@ def test_setup_mt5_terminal_sends_ready_email_when_account_becomes_active(app_ct
     monkeypatch.setattr(mt5_setup_module, "MT5_BASE_PATH", str(base_dir))
     monkeypatch.setattr(mt5_setup_module, "MT5_TERMINALS_ROOT", str(tmp_path / "terminals"))
     monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
-    monkeypatch.setattr(mt5_setup_module.os, "startfile", lambda *a, **k: None)
     monkeypatch.setattr(mt5_setup_module.time, "sleep", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         mt5_setup_module,
         "_find_base_appdata",
         lambda path: str(base_appdata) if os.path.normcase(str(path)) == os.path.normcase(str(base_dir)) else str(new_appdata),
     )
-    monkeypatch.setattr(mt5_setup_module.subprocess, "Popen", lambda *_args, **_kwargs: _FakeProcess())
 
     fake_mt5 = _FakeMt5Module(expected_login=int(mt5_account.account_number))
     _set_mt5_import(monkeypatch, fake_mt5)

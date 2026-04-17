@@ -17,7 +17,7 @@ Single pipeline for setup, sync, and bar fetch: **INITIALIZE → LOGIN → VERIF
 5. Does NOT call `mt5.shutdown()` on success (caller manages session); DOES shutdown on failure after successful init.
 6. Returns dict with `success`, `account_info`, `error`, `attempts`, `elapsed_seconds`, `terminal_launched`, `pid`.
 
-**Setup bootstrap only:** After copy, a one-off `_start_terminal_process` (still `os.startfile` / `Popen`) creates AppData; then **hard-stop** that process (`_terminate_mt5_processes` + wait) so `initialize` does not attach to a stale bootstrap instance.
+**Setup bootstrap:** After copy, `mt5.initialize(path=…)` (same package, retries) until IPC connects, then wait for AppData / copy `servers.dat`; **`mt5.shutdown()`**; then **hard-stop** any remaining `terminal64.exe` (`_terminate_mt5_processes` + wait) before `ensure_mt5_terminal_ready` runs again.
 
 **Setup flow changes (`setup_mt5_terminal`):**
 - On Celery retry (`retries > 0`): fully cleans per-user terminal state (kill process, delete terminal dir, delete AppData) before re-running — setup retries always start from clean state.
@@ -36,9 +36,7 @@ Single pipeline for setup, sync, and bar fetch: **INITIALIZE → LOGIN → VERIF
 
 ## MT5 launch visibility hint (2026-04-18)
 
-Bootstrap in `setup_mt5_terminal` still uses `os.startfile` / `Popen` once to create AppData. `ensure_mt5_terminal_ready` does not launch the exe itself.
-
-**Important ops caveat:** If the MT5 setup worker runs in a non-interactive session, Windows may not show the MT5 desktop window to the logged-in user even when `initialize` starts the terminal. Fix session / Task Scheduler (interactive desktop) separately; code alone cannot force a desktop UI into Session 0.
+Setup uses **only** `MetaTrader5.initialize` to start/connect to the terminal (bootstrap + `ensure_mt5_terminal_ready`). Visibility still depends on the Windows session (interactive Task Scheduler vs Session 0).
 
 ## MT5 setup watchdog interactive session pass (2026-04-18)
 

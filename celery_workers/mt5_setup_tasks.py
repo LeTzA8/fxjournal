@@ -172,70 +172,6 @@ def _wait_until_terminal_stopped(terminal_exe: str, *, timeout_sec: float = 30.0
     return not running
 
 
-def _build_visible_terminal_launch_kwargs():
-    """Best-effort request for a normal visible MT5 window on Windows."""
-    if os.name != "nt":
-        return {}
-
-    startupinfo_factory = getattr(subprocess, "STARTUPINFO", None)
-    if startupinfo_factory is None:
-        return {}
-
-    try:
-        startupinfo = startupinfo_factory()
-        startupinfo.dwFlags |= getattr(subprocess, "STARTF_USESHOWWINDOW", 0)
-        startupinfo.wShowWindow = getattr(subprocess, "SW_SHOWNORMAL", 1)
-    except Exception:
-        return {}
-
-    return {"startupinfo": startupinfo}
-
-
-def _os_startfile_terminal(terminal_path):
-    """Open *terminal_path* with :func:`os.startfile` (Windows only).
-
-    Returns:
-        ``True`` if ``startfile`` ran, ``False`` if unavailable or it raised
-        :exc:`OSError`.
-    """
-    terminal_dir = os.path.dirname(terminal_path)
-    if os.name != "nt" or not hasattr(os, "startfile"):
-        return False
-    try:
-        try:
-            os.startfile(terminal_path, cwd=terminal_dir)
-        except TypeError:
-            # Python < 3.13: os.startfile has no *cwd* keyword.
-            os.startfile(terminal_path)
-        return True
-    except OSError:
-        return False
-
-
-def _start_terminal_process(terminal_path):
-    """Launch terminal64.exe.
-
-    On Windows, prefer ``os.startfile`` so the shell launches the executable
-    (often closer to double-click behavior than raw ``CreateProcess``). Fall
-    back to :func:`subprocess.Popen` with a visible-window hint if ``startfile``
-    fails or on non-Windows.
-
-    Returns:
-        ``subprocess.Popen`` when the Popen path is used; ``None`` when
-        ``os.startfile`` was used (no process handle).
-    """
-    if _os_startfile_terminal(terminal_path):
-        return None
-    terminal_dir = os.path.dirname(terminal_path)
-    logger.info(
-        "MT5 terminal os.startfile unavailable or failed, using Popen terminal=%s",
-        terminal_path,
-    )
-    popen_kwargs = {"cwd": terminal_dir}
-    popen_kwargs.update(_build_visible_terminal_launch_kwargs())
-    return subprocess.Popen([terminal_path], **popen_kwargs)
-
-
 def ensure_mt5_terminal_ready(
     mt5,
     *,
@@ -253,8 +189,8 @@ def ensure_mt5_terminal_ready(
     Pipeline: ``mt5.initialize(path=...)`` → LOGIN → VERIFY
 
     No ``os.startfile`` / ``subprocess`` — MetaTrader may start the terminal when
-    needed (`initialize` per API docs). Setup bootstrap still uses a one-off launch
-    only to create AppData before this runs.
+    needed (`initialize` per API docs). Setup bootstrap also uses ``initialize``
+    (see ``setup_mt5_terminal``) before this runs.
 
     1. Bounded retry loop: ``mt5.initialize(path=terminal_path)`` until IPC connects.
     2. ``mt5.login()`` + ``mt5.account_info()`` verification.
@@ -851,13 +787,42 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             os.path.basename(base_appdata),
         )
 
-        # Launch the terminal briefly — this causes MT5 to create its AppData folder
-        launcher_proc = _start_terminal_process(terminal_exe)
+        import MetaTrader5 as mt5
+
         logger.info(
-            "MT5 setup bootstrap_launch mt5_account_id=%s terminal_dir=%s",
+            "MT5 setup bootstrap_initialize mt5_account_id=%s terminal_dir=%s",
             mt5_account_id,
             terminal_dir,
         )
+        last_bootstrap_error = None
+        for attempt in range(1, MT5_TERMINAL_READY_MAX_ATTEMPTS + 1):
+            try:
+                if mt5.initialize(path=terminal_exe):
+                    logger.info(
+                        "MT5 setup bootstrap initialize ok mt5_account_id=%s attempt=%s/%s",
+                        mt5_account_id, attempt, MT5_TERMINAL_READY_MAX_ATTEMPTS,
+                    )
+                    break
+                last_bootstrap_error = (
+                    f"mt5.initialize() returned False: {_mt5_last_error(mt5)}"
+                )
+            except Exception as exc:
+                last_bootstrap_error = f"mt5.initialize() exception: {exc}"
+
+            logger.info(
+                "MT5 setup bootstrap initialize attempt %s/%s failed mt5_account_id=%s error=%s",
+                attempt, MT5_TERMINAL_READY_MAX_ATTEMPTS, mt5_account_id, last_bootstrap_error,
+            )
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+            if attempt < MT5_TERMINAL_READY_MAX_ATTEMPTS:
+                time.sleep(MT5_TERMINAL_READY_ATTEMPT_DELAY)
+        else:
+            raise PermanentSetupError(
+                f"MT5 bootstrap could not initialize terminal for AppData: {last_bootstrap_error}"
+            )
 
         new_appdata = None
         try:
@@ -872,7 +837,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
 
             if new_appdata is None:
                 raise PermanentSetupError(
-                    "MT5 AppData folder not created after launch — check MT5 installation"
+                    "MT5 AppData folder not created after initialize — check MT5 installation"
                 )
 
             new_hash = os.path.basename(new_appdata)
@@ -900,27 +865,13 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             account.appdata_hash = new_hash
             appdata_hash = new_hash
         finally:
-            if launcher_proc is not None:
-                try:
-                    launcher_proc.terminate()
-                    launcher_proc.wait(timeout=10)
-                except Exception:
-                    pass
-            else:
-                _running, bootstrap_pid = _is_terminal_process_running(terminal_exe)
-                if _running and bootstrap_pid:
-                    try:
-                        import psutil
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
 
-                        proc_boot = psutil.Process(bootstrap_pid)
-                        proc_boot.terminate()
-                        proc_boot.wait(timeout=10)
-                    except Exception:
-                        pass
-
-        # Bootstrap often leaves terminal64.exe alive (``terminate()`` is weak vs MT5).
-        # Hard-stop and wait until the exe is gone so ``mt5.initialize`` does not
-        # attach to a stale bootstrap process.
+        # ``initialize`` may leave the terminal running; stop it so the next
+        # ``ensure_mt5_terminal_ready`` does not attach to a stale process.
         logger.info(
             "MT5 setup stopping bootstrap terminal before ensure "
             "mt5_account_id=%s terminal=%s",
@@ -944,7 +895,6 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         # Clear the default chart workspace after the bootstrap launch and
         # before the Python API logs into the account.
         _clear_chart_profiles(new_appdata)
-        import MetaTrader5 as mt5
 
         ready_result = ensure_mt5_terminal_ready(
             mt5,

@@ -9,16 +9,6 @@ from helpers.utils import encrypt_password
 from models import MT5Account, TradeAccount, User, db
 
 
-class FakeProcess:
-    pid = 9999
-
-    def terminate(self):
-        return None
-
-    def wait(self, timeout=None):
-        return 0
-
-
 class RecordingMt5Module:
     """Fake MT5 module that records API call events for ordering assertions.
 
@@ -52,11 +42,7 @@ class RecordingMt5Module:
 
 
 class FlakyInitializeMt5Module:
-    """Fake MT5 module where the first initialize fails and the second succeeds.
-
-    Updated for the ensure_mt5_terminal_ready pipeline: path-only initialize,
-    separate login call.
-    """
+    """Bootstrap init succeeds; second ``initialize`` (ensure) fails; third succeeds."""
 
     def __init__(self, expected_login):
         self.expected_login = expected_login
@@ -67,7 +53,8 @@ class FlakyInitializeMt5Module:
 
     def initialize(self, path=None, **kwargs):
         self.initialize_calls.append({"path": path})
-        return len(self.initialize_calls) > 1
+        # Call 1: bootstrap succeeds. Call 2: ensure first attempt fails. Call 3: ensure succeeds.
+        return len(self.initialize_calls) != 2
 
     def last_error(self):
         return (-6, "Terminal: Authorization failed")
@@ -126,28 +113,6 @@ def _create_mt5_account(user_id, trade_account_id, account_number="12345678"):
     return mt5_account
 
 
-def test_start_terminal_process_uses_os_startfile_on_windows(monkeypatch, tmp_path):
-    terminal_dir = tmp_path / "mt5-terminal"
-    terminal_dir.mkdir()
-    terminal_exe = terminal_dir / "terminal64.exe"
-    terminal_exe.write_text("", encoding="ascii")
-
-    startfile_calls = []
-
-    def _fake_startfile(path, **kwargs):
-        startfile_calls.append({"path": path, **kwargs})
-
-    monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
-    monkeypatch.setattr(mt5_setup_module.os, "startfile", _fake_startfile)
-
-    proc = mt5_setup_module._start_terminal_process(str(terminal_exe))
-
-    assert proc is None
-    assert len(startfile_calls) == 1
-    assert startfile_calls[0]["path"] == str(terminal_exe)
-    assert startfile_calls[0].get("cwd") == str(terminal_dir)
-
-
 def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monkeypatch, tmp_path):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
 
@@ -167,7 +132,6 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
     monkeypatch.setattr(mt5_setup_module, "MT5_BASE_PATH", str(base_dir))
     monkeypatch.setattr(mt5_setup_module, "MT5_TERMINALS_ROOT", str(terminals_root))
     monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
-    monkeypatch.setattr(mt5_setup_module.os, "startfile", lambda *a, **k: None)
     monkeypatch.setattr(mt5_setup_module.time, "sleep", lambda *_args, **_kwargs: None)
 
     def _fake_find_base_appdata(path):
@@ -178,11 +142,6 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
         return None
 
     monkeypatch.setattr(mt5_setup_module, "_find_base_appdata", _fake_find_base_appdata)
-    monkeypatch.setattr(
-        mt5_setup_module.subprocess,
-        "Popen",
-        lambda args, **kwargs: FakeProcess(),
-    )
 
     events = []
 
@@ -211,9 +170,10 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
 
     assert result["status"] == "setup complete"
 
-    # ensure_mt5_terminal_ready: INIT → LOGIN → VERIFY (no subprocess launch)
-    # chart clearing must happen BEFORE any MT5 API call
+    # Bootstrap: initialize → shutdown; then charts; ensure: initialize → login; final shutdown
     assert events == [
+        ("initialize", str(terminal_exe)),
+        ("shutdown",),
         ("clear_charts", str(new_appdata)),
         ("initialize", str(terminal_exe)),
         ("login", int(mt5_account.account_number), mt5_account.server),
@@ -241,7 +201,6 @@ def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, m
     monkeypatch.setattr(mt5_setup_module, "MT5_BASE_PATH", str(base_dir))
     monkeypatch.setattr(mt5_setup_module, "MT5_TERMINALS_ROOT", str(terminals_root))
     monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
-    monkeypatch.setattr(mt5_setup_module.os, "startfile", lambda *a, **k: None)
 
     sleep_calls = []
     monkeypatch.setattr(mt5_setup_module.time, "sleep", lambda seconds: sleep_calls.append(seconds))
@@ -254,11 +213,6 @@ def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, m
         return None
 
     monkeypatch.setattr(mt5_setup_module, "_find_base_appdata", _fake_find_base_appdata)
-    monkeypatch.setattr(
-        mt5_setup_module.subprocess,
-        "Popen",
-        lambda args, **kwargs: FakeProcess(),
-    )
 
     monkeypatch.setattr(
         mt5_setup_module,
@@ -275,15 +229,14 @@ def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, m
 
     assert result["status"] == "setup complete"
 
-    # ensure_mt5_terminal_ready retries initialize (path-only) inside the same task.
-    # First call returns False, second returns True.
+    # Bootstrap init succeeds; ensure retries initialize once (call 2 fails, 3 succeeds).
     assert fake_mt5.initialize_calls == [
+        {"path": str(terminal_exe)},
         {"path": str(terminal_exe)},
         {"path": str(terminal_exe)},
     ]
     assert len(fake_mt5.login_calls) == 1
     assert fake_mt5.account_info_calls == 1
-    # shutdown: 1 after failed init (ensure cleanup) + 1 after ensure success (setup)
-    assert fake_mt5.shutdown_calls == 2
-    # sleep: 2s after terminal launch + MT5_TERMINAL_READY_ATTEMPT_DELAY between retries
+    # shutdown: bootstrap finally + ensure retry cleanup + final setup shutdown
+    assert fake_mt5.shutdown_calls == 3
     assert mt5_setup_module.MT5_TERMINAL_READY_ATTEMPT_DELAY in sleep_calls
