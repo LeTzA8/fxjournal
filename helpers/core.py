@@ -718,9 +718,13 @@ def get_mt5_sync_batch_state(*, for_update=False):
     return state
 
 
-def queue_mt5_account_cleanup(*, mt5_account, log_context):
+def queue_mt5_account_cleanup(*, mt5_account, log_context, delete_row_on_success=False):
     """
     Queue VM cleanup for an MT5 account's terminal/AppData pair when present.
+
+    When *delete_row_on_success* is ``True`` the cleanup task will delete the
+    ``MT5Account`` DB row after the VM files are removed successfully.  If
+    cleanup fails the row stays (marked for cleanup) so admins can retry.
 
     Returns a short warning string when cleanup could not be queued, otherwise
     ``None``. Missing terminal metadata is treated as a no-op.
@@ -732,18 +736,21 @@ def queue_mt5_account_cleanup(*, mt5_account, log_context):
     if not terminal_path or not appdata_hash:
         return None
 
+    mt5_account_id = getattr(mt5_account, "id", None)
+
     try:
         from celery_workers.mt5_setup_tasks import cleanup_mt5_terminal
 
         cleanup_mt5_terminal.apply_async(
             args=[terminal_path, appdata_hash],
+            kwargs={"mt5_account_id": mt5_account_id if delete_row_on_success else None},
             queue="mt5_setup",
         )
     except Exception as exc:
         current_app.logger.warning(
             "MT5 cleanup queue failed for %s mt5_account_id=%s: %s",
             log_context,
-            getattr(mt5_account, "id", None),
+            mt5_account_id,
             sanitize_error_message(exc),
         )
         return "Cleanup could not be queued; terminal files may need manual removal."
@@ -852,10 +859,63 @@ def reactivate_mt5_account(*, mt5_account, log_context="reactivate"):
     return True, "MT5 reactivation started. We'll email you when your sync is ready again."
 
 
+def reset_mt5_terminal_state(*, mt5_account, log_context="reset-terminal"):
+    """
+    Reset per-user terminal state so setup can be retried from a clean slate.
+
+    Queues VM cleanup for any existing terminal/AppData directories, then clears
+    only the terminal-runtime DB fields.  Credentials, user links, account number,
+    server, and consent are untouched — the MT5Account row stays and Setup Terminal
+    can be re-run immediately afterwards.
+
+    Fields reset: terminal_path, appdata_hash, vm_id, is_active,
+    connection_status, connection_error_message, archived_at, archive_reason,
+    cleanup_marked_at.
+    """
+    if mt5_account is None:
+        return False, "MT5 account not found."
+    if mt5_account.is_orphaned:
+        return False, "Cleanup-only MT5 records cannot be reset."
+    if not str(mt5_account.investor_password_encrypted or "").strip():
+        return (
+            False,
+            "That MT5 account no longer has saved credentials, so terminal reset is not possible.",
+        )
+
+    # Queue cleanup BEFORE clearing paths — helper reads them from the object.
+    cleanup_warning = queue_mt5_account_cleanup(
+        mt5_account=mt5_account,
+        log_context=log_context,
+    )
+
+    try:
+        mt5_account.terminal_path = None
+        mt5_account.appdata_hash = None
+        mt5_account.vm_id = None
+        mt5_account.is_active = False
+        mt5_account.archived_at = None
+        mt5_account.archive_reason = None
+        mt5_account.cleanup_marked_at = None
+        mt5_account.connection_status = MT5Account.CONNECTION_STATUS_PENDING
+        mt5_account.connection_error_message = None
+        db.session.commit()
+    except (OperationalError, IntegrityError):
+        db.session.rollback()
+        return False, "Could not reset that MT5 account right now. Please try again."
+
+    message = "Terminal state reset. Run Setup Terminal to retry from a clean slate."
+    if cleanup_warning:
+        message = f"{message} {cleanup_warning}"
+    return True, message
+
+
 def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
     """
-    Remove MT5 sync for a trade account: delete MT5Account, clear MT5AccessRequest rows,
-    release batch slot counters, queue worker terminal cleanup when paths exist.
+    Remove MT5 sync for a trade account: mark MT5Account for cleanup, clear
+    MT5AccessRequest rows, release batch slot counters, queue worker terminal
+    cleanup.  The MT5Account DB row is deleted by the cleanup task after VM
+    files are removed successfully.  If cleanup fails the row stays as a
+    cleanup-only orphan visible in admin.
 
     Returns (success, message) for user-facing flash text.
     """
@@ -872,9 +932,11 @@ def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
     if mt5_account.is_orphaned:
         return False, "MT5 sync is not available for this account."
 
+    # Queue cleanup BEFORE marking — mark_for_cleanup clears terminal_path.
     cleanup_warning = queue_mt5_account_cleanup(
         mt5_account=mt5_account,
         log_context="user unlink",
+        delete_row_on_success=True,
     )
 
     try:
@@ -896,7 +958,7 @@ def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
                         int(batch.total_slots_claimed or 0) - 1,
                     )
             db.session.delete(row)
-        db.session.delete(mt5_account)
+        mt5_account.mark_for_cleanup()
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()

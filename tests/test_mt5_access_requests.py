@@ -1281,7 +1281,7 @@ def test_root_admin_can_archive_mt5_account_and_keep_reactivation_path(app_ctx, 
     cleanup_calls = []
 
     def _fake_cleanup_apply_async(args=None, kwargs=None, queue=None):
-        cleanup_calls.append({"args": list(args or []), "queue": queue})
+        cleanup_calls.append({"args": list(args or []), "kwargs": dict(kwargs or {}), "queue": queue})
         return {"id": "cleanup-task"}
 
     monkeypatch.setattr(
@@ -1309,6 +1309,7 @@ def test_root_admin_can_archive_mt5_account_and_keep_reactivation_path(app_ctx, 
                 r"C:\MT5 User Terminals\archive\terminal64.exe",
                 "ARCHIVEHASH123",
             ],
+            "kwargs": {"mt5_account_id": None},
             "queue": "mt5_setup",
         }
     ]
@@ -1340,7 +1341,7 @@ def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, m
     cleanup_calls = []
 
     def _fake_cleanup_apply_async(args=None, kwargs=None, queue=None):
-        cleanup_calls.append({"args": list(args or []), "queue": queue})
+        cleanup_calls.append({"args": list(args or []), "kwargs": dict(kwargs or {}), "queue": queue})
         return {"id": "cleanup-task"}
 
     monkeypatch.setattr(
@@ -1349,6 +1350,7 @@ def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, m
     )
 
     mt5_account = MT5Account.query.filter_by(trade_account_id=trade_account.id).one()
+    mt5_account_id = mt5_account.id
     mt5_account.terminal_path = r"C:\fake\terminal"
     mt5_account.appdata_hash = "abc123hash"
     db.session.commit()
@@ -1360,12 +1362,21 @@ def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, m
     )
 
     assert response.status_code == 200
+    # Row should still exist as cleanup-only orphan (not deleted yet).
     assert MT5Account.query.filter_by(trade_account_id=trade_account.id).count() == 0
+    orphan = db.session.get(MT5Account, mt5_account_id)
+    assert orphan is not None
+    assert orphan.is_orphaned
+    assert orphan.cleanup_marked_at is not None
     assert MT5AccessRequest.query.filter_by(trade_account_id=trade_account.id).count() == 0
     db.session.refresh(batch)
     assert batch.total_slots_claimed == 0
     assert cleanup_calls == [
-        {"args": [r"C:\fake\terminal", "abc123hash"], "queue": "mt5_setup"},
+        {
+            "args": [r"C:\fake\terminal", "abc123hash"],
+            "kwargs": {"mt5_account_id": mt5_account_id},
+            "queue": "mt5_setup",
+        },
     ]
     assert b"MT5 sync disconnected for this trade account." in response.data
 
@@ -1385,6 +1396,9 @@ def test_user_unlink_mt5_without_terminal_skips_cleanup_queue(app_ctx, client, m
         data=_single_step_mt5_payload(trade_account, account_number="70120002"),
         follow_redirects=True,
     )
+
+    mt5_account = MT5Account.query.filter_by(trade_account_id=trade_account.id).one()
+    mt5_account_id = mt5_account.id
 
     cleanup_calls = []
 
@@ -1406,6 +1420,11 @@ def test_user_unlink_mt5_without_terminal_skips_cleanup_queue(app_ctx, client, m
     assert response.status_code == 200
     assert cleanup_calls == []
     assert MT5Account.query.filter_by(trade_account_id=trade_account.id).count() == 0
+    # Row should still exist as cleanup-only orphan.
+    orphan = db.session.get(MT5Account, mt5_account_id)
+    assert orphan is not None
+    assert orphan.is_orphaned
+    assert orphan.cleanup_marked_at is not None
 
 
 def test_user_cannot_unlink_mt5_for_foreign_trade_account_pubkey(app_ctx, client, monkeypatch):

@@ -857,11 +857,15 @@ def setup_mt5_terminal(self, mt5_account_id: int):
 
 
 @celery.task(bind=True, max_retries=2, default_retry_delay=10, queue="mt5_setup")
-def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str):
+def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str, mt5_account_id=None):
     """
-    Clean up MT5 terminal files when an MT5Account is deleted.
-    Runs on VM only - kills process, deletes terminal folder
-    and AppData hash folder.
+    Clean up MT5 terminal files when an MT5Account is deleted or unlinked.
+    Runs on VM only — kills process, deletes terminal folder and AppData hash
+    folder.
+
+    When *mt5_account_id* is provided the MT5Account DB row is deleted **after**
+    the file cleanup succeeds.  If cleanup fails the row stays so admins can
+    see the pending cleanup state and retry.
     """
     task_id = getattr(getattr(self, "request", None), "id", None)
     started_at = datetime.now(timezone.utc)
@@ -880,6 +884,7 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str):
                     ("Task ID", task_id),
                     ("Terminal Dir", terminal_dir),
                     ("AppData Hash", appdata_hash),
+                    ("MT5 Account ID", mt5_account_id),
                     ("Status", "not Windows, skipping cleanup"),
                 ],
                 level=logging.WARNING,
@@ -898,6 +903,27 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str):
         if appdata_folder and os.path.exists(appdata_folder):
             shutil.rmtree(appdata_folder, ignore_errors=True)
 
+        # --- DB row deletion (only after file cleanup succeeds) ---
+        db_deleted = False
+        if mt5_account_id is not None:
+            try:
+                from models import MT5Account, db
+
+                account = db.session.get(MT5Account, mt5_account_id)
+                if account is not None:
+                    db.session.delete(account)
+                    db.session.commit()
+                    db_deleted = True
+                else:
+                    db_deleted = True  # already gone
+            except Exception as db_exc:
+                db.session.rollback()
+                logger.warning(
+                    "MT5 cleanup succeeded but DB row delete failed mt5_account_id=%s: %s",
+                    mt5_account_id,
+                    db_exc,
+                )
+
         finished_at = datetime.now(timezone.utc)
         log_ascii_table(
             logger,
@@ -909,6 +935,8 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str):
                 ("Terminal Dir", terminal_dir),
                 ("AppData Hash", appdata_hash),
                 ("AppData Folder", appdata_folder),
+                ("MT5 Account ID", mt5_account_id),
+                ("DB Row Deleted", db_deleted if mt5_account_id else "n/a"),
                 ("Status", "cleanup complete"),
             ],
         )
@@ -916,6 +944,8 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str):
         return {
             "terminal_dir": terminal_dir,
             "appdata_hash": appdata_hash,
+            "mt5_account_id": mt5_account_id,
+            "db_deleted": db_deleted,
             "status": "cleanup complete",
         }
     except Exception as exc:
@@ -929,14 +959,16 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str):
                 ("Task ID", task_id),
                 ("Terminal Dir", terminal_dir),
                 ("AppData Hash", appdata_hash),
+                ("MT5 Account ID", mt5_account_id),
                 ("Error", exc),
             ],
             level=logging.ERROR,
         )
         logger.exception(
-            "MT5 cleanup failed. task_id=%s terminal_path=%s appdata_hash=%s",
+            "MT5 cleanup failed. task_id=%s terminal_path=%s appdata_hash=%s mt5_account_id=%s",
             task_id,
             terminal_path,
             appdata_hash,
+            mt5_account_id,
         )
         raise

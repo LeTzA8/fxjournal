@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-Last Updated: 2026-04-16
+Last Updated: 2026-04-17
 
 ## Recent Fix — MT5 sync IPC self-healing (2026-04-16)
 
@@ -19,6 +19,18 @@ On `-10001` IPC failure, the sync worker now runs the same bootstrap sequence as
 Also added diagnostic logging for `mt5.initialize()` result, `mt5.login()` result, and `mt5.account_info()` output on every sync.
 
 Short-term operational memory.
+
+## Admin — MT5 Reset Terminal State (2026-04-17)
+
+New admin action "Reset Terminal" on the MT5 accounts table. Lets root admins clear broken per-user terminal state and retry setup without deleting the MT5 account row.
+
+**What it does:**
+- Queues `cleanup_mt5_terminal` on `mt5_setup` for any existing terminal/AppData paths (same VM cleanup used by Archive/Delete)
+- Clears terminal-runtime DB fields: `terminal_path`, `appdata_hash`, `vm_id`, `is_active → False`, `connection_status → pending`, `connection_error_message`, `archived_at`, `archive_reason`, `cleanup_marked_at`
+- Keeps untouched: `user_id`, `trade_account_id`, `account_number`, `investor_password_encrypted`, `server`, consent fields, `last_synced_at`
+- After reset: Setup Terminal can be pressed immediately to bootstrap a fresh terminal with the same credentials
+
+**Files changed:** `helpers/core.py` (`reset_mt5_terminal_state`), `auth_account.py` (import + `POST …/reset-terminal` route), `templates/admin_signup_access.html` (Reset Terminal button in MT5 actions cell)
 
 ## Current Focus
 

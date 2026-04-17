@@ -2,6 +2,7 @@ import os
 from types import SimpleNamespace
 
 import celery_workers.mt5_setup_tasks as mt5_setup_module
+from models import MT5Account, db
 
 
 def _set_missing_psutil(monkeypatch):
@@ -82,3 +83,69 @@ def test_cleanup_mt5_terminal_skips_mismatched_hash_folder(monkeypatch, tmp_path
     assert not terminal_dir.exists()
     assert wrong_folder.exists()
     assert not right_folder.exists()
+
+
+def test_cleanup_mt5_terminal_deletes_db_row_on_success(app_ctx, monkeypatch, tmp_path):
+    """When mt5_account_id is provided, the DB row is deleted after successful cleanup."""
+    terminal_dir = tmp_path / "terminals" / "mt5_db_del"
+    terminal_dir.mkdir(parents=True)
+    terminal_exe = terminal_dir / "terminal64.exe"
+    terminal_exe.write_text("", encoding="ascii")
+
+    appdata_root = tmp_path / "appdata" / "MetaQuotes" / "Terminal"
+    appdata_hash = "D" * 32
+    appdata_folder = appdata_root / appdata_hash
+    appdata_folder.mkdir(parents=True)
+
+    monkeypatch.setattr(mt5_setup_module, "APPDATA_TERMINAL_PATH", str(appdata_root))
+    monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    _set_missing_psutil(monkeypatch)
+    monkeypatch.setattr(
+        mt5_setup_module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+
+    mt5_account = MT5Account(
+        user_id=None,
+        trade_account_id=None,
+        account_number="CLEANUP_99999999",
+        server="TestServer",
+        terminal_path=str(terminal_exe),
+        appdata_hash=appdata_hash,
+        is_active=False,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+    mt5_account_id = mt5_account.id
+    assert db.session.get(MT5Account, mt5_account_id) is not None
+
+    result = mt5_setup_module.cleanup_mt5_terminal.run(
+        str(terminal_exe), appdata_hash, mt5_account_id=mt5_account_id,
+    )
+
+    assert result["status"] == "cleanup complete"
+    assert result["db_deleted"] is True
+    assert db.session.get(MT5Account, mt5_account_id) is None
+
+
+def test_cleanup_mt5_terminal_without_account_id_skips_db_delete(monkeypatch, tmp_path):
+    """When mt5_account_id is None, no DB deletion is attempted."""
+    terminal_dir = tmp_path / "terminals" / "mt5_no_id"
+    terminal_dir.mkdir(parents=True)
+    terminal_exe = terminal_dir / "terminal64.exe"
+    terminal_exe.write_text("", encoding="ascii")
+
+    monkeypatch.setattr(mt5_setup_module, "APPDATA_TERMINAL_PATH", str(tmp_path / "empty"))
+    monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    _set_missing_psutil(monkeypatch)
+    monkeypatch.setattr(
+        mt5_setup_module.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0),
+    )
+
+    result = mt5_setup_module.cleanup_mt5_terminal.run(str(terminal_exe), "")
+
+    assert result["status"] == "cleanup complete"
+    assert result["db_deleted"] is False

@@ -597,6 +597,18 @@
                                                 {% endif %}
                                             >Archive</button>
                                         </form>
+                                        <form action="{{ url_for('admin_mt5_reset_terminal', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Reset terminal state for this MT5 account? VM terminal files will be queued for removal and all terminal-related DB fields will be cleared so Setup Terminal can be retried. Credentials and account details are kept.');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button
+                                                type="submit"
+                                                class="ghost-btn"
+                                                {% if is_orphaned %}
+                                                disabled
+                                                aria-disabled="true"
+                                                title="Cleanup-only MT5 records cannot be reset."
+                                                {% endif %}
+                                            >Reset Terminal</button>
+                                        </form>
                                         <form action="{{ url_for('admin_mt5_trigger_sync', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="submit-btn" {% if not account.is_active or is_orphaned %}disabled aria-disabled="true"{% if is_orphaned %} title="Cleanup-only MT5 records cannot be synced."{% endif %}{% endif %}>Trigger Sync</button>

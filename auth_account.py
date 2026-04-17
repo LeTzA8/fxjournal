@@ -37,6 +37,7 @@ from helpers.core import (
     delete_users_with_related_data,
     get_mt5_sync_batch_state,
     reactivate_mt5_account,
+    reset_mt5_terminal_state,
     queue_mt5_account_cleanup,
     sanitize_error_message,
 )
@@ -3642,6 +3643,25 @@ def register_public_auth_routes(
             "success" if ok else "error",
         )
 
+    @app.route("/dashboard/admin/access/mt5/<int:mt5_account_id>/reset-terminal", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_reset_terminal(mt5_account_id):
+        account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        ok, message = reset_mt5_terminal_state(
+            mt5_account=account,
+            log_context="admin reset-terminal",
+        )
+        if ok:
+            current_app.logger.info(
+                "Admin reset MT5 terminal state mt5_account_id=%s",
+                mt5_account_id,
+            )
+        return build_admin_redirect(
+            "mt5",
+            message,
+            "success" if ok else "error",
+        )
+
     @app.route("/dashboard/admin/access/mt5/batches/create", methods=["POST"])
     @root_admin_required
     def admin_mt5_create_batch():
@@ -4139,16 +4159,38 @@ def register_public_auth_routes(
     @root_admin_required
     def admin_mt5_delete_account(mt5_account_id):
         account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+
+        if account.is_cleanup_only:
+            # Already an orphan with no credentials — safe to delete immediately.
+            account_number = account.account_number
+            try:
+                db.session.delete(account)
+                db.session.commit()
+            except (OperationalError, IntegrityError):
+                db.session.rollback()
+                return build_admin_redirect(
+                    "mt5",
+                    "Could not delete that MT5 account right now. Please try again.",
+                    "error",
+                )
+            return build_admin_redirect(
+                "mt5",
+                f"Deleted cleanup-only MT5 record {account_number}.",
+                "success",
+            )
+
+        # Queue cleanup BEFORE marking — mark_for_cleanup clears terminal_path.
         cleanup_warning = queue_mt5_account_cleanup(
             mt5_account=account,
             log_context="admin delete",
+            delete_row_on_success=True,
         )
         cleanup_suffix = f" {cleanup_warning}" if cleanup_warning else ""
 
         account_number = account.account_number
 
         try:
-            db.session.delete(account)
+            account.mark_for_cleanup()
             db.session.commit()
         except (OperationalError, IntegrityError):
             db.session.rollback()
@@ -4160,7 +4202,7 @@ def register_public_auth_routes(
 
         return build_admin_redirect(
             "mt5",
-            f"Deleted MT5 account {account_number}.{cleanup_suffix}",
+            f"MT5 account {account_number} marked for cleanup. DB row will be removed after terminal cleanup succeeds.{cleanup_suffix}",
             "success",
         )
 
