@@ -518,6 +518,12 @@ def sync_mt5_trades():
         if not (account.last_synced_at is None and len(normalized_rows) == 0):
             account.last_synced_at = utcnow_naive()
             account.vm_id = sync_vm_id
+        # Reaching this point means MT5 connected and the sync HTTP call succeeded.
+        # Clear any stale "failed" connection state so the dashboard/admin don't show
+        # a false error label after the account has recovered.
+        if account.connection_status != MT5Account.CONNECTION_STATUS_CONNECTED or account.connection_error_message:
+            account.connection_status = MT5Account.CONNECTION_STATUS_CONNECTED
+            account.connection_error_message = None
         broker_account_size = _account_size_from_mt5_sync_payload(payload)
         if broker_account_size is not None:
             account.trade_account.account_size = broker_account_size

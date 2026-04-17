@@ -195,7 +195,7 @@ def test_sync_all_active_mt5_accounts_skips_orphaned_accounts(app_ctx, monkeypat
 
     captured_ids = []
 
-    def _fake_apply_async(*, args, queue, kwargs=None):
+    def _fake_apply_async(*, args, queue, kwargs=None, **extra):
         captured_ids.append((args[0], queue))
 
     monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)

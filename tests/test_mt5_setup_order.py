@@ -10,6 +10,8 @@ from models import MT5Account, TradeAccount, User, db
 
 
 class FakeProcess:
+    pid = 9999
+
     def terminate(self):
         return None
 
@@ -18,47 +20,71 @@ class FakeProcess:
 
 
 class RecordingMt5Module:
+    """Fake MT5 module that records API call events for ordering assertions.
+
+    Updated for the ensure_mt5_terminal_ready pipeline: path-only initialize,
+    separate login call, account_info includes trade_allowed.
+    """
+
     def __init__(self, events, login):
         self.events = events
-        self.login = login
+        self._login = login
 
-    def initialize(self, path, **kwargs):
-        self.events.append(("initialize", path, kwargs["login"]))
+    def initialize(self, path=None, **kwargs):
+        self.events.append(("initialize", path))
+        return True
+
+    def login(self, login, password=None, server=None):
+        self.events.append(("login", login, server))
         return True
 
     def account_info(self):
-        return SimpleNamespace(login=self.login)
+        return SimpleNamespace(login=self._login, trade_allowed=False)
 
     def shutdown(self):
         self.events.append(("shutdown",))
 
+    def last_error(self):
+        return (0, "OK")
+
+    def symbol_select(self, symbol, select):
+        pass
+
 
 class FlakyInitializeMt5Module:
+    """Fake MT5 module where the first initialize fails and the second succeeds.
+
+    Updated for the ensure_mt5_terminal_ready pipeline: path-only initialize,
+    separate login call.
+    """
+
     def __init__(self, expected_login):
         self.expected_login = expected_login
         self.initialize_calls = []
+        self.login_calls = []
         self.account_info_calls = 0
         self.shutdown_calls = 0
 
-    def initialize(self, path, **kwargs):
-        self.initialize_calls.append(
-            {
-                "path": path,
-                "login": kwargs["login"],
-                "server": kwargs["server"],
-            }
-        )
+    def initialize(self, path=None, **kwargs):
+        self.initialize_calls.append({"path": path})
         return len(self.initialize_calls) > 1
 
     def last_error(self):
         return (-6, "Terminal: Authorization failed")
 
+    def login(self, login, password=None, server=None):
+        self.login_calls.append({"login": login, "server": server})
+        return True
+
     def account_info(self):
         self.account_info_calls += 1
-        return SimpleNamespace(login=self.expected_login)
+        return SimpleNamespace(login=self.expected_login, trade_allowed=False)
 
     def shutdown(self):
         self.shutdown_calls += 1
+
+    def symbol_select(self, symbol, select):
+        pass
 
 
 def _create_user_with_account():
@@ -147,6 +173,11 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
         "_clear_market_watch_selection",
         lambda appdata_path, server: events.append(("clear_market_watch", appdata_path, server)),
     )
+    monkeypatch.setattr(
+        mt5_setup_module,
+        "_seed_market_watch_symbols",
+        lambda *_a, **_kw: None,
+    )
 
     fake_mt5 = RecordingMt5Module(events, int(mt5_account.account_number))
     monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
@@ -156,9 +187,13 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
     terminal_exe = terminals_root / f"mt5_{user.id}_{trade_account.id}" / "terminal64.exe"
 
     assert result["status"] == "setup complete"
+
+    # ensure_mt5_terminal_ready pipeline: LAUNCH → INIT → LOGIN → VERIFY
+    # chart clearing must happen BEFORE any MT5 API call
     assert events == [
         ("clear_charts", str(new_appdata)),
-        ("initialize", str(terminal_exe), int(mt5_account.account_number)),
+        ("initialize", str(terminal_exe)),
+        ("login", int(mt5_account.account_number), mt5_account.server),
         ("shutdown",),
         ("clear_market_watch", str(new_appdata), mt5_account.server),
     ]
@@ -201,6 +236,12 @@ def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, m
         lambda args, cwd: FakeProcess(),
     )
 
+    monkeypatch.setattr(
+        mt5_setup_module,
+        "_seed_market_watch_symbols",
+        lambda *_a, **_kw: None,
+    )
+
     fake_mt5 = FlakyInitializeMt5Module(expected_login=int(mt5_account.account_number))
     monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
 
@@ -209,18 +250,16 @@ def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, m
     terminal_exe = terminals_root / f"mt5_{user.id}_{trade_account.id}" / "terminal64.exe"
 
     assert result["status"] == "setup complete"
+
+    # ensure_mt5_terminal_ready retries initialize (path-only) inside the same task.
+    # First call returns False, second returns True.
     assert fake_mt5.initialize_calls == [
-        {
-            "path": str(terminal_exe),
-            "login": int(mt5_account.account_number),
-            "server": mt5_account.server,
-        },
-        {
-            "path": str(terminal_exe),
-            "login": int(mt5_account.account_number),
-            "server": mt5_account.server,
-        },
+        {"path": str(terminal_exe)},
+        {"path": str(terminal_exe)},
     ]
+    assert len(fake_mt5.login_calls) == 1
     assert fake_mt5.account_info_calls == 1
+    # shutdown: 1 after failed init (ensure cleanup) + 1 after ensure success (setup)
     assert fake_mt5.shutdown_calls == 2
-    assert sleep_calls == [mt5_setup_module.MT5_SETUP_VERIFY_RETRY_DELAY_SECONDS]
+    # sleep: 2s after terminal launch + MT5_TERMINAL_READY_ATTEMPT_DELAY between retries
+    assert mt5_setup_module.MT5_TERMINAL_READY_ATTEMPT_DELAY in sleep_calls

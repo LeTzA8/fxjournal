@@ -1,22 +1,36 @@
 # CURRENT_STATE
 
-Last Updated: 2026-04-17
+Last Updated: 2026-04-18
 
-## Recent Fix — MT5 sync IPC self-healing (2026-04-16)
+## MT5 lifecycle refactor — `ensure_mt5_terminal_ready` (2026-04-18)
 
-**Root cause (A vs B comparison — delete+re-setup works, reuse doesn't):**
-`setup_mt5_terminal` runs a `subprocess.Popen` bootstrap before `mt5.initialize()`. This lets the terminal clear stale crash markers / session locks from a previous run and exit cleanly. The next credential-based initialize then sees a clean slate. The sync IPC recovery previously skipped the bootstrap and went straight to `mt5.initialize()`, hitting the stale state and crashing in ~6 s (hence `-10001`). Both workers run in Session 0 (`<LogonType>Password</LogonType>` in Task Scheduler XML) — session isolation is NOT the cause.
+**Problem:** MT5 IPC (`mt5.initialize()`) fails unless the terminal is opened properly. Headless-style launches and MT5's auto-launch are unreliable. Manual double-clicking works because the terminal fully initializes.
 
-**Fix (`celery_workers/mt5_sync_tasks.py`):**
-On `-10001` IPC failure, the sync worker now runs the same bootstrap sequence as `setup_mt5_terminal`:
-1. Kill broken process
-2. `subprocess.Popen([terminal_path])` bootstrap → wait for AppData (already exists → exits immediately) → terminate cleanly
-3. Refresh `servers.dat` from base AppData
-4. Clear chart profiles (`MQL5/Profiles/Charts`)
-5. `mt5.initialize(path, login, password, server, timeout=60000)` credential init
-6. Fall through to normal `mt5.login()` + `mt5.account_info()` block
+**New rule:** Always launch MT5 normally (UI visible), then control programmatically. No manual interaction required, no headless assumptions.
 
-Also added diagnostic logging for `mt5.initialize()` result, `mt5.login()` result, and `mt5.account_info()` output on every sync.
+**New helper (`celery_workers/mt5_setup_tasks.py: ensure_mt5_terminal_ready`):**
+Reusable function implementing a consistent pipeline: **LAUNCH → WAIT → INITIALIZE → LOGIN → VERIFY**.
+1. Check if `terminal64.exe` is running (via psutil); if not → launch via `subprocess.Popen` (UI visible).
+2. Bounded retry loop (8 attempts, 3s delay): call `mt5.initialize(path=...)` until IPC connects.
+3. Explicit `mt5.login(login, password, server)` — never rely on MT5 auto-login.
+4. Verify with `mt5.account_info()` (login match check).
+5. Does NOT call `mt5.shutdown()` on success (caller manages session); DOES shutdown on failure after successful init.
+6. Returns dict with `success`, `account_info`, `error`, `attempts`, `elapsed_seconds`, `terminal_launched`, `pid`.
+
+**Setup flow changes (`setup_mt5_terminal`):**
+- On Celery retry (`retries > 0`): fully cleans per-user terminal state (kill process, delete terminal dir, delete AppData) before re-running — setup retries always start from clean state.
+- Replaced `_verify_mt5_terminal_login` with `ensure_mt5_terminal_ready`.
+- Trading password check (`trade_allowed`) remains setup-only, applied after ensure returns.
+
+**Sync flow changes (`sync_mt5_account`):**
+- Replaced the 100+ line IPC recovery block (`-10001` bootstrap, kill→Popen→servers.dat→credential init) with a single `ensure_mt5_terminal_ready(...)` call.
+- Soft reconnect (stale broker history) now also uses `ensure_mt5_terminal_ready` instead of raw `mt5.initialize`/`mt5.login`.
+- `terminal_path` is now required (raises early if not set).
+
+**Bar fetch changes (`fetch_trade_bars`):**
+- Same `ensure_mt5_terminal_ready` pattern replaces raw `mt5.initialize` + `mt5.login`.
+
+**Removed:** `_verify_mt5_terminal_login` (replaced by ensure), `_kill_terminal_if_running` (ensure handles terminal launch).
 
 Short-term operational memory.
 

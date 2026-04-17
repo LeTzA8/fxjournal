@@ -31,8 +31,8 @@ APPDATA_TERMINAL_PATH = os.path.join(
     "Terminal",
 )
 IGNORED_APPDATA_FOLDERS = {"Common", "Community"}
-MT5_SETUP_VERIFY_ATTEMPTS = 2
-MT5_SETUP_VERIFY_RETRY_DELAY_SECONDS = 2
+MT5_TERMINAL_READY_MAX_ATTEMPTS = 8
+MT5_TERMINAL_READY_ATTEMPT_DELAY = 3
 
 # Crypto symbols added to market watch at terminal setup so the UTC-offset
 # probe has 24/7 tick data available even when forex is closed.
@@ -113,6 +113,239 @@ def _terminate_mt5_processes_via_powershell(terminal_exe: str):
         )
     except OSError:
         pass
+
+
+def _is_terminal_process_running(terminal_path):
+    """Check if terminal64.exe is currently running at the given path.
+
+    Returns (running: bool, pid: int | None).
+    """
+    norm_path = os.path.normcase(os.path.abspath(terminal_path))
+    try:
+        import psutil
+        for proc in psutil.process_iter(["pid", "exe"]):
+            try:
+                proc_exe = proc.info.get("exe")
+                if proc_exe and os.path.normcase(os.path.abspath(proc_exe)) == norm_path:
+                    return True, proc.info.get("pid")
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+    except ImportError:
+        pass
+    return False, None
+
+
+def _launch_terminal_process(terminal_path):
+    """Launch terminal64.exe with UI visible.  Returns (pid, success)."""
+    terminal_dir = os.path.dirname(terminal_path)
+    try:
+        proc = subprocess.Popen([terminal_path], cwd=terminal_dir)
+        logger.info(
+            "MT5 terminal launched pid=%s terminal=%s",
+            proc.pid, terminal_path,
+        )
+        return proc.pid, True
+    except OSError as exc:
+        logger.error(
+            "MT5 terminal launch failed terminal=%s error=%s",
+            terminal_path, exc,
+        )
+        return None, False
+
+
+def ensure_mt5_terminal_ready(
+    mt5,
+    *,
+    terminal_path,
+    login,
+    password,
+    server,
+    mt5_account_id=None,
+    max_attempts=MT5_TERMINAL_READY_MAX_ATTEMPTS,
+    attempt_delay=MT5_TERMINAL_READY_ATTEMPT_DELAY,
+):
+    """
+    Ensure MT5 terminal is running, initialized, logged in, and verified.
+
+    Pipeline: LAUNCH → WAIT → INITIALIZE → LOGIN → VERIFY
+
+    1. If terminal process is not running, launch terminal64.exe (UI visible).
+    2. Bounded retry loop calling ``mt5.initialize(path=...)`` until IPC connects.
+    3. Explicit ``mt5.login()`` + ``mt5.account_info()`` verification.
+
+    Does **not** call ``mt5.shutdown()`` on success — caller manages session
+    lifecycle.  Does **not** check ``trade_allowed`` — callers that care (setup)
+    should inspect the returned ``account_info``.
+
+    Returns dict with keys: ``success``, ``account_info``, ``error``,
+    ``attempts``, ``elapsed_seconds``, ``terminal_launched``, ``pid``.
+    """
+    started = time.time()
+    terminal_launched = False
+    pid = None
+
+    # ── Step 1: Ensure terminal process is running ──────────────────────────
+    running, existing_pid = _is_terminal_process_running(terminal_path)
+    if running:
+        pid = existing_pid
+        logger.info(
+            "MT5 terminal already running pid=%s mt5_account_id=%s",
+            pid, mt5_account_id,
+        )
+    else:
+        if not os.path.isfile(terminal_path):
+            elapsed = time.time() - started
+            logger.error("MT5 terminal executable not found: %s", terminal_path)
+            return {
+                "success": False, "account_info": None,
+                "error": f"terminal64.exe not found: {terminal_path}",
+                "attempts": 0, "elapsed_seconds": elapsed,
+                "terminal_launched": False, "pid": None,
+            }
+        pid, ok = _launch_terminal_process(terminal_path)
+        if not ok:
+            elapsed = time.time() - started
+            return {
+                "success": False, "account_info": None,
+                "error": f"Failed to launch terminal: {terminal_path}",
+                "attempts": 0, "elapsed_seconds": elapsed,
+                "terminal_launched": False, "pid": None,
+            }
+        terminal_launched = True
+        time.sleep(2)  # give terminal time to start before first init attempt
+
+    # ── Step 2: Bounded retry loop for mt5.initialize(path=...) ─────────────
+    last_error = None
+    attempts_used = 0
+    for attempt in range(1, max_attempts + 1):
+        attempts_used = attempt
+        try:
+            result = mt5.initialize(path=terminal_path)
+            if result:
+                logger.info(
+                    "MT5 initialize succeeded mt5_account_id=%s attempt=%s/%s",
+                    mt5_account_id, attempt, max_attempts,
+                )
+                break
+            last_error = f"mt5.initialize() returned False: {_mt5_last_error(mt5)}"
+        except Exception as exc:
+            last_error = f"mt5.initialize() exception: {exc}"
+
+        logger.info(
+            "MT5 initialize attempt %s/%s failed mt5_account_id=%s error=%s",
+            attempt, max_attempts, mt5_account_id, last_error,
+        )
+        try:
+            mt5.shutdown()
+        except Exception:
+            pass
+        if attempt < max_attempts:
+            time.sleep(attempt_delay)
+    else:
+        # all attempts exhausted
+        elapsed = time.time() - started
+        log_ascii_table(
+            logger,
+            "MT5 Terminal Ready — Failed (initialize)",
+            [
+                ("MT5 Account ID", mt5_account_id),
+                ("Terminal", terminal_path),
+                ("Attempts", f"{max_attempts}/{max_attempts}"),
+                ("Elapsed", f"{elapsed:.1f}s"),
+                ("Terminal Launched", terminal_launched),
+                ("PID", pid),
+                ("Last Error", last_error),
+            ],
+            level=logging.ERROR,
+        )
+        return {
+            "success": False, "account_info": None, "error": last_error,
+            "attempts": max_attempts, "elapsed_seconds": elapsed,
+            "terminal_launched": terminal_launched, "pid": pid,
+        }
+
+    # ── Step 3: Explicit login ──────────────────────────────────────────────
+    # From here on, initialize has succeeded so we must shutdown on failure
+    # to avoid leaking the IPC session.
+    login_result = mt5.login(login, password=password, server=server)
+    if not login_result:
+        login_error = _mt5_last_error(mt5)
+        try:
+            mt5.shutdown()
+        except Exception:
+            pass
+        elapsed = time.time() - started
+        log_ascii_table(
+            logger,
+            "MT5 Terminal Ready — Login Failed",
+            [
+                ("MT5 Account ID", mt5_account_id),
+                ("Server", server),
+                ("Login Error", login_error),
+                ("Elapsed", f"{elapsed:.1f}s"),
+            ],
+            level=logging.ERROR,
+        )
+        return {
+            "success": False, "account_info": None,
+            "error": f"mt5.login() failed: {login_error}",
+            "attempts": attempts_used, "elapsed_seconds": elapsed,
+            "terminal_launched": terminal_launched, "pid": pid,
+        }
+    logger.info("MT5 login succeeded mt5_account_id=%s", mt5_account_id)
+
+    # ── Step 4: Verify with account_info ────────────────────────────────────
+    account_info = mt5.account_info()
+    if account_info is None:
+        acct_error = _mt5_last_error(mt5)
+        try:
+            mt5.shutdown()
+        except Exception:
+            pass
+        elapsed = time.time() - started
+        return {
+            "success": False, "account_info": None,
+            "error": f"mt5.account_info() returned None: {acct_error}",
+            "attempts": attempts_used, "elapsed_seconds": elapsed,
+            "terminal_launched": terminal_launched, "pid": pid,
+        }
+
+    actual_login = getattr(account_info, "login", None)
+    if actual_login != login:
+        try:
+            mt5.shutdown()
+        except Exception:
+            pass
+        elapsed = time.time() - started
+        return {
+            "success": False, "account_info": account_info,
+            "error": f"Wrong account logged in: expected {login}, got {actual_login}",
+            "attempts": attempts_used, "elapsed_seconds": elapsed,
+            "terminal_launched": terminal_launched, "pid": pid,
+        }
+
+    elapsed = time.time() - started
+    log_ascii_table(
+        logger,
+        "MT5 Terminal Ready — Success",
+        [
+            ("MT5 Account ID", mt5_account_id),
+            ("Login", actual_login),
+            ("Server", server),
+            ("Balance", getattr(account_info, "balance", None)),
+            ("Equity", getattr(account_info, "equity", None)),
+            ("Trade Allowed", getattr(account_info, "trade_allowed", None)),
+            ("Attempts", f"{attempts_used}/{max_attempts}"),
+            ("Elapsed", f"{elapsed:.1f}s"),
+            ("Terminal Launched", terminal_launched),
+            ("PID", pid),
+        ],
+    )
+    return {
+        "success": True, "account_info": account_info, "error": None,
+        "attempts": attempts_used, "elapsed_seconds": elapsed,
+        "terminal_launched": terminal_launched, "pid": pid,
+    }
 
 
 def _resolve_cleanup_appdata_folder(terminal_dir: str, appdata_hash: str):
@@ -407,87 +640,6 @@ def _mt5_last_error(mt5):
     return "last_error unavailable"
 
 
-def _verify_mt5_terminal_login(
-    mt5,
-    *,
-    terminal_exe: str,
-    login: int,
-    investor_password: str,
-    server: str,
-    task_id=None,
-    mt5_account_id=None,
-    user_id=None,
-    trade_account_id=None,
-):
-    for attempt in range(1, MT5_SETUP_VERIFY_ATTEMPTS + 1):
-        retry_in_seconds = None
-        try:
-            result = mt5.initialize(
-                path=terminal_exe,
-                login=login,
-                password=investor_password,
-                server=server,
-                timeout=60000,
-            )
-
-            if not result:
-                error = _mt5_last_error(mt5)
-                raise RuntimeError(f"mt5.initialize() failed: {error}")
-
-            account_info = mt5.account_info()
-            if account_info is None:
-                error = _mt5_last_error(mt5)
-                raise RuntimeError(f"mt5.account_info() returned None: {error}")
-
-            actual_login = getattr(account_info, "login", None)
-            if actual_login != login:
-                raise RuntimeError(
-                    f"Wrong account logged in: expected {login}, got {actual_login}"
-                )
-
-            # Investor (read-only) password always yields trade_allowed=False.
-            # If True, the user submitted a master/trading password — reject immediately.
-            # Note: some brokers disable trading at account level even with master password,
-            # so this is a safe check (no false positives, rare false negatives only).
-            if getattr(account_info, "trade_allowed", False):
-                raise TradingPasswordDetectedError(
-                    f"trading/master password detected for login {_mask_account_number_for_log(login)} "
-                    f"on server {server}"
-                )
-
-            return
-        except TradingPasswordDetectedError:
-            raise  # propagate immediately, do not retry inside the loop
-        except RuntimeError as exc:
-            if attempt >= MT5_SETUP_VERIFY_ATTEMPTS:
-                raise
-
-            retry_in_seconds = MT5_SETUP_VERIFY_RETRY_DELAY_SECONDS
-            log_ascii_table(
-                logger,
-                "MT5 Setup Verification Retry",
-                [
-                    ("Task ID", task_id),
-                    ("MT5 Account ID", mt5_account_id),
-                    ("User ID", user_id),
-                    ("Trade Account ID", trade_account_id),
-                    ("Account", _mask_account_number_for_log(login)),
-                    ("Server", server),
-                    ("Attempt", f"{attempt}/{MT5_SETUP_VERIFY_ATTEMPTS}"),
-                    ("Retry In", f"{retry_in_seconds}s"),
-                    ("Error", exc),
-                ],
-                level=logging.WARNING,
-            )
-        finally:
-            try:
-                mt5.shutdown()
-            except Exception:
-                pass
-        if retry_in_seconds:
-            time.sleep(retry_in_seconds)
-
-
 @celery.task(bind=True, max_retries=2, default_retry_delay=30, queue="mt5_setup")
 def setup_mt5_terminal(self, mt5_account_id: int):
     """
@@ -550,6 +702,27 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             f"mt5_{user_id}_{trade_account_id}",
         )
         terminal_exe = os.path.join(terminal_dir, "terminal64.exe")
+
+        # ── RETRY CLEANUP: start from clean state on retries ───────────────
+        current_retry = getattr(getattr(self, "request", None), "retries", 0)
+        if current_retry > 0:
+            logger.info(
+                "MT5 setup retry #%s — cleaning previous terminal state "
+                "mt5_account_id=%s terminal_dir=%s",
+                current_retry, mt5_account_id, terminal_dir,
+            )
+            _terminate_mt5_processes(terminal_exe)
+            if os.path.isdir(terminal_dir):
+                shutil.rmtree(terminal_dir, ignore_errors=True)
+            old_hash = getattr(account, "appdata_hash", None)
+            if old_hash:
+                old_appdata = _resolve_cleanup_appdata_folder(terminal_dir, old_hash)
+                if old_appdata and os.path.isdir(old_appdata):
+                    shutil.rmtree(old_appdata, ignore_errors=True)
+            account.terminal_path = None
+            account.appdata_hash = None
+            db.session.commit()
+
         log_ascii_table(
             logger,
             "MT5 Setup Context",
@@ -646,21 +819,31 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         # Clear the default chart workspace after the bootstrap launch and
         # before the Python API logs into the account.
         _clear_chart_profiles(new_appdata)
-        logger.info("MT5 setup pre_verify_login mt5_account_id=%s", mt5_account_id)
-
         import MetaTrader5 as mt5
 
-        _verify_mt5_terminal_login(
+        ready_result = ensure_mt5_terminal_ready(
             mt5,
-            terminal_exe=terminal_exe,
+            terminal_path=terminal_exe,
             login=login,
-            investor_password=investor_password,
+            password=investor_password,
             server=server,
-            task_id=task_id,
             mt5_account_id=mt5_account_id,
-            user_id=user_id,
-            trade_account_id=trade_account_id,
         )
+        if not ready_result["success"]:
+            raise RuntimeError(
+                f"MT5 terminal not ready after setup: {ready_result['error']}"
+            )
+
+        # Trading password check (setup-specific safety gate)
+        setup_account_info = ready_result["account_info"]
+        if getattr(setup_account_info, "trade_allowed", False):
+            mt5.shutdown()
+            raise TradingPasswordDetectedError(
+                f"trading/master password detected for login "
+                f"{_mask_account_number_for_log(login)} on server {server}"
+            )
+
+        mt5.shutdown()
 
         _clear_market_watch_selection(new_appdata, server)
 

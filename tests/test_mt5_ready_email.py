@@ -9,6 +9,8 @@ from models import MT5Account, TradeAccount, User, db
 
 
 class _FakeProcess:
+    pid = 9999
+
     def terminate(self):
         return None
 
@@ -21,14 +23,23 @@ class _FakeMt5Module:
         self.expected_login = expected_login
         self.shutdown_calls = 0
 
-    def initialize(self, **kwargs):
+    def initialize(self, path=None, **kwargs):
+        return True
+
+    def login(self, login, password=None, server=None):
         return True
 
     def account_info(self):
-        return type("AccountInfo", (), {"login": self.expected_login})()
+        return type("AccountInfo", (), {
+            "login": self.expected_login,
+            "trade_allowed": False,
+        })()
 
     def shutdown(self):
         self.shutdown_calls += 1
+
+    def last_error(self):
+        return (0, "OK")
 
 
 def _set_mt5_import(monkeypatch, module):

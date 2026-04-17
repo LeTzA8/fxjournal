@@ -67,11 +67,26 @@ def _create_mt5_account(*, user_id, trade_account_id, account_number="12345678")
         account_number=account_number,
         investor_password_encrypted=encrypt_password("investor-pass"),
         server="Broker-Server",
+        terminal_path=r"C:\MT5Terminals\test\terminal64.exe",
         is_active=True,
     )
     db.session.add(mt5_account)
     db.session.commit()
     return mt5_account
+
+
+def _patch_terminal_ready(monkeypatch):
+    """Tell ensure_mt5_terminal_ready the terminal process is already running.
+
+    Without this, the function tries psutil / subprocess.Popen which is not
+    available in the test environment.  The fake MetaTrader5 module already
+    provides initialize/login/account_info stubs so the IPC retry loop exits
+    immediately.
+    """
+    monkeypatch.setattr(
+        "celery_workers.mt5_setup_tasks._is_terminal_process_running",
+        lambda path: (True, 9999),
+    )
 
 
 def _deal(**overrides):
@@ -345,6 +360,7 @@ def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
         last_error=lambda: (0, "ok"),
     )
     monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+    _patch_terminal_ready(monkeypatch)
 
     class DummyResponse:
         def raise_for_status(self):
@@ -440,6 +456,7 @@ def test_sync_mt5_account_logs_skip_debug_after_table_not_inside_ascii_cell(app_
         last_error=lambda: (0, "ok"),
     )
     monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+    _patch_terminal_ready(monkeypatch)
 
     long_reason = "x" * 5000
 
@@ -531,6 +548,7 @@ def test_sync_mt5_account_quiet_idle_noop_skips_ascii_table(app_ctx, monkeypatch
         last_error=lambda: (0, "ok"),
     )
     monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+    _patch_terminal_ready(monkeypatch)
 
     class DummyResponse:
         def raise_for_status(self):
@@ -620,6 +638,7 @@ def test_sync_mt5_account_warns_when_history_is_stale_but_db_still_has_open_mt5_
         last_error=lambda: (0, "ok"),
     )
     monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+    _patch_terminal_ready(monkeypatch)
 
     class DummyResponse:
         def raise_for_status(self):
@@ -715,6 +734,7 @@ def test_sync_mt5_account_soft_reconnect_refetches_history_once(app_ctx, monkeyp
         last_error=lambda: (0, "ok"),
     )
     monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+    _patch_terminal_ready(monkeypatch)
 
     class DummyResponse:
         def raise_for_status(self):
@@ -799,6 +819,7 @@ def test_sync_mt5_account_soft_reconnect_disabled_by_env(app_ctx, monkeypatch, c
         last_error=lambda: (0, "ok"),
     )
     monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+    _patch_terminal_ready(monkeypatch)
 
     class DummyResponse:
         def raise_for_status(self):
@@ -930,6 +951,7 @@ def test_sync_mt5_account_uses_utc_history_window_without_server_shift(app_ctx, 
         last_error=lambda: (0, "ok"),
     )
     monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+    _patch_terminal_ready(monkeypatch)
 
     class DummyResponse:
         def raise_for_status(self):
@@ -1002,6 +1024,7 @@ def test_sync_mt5_account_picks_up_running_trade_from_positions_get(app_ctx, mon
         last_error=lambda: (0, "ok"),
     )
     monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+    _patch_terminal_ready(monkeypatch)
 
     class DummyResponse:
         def raise_for_status(self):
@@ -1090,6 +1113,7 @@ def test_sync_mt5_account_overlays_positions_profit_onto_open_deal_row(app_ctx, 
         last_error=lambda: (0, "ok"),
     )
     monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+    _patch_terminal_ready(monkeypatch)
 
     class DummyResponse:
         def raise_for_status(self):
@@ -1150,6 +1174,7 @@ def test_sync_mt5_account_retries_when_mt5_session_is_on_wrong_login(app_ctx, mo
         last_error=lambda: (0, "ok"),
     )
     monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+    _patch_terminal_ready(monkeypatch)
 
     def _fake_post(*args, **kwargs):
         post_calls.append((args, kwargs))
@@ -1164,7 +1189,7 @@ def test_sync_mt5_account_retries_when_mt5_session_is_on_wrong_login(app_ctx, mo
 
     monkeypatch.setattr(sync_mt5_account, "retry", _fake_retry)
 
-    with pytest.raises(RuntimeError, match="Wrong MT5 account logged in during sync"):
+    with pytest.raises(RuntimeError, match="Wrong account logged in"):
         sync_mt5_account.run(mt5_account.id)
 
     assert post_calls == []
@@ -1355,6 +1380,41 @@ def test_internal_mt5_sync_updates_vm_id_on_success(app_ctx, client, monkeypatch
     refreshed = db.session.get(MT5Account, mt5_account.id)
     assert refreshed.last_synced_at is not None
     assert refreshed.vm_id == "vm-1"
+    assert refreshed.connection_status == MT5Account.CONNECTION_STATUS_CONNECTED
+    assert refreshed.connection_error_message is None
+
+
+def test_internal_mt5_sync_clears_failed_connection_status(app_ctx, client, monkeypatch):
+    """A successful sync should reset connection_status from 'failed' back to 'connected'."""
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="sync-clear-failed",
+        email="sync-clear-failed@example.com",
+    )
+    mt5_account = _create_mt5_account(user_id=user.id, trade_account_id=trade_account.id)
+    mt5_account.connection_status = MT5Account.CONNECTION_STATUS_FAILED
+    mt5_account.connection_error_message = "Previous setup error"
+    mt5_account.last_synced_at = datetime(2024, 6, 1, 12, 0, 0)
+    db.session.commit()
+
+    response = client.post(
+        "/api/internal/mt5/sync",
+        json={
+            "mt5_account_id": mt5_account.id,
+            "vm_id": "vm-1",
+            "trades": [],
+        },
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    assert response.status_code == 200
+    db.session.expire_all()
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert refreshed.connection_status == MT5Account.CONNECTION_STATUS_CONNECTED
+    assert refreshed.connection_error_message is None
 
 
 def test_chunked_history_deals_get_queries_mt5_in_slices(monkeypatch):
