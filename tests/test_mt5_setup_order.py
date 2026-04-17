@@ -262,7 +262,7 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
 
     assert result["status"] == "setup complete"
 
-    # ensure_mt5_terminal_ready pipeline: LAUNCH → INIT → LOGIN → VERIFY
+    # ensure_mt5_terminal_ready (setup): INIT → startfile → LOGIN → VERIFY (or fallback LAUNCH → INIT…)
     # chart clearing must happen BEFORE any MT5 API call
     assert events == [
         ("clear_charts", str(new_appdata)),

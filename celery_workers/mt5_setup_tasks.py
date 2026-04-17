@@ -179,6 +179,27 @@ def _build_visible_terminal_launch_kwargs():
     return {"startupinfo": startupinfo}
 
 
+def _os_startfile_terminal(terminal_path):
+    """Open *terminal_path* with :func:`os.startfile` (Windows only).
+
+    Returns:
+        ``True`` if ``startfile`` ran, ``False`` if unavailable or it raised
+        :exc:`OSError`.
+    """
+    terminal_dir = os.path.dirname(terminal_path)
+    if os.name != "nt" or not hasattr(os, "startfile"):
+        return False
+    try:
+        try:
+            os.startfile(terminal_path, cwd=terminal_dir)
+        except TypeError:
+            # Python < 3.13: os.startfile has no *cwd* keyword.
+            os.startfile(terminal_path)
+        return True
+    except OSError:
+        return False
+
+
 def _start_terminal_process(terminal_path):
     """Launch terminal64.exe.
 
@@ -191,21 +212,13 @@ def _start_terminal_process(terminal_path):
         ``subprocess.Popen`` when the Popen path is used; ``None`` when
         ``os.startfile`` was used (no process handle).
     """
+    if _os_startfile_terminal(terminal_path):
+        return None
     terminal_dir = os.path.dirname(terminal_path)
-    if os.name == "nt" and hasattr(os, "startfile"):
-        try:
-            try:
-                os.startfile(terminal_path, cwd=terminal_dir)
-            except TypeError:
-                # Python < 3.13: os.startfile has no *cwd* keyword.
-                os.startfile(terminal_path)
-            return None
-        except OSError as exc:
-            logger.info(
-                "MT5 terminal os.startfile failed, falling back to Popen terminal=%s err=%s",
-                terminal_path,
-                exc,
-            )
+    logger.info(
+        "MT5 terminal os.startfile unavailable or failed, using Popen terminal=%s",
+        terminal_path,
+    )
     popen_kwargs = {"cwd": terminal_dir}
     popen_kwargs.update(_build_visible_terminal_launch_kwargs())
     return subprocess.Popen([terminal_path], **popen_kwargs)
@@ -253,15 +266,24 @@ def ensure_mt5_terminal_ready(
     mt5_account_id=None,
     max_attempts=MT5_TERMINAL_READY_MAX_ATTEMPTS,
     attempt_delay=MT5_TERMINAL_READY_ATTEMPT_DELAY,
+    setup_init_then_visible_launch=False,
 ):
     """
     Ensure MT5 terminal is running, initialized, logged in, and verified.
 
-    Pipeline: LAUNCH → WAIT → INITIALIZE → LOGIN → VERIFY
+    Default pipeline: LAUNCH → ``mt5.initialize`` → LOGIN → VERIFY
 
-    1. If terminal process is not running, launch terminal64.exe (UI visible).
+    1. If the terminal process is not running, launch ``terminal64.exe`` (best-effort
+       visible window), unless *setup_init_then_visible_launch* is used (see below).
     2. Bounded retry loop calling ``mt5.initialize(path=...)`` until IPC connects.
     3. Explicit ``mt5.login()`` + ``mt5.account_info()`` verification.
+
+    *setup_init_then_visible_launch* (only ``setup_mt5_terminal``, after AppData
+    bootstrap): if the terminal is not already running, first try
+    ``mt5.initialize(path=...)`` (MetaTrader may auto-start the terminal), then
+    open the executable with :func:`os.startfile` for a shell-style visible window,
+    then proceed to login. If initialize never succeeds without a prior launch,
+    falls back to launch-then-initialize (same as the default path).
 
     Does **not** call ``mt5.shutdown()`` on success — caller manages session
     lifecycle.  Does **not** check ``trade_allowed`` — callers that care (setup)
@@ -273,8 +295,10 @@ def ensure_mt5_terminal_ready(
     started = time.time()
     terminal_launched = False
     pid = None
+    init_already_connected = False
+    attempts_used = 0
 
-    # ── Step 1: Ensure terminal process is running ──────────────────────────
+    # ── Step 1: Ensure terminal process is running (or setup init-first path) ─
     running, existing_pid = _is_terminal_process_running(terminal_path)
     if running:
         pid = existing_pid
@@ -292,67 +316,129 @@ def ensure_mt5_terminal_ready(
                 "attempts": 0, "elapsed_seconds": elapsed,
                 "terminal_launched": False, "pid": None,
             }
-        pid, ok = _launch_terminal_process(terminal_path)
-        if not ok:
-            elapsed = time.time() - started
-            return {
-                "success": False, "account_info": None,
-                "error": f"Failed to launch terminal: {terminal_path}",
-                "attempts": 0, "elapsed_seconds": elapsed,
-                "terminal_launched": False, "pid": None,
-            }
-        terminal_launched = True
-        time.sleep(2)  # give terminal time to start before first init attempt
+
+        if setup_init_then_visible_launch:
+            last_error = None
+            for attempt in range(1, max_attempts + 1):
+                attempts_used = attempt
+                try:
+                    result = mt5.initialize(path=terminal_path)
+                    if result:
+                        logger.info(
+                            "MT5 setup pipeline: initialize before visible launch "
+                            "mt5_account_id=%s attempt=%s/%s",
+                            mt5_account_id, attempt, max_attempts,
+                        )
+                        init_already_connected = True
+                        break
+                    last_error = f"mt5.initialize() returned False: {_mt5_last_error(mt5)}"
+                except Exception as exc:
+                    last_error = f"mt5.initialize() exception: {exc}"
+
+                logger.info(
+                    "MT5 setup init-before-visible attempt %s/%s failed "
+                    "mt5_account_id=%s error=%s",
+                    attempt, max_attempts, mt5_account_id, last_error,
+                )
+                try:
+                    mt5.shutdown()
+                except Exception:
+                    pass
+                if attempt < max_attempts:
+                    time.sleep(attempt_delay)
+
+            if init_already_connected:
+                if _os_startfile_terminal(terminal_path):
+                    logger.info(
+                        "MT5 setup pipeline: os.startfile after init "
+                        "mt5_account_id=%s terminal=%s",
+                        mt5_account_id, terminal_path,
+                    )
+                else:
+                    logger.warning(
+                        "MT5 setup pipeline: os.startfile skipped or failed after init "
+                        "mt5_account_id=%s terminal=%s",
+                        mt5_account_id, terminal_path,
+                    )
+                terminal_launched = True
+                time.sleep(2)
+                _running, rpid = _is_terminal_process_running(terminal_path)
+                if rpid:
+                    pid = rpid
+            else:
+                pid, ok = _launch_terminal_process(terminal_path)
+                if not ok:
+                    elapsed = time.time() - started
+                    return {
+                        "success": False, "account_info": None,
+                        "error": f"Failed to launch terminal: {terminal_path}",
+                        "attempts": attempts_used, "elapsed_seconds": elapsed,
+                        "terminal_launched": False, "pid": None,
+                    }
+                terminal_launched = True
+                time.sleep(2)
+        else:
+            pid, ok = _launch_terminal_process(terminal_path)
+            if not ok:
+                elapsed = time.time() - started
+                return {
+                    "success": False, "account_info": None,
+                    "error": f"Failed to launch terminal: {terminal_path}",
+                    "attempts": 0, "elapsed_seconds": elapsed,
+                    "terminal_launched": False, "pid": None,
+                }
+            terminal_launched = True
+            time.sleep(2)
 
     # ── Step 2: Bounded retry loop for mt5.initialize(path=...) ─────────────
     last_error = None
-    attempts_used = 0
-    for attempt in range(1, max_attempts + 1):
-        attempts_used = attempt
-        try:
-            result = mt5.initialize(path=terminal_path)
-            if result:
-                logger.info(
-                    "MT5 initialize succeeded mt5_account_id=%s attempt=%s/%s",
-                    mt5_account_id, attempt, max_attempts,
-                )
-                break
-            last_error = f"mt5.initialize() returned False: {_mt5_last_error(mt5)}"
-        except Exception as exc:
-            last_error = f"mt5.initialize() exception: {exc}"
+    if not init_already_connected:
+        for attempt in range(1, max_attempts + 1):
+            attempts_used = attempt
+            try:
+                result = mt5.initialize(path=terminal_path)
+                if result:
+                    logger.info(
+                        "MT5 initialize succeeded mt5_account_id=%s attempt=%s/%s",
+                        mt5_account_id, attempt, max_attempts,
+                    )
+                    break
+                last_error = f"mt5.initialize() returned False: {_mt5_last_error(mt5)}"
+            except Exception as exc:
+                last_error = f"mt5.initialize() exception: {exc}"
 
-        logger.info(
-            "MT5 initialize attempt %s/%s failed mt5_account_id=%s error=%s",
-            attempt, max_attempts, mt5_account_id, last_error,
-        )
-        try:
-            mt5.shutdown()
-        except Exception:
-            pass
-        if attempt < max_attempts:
-            time.sleep(attempt_delay)
-    else:
-        # all attempts exhausted
-        elapsed = time.time() - started
-        log_ascii_table(
-            logger,
-            "MT5 Terminal Ready — Failed (initialize)",
-            [
-                ("MT5 Account ID", mt5_account_id),
-                ("Terminal", terminal_path),
-                ("Attempts", f"{max_attempts}/{max_attempts}"),
-                ("Elapsed", f"{elapsed:.1f}s"),
-                ("Terminal Launched", terminal_launched),
-                ("PID", pid),
-                ("Last Error", last_error),
-            ],
-            level=logging.ERROR,
-        )
-        return {
-            "success": False, "account_info": None, "error": last_error,
-            "attempts": max_attempts, "elapsed_seconds": elapsed,
-            "terminal_launched": terminal_launched, "pid": pid,
-        }
+            logger.info(
+                "MT5 initialize attempt %s/%s failed mt5_account_id=%s error=%s",
+                attempt, max_attempts, mt5_account_id, last_error,
+            )
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+            if attempt < max_attempts:
+                time.sleep(attempt_delay)
+        else:
+            # all attempts exhausted
+            elapsed = time.time() - started
+            log_ascii_table(
+                logger,
+                "MT5 Terminal Ready — Failed (initialize)",
+                [
+                    ("MT5 Account ID", mt5_account_id),
+                    ("Terminal", terminal_path),
+                    ("Attempts", f"{max_attempts}/{max_attempts}"),
+                    ("Elapsed", f"{elapsed:.1f}s"),
+                    ("Terminal Launched", terminal_launched),
+                    ("PID", pid),
+                    ("Last Error", last_error),
+                ],
+                level=logging.ERROR,
+            )
+            return {
+                "success": False, "account_info": None, "error": last_error,
+                "attempts": max_attempts, "elapsed_seconds": elapsed,
+                "terminal_launched": terminal_launched, "pid": pid,
+            }
 
     # ── Step 3: Explicit login ──────────────────────────────────────────────
     # From here on, initialize has succeeded so we must shutdown on failure
@@ -939,6 +1025,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             password=investor_password,
             server=server,
             mt5_account_id=mt5_account_id,
+            setup_init_then_visible_launch=True,
         )
         if not ready_result["success"]:
             raise RuntimeError(

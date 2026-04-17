@@ -9,7 +9,7 @@ Last Updated: 2026-04-18
 **New rule:** Always launch MT5 normally (UI visible), then control programmatically. No manual interaction required, no headless assumptions.
 
 **New helper (`celery_workers/mt5_setup_tasks.py: ensure_mt5_terminal_ready`):**
-Reusable function implementing a consistent pipeline: **LAUNCH → WAIT → INITIALIZE → LOGIN → VERIFY**.
+Default pipeline (sync / bar fetch): **LAUNCH → WAIT → INITIALIZE → LOGIN → VERIFY**.
 1. Check if `terminal64.exe` is running (via psutil); if not → on Windows launch via `os.startfile` (shell-style), else `subprocess.Popen`; if `startfile` fails, fall back to `Popen` with a visible-window hint.
 2. Bounded retry loop (8 attempts, 3s delay): call `mt5.initialize(path=...)` until IPC connects.
 3. Explicit `mt5.login(login, password, server)` — never rely on MT5 auto-login.
@@ -17,9 +17,11 @@ Reusable function implementing a consistent pipeline: **LAUNCH → WAIT → INIT
 5. Does NOT call `mt5.shutdown()` on success (caller manages session); DOES shutdown on failure after successful init.
 6. Returns dict with `success`, `account_info`, `error`, `attempts`, `elapsed_seconds`, `terminal_launched`, `pid`.
 
+**Setup-only pipeline** (`setup_mt5_terminal` passes `setup_init_then_visible_launch=True` after copy + AppData bootstrap): **INITIALIZE → `os.startfile` → LOGIN → VERIFY** when the terminal was not already running — try `mt5.initialize(path=...)` first (MT5 may auto-start the terminal), then open `terminal64.exe` with `os.startfile` for a visible shell-style window, then login. If initialize never succeeds without a prior launch, falls back to the default launch-then-initialize path.
+
 **Setup flow changes (`setup_mt5_terminal`):**
 - On Celery retry (`retries > 0`): fully cleans per-user terminal state (kill process, delete terminal dir, delete AppData) before re-running — setup retries always start from clean state.
-- Replaced `_verify_mt5_terminal_login` with `ensure_mt5_terminal_ready`.
+- Replaced `_verify_mt5_terminal_login` with `ensure_mt5_terminal_ready` (with the setup-only flag above).
 - Trading password check (`trade_allowed`) remains setup-only, applied after ensure returns.
 
 **Sync flow changes (`sync_mt5_account`):**
