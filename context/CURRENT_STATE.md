@@ -6,18 +6,18 @@ Last Updated: 2026-04-18
 
 **Problem:** MT5 IPC (`mt5.initialize()`) fails unless the terminal is opened properly. Headless-style launches and MT5's auto-launch are unreliable. Manual double-clicking works because the terminal fully initializes.
 
-**New rule:** Always launch MT5 normally (UI visible), then control programmatically. No manual interaction required, no headless assumptions.
+**New rule:** `ensure_mt5_terminal_ready` uses **only** `mt5.initialize(path=...)` to connect (and let MetaTrader start the terminal if needed per API docs) — **no** `os.startfile` / `subprocess` in that helper. Then `login` + `account_info` verification.
 
 **New helper (`celery_workers/mt5_setup_tasks.py: ensure_mt5_terminal_ready`):**
-Single pipeline for setup, sync, and bar fetch: **LAUNCH → WAIT → INITIALIZE → LOGIN → VERIFY**.
-1. Check if `terminal64.exe` is running (via psutil); if not → on Windows launch via `os.startfile` (shell-style), else `subprocess.Popen`; if `startfile` fails, fall back to `Popen` with a visible-window hint.
-2. Bounded retry loop (8 attempts, 3s delay): call `mt5.initialize(path=...)` until IPC connects.
-3. Explicit `mt5.login(login, password, server)` — never rely on MT5 auto-login.
+Single pipeline for setup, sync, and bar fetch: **INITIALIZE → LOGIN → VERIFY**.
+1. Require `terminal64.exe` on disk; optional log if a process is already running.
+2. Bounded retry loop (8 attempts, 3s delay): `mt5.initialize(path=...)` until IPC connects.
+3. Explicit `mt5.login(login, password, server)`.
 4. Verify with `mt5.account_info()` (login match check).
 5. Does NOT call `mt5.shutdown()` on success (caller manages session); DOES shutdown on failure after successful init.
 6. Returns dict with `success`, `account_info`, `error`, `attempts`, `elapsed_seconds`, `terminal_launched`, `pid`.
 
-After copy + AppData bootstrap, `setup_mt5_terminal` **hard-stops** the bootstrap `terminal64.exe` (`_terminate_mt5_processes` + wait until gone) so `ensure_mt5_terminal_ready` does not see “already running” and skip `os.startfile`. Then the same **open exe first, then `mt5.initialize`** order as everyone else.
+**Setup bootstrap only:** After copy, a one-off `_start_terminal_process` (still `os.startfile` / `Popen`) creates AppData; then **hard-stop** that process (`_terminate_mt5_processes` + wait) so `initialize` does not attach to a stale bootstrap instance.
 
 **Setup flow changes (`setup_mt5_terminal`):**
 - On Celery retry (`retries > 0`): fully cleans per-user terminal state (kill process, delete terminal dir, delete AppData) before re-running — setup retries always start from clean state.
@@ -32,13 +32,13 @@ After copy + AppData bootstrap, `setup_mt5_terminal` **hard-stops** the bootstra
 **Bar fetch changes (`fetch_trade_bars`):**
 - Same `ensure_mt5_terminal_ready` pattern replaces raw `mt5.initialize` + `mt5.login`.
 
-**Removed:** `_verify_mt5_terminal_login` (replaced by ensure), `_kill_terminal_if_running` (ensure handles terminal launch).
+**Removed:** `_verify_mt5_terminal_login` (replaced by ensure), `_kill_terminal_if_running`.
 
 ## MT5 launch visibility hint (2026-04-18)
 
-MT5 launch paths prefer `os.startfile` on Windows (closer to double-click behavior), with `subprocess.Popen` + `STARTUPINFO` as fallback if `startfile` raises. This applies to both the short bootstrap launch in `setup_mt5_terminal` and the long-lived launch in `ensure_mt5_terminal_ready`.
+Bootstrap in `setup_mt5_terminal` still uses `os.startfile` / `Popen` once to create AppData. `ensure_mt5_terminal_ready` does not launch the exe itself.
 
-**Important ops caveat:** this is still only a best-effort code hint. If the MT5 setup worker is started by Task Scheduler in a non-interactive session, Windows will not show the MT5 desktop window to the logged-in user even though the process launches successfully. In that case the scheduler/session model must be changed separately; code alone cannot force a desktop UI into a non-interactive session.
+**Important ops caveat:** If the MT5 setup worker runs in a non-interactive session, Windows may not show the MT5 desktop window to the logged-in user even when `initialize` starts the terminal. Fix session / Task Scheduler (interactive desktop) separately; code alone cannot force a desktop UI into Session 0.
 
 ## MT5 setup watchdog interactive session pass (2026-04-18)
 

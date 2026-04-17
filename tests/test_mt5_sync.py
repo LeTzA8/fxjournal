@@ -76,16 +76,26 @@ def _create_mt5_account(*, user_id, trade_account_id, account_number="12345678")
 
 
 def _patch_terminal_ready(monkeypatch):
-    """Tell ensure_mt5_terminal_ready the terminal process is already running.
+    """Stub process check and pretend ``terminal64.exe`` exists on disk.
 
-    Without this, the function tries psutil / subprocess.Popen which is not
-    available in the test environment.  The fake MetaTrader5 module already
-    provides initialize/login/account_info stubs so the IPC retry loop exits
-    immediately.
+    ``ensure_mt5_terminal_ready`` no longer launches the exe; it still requires
+    ``os.path.isfile(terminal_path)`` before ``mt5.initialize``.  The fake
+    MetaTrader5 module provides initialize/login/account_info stubs.
     """
     monkeypatch.setattr(
         "celery_workers.mt5_setup_tasks._is_terminal_process_running",
         lambda path: (True, 9999),
+    )
+    _real_isfile = os.path.isfile
+
+    def _isfile_stub(path):
+        if str(path).lower().endswith("terminal64.exe"):
+            return True
+        return _real_isfile(path)
+
+    monkeypatch.setattr(
+        "celery_workers.mt5_setup_tasks.os.path.isfile",
+        _isfile_stub,
     )
 
 

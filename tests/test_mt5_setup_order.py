@@ -19,12 +19,6 @@ class FakeProcess:
         return 0
 
 
-class FakeStartupInfo:
-    def __init__(self):
-        self.dwFlags = 0
-        self.wShowWindow = 0
-
-
 class RecordingMt5Module:
     """Fake MT5 module that records API call events for ordering assertions.
 
@@ -132,7 +126,7 @@ def _create_mt5_account(user_id, trade_account_id, account_number="12345678"):
     return mt5_account
 
 
-def test_launch_terminal_process_uses_os_startfile_on_windows(monkeypatch, tmp_path):
+def test_start_terminal_process_uses_os_startfile_on_windows(monkeypatch, tmp_path):
     terminal_dir = tmp_path / "mt5-terminal"
     terminal_dir.mkdir()
     terminal_exe = terminal_dir / "terminal64.exe"
@@ -145,58 +139,13 @@ def test_launch_terminal_process_uses_os_startfile_on_windows(monkeypatch, tmp_p
 
     monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
     monkeypatch.setattr(mt5_setup_module.os, "startfile", _fake_startfile)
-    monkeypatch.setattr(mt5_setup_module.time, "sleep", lambda *_a, **_kw: None)
-    monkeypatch.setattr(
-        mt5_setup_module,
-        "_is_terminal_process_running",
-        lambda p: (True, 4242) if p == str(terminal_exe) else (False, None),
-    )
 
-    pid, ok = mt5_setup_module._launch_terminal_process(str(terminal_exe))
+    proc = mt5_setup_module._start_terminal_process(str(terminal_exe))
 
-    assert ok is True
-    assert pid == 4242
+    assert proc is None
     assert len(startfile_calls) == 1
     assert startfile_calls[0]["path"] == str(terminal_exe)
     assert startfile_calls[0].get("cwd") == str(terminal_dir)
-
-
-def test_launch_terminal_process_falls_back_to_popen_when_startfile_raises_oserror(
-    monkeypatch, tmp_path,
-):
-    terminal_dir = tmp_path / "mt5-terminal"
-    terminal_dir.mkdir()
-    terminal_exe = terminal_dir / "terminal64.exe"
-    terminal_exe.write_text("", encoding="ascii")
-
-    popen_calls = []
-
-    def _fake_startfile(*_a, **_kw):
-        raise OSError("access denied")
-
-    monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
-    monkeypatch.setattr(mt5_setup_module.os, "startfile", _fake_startfile)
-    monkeypatch.setattr(mt5_setup_module.subprocess, "STARTUPINFO", FakeStartupInfo, raising=False)
-    monkeypatch.setattr(mt5_setup_module.subprocess, "STARTF_USESHOWWINDOW", 1, raising=False)
-    monkeypatch.setattr(mt5_setup_module.subprocess, "SW_SHOWNORMAL", 1, raising=False)
-
-    def _fake_popen(args, **kwargs):
-        popen_calls.append({"args": args, **kwargs})
-        return FakeProcess()
-
-    monkeypatch.setattr(mt5_setup_module.subprocess, "Popen", _fake_popen)
-
-    pid, ok = mt5_setup_module._launch_terminal_process(str(terminal_exe))
-
-    assert ok is True
-    assert pid == FakeProcess.pid
-    assert len(popen_calls) == 1
-    assert popen_calls[0]["args"] == [str(terminal_exe)]
-    assert popen_calls[0]["cwd"] == str(terminal_dir)
-
-    startupinfo = popen_calls[0]["startupinfo"]
-    assert startupinfo.dwFlags & 1
-    assert startupinfo.wShowWindow == 1
 
 
 def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monkeypatch, tmp_path):
@@ -262,7 +211,7 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
 
     assert result["status"] == "setup complete"
 
-    # ensure_mt5_terminal_ready: LAUNCH → INIT → LOGIN → VERIFY
+    # ensure_mt5_terminal_ready: INIT → LOGIN → VERIFY (no subprocess launch)
     # chart clearing must happen BEFORE any MT5 API call
     assert events == [
         ("clear_charts", str(new_appdata)),

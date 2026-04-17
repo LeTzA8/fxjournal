@@ -236,38 +236,6 @@ def _start_terminal_process(terminal_path):
     return subprocess.Popen([terminal_path], **popen_kwargs)
 
 
-def _launch_terminal_process(terminal_path):
-    """Launch terminal64.exe and request a normal visible window."""
-    try:
-        proc = _start_terminal_process(terminal_path)
-        if proc is not None:
-            logger.info(
-                "MT5 terminal launched pid=%s terminal=%s",
-                proc.pid, terminal_path,
-            )
-            return proc.pid, True
-        logger.info(
-            "MT5 terminal launched via os.startfile terminal=%s",
-            terminal_path,
-        )
-        time.sleep(0.2)
-        running, resolved_pid = _is_terminal_process_running(terminal_path)
-        if running and resolved_pid:
-            logger.info(
-                "MT5 terminal resolved pid=%s terminal=%s",
-                resolved_pid,
-                terminal_path,
-            )
-            return resolved_pid, True
-        return None, True
-    except OSError as exc:
-        logger.error(
-            "MT5 terminal launch failed terminal=%s error=%s",
-            terminal_path, exc,
-        )
-        return None, False
-
-
 def ensure_mt5_terminal_ready(
     mt5,
     *,
@@ -280,21 +248,23 @@ def ensure_mt5_terminal_ready(
     attempt_delay=MT5_TERMINAL_READY_ATTEMPT_DELAY,
 ):
     """
-    Ensure MT5 terminal is running, initialized, logged in, and verified.
+    Ensure MT5 terminal is connected, logged in, and verified.
 
-    Pipeline: LAUNCH → ``mt5.initialize`` → LOGIN → VERIFY
+    Pipeline: ``mt5.initialize(path=...)`` → LOGIN → VERIFY
 
-    1. If the terminal process is not running, launch ``terminal64.exe`` (best-effort
-       visible window): ``os.startfile`` on Windows when possible, else ``Popen``.
-    2. Bounded retry loop calling ``mt5.initialize(path=...)`` until IPC connects.
-    3. Explicit ``mt5.login()`` + ``mt5.account_info()`` verification.
+    No ``os.startfile`` / ``subprocess`` — MetaTrader may start the terminal when
+    needed (`initialize` per API docs). Setup bootstrap still uses a one-off launch
+    only to create AppData before this runs.
 
-    ``setup_mt5_terminal`` uses the same order after AppData bootstrap (open exe
-    first, then initialize).
+    1. Bounded retry loop: ``mt5.initialize(path=terminal_path)`` until IPC connects.
+    2. ``mt5.login()`` + ``mt5.account_info()`` verification.
 
     Does **not** call ``mt5.shutdown()`` on success — caller manages session
     lifecycle.  Does **not** check ``trade_allowed`` — callers that care (setup)
     should inspect the returned ``account_info``.
+
+    ``terminal_launched`` in the result means a ``terminal64.exe`` process was
+    observed for this path after a successful ``initialize`` (MT5 may have started it).
 
     Returns dict with keys: ``success``, ``account_info``, ``error``,
     ``attempts``, ``elapsed_seconds``, ``terminal_launched``, ``pid``.
@@ -303,37 +273,24 @@ def ensure_mt5_terminal_ready(
     terminal_launched = False
     pid = None
 
-    # ── Step 1: Ensure terminal process is running ──────────────────────────
+    if not os.path.isfile(terminal_path):
+        elapsed = time.time() - started
+        logger.error("MT5 terminal executable not found: %s", terminal_path)
+        return {
+            "success": False, "account_info": None,
+            "error": f"terminal64.exe not found: {terminal_path}",
+            "attempts": 0, "elapsed_seconds": elapsed,
+            "terminal_launched": False, "pid": None,
+        }
+
     running, existing_pid = _is_terminal_process_running(terminal_path)
     if running:
-        pid = existing_pid
         logger.info(
-            "MT5 terminal already running pid=%s mt5_account_id=%s",
-            pid, mt5_account_id,
+            "MT5 terminal process already present pid=%s mt5_account_id=%s",
+            existing_pid, mt5_account_id,
         )
-    else:
-        if not os.path.isfile(terminal_path):
-            elapsed = time.time() - started
-            logger.error("MT5 terminal executable not found: %s", terminal_path)
-            return {
-                "success": False, "account_info": None,
-                "error": f"terminal64.exe not found: {terminal_path}",
-                "attempts": 0, "elapsed_seconds": elapsed,
-                "terminal_launched": False, "pid": None,
-            }
-        pid, ok = _launch_terminal_process(terminal_path)
-        if not ok:
-            elapsed = time.time() - started
-            return {
-                "success": False, "account_info": None,
-                "error": f"Failed to launch terminal: {terminal_path}",
-                "attempts": 0, "elapsed_seconds": elapsed,
-                "terminal_launched": False, "pid": None,
-            }
-        terminal_launched = True
-        time.sleep(2)
 
-    # ── Step 2: Bounded retry loop for mt5.initialize(path=...) ─────────────
+    # ── Step 1: Bounded retry loop for mt5.initialize(path=...) ─────────────
     last_error = None
     attempts_used = 0
     for attempt in range(1, max_attempts + 1):
@@ -383,7 +340,12 @@ def ensure_mt5_terminal_ready(
             "terminal_launched": terminal_launched, "pid": pid,
         }
 
-    # ── Step 3: Explicit login ──────────────────────────────────────────────
+    running_after, pid_after = _is_terminal_process_running(terminal_path)
+    if running_after and pid_after:
+        pid = pid_after
+        terminal_launched = True
+
+    # ── Step 2: Explicit login ──────────────────────────────────────────────
     # From here on, initialize has succeeded so we must shutdown on failure
     # to avoid leaking the IPC session.
     login_result = mt5.login(login, password=password, server=server)
@@ -413,7 +375,7 @@ def ensure_mt5_terminal_ready(
         }
     logger.info("MT5 login succeeded mt5_account_id=%s", mt5_account_id)
 
-    # ── Step 4: Verify with account_info ────────────────────────────────────
+    # ── Step 3: Verify with account_info ───────────────────────────────────
     account_info = mt5.account_info()
     if account_info is None:
         acct_error = _mt5_last_error(mt5)
@@ -957,10 +919,8 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                         pass
 
         # Bootstrap often leaves terminal64.exe alive (``terminate()`` is weak vs MT5).
-        # If ``ensure_mt5_terminal_ready`` sees a running process it skips
-        # ``os.startfile`` / relaunch and can hang in ``mt5.initialize``. Hard-stop
-        # and wait until the exe is gone so the ensure path always opens the terminal
-        # again before any Python API init.
+        # Hard-stop and wait until the exe is gone so ``mt5.initialize`` does not
+        # attach to a stale bootstrap process.
         logger.info(
             "MT5 setup stopping bootstrap terminal before ensure "
             "mt5_account_id=%s terminal=%s",
