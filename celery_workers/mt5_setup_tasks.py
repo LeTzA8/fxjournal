@@ -70,6 +70,8 @@ def _find_base_appdata(base_path: str):
 
 
 def _terminate_mt5_processes(terminal_exe: str):
+    if not str(terminal_exe or "").strip():
+        return
     normalized_terminal_exe = os.path.normcase(os.path.abspath(terminal_exe))
 
     try:
@@ -93,6 +95,8 @@ def _terminate_mt5_processes(terminal_exe: str):
 
 
 def _terminate_mt5_processes_via_powershell(terminal_exe: str):
+    if not str(terminal_exe or "").strip():
+        return
     script = (
         "$target = [System.IO.Path]::GetFullPath($env:FXJ_TERMINAL_EXE).ToLowerInvariant(); "
         "Get-CimInstance Win32_Process | "
@@ -374,11 +378,15 @@ def ensure_mt5_terminal_ready(
 
 
 def _resolve_cleanup_appdata_folder(terminal_dir: str, appdata_hash: str):
-    normalized_terminal_dir = os.path.normcase(os.path.abspath(terminal_dir))
+    normalized_terminal_dir = None
+    if str(terminal_dir or "").strip():
+        normalized_terminal_dir = os.path.normcase(os.path.abspath(terminal_dir))
     normalized_hash = (appdata_hash or "").strip().upper()
     if re.fullmatch(r"[A-F0-9]{32}", normalized_hash):
         candidate = os.path.join(APPDATA_TERMINAL_PATH, normalized_hash)
         if os.path.isdir(candidate):
+            if normalized_terminal_dir is None:
+                return candidate
             origin = os.path.join(candidate, "origin.txt")
             try:
                 content = open(origin, encoding="utf-16", errors="ignore").read().strip().rstrip("\\")
@@ -386,6 +394,8 @@ def _resolve_cleanup_appdata_folder(terminal_dir: str, appdata_hash: str):
                 return candidate
             if os.path.normcase(content) == normalized_terminal_dir:
                 return candidate
+    if normalized_terminal_dir is None:
+        return None
     return _find_base_appdata(terminal_dir)
 
 
@@ -1078,7 +1088,7 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str, mt5_accoun
     task_id = getattr(getattr(self, "request", None), "id", None)
     started_at = datetime.now(timezone.utc)
     finished_at = None
-    terminal_dir = os.path.dirname(terminal_path)
+    terminal_dir = os.path.dirname(terminal_path) if str(terminal_path or "").strip() else ""
 
     try:
         if os.name != "nt":
@@ -1101,7 +1111,8 @@ def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str, mt5_accoun
 
         terminal_exe = terminal_path
 
-        _terminate_mt5_processes(terminal_exe)
+        if str(terminal_exe or "").strip():
+            _terminate_mt5_processes(terminal_exe)
 
         if terminal_dir and os.path.exists(terminal_dir):
             shutil.rmtree(terminal_dir, ignore_errors=True)

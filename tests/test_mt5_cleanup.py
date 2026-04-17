@@ -149,3 +149,29 @@ def test_cleanup_mt5_terminal_without_account_id_skips_db_delete(monkeypatch, tm
 
     assert result["status"] == "cleanup complete"
     assert result["db_deleted"] is False
+
+
+def test_cleanup_mt5_terminal_removes_hashed_appdata_without_terminal_path(monkeypatch, tmp_path):
+    appdata_root = tmp_path / "appdata" / "MetaQuotes" / "Terminal"
+    appdata_hash = "E" * 32
+    appdata_folder = appdata_root / appdata_hash
+    appdata_folder.mkdir(parents=True)
+    (appdata_folder / "origin.txt").write_text(str(tmp_path / "some-terminal"), encoding="utf-16")
+
+    monkeypatch.setattr(mt5_setup_module, "APPDATA_TERMINAL_PATH", str(appdata_root))
+    monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    _set_missing_psutil(monkeypatch)
+
+    calls = []
+
+    def _fake_run(args, **kwargs):
+        calls.append((args, kwargs))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(mt5_setup_module.subprocess, "run", _fake_run)
+
+    result = mt5_setup_module.cleanup_mt5_terminal.run("", appdata_hash)
+
+    assert result["status"] == "cleanup complete"
+    assert not appdata_folder.exists()
+    assert calls == []

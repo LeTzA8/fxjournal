@@ -3,6 +3,8 @@ param(
     [string]$PythonExe = "",
     [int]$CheckIntervalSeconds = 60,
     [int]$RestartDelaySeconds = 5,
+    [ValidateSet("Normal", "Minimized", "Maximized", "Hidden")]
+    [string]$LauncherWindowStyle = "",
     [switch]$RunOnce
 )
 
@@ -80,6 +82,15 @@ function Get-Mt5SetupLauncherProcesses {
 
 function Start-Mt5SetupLauncher {
     $launcherPath = Join-Path $RepoRoot "scripts\windows\run_mt5_setup_worker.ps1"
+    $resolvedWindowStyle = $LauncherWindowStyle
+    if (-not $resolvedWindowStyle) {
+        $envWindowStyle = ($env:FXJ_MT5_SETUP_LAUNCHER_WINDOW_STYLE | ForEach-Object { $_.Trim() })
+        if ($envWindowStyle) {
+            $resolvedWindowStyle = $envWindowStyle
+        } else {
+            $resolvedWindowStyle = "Normal"
+        }
+    }
     $arguments = @(
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
@@ -92,8 +103,8 @@ function Start-Mt5SetupLauncher {
     if (-not (Test-Path $powerShellExe)) {
         $powerShellExe = "powershell.exe"
     }
-    Start-Process -FilePath $powerShellExe -ArgumentList $arguments -WorkingDirectory $RepoRoot -WindowStyle Hidden | Out-Null
-    Write-WatchdogLog "Started MT5 setup worker launcher."
+    Start-Process -FilePath $powerShellExe -ArgumentList $arguments -WorkingDirectory $RepoRoot -WindowStyle $resolvedWindowStyle | Out-Null
+    Write-WatchdogLog "Started MT5 setup worker launcher window_style=$resolvedWindowStyle."
 }
 
 function Ensure-Mt5SetupLauncher {

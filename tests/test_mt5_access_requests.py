@@ -1317,6 +1317,133 @@ def test_root_admin_can_archive_mt5_account_and_keep_reactivation_path(app_ctx, 
     assert b"Archived" in response.data
 
 
+def test_root_admin_can_reset_mt5_account_with_only_terminal_path(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-reset-root@example.com",
+        username="mt5-reset-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-reset-user",
+        email="mt5-reset-user@example.com",
+        account_name="Reset Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119993",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Reset",
+        terminal_path=r"C:\MT5 User Terminals\reset\terminal64.exe",
+        appdata_hash=None,
+        is_active=True,
+        connection_status=MT5Account.CONNECTION_STATUS_FAILED,
+        connection_error_message="Old setup failed",
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+
+    def _fake_cleanup_apply_async(args=None, kwargs=None, queue=None):
+        cleanup_calls.append({"args": list(args or []), "kwargs": dict(kwargs or {}), "queue": queue})
+        return {"id": "cleanup-task"}
+
+    monkeypatch.setattr(
+        "celery_workers.mt5_setup_tasks.cleanup_mt5_terminal.apply_async",
+        _fake_cleanup_apply_async,
+    )
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/reset-terminal",
+        data={},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+
+    assert response.status_code == 200
+    assert refreshed.terminal_path is None
+    assert refreshed.appdata_hash is None
+    assert refreshed.vm_id is None
+    assert refreshed.is_active is False
+    assert refreshed.connection_status == MT5Account.CONNECTION_STATUS_PENDING
+    assert refreshed.connection_error_message is None
+    assert cleanup_calls == [
+        {
+            "args": [r"C:\MT5 User Terminals\reset\terminal64.exe", ""],
+            "kwargs": {"mt5_account_id": None},
+            "queue": "mt5_setup",
+        }
+    ]
+    assert b"Terminal state reset. Run Setup Terminal to retry from a clean slate." in response.data
+
+
+def test_root_admin_can_reset_mt5_account_with_only_appdata_hash(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-reset-hash-root@example.com",
+        username="mt5-reset-hash-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-reset-hash-user",
+        email="mt5-reset-hash-user@example.com",
+        account_name="Reset Hash Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119994",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Reset-Hash",
+        terminal_path=None,
+        appdata_hash="A" * 32,
+        is_active=False,
+        connection_status=MT5Account.CONNECTION_STATUS_FAILED,
+        connection_error_message="Old setup failed",
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+
+    def _fake_cleanup_apply_async(args=None, kwargs=None, queue=None):
+        cleanup_calls.append({"args": list(args or []), "kwargs": dict(kwargs or {}), "queue": queue})
+        return {"id": "cleanup-task"}
+
+    monkeypatch.setattr(
+        "celery_workers.mt5_setup_tasks.cleanup_mt5_terminal.apply_async",
+        _fake_cleanup_apply_async,
+    )
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/reset-terminal",
+        data={},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+
+    assert response.status_code == 200
+    assert refreshed.terminal_path is None
+    assert refreshed.appdata_hash is None
+    assert refreshed.is_active is False
+    assert refreshed.connection_status == MT5Account.CONNECTION_STATUS_PENDING
+    assert refreshed.connection_error_message is None
+    assert cleanup_calls == [
+        {
+            "args": ["", "A" * 32],
+            "kwargs": {"mt5_account_id": None},
+            "queue": "mt5_setup",
+        }
+    ]
+    assert b"Terminal state reset. Run Setup Terminal to retry from a clean slate." in response.data
+
+
 def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     batch = _create_mt5_batch(name="Unlink Batch", capacity_total=5, total_slots_claimed=0)

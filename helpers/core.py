@@ -733,7 +733,7 @@ def queue_mt5_account_cleanup(*, mt5_account, log_context, delete_row_on_success
 
     terminal_path = str(getattr(mt5_account, "terminal_path", "") or "").strip()
     appdata_hash = str(getattr(mt5_account, "appdata_hash", "") or "").strip()
-    if not terminal_path or not appdata_hash:
+    if not terminal_path and not appdata_hash:
         return None
 
     mt5_account_id = getattr(mt5_account, "id", None)
