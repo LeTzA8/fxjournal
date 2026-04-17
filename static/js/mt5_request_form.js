@@ -71,12 +71,15 @@
         const show = looksLikeBrokerNameNotServer(serverInput.value);
         serverWarning.hidden = !show;
         serverInput.setAttribute("aria-invalid", show ? "true" : "false");
-        const helperId = "mt5-server-helper";
-        const warnId = "mt5-server-warning";
-        serverInput.setAttribute(
-            "aria-describedby",
-            show ? `${helperId} ${warnId}` : helperId,
-        );
+        const helperEl = form.querySelector("[data-mt5-server-helper]");
+        const helperId = helperEl?.id;
+        const warnId = serverWarning.id;
+        const describedBy = [helperId, show ? warnId : null].filter(Boolean).join(" ");
+        if (describedBy) {
+            serverInput.setAttribute("aria-describedby", describedBy);
+        } else {
+            serverInput.removeAttribute("aria-describedby");
+        }
     };
 
     const setAlert = (message, tone) => {
