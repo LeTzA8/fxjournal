@@ -2633,12 +2633,24 @@ def test_admin_mt5_backfill_bars_queues_only_missing_m5_timeframes(app_ctx, clie
         TradeBars(
             trade_id=first_trade.id,
             timeframe="M5",
-            bar_time=1_700_000_000,
+            bar_time=int(datetime(2026, 4, 10, 9, 0, 0, tzinfo=timezone.utc).timestamp()),
             open=1.1,
             high=1.11,
             low=1.09,
             close=1.105,
             tick_volume=10,
+        )
+    )
+    db.session.add(
+        TradeBars(
+            trade_id=first_trade.id,
+            timeframe="M5",
+            bar_time=int(datetime(2026, 4, 10, 10, 0, 0, tzinfo=timezone.utc).timestamp()),
+            open=1.105,
+            high=1.11,
+            low=1.1,
+            close=1.101,
+            tick_volume=12,
         )
     )
     db.session.commit()
@@ -2660,6 +2672,100 @@ def test_admin_mt5_backfill_bars_queues_only_missing_m5_timeframes(app_ctx, clie
 
     assert response.status_code == 302
     assert queued == [{"args": [mt5_account.id, second_trade.id], "queue": "mt5_sync"}]
+
+
+def test_admin_mt5_backfill_bars_requeues_trade_with_incomplete_recent_m5_coverage(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    root_user, trade_account = _log_in_root_admin(
+        client,
+        email="root-backfill-bars-incomplete@example.com",
+        username="root-backfill-bars-incomplete",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=root_user.id,
+        trade_account_id=trade_account.id,
+        account_number="74747474",
+    )
+    older_trade = Trade(
+        user_id=root_user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1,
+        exit_price=1.101,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 1, 9, 0, 0),
+        closed_at=datetime(2026, 4, 1, 10, 0, 0),
+        mt5_position="backfill-complete-pos",
+    )
+    recent_trade = Trade(
+        user_id=root_user.id,
+        trade_account_id=trade_account.id,
+        symbol="GBPUSD",
+        side="SELL",
+        entry_price=1.3,
+        exit_price=1.299,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 12, 9, 0, 0),
+        closed_at=datetime(2026, 4, 12, 10, 0, 0),
+        mt5_position="backfill-incomplete-pos",
+    )
+    db.session.add_all([older_trade, recent_trade])
+    db.session.commit()
+    db.session.add_all(
+        [
+            TradeBars(
+                trade_id=older_trade.id,
+                timeframe="M5",
+                bar_time=int(datetime(2026, 4, 1, 9, 0, 0, tzinfo=timezone.utc).timestamp()),
+                open=1.1,
+                high=1.11,
+                low=1.09,
+                close=1.105,
+                tick_volume=10,
+            ),
+            TradeBars(
+                trade_id=older_trade.id,
+                timeframe="M5",
+                bar_time=int(datetime(2026, 4, 1, 10, 0, 0, tzinfo=timezone.utc).timestamp()),
+                open=1.105,
+                high=1.11,
+                low=1.1,
+                close=1.101,
+                tick_volume=12,
+            ),
+            TradeBars(
+                trade_id=recent_trade.id,
+                timeframe="M5",
+                bar_time=int(datetime(2026, 4, 12, 9, 0, 0, tzinfo=timezone.utc).timestamp()),
+                open=1.3,
+                high=1.301,
+                low=1.299,
+                close=1.3005,
+                tick_volume=8,
+            ),
+        ]
+    )
+    db.session.commit()
+
+    queued = []
+
+    import celery_workers.mt5_sync_tasks as mt5_sync_module
+
+    def _fake_apply_async(*, args, queue):
+        queued.append({"args": args, "queue": queue})
+
+    monkeypatch.setattr(mt5_sync_module.fetch_trade_bars, "apply_async", _fake_apply_async)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/backfill-bars",
+        data={},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert queued == [{"args": [mt5_account.id, recent_trade.id], "queue": "mt5_sync"}]
 
 
 def test_admin_mt5_create_persists_inactive_account_when_setup_queue_fails(app_ctx, client, monkeypatch):

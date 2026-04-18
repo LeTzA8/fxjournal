@@ -1515,6 +1515,62 @@ def test_root_admin_cannot_setup_mt5_account_while_reset_cleanup_is_pending(app_
     )
 
 
+def test_root_admin_cannot_reset_mt5_account_while_reset_cleanup_is_pending(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-reset-pending-reset-root@example.com",
+        username="mt5-reset-pending-reset-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-reset-pending-reset-user",
+        email="mt5-reset-pending-reset-user@example.com",
+        account_name="Reset Pending Reset Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119996",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Reset-Pending-Reset",
+        terminal_path=None,
+        appdata_hash=None,
+        is_active=False,
+        cleanup_marked_at=utcnow_naive(),
+        connection_status=MT5Account.CONNECTION_STATUS_PENDING,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+
+    def _fake_cleanup_apply_async(args=None, kwargs=None, queue=None):
+        cleanup_calls.append({"args": list(args or []), "kwargs": dict(kwargs or {}), "queue": queue})
+        return {"id": "cleanup-task"}
+
+    monkeypatch.setattr(
+        "celery_workers.mt5_setup_tasks.cleanup_mt5_terminal.apply_async",
+        _fake_cleanup_apply_async,
+    )
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/reset-terminal",
+        data={},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+
+    assert response.status_code == 200
+    assert cleanup_calls == []
+    assert refreshed.cleanup_marked_at is not None
+    assert (
+        b"That MT5 account is still waiting for VM cleanup to finish. Try Setup Terminal again after cleanup completes."
+        in response.data
+    )
+
+
 def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     batch = _create_mt5_batch(name="Unlink Batch", capacity_total=5, total_slots_claimed=0)

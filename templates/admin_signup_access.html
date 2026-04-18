@@ -613,10 +613,10 @@
                                             <button
                                                 type="submit"
                                                 class="ghost-btn"
-                                                {% if is_orphaned %}
+                                                {% if is_orphaned or account.cleanup_marked_at %}
                                                 disabled
                                                 aria-disabled="true"
-                                                title="Cleanup-only MT5 records cannot be reset."
+                                                title="{{ 'Cleanup-only MT5 records cannot be reset.' if is_orphaned else 'VM cleanup is still running for this MT5 account.' }}"
                                                 {% endif %}
                                             >Reset Terminal</button>
                                         </form>

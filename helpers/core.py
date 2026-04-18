@@ -881,6 +881,11 @@ def reset_mt5_terminal_state(*, mt5_account, log_context="reset-terminal"):
             False,
             "That MT5 account no longer has saved credentials, so terminal reset is not possible.",
         )
+    if mt5_account.cleanup_marked_at is not None:
+        return (
+            False,
+            "That MT5 account is still waiting for VM cleanup to finish. Try Setup Terminal again after cleanup completes.",
+        )
 
     from flask import current_app
 

@@ -241,7 +241,10 @@ def generate_signup_code():
 
 
 def send_error_log_email(*, subject, body):
-    error_to_email = os.getenv("ERROR_LOG_TO_EMAIL", "").strip().lower()
+    error_to_email = (
+        os.getenv("ERROR_LOG_TO_EMAIL", "").strip().lower()
+        or "error_log@myfxjournal.com"
+    )
     if not error_to_email:
         return
     try:
@@ -3996,17 +3999,50 @@ def register_public_auth_routes(
         closed_trade_ids = [trade.id for trade in closed_trades]
         already_backfilled_trade_ids = set()
         if not force_backfill and closed_trade_ids:
-            already_backfilled_trade_ids = {
-                trade_id
-                for (trade_id,) in (
-                    db.session.query(TradeBars.trade_id)
-                    .filter(
-                        TradeBars.trade_id.in_(closed_trade_ids),
-                        TradeBars.timeframe == "M5",
-                    )
-                    .distinct()
-                    .all()
+            bar_coverage_rows = (
+                db.session.query(
+                    TradeBars.trade_id,
+                    func.count(TradeBars.id).label("bar_count"),
+                    func.min(TradeBars.bar_time).label("min_bar_time"),
+                    func.max(TradeBars.bar_time).label("max_bar_time"),
                 )
+                .filter(
+                    TradeBars.trade_id.in_(closed_trade_ids),
+                    TradeBars.timeframe == "M5",
+                )
+                .group_by(TradeBars.trade_id)
+                .all()
+            )
+            bar_coverage_by_trade_id = {
+                trade_id: {
+                    "bar_count": int(bar_count or 0),
+                    "min_bar_time": min_bar_time,
+                    "max_bar_time": max_bar_time,
+                }
+                for trade_id, bar_count, min_bar_time, max_bar_time in bar_coverage_rows
+            }
+            bar_tolerance_seconds = 15 * 60
+
+            def _trade_has_complete_m5_coverage(trade):
+                coverage = bar_coverage_by_trade_id.get(trade.id)
+                if not coverage or coverage["bar_count"] <= 0:
+                    return False
+                if trade.opened_at is None or trade.closed_at is None:
+                    return False
+                opened_at_epoch = int(trade.opened_at.replace(tzinfo=timezone.utc).timestamp())
+                closed_at_epoch = int(trade.closed_at.replace(tzinfo=timezone.utc).timestamp())
+                min_bar_time = coverage["min_bar_time"]
+                max_bar_time = coverage["max_bar_time"]
+                if min_bar_time is None or max_bar_time is None:
+                    return False
+                if int(min_bar_time) > opened_at_epoch + bar_tolerance_seconds:
+                    return False
+                if int(max_bar_time) < closed_at_epoch - bar_tolerance_seconds:
+                    return False
+                return True
+
+            already_backfilled_trade_ids = {
+                trade.id for trade in closed_trades if _trade_has_complete_m5_coverage(trade)
             }
         trades_to_queue = (
             closed_trades
@@ -4017,7 +4053,7 @@ def register_public_auth_routes(
             return build_admin_redirect(
                 "mt5",
                 (
-                    "All closed MT5 trades already have M5 bars. Use Clear Bars first if you want "
+                    "All closed MT5 trades already have complete M5 bars. Use Clear Bars first if you want "
                     "to refetch everything."
                 ),
                 "info",
