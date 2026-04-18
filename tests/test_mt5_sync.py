@@ -11,6 +11,7 @@ from cryptography.fernet import Fernet
 from celery_workers.mt5_sync_tasks import (
     _adjust_mt5_unix_epoch,
     aggregate_deals_to_trades,
+    fetch_trade_bars,
     _positions_to_open_trades,
     sync_mt5_account,
 )
@@ -1002,6 +1003,73 @@ def test_sync_mt5_account_uses_utc_history_window_without_server_shift(app_ctx, 
     assert captured_from_date < captured_to_date
 
 
+def test_sync_mt5_account_shifts_history_window_into_broker_time(app_ctx, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-window-offset-user",
+        email="mt5-window-offset@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="52525252",
+    )
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+
+    history_call = {}
+    broker_offset_minutes = 120
+
+    def _capture_history_window(from_date, to_date):
+        history_call["from_date"] = from_date
+        history_call["to_date"] = to_date
+        return []
+
+    fake_mt5 = SimpleNamespace(
+        DEAL_ENTRY_IN=0,
+        DEAL_ENTRY_OUT=1,
+        DEAL_ENTRY_INOUT=2,
+        DEAL_ENTRY_OUT_BY=3,
+        DEAL_TYPE_BUY=0,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
+        history_deals_get=_capture_history_window,
+        positions_get=lambda: [SimpleNamespace(symbol="XAUUSD")],
+        symbol_info_tick=lambda symbol: SimpleNamespace(
+            time=int(datetime.now(timezone.utc).timestamp()) + (broker_offset_minutes * 60)
+        ),
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"saved": 0, "updated": 0, "skipped": 0, "errors": 0}
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", lambda *args, **kwargs: DummyResponse())
+
+    sync_mt5_account.run(mt5_account.id)
+
+    captured_from_date = history_call["from_date"]
+    captured_to_date = history_call["to_date"]
+    utc_now = datetime.now(timezone.utc)
+    expected_from_date = datetime(2000, 1, 1, tzinfo=timezone.utc) + timedelta(minutes=broker_offset_minutes)
+
+    assert captured_from_date == expected_from_date
+    assert captured_to_date > utc_now + timedelta(minutes=broker_offset_minutes - 5)
+    assert captured_to_date < utc_now + timedelta(minutes=broker_offset_minutes + 5)
+
+
 def test_sync_mt5_account_picks_up_running_trade_from_positions_get(app_ctx, monkeypatch, caplog):
     """positions_get() is called and running positions are included in the sync payload."""
     key = Fernet.generate_key().decode("utf-8")
@@ -1855,6 +1923,97 @@ def test_internal_mt5_trade_bars_replaces_existing_timeframe_rows(app_ctx, clien
     assert len(rows) == 1
     assert rows[0].bar_time == 1_700_000_600
     assert rows[0].close == pytest.approx(1.1025)
+
+
+def test_fetch_trade_bars_normalizes_broker_epoch_after_utc_fallback(app_ctx, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+
+    user, trade_account = _create_user_with_account(
+        username="trade-bars-fallback-user",
+        email="trade-bars-fallback@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="83838383",
+    )
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1,
+        exit_price=1.101,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 9, 0, 0),
+        closed_at=datetime(2026, 4, 10, 10, 0, 0),
+        mt5_position="838383",
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    broker_offset_minutes = 120
+    bar_time_utc = int(datetime(2026, 4, 10, 9, 0, 0, tzinfo=timezone.utc).timestamp())
+    raw_bar_time = bar_time_utc + (broker_offset_minutes * 60)
+    copy_calls = []
+    posted_payload = {}
+
+    def _copy_rates_range(symbol, timeframe, date_from, date_to):
+        copy_calls.append((date_from, date_to))
+        if len(copy_calls) == 1:
+            return []
+        return [
+            {
+                "time": raw_bar_time,
+                "open": 1.1,
+                "high": 1.101,
+                "low": 1.099,
+                "close": 1.1005,
+                "tick_volume": 100,
+            }
+        ]
+
+    fake_mt5 = SimpleNamespace(
+        TIMEFRAME_M5=5,
+        TIMEFRAME_M15=15,
+        TIMEFRAME_H1=60,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        copy_rates_range=_copy_rates_range,
+        symbol_info_tick=lambda symbol: SimpleNamespace(
+            time=int(datetime.now(timezone.utc).timestamp()) + (broker_offset_minutes * 60)
+        ),
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"saved": 1, "timeframe": "M5"}
+
+    def _fake_post(url, json, headers, timeout):
+        posted_payload["url"] = url
+        posted_payload["json"] = json
+        posted_payload["headers"] = headers
+        posted_payload["timeout"] = timeout
+        return DummyResponse()
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", _fake_post)
+
+    result = fetch_trade_bars.run(mt5_account.id, trade.id)
+
+    assert result == {"saved": 1, "timeframe": "M5"}
+    assert len(copy_calls) == 2
+    assert copy_calls[0][0] == copy_calls[1][0] + timedelta(minutes=broker_offset_minutes)
+    assert copy_calls[0][1] == copy_calls[1][1] + timedelta(minutes=broker_offset_minutes)
+    assert posted_payload["json"]["bars"][0]["time"] == bar_time_utc
 
 
 def test_internal_mt5_sync_inserts_new_running_trade(app_ctx, client, monkeypatch):
