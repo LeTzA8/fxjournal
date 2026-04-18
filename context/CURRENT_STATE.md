@@ -2,6 +2,24 @@
 
 Last Updated: 2026-04-18
 
+## MT5 pipeline rollback — setup + sync restored to Apr 11 baseline (2026-04-18)
+
+**Context:** Between Apr 12–18, the MT5 setup + sync workers accumulated a large set of changes (shared `ensure_mt5_terminal_ready` pipeline, Redis global MT5 lock across setup/sync/cleanup/bar-fetch, repeated launch-strategy churn between `mt5.initialize` / `os.startfile` / Popen, IPC -10001 stale recovery bootstrap, connection-status writes, reset-terminal flow, interactive-session watchdog changes). In practice this produced IPC timeouts, fragile init, and setup/sync interference — the pipeline no longer worked reliably.
+
+**Rollback:** `celery_workers/mt5_setup_tasks.py` and `celery_workers/mt5_sync_tasks.py` were fully replaced with the contents of `celery_workers/mt5_setup.py` and `celery_workers/mt5_sync.py` at commit **`df00681`** (2026-04-11 14:47 UTC), the last commit before the user's confirmed-working window at 15:21 UTC. Filenames kept as `*_tasks.py` to preserve every external import (`auth_account.py`, `helpers/core.py`, `routes/trade_accounts.py`, `celery_app.py`, tests). Line counts: 1377 → 622 (setup), 1869 → 816 (sync).
+
+**What's gone (deliberately):** shared `ensure_mt5_terminal_ready`, Redis `mt5_global_lock` acquire/release calls (helpers still in `cache.py`, but now unreferenced dead code), soft-reconnect on stale broker history, terminal64 bootstrap on IPC -10001, per-account VM id stamping, connection_status / connection_error_message writes from the setup task, running-P&L positions_get overlay, beat queue-depth guard + sync task `expires=28`, and all launch-strategy churn from Apr 18.
+
+**What's intact:** DB models + migrations (including `connection_status`, `archived_at`, `vm_id` columns — they just aren't written by the worker anymore and will stay at defaults for new rows), UI, routes, admin flows, cache.py global lock helpers (unused), tests (many will fail against the old surface — stabilization first, tests + improvements to follow).
+
+**Likely regression causes (now reverted):**
+1. `ensure_mt5_terminal_ready` switched terminal launch to `mt5.initialize(path=...)` only, dropping the earlier `os.startfile`/Popen launch that reliably surfaced the terminal window — `mt5.initialize` auto-launch was brittle and produced the IPC timeouts.
+2. Redis global lock serialized setup, sync, cleanup, and bar fetch through one key; any stuck release or long TTL blocked the entire MT5 pipeline across both queues.
+3. Six launch-strategy flips within ~40 minutes on Apr 18 left the setup path in a contradictory state (init-first vs launch-first, hard-stop bootstrap, no-startfile).
+4. Sync's `ensure_mt5_terminal_ready` dependency meant any setup-path regression was instantly mirrored into sync.
+
+**Follow-ups (later, controlled reintroduction):** global lock, lifecycle helpers, connection-status writes, and running-P&L overlay should come back one at a time on a stable baseline rather than as a single bundled change.
+
 ## MT5 global runtime lock — setup + sync no longer overlap (2026-04-18)
 
 **Problem:** MT5's Python API keeps process-global state on the VM, but the `mt5_setup` and `mt5_sync` workers are separate processes. With sync now every 30s, a sync cycle could fire while setup was bootstrapping/logging in, causing the IPC/auth hiccups that made "delete + re-setup" the workaround.

@@ -5,7 +5,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import re
 import shutil
-import stat
 import subprocess
 import time
 import logging
@@ -32,18 +31,8 @@ APPDATA_TERMINAL_PATH = os.path.join(
     "Terminal",
 )
 IGNORED_APPDATA_FOLDERS = {"Common", "Community"}
-MT5_TERMINAL_READY_MAX_ATTEMPTS = 8
-MT5_TERMINAL_READY_ATTEMPT_DELAY = 3
-
-# Crypto symbols added to market watch at terminal setup so the UTC-offset
-# probe has 24/7 tick data available even when forex is closed.
-_MARKET_WATCH_SEED_SYMBOLS = [
-    "BTCUSD",
-    "BTCUSDT",
-    "XBTUSD",
-    "BTCUSD.r",
-    "BTC/USD",
-]
+MT5_SETUP_VERIFY_ATTEMPTS = 2
+MT5_SETUP_VERIFY_RETRY_DELAY_SECONDS = 2
 
 
 def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
@@ -71,8 +60,6 @@ def _find_base_appdata(base_path: str):
 
 
 def _terminate_mt5_processes(terminal_exe: str):
-    if not str(terminal_exe or "").strip():
-        return
     normalized_terminal_exe = os.path.normcase(os.path.abspath(terminal_exe))
 
     try:
@@ -96,8 +83,6 @@ def _terminate_mt5_processes(terminal_exe: str):
 
 
 def _terminate_mt5_processes_via_powershell(terminal_exe: str):
-    if not str(terminal_exe or "").strip():
-        return
     script = (
         "$target = [System.IO.Path]::GetFullPath($env:FXJ_TERMINAL_EXE).ToLowerInvariant(); "
         "Get-CimInstance Win32_Process | "
@@ -120,261 +105,12 @@ def _terminate_mt5_processes_via_powershell(terminal_exe: str):
         pass
 
 
-def _retry_remove_readonly(func, path, exc_info):
-    try:
-        os.chmod(path, stat.S_IWRITE)
-    except OSError:
-        raise exc_info[1]
-    func(path)
-
-
-def _remove_tree_strict(path: str, *, label: str):
-    if not str(path or "").strip():
-        return False
-    if not os.path.exists(path):
-        return False
-
-    shutil.rmtree(path, onerror=_retry_remove_readonly)
-    if os.path.exists(path):
-        raise OSError(f"{label} still exists after cleanup: {path}")
-    return True
-
-
-def _is_terminal_process_running(terminal_path):
-    """Check if terminal64.exe is currently running at the given path.
-
-    Returns (running: bool, pid: int | None).
-    """
-    norm_path = os.path.normcase(os.path.abspath(terminal_path))
-    try:
-        import psutil
-        for proc in psutil.process_iter(["pid", "exe"]):
-            try:
-                proc_exe = proc.info.get("exe")
-                if proc_exe and os.path.normcase(os.path.abspath(proc_exe)) == norm_path:
-                    return True, proc.info.get("pid")
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-    except ImportError:
-        pass
-    return False, None
-
-
-def _wait_until_terminal_stopped(terminal_exe: str, *, timeout_sec: float = 30.0) -> bool:
-    """Return True once *terminal_exe* is no longer running, else False on timeout."""
-    deadline = time.time() + timeout_sec
-    while time.time() < deadline:
-        running, _pid = _is_terminal_process_running(terminal_exe)
-        if not running:
-            return True
-        time.sleep(0.4)
-    running, _pid = _is_terminal_process_running(terminal_exe)
-    return not running
-
-
-def ensure_mt5_terminal_ready(
-    mt5,
-    *,
-    terminal_path,
-    login,
-    password,
-    server,
-    mt5_account_id=None,
-    max_attempts=MT5_TERMINAL_READY_MAX_ATTEMPTS,
-    attempt_delay=MT5_TERMINAL_READY_ATTEMPT_DELAY,
-):
-    """
-    Ensure MT5 terminal is connected, logged in, and verified.
-
-    Pipeline: ``mt5.initialize(path=...)`` → LOGIN → VERIFY
-
-    No ``os.startfile`` / ``subprocess`` — MetaTrader may start the terminal when
-    needed (`initialize` per API docs). Setup bootstrap also uses ``initialize``
-    (see ``setup_mt5_terminal``) before this runs.
-
-    1. Bounded retry loop: ``mt5.initialize(path=terminal_path)`` until IPC connects.
-    2. ``mt5.login()`` + ``mt5.account_info()`` verification.
-
-    Does **not** call ``mt5.shutdown()`` on success — caller manages session
-    lifecycle.  Does **not** check ``trade_allowed`` — callers that care (setup)
-    should inspect the returned ``account_info``.
-
-    ``terminal_launched`` in the result means a ``terminal64.exe`` process was
-    observed for this path after a successful ``initialize`` (MT5 may have started it).
-
-    Returns dict with keys: ``success``, ``account_info``, ``error``,
-    ``attempts``, ``elapsed_seconds``, ``terminal_launched``, ``pid``.
-    """
-    started = time.time()
-    terminal_launched = False
-    pid = None
-
-    if not os.path.isfile(terminal_path):
-        elapsed = time.time() - started
-        logger.error("MT5 terminal executable not found: %s", terminal_path)
-        return {
-            "success": False, "account_info": None,
-            "error": f"terminal64.exe not found: {terminal_path}",
-            "attempts": 0, "elapsed_seconds": elapsed,
-            "terminal_launched": False, "pid": None,
-        }
-
-    running, existing_pid = _is_terminal_process_running(terminal_path)
-    if running:
-        logger.info(
-            "MT5 terminal process already present pid=%s mt5_account_id=%s",
-            existing_pid, mt5_account_id,
-        )
-
-    # ── Step 1: Bounded retry loop for mt5.initialize(path=...) ─────────────
-    last_error = None
-    attempts_used = 0
-    for attempt in range(1, max_attempts + 1):
-        attempts_used = attempt
-        try:
-            result = mt5.initialize(path=terminal_path)
-            if result:
-                logger.info(
-                    "MT5 initialize succeeded mt5_account_id=%s attempt=%s/%s",
-                    mt5_account_id, attempt, max_attempts,
-                )
-                break
-            last_error = f"mt5.initialize() returned False: {_mt5_last_error(mt5)}"
-        except Exception as exc:
-            last_error = f"mt5.initialize() exception: {exc}"
-
-        logger.info(
-            "MT5 initialize attempt %s/%s failed mt5_account_id=%s error=%s",
-            attempt, max_attempts, mt5_account_id, last_error,
-        )
-        try:
-            mt5.shutdown()
-        except Exception:
-            pass
-        if attempt < max_attempts:
-            time.sleep(attempt_delay)
-    else:
-        # all attempts exhausted
-        elapsed = time.time() - started
-        log_ascii_table(
-            logger,
-            "MT5 Terminal Ready — Failed (initialize)",
-            [
-                ("MT5 Account ID", mt5_account_id),
-                ("Terminal", terminal_path),
-                ("Attempts", f"{max_attempts}/{max_attempts}"),
-                ("Elapsed", f"{elapsed:.1f}s"),
-                ("Terminal Launched", terminal_launched),
-                ("PID", pid),
-                ("Last Error", last_error),
-            ],
-            level=logging.ERROR,
-        )
-        return {
-            "success": False, "account_info": None, "error": last_error,
-            "attempts": max_attempts, "elapsed_seconds": elapsed,
-            "terminal_launched": terminal_launched, "pid": pid,
-        }
-
-    running_after, pid_after = _is_terminal_process_running(terminal_path)
-    if running_after and pid_after:
-        pid = pid_after
-        terminal_launched = True
-
-    # ── Step 2: Explicit login ──────────────────────────────────────────────
-    # From here on, initialize has succeeded so we must shutdown on failure
-    # to avoid leaking the IPC session.
-    login_result = mt5.login(login, password=password, server=server)
-    if not login_result:
-        login_error = _mt5_last_error(mt5)
-        try:
-            mt5.shutdown()
-        except Exception:
-            pass
-        elapsed = time.time() - started
-        log_ascii_table(
-            logger,
-            "MT5 Terminal Ready — Login Failed",
-            [
-                ("MT5 Account ID", mt5_account_id),
-                ("Server", server),
-                ("Login Error", login_error),
-                ("Elapsed", f"{elapsed:.1f}s"),
-            ],
-            level=logging.ERROR,
-        )
-        return {
-            "success": False, "account_info": None,
-            "error": f"mt5.login() failed: {login_error}",
-            "attempts": attempts_used, "elapsed_seconds": elapsed,
-            "terminal_launched": terminal_launched, "pid": pid,
-        }
-    logger.info("MT5 login succeeded mt5_account_id=%s", mt5_account_id)
-
-    # ── Step 3: Verify with account_info ───────────────────────────────────
-    account_info = mt5.account_info()
-    if account_info is None:
-        acct_error = _mt5_last_error(mt5)
-        try:
-            mt5.shutdown()
-        except Exception:
-            pass
-        elapsed = time.time() - started
-        return {
-            "success": False, "account_info": None,
-            "error": f"mt5.account_info() returned None: {acct_error}",
-            "attempts": attempts_used, "elapsed_seconds": elapsed,
-            "terminal_launched": terminal_launched, "pid": pid,
-        }
-
-    actual_login = getattr(account_info, "login", None)
-    if actual_login != login:
-        try:
-            mt5.shutdown()
-        except Exception:
-            pass
-        elapsed = time.time() - started
-        return {
-            "success": False, "account_info": account_info,
-            "error": f"Wrong account logged in: expected {login}, got {actual_login}",
-            "attempts": attempts_used, "elapsed_seconds": elapsed,
-            "terminal_launched": terminal_launched, "pid": pid,
-        }
-
-    elapsed = time.time() - started
-    log_ascii_table(
-        logger,
-        "MT5 Terminal Ready — Success",
-        [
-            ("MT5 Account ID", mt5_account_id),
-            ("Login", actual_login),
-            ("Server", server),
-            ("Balance", getattr(account_info, "balance", None)),
-            ("Equity", getattr(account_info, "equity", None)),
-            ("Trade Allowed", getattr(account_info, "trade_allowed", None)),
-            ("Attempts", f"{attempts_used}/{max_attempts}"),
-            ("Elapsed", f"{elapsed:.1f}s"),
-            ("Terminal Launched", terminal_launched),
-            ("PID", pid),
-        ],
-    )
-    return {
-        "success": True, "account_info": account_info, "error": None,
-        "attempts": attempts_used, "elapsed_seconds": elapsed,
-        "terminal_launched": terminal_launched, "pid": pid,
-    }
-
-
 def _resolve_cleanup_appdata_folder(terminal_dir: str, appdata_hash: str):
-    normalized_terminal_dir = None
-    if str(terminal_dir or "").strip():
-        normalized_terminal_dir = os.path.normcase(os.path.abspath(terminal_dir))
+    normalized_terminal_dir = os.path.normcase(os.path.abspath(terminal_dir))
     normalized_hash = (appdata_hash or "").strip().upper()
     if re.fullmatch(r"[A-F0-9]{32}", normalized_hash):
         candidate = os.path.join(APPDATA_TERMINAL_PATH, normalized_hash)
         if os.path.isdir(candidate):
-            if normalized_terminal_dir is None:
-                return candidate
             origin = os.path.join(candidate, "origin.txt")
             try:
                 content = open(origin, encoding="utf-16", errors="ignore").read().strip().rstrip("\\")
@@ -382,8 +118,6 @@ def _resolve_cleanup_appdata_folder(terminal_dir: str, appdata_hash: str):
                 return candidate
             if os.path.normcase(content) == normalized_terminal_dir:
                 return candidate
-    if normalized_terminal_dir is None:
-        return None
     return _find_base_appdata(terminal_dir)
 
 
@@ -424,96 +158,8 @@ def _clear_market_watch_selection(appdata_path: str, server_name: str):
                 pass
 
 
-def _seed_market_watch_symbols(mt5, terminal_exe: str, login: int, password: str, server: str):
-    """
-    Open a brief MT5 session to add probe symbols to market watch so they
-    persist in selected*.dat for every future sync.  Failures are non-fatal —
-    the probe falls back to Redis cache and EURUSD during market hours.
-    """
-    try:
-        result = mt5.initialize(
-            path=terminal_exe,
-            login=login,
-            password=password,
-            server=server,
-            timeout=60000,
-        )
-        if not result:
-            return
-        for symbol in _MARKET_WATCH_SEED_SYMBOLS:
-            try:
-                mt5.symbol_select(symbol, True)
-            except Exception:
-                pass
-    except Exception:
-        pass
-    finally:
-        try:
-            mt5.shutdown()
-        except Exception:
-            pass
-
-
 class PermanentSetupError(RuntimeError):
     """Raised when setup is running on the wrong host or missing required local config."""
-
-
-class TradingPasswordDetectedError(Exception):
-    """
-    Raised when account_info().trade_allowed is True after a successful MT5 login,
-    indicating the user submitted a master/trading password instead of the required
-    investor (read-only) password.  This error is never retried.
-    """
-
-
-def _classify_setup_error(error_str: str) -> str:
-    """Map a raw MT5 error string to a user-facing connection error message."""
-    s = str(error_str).lower()
-    if any(k in s for k in ("trading/master password", "trading password", "trade_allowed")):
-        return (
-            "A master/trading password was detected and rejected. "
-            "Please resubmit using your MT5 investor (read-only) password."
-        )
-    if "wrong account" in s or ("expected" in s and "got" in s):
-        return (
-            "Account mismatch. Check that the account number you entered matches your MT5 login."
-        )
-    if any(k in s for k in ("auth_failed", "auth failed", "authorization", "invalid password", "invalid account")):
-        return (
-            "Login failed. Please check your account number and investor password."
-        )
-    if any(k in s for k in ("no_ipc", "no ipc", "ipc connection", "timeout", "timed out", "connection refused", "network")):
-        return (
-            "Connection timeout. Check that the server name is exact (e.g. Exness-MT5Real) and try again."
-        )
-    if any(k in s for k in ("unsupported", "version", "not found", "invalid server", "res_x")):
-        return (
-            "Invalid server. Enter the exact MT5 server name from your broker (e.g. Exness-MT5Real, ICMarketsSC-Live)."
-        )
-    return (
-        "Connection failed. Check your server name, account number, and investor password, then retry."
-    )
-
-
-def _write_mt5_account_status(mt5_account_id: int, status: str, error_message=None):
-    """Write connection_status (and optional error message) to the MT5Account row."""
-    from models import MT5Account, db
-
-    try:
-        account = db.session.get(MT5Account, mt5_account_id)
-        if account is None:
-            return
-        account.connection_status = status
-        account.connection_error_message = error_message
-        db.session.commit()
-    except Exception as exc:
-        db.session.rollback()
-        logger.warning(
-            "MT5 status write failed mt5_account_id=%s status=%s error=%s",
-            mt5_account_id,
-            status,
-            exc,
-        )
 
 
 def _mask_account_number_for_log(account_number):
@@ -566,93 +212,6 @@ def _send_mt5_ready_email(account):
         )
 
 
-def _send_mt5_setup_failed_email(account, user_message: str):
-    user = getattr(account, "user", None)
-    if user is None or not getattr(user, "email", None):
-        return
-
-    from auth_account import get_public_base_url, render_app_template, send_email_placeholder
-
-    try:
-        base_url = get_public_base_url()
-        html_body = render_app_template(
-            "emails/mt5-setup-failed.html",
-            name=user.username,
-            error_message=user_message,
-            dashboard_url=f"{base_url}/dashboard",
-            logo_url=f"{base_url}/static/site-logo.png",
-        )
-        send_email_placeholder(
-            user.email,
-            "MT5 connection setup failed — fix & retry",
-            (
-                f"Hi {user.username}, we weren't able to connect to your MT5 account. "
-                f"{user_message} "
-                "Open the dashboard to fix your details and retry."
-            ),
-            html_body=html_body,
-        )
-    except Exception as exc:
-        log_ascii_table(
-            logger,
-            "MT5 Setup Failed Email Failed",
-            [
-                ("MT5 Account ID", account.id),
-                ("User ID", user.id),
-                ("Error", exc),
-            ],
-            level=logging.WARNING,
-        )
-
-
-def _send_trading_password_warning_email(account):
-    user = getattr(account, "user", None)
-    if user is None or not getattr(user, "email", None):
-        return
-
-    from auth_account import get_public_base_url, send_email_placeholder
-
-    try:
-        base_url = get_public_base_url()
-        dashboard_url = f"{base_url}/dashboard"
-        subject = "Action required: MT5 trading password detected — your credentials were cleared"
-        text_body = (
-            f"Hi {user.username},\n\n"
-            "We detected that the password you submitted for MT5 sync was a "
-            "MASTER or TRADING password, not an investor (read-only) password.\n\n"
-            "To protect your account, we have:\n"
-            "  1. Immediately terminated the MT5 connection.\n"
-            "  2. Deleted the stored password from our system.\n"
-            "  3. Removed the terminal files from our server.\n\n"
-            "WHAT YOU NEED TO DO:\n"
-            "  • Open your MT5 platform and locate your INVESTOR password "
-            "(not your master / trading password).\n"
-            "  • In MT5: right-click your account → Manage Account → "
-            "you will find the investor password there.\n"
-            f"  • Return to your dashboard and re-enter your details: {dashboard_url}\n\n"
-            "If you are unsure which password to use, contact your broker. "
-            "The investor password is read-only and cannot place trades. "
-            "Never share your master/trading password with any third-party service.\n\n"
-            "MyFXJournal"
-        )
-        send_email_placeholder(
-            user.email,
-            subject,
-            text_body,
-        )
-    except Exception as exc:
-        log_ascii_table(
-            logger,
-            "MT5 Trading Password Warning Email Failed",
-            [
-                ("MT5 Account ID", account.id),
-                ("User ID", user.id),
-                ("Error", exc),
-            ],
-            level=logging.WARNING,
-        )
-
-
 def _mt5_last_error(mt5):
     last_error = getattr(mt5, "last_error", None)
     if callable(last_error):
@@ -663,6 +222,75 @@ def _mt5_last_error(mt5):
     return "last_error unavailable"
 
 
+def _verify_mt5_terminal_login(
+    mt5,
+    *,
+    terminal_exe: str,
+    login: int,
+    investor_password: str,
+    server: str,
+    task_id=None,
+    mt5_account_id=None,
+    user_id=None,
+    trade_account_id=None,
+):
+    for attempt in range(1, MT5_SETUP_VERIFY_ATTEMPTS + 1):
+        retry_in_seconds = None
+        try:
+            result = mt5.initialize(
+                path=terminal_exe,
+                login=login,
+                password=investor_password,
+                server=server,
+                timeout=60000,
+            )
+
+            if not result:
+                error = _mt5_last_error(mt5)
+                raise RuntimeError(f"mt5.initialize() failed: {error}")
+
+            account_info = mt5.account_info()
+            if account_info is None:
+                error = _mt5_last_error(mt5)
+                raise RuntimeError(f"mt5.account_info() returned None: {error}")
+
+            actual_login = getattr(account_info, "login", None)
+            if actual_login != login:
+                raise RuntimeError(
+                    f"Wrong account logged in: expected {login}, got {actual_login}"
+                )
+
+            return
+        except RuntimeError as exc:
+            if attempt >= MT5_SETUP_VERIFY_ATTEMPTS:
+                raise
+
+            retry_in_seconds = MT5_SETUP_VERIFY_RETRY_DELAY_SECONDS
+            log_ascii_table(
+                logger,
+                "MT5 Setup Verification Retry",
+                [
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("User ID", user_id),
+                    ("Trade Account ID", trade_account_id),
+                    ("Account", _mask_account_number_for_log(login)),
+                    ("Server", server),
+                    ("Attempt", f"{attempt}/{MT5_SETUP_VERIFY_ATTEMPTS}"),
+                    ("Retry In", f"{retry_in_seconds}s"),
+                    ("Error", exc),
+                ],
+                level=logging.WARNING,
+            )
+        finally:
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+        if retry_in_seconds:
+            time.sleep(retry_in_seconds)
+
+
 @celery.task(bind=True, max_retries=2, default_retry_delay=30, queue="mt5_setup")
 def setup_mt5_terminal(self, mt5_account_id: int):
     """
@@ -670,13 +298,6 @@ def setup_mt5_terminal(self, mt5_account_id: int):
     Copies base MT5 installation and verifies login via Python API.
     Windows only - fails permanently on other platforms.
     """
-    from celery_workers.cache import (
-        CacheUnavailableError,
-        MT5_GLOBAL_LOCK_SETUP_TTL,
-        acquire_mt5_global_lock,
-        peek_mt5_global_lock_holder,
-        release_mt5_global_lock,
-    )
     from helpers.utils import decrypt_password
     from models import MT5Account, db
 
@@ -691,42 +312,6 @@ def setup_mt5_terminal(self, mt5_account_id: int):
     terminal_exe = None
     was_active = None
     appdata_hash = None
-
-    # Global MT5 lock (shared with mt5_sync workers): block briefly so any
-    # in-flight sync (~300ms–7s) can finish before we touch the runtime. If
-    # the lock stays busy we retry the whole task rather than racing MT5.
-    global_lock_token = f"setup:{task_id or 'no-task'}:{mt5_account_id}"
-    global_lock_acquired = False
-    global_lock_enabled = True
-    try:
-        global_lock_acquired = acquire_mt5_global_lock(
-            global_lock_token,
-            ttl=MT5_GLOBAL_LOCK_SETUP_TTL,
-            wait_seconds=60,
-        )
-    except CacheUnavailableError:
-        global_lock_enabled = False
-        global_lock_acquired = True
-    if not global_lock_acquired:
-        try:
-            current_holder = peek_mt5_global_lock_holder()
-        except CacheUnavailableError:
-            current_holder = None
-        logger.warning(
-            "MT5 setup global lock busy — retrying task_id=%s mt5_account_id=%s holder=%s",
-            task_id,
-            mt5_account_id,
-            current_holder or "unknown",
-        )
-        raise self.retry(
-            countdown=30,
-            exc=RuntimeError("global MT5 lock busy"),
-        )
-    logger.info(
-        "MT5 setup global lock acquired mt5_account_id=%s token=%s",
-        mt5_account_id,
-        global_lock_token,
-    )
 
     try:
         if os.name != "nt":
@@ -768,27 +353,6 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             f"mt5_{user_id}_{trade_account_id}",
         )
         terminal_exe = os.path.join(terminal_dir, "terminal64.exe")
-
-        # ── RETRY CLEANUP: start from clean state on retries ───────────────
-        current_retry = getattr(getattr(self, "request", None), "retries", 0)
-        if current_retry > 0:
-            logger.info(
-                "MT5 setup retry #%s — cleaning previous terminal state "
-                "mt5_account_id=%s terminal_dir=%s",
-                current_retry, mt5_account_id, terminal_dir,
-            )
-            _terminate_mt5_processes(terminal_exe)
-            if os.path.isdir(terminal_dir):
-                shutil.rmtree(terminal_dir, ignore_errors=True)
-            old_hash = getattr(account, "appdata_hash", None)
-            if old_hash:
-                old_appdata = _resolve_cleanup_appdata_folder(terminal_dir, old_hash)
-                if old_appdata and os.path.isdir(old_appdata):
-                    shutil.rmtree(old_appdata, ignore_errors=True)
-            account.terminal_path = None
-            account.appdata_hash = None
-            db.session.commit()
-
         log_ascii_table(
             logger,
             "MT5 Setup Context",
@@ -824,48 +388,9 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                 "Could not find base MT5 AppData via origin.txt — "
                 "ensure the base terminal has been run at least once"
             )
-        logger.info(
-            "MT5 setup base_appdata mt5_account_id=%s basename=%s",
-            mt5_account_id,
-            os.path.basename(base_appdata),
-        )
 
-        import MetaTrader5 as mt5
-
-        logger.info(
-            "MT5 setup bootstrap_initialize mt5_account_id=%s terminal_dir=%s",
-            mt5_account_id,
-            terminal_dir,
-        )
-        last_bootstrap_error = None
-        for attempt in range(1, MT5_TERMINAL_READY_MAX_ATTEMPTS + 1):
-            try:
-                if mt5.initialize(path=terminal_exe):
-                    logger.info(
-                        "MT5 setup bootstrap initialize ok mt5_account_id=%s attempt=%s/%s",
-                        mt5_account_id, attempt, MT5_TERMINAL_READY_MAX_ATTEMPTS,
-                    )
-                    break
-                last_bootstrap_error = (
-                    f"mt5.initialize() returned False: {_mt5_last_error(mt5)}"
-                )
-            except Exception as exc:
-                last_bootstrap_error = f"mt5.initialize() exception: {exc}"
-
-            logger.info(
-                "MT5 setup bootstrap initialize attempt %s/%s failed mt5_account_id=%s error=%s",
-                attempt, MT5_TERMINAL_READY_MAX_ATTEMPTS, mt5_account_id, last_bootstrap_error,
-            )
-            try:
-                mt5.shutdown()
-            except Exception:
-                pass
-            if attempt < MT5_TERMINAL_READY_MAX_ATTEMPTS:
-                time.sleep(MT5_TERMINAL_READY_ATTEMPT_DELAY)
-        else:
-            raise PermanentSetupError(
-                f"MT5 bootstrap could not initialize terminal for AppData: {last_bootstrap_error}"
-            )
+        # Launch the terminal briefly — this causes MT5 to create its AppData folder
+        proc = subprocess.Popen([terminal_exe], cwd=terminal_dir)
 
         new_appdata = None
         try:
@@ -880,15 +405,10 @@ def setup_mt5_terminal(self, mt5_account_id: int):
 
             if new_appdata is None:
                 raise PermanentSetupError(
-                    "MT5 AppData folder not created after initialize — check MT5 installation"
+                    "MT5 AppData folder not created after launch — check MT5 installation"
                 )
 
             new_hash = os.path.basename(new_appdata)
-            logger.info(
-                "MT5 setup new_terminal_appdata mt5_account_id=%s appdata_hash=%s",
-                mt5_account_id,
-                new_hash,
-            )
 
             # Copy servers.dat from base AppData so the new terminal knows
             # how to resolve the broker server address
@@ -900,85 +420,35 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             if os.path.exists(src_servers):
                 shutil.copy2(src_servers, os.path.join(dst_config, "servers.dat"))
                 shutil.copy2(src_servers, os.path.join(terminal_config, "servers.dat"))
-                logger.info(
-                    "MT5 setup servers_dat_copied mt5_account_id=%s",
-                    mt5_account_id,
-                )
 
             account.appdata_hash = new_hash
             appdata_hash = new_hash
         finally:
-            try:
-                mt5.shutdown()
-            except Exception:
-                pass
-
-        # ``initialize`` may leave the terminal running; stop it so the next
-        # ``ensure_mt5_terminal_ready`` does not attach to a stale process.
-        logger.info(
-            "MT5 setup stopping bootstrap terminal before ensure "
-            "mt5_account_id=%s terminal=%s",
-            mt5_account_id,
-            terminal_exe,
-        )
-        _terminate_mt5_processes(terminal_exe)
-        if not _wait_until_terminal_stopped(terminal_exe, timeout_sec=30):
-            logger.warning(
-                "MT5 setup bootstrap terminal still running after terminate; "
-                "retrying kill mt5_account_id=%s",
-                mt5_account_id,
-            )
-            _terminate_mt5_processes(terminal_exe)
-            if not _wait_until_terminal_stopped(terminal_exe, timeout_sec=15):
-                raise PermanentSetupError(
-                    "Could not stop the bootstrap MetaTrader terminal. "
-                    "Close any running terminals for this installation path and retry setup."
-                )
+            proc.terminate()
+            proc.wait(timeout=10)
 
         # Clear the default chart workspace after the bootstrap launch and
         # before the Python API logs into the account.
         _clear_chart_profiles(new_appdata)
 
-        ready_result = ensure_mt5_terminal_ready(
-            mt5,
-            terminal_path=terminal_exe,
-            login=login,
-            password=investor_password,
-            server=server,
-            mt5_account_id=mt5_account_id,
-        )
-        if not ready_result["success"]:
-            raise RuntimeError(
-                f"MT5 terminal not ready after setup: {ready_result['error']}"
-            )
+        import MetaTrader5 as mt5
 
-        # Trading password check (setup-specific safety gate)
-        setup_account_info = ready_result["account_info"]
-        if getattr(setup_account_info, "trade_allowed", False):
-            mt5.shutdown()
-            raise TradingPasswordDetectedError(
-                f"trading/master password detected for login "
-                f"{_mask_account_number_for_log(login)} on server {server}"
-            )
-
-        mt5.shutdown()
-
-        _clear_market_watch_selection(new_appdata, server)
-
-        _seed_market_watch_symbols(
+        _verify_mt5_terminal_login(
             mt5,
             terminal_exe=terminal_exe,
             login=login,
-            password=investor_password,
+            investor_password=investor_password,
             server=server,
+            task_id=task_id,
+            mt5_account_id=mt5_account_id,
+            user_id=user_id,
+            trade_account_id=trade_account_id,
         )
+
+        _clear_market_watch_selection(new_appdata, server)
 
         account.terminal_path = terminal_exe
         account.is_active = True
-        account.archived_at = None
-        account.archive_reason = None
-        account.connection_status = "connected"
-        account.connection_error_message = None
         db.session.commit()
         if not was_active:
             _send_mt5_ready_email(account)
@@ -1008,75 +478,6 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             "status": "setup complete",
             "account": login,
         }
-    except TradingPasswordDetectedError as exc:
-        db.session.rollback()
-        finished_at = datetime.now(timezone.utc)
-
-        # 1. Clear the stored password immediately and record the failure.
-        try:
-            account = db.session.get(MT5Account, mt5_account_id)
-            if account is not None:
-                account.investor_password_encrypted = None
-                account.connection_status = "failed"
-                account.connection_error_message = (
-                    "A master/trading password was detected and rejected. "
-                    "For your security the connection was terminated and your credentials were cleared. "
-                    "Please resubmit using your MT5 investor (read-only) password — "
-                    "not your master or trading password."
-                )
-                db.session.commit()
-        except Exception as clear_exc:
-            db.session.rollback()
-            logger.warning(
-                "MT5 trading password — failed to clear credentials mt5_account_id=%s: %s",
-                mt5_account_id,
-                clear_exc,
-            )
-
-        # 2. Queue terminal file cleanup (same path as account delete).
-        if terminal_exe:
-            try:
-                cleanup_mt5_terminal.apply_async(
-                    args=[terminal_exe, appdata_hash or ""],
-                    queue="mt5_setup",
-                )
-            except Exception as cleanup_exc:
-                logger.warning(
-                    "MT5 trading password — terminal cleanup queue failed mt5_account_id=%s: %s",
-                    mt5_account_id,
-                    cleanup_exc,
-                )
-
-        # 3. Email the user.
-        try:
-            account_for_email = db.session.get(MT5Account, mt5_account_id)
-            if account_for_email is not None:
-                _send_trading_password_warning_email(account_for_email)
-        except Exception as email_exc:
-            logger.warning(
-                "MT5 trading password — warning email failed mt5_account_id=%s: %s",
-                mt5_account_id,
-                email_exc,
-            )
-
-        log_ascii_table(
-            logger,
-            "MT5 Setup — Trading Password Detected",
-            [
-                ("Finished", finished_at),
-                ("Duration", duration_label(started_at, finished_at)),
-                ("Task ID", task_id),
-                ("MT5 Account ID", mt5_account_id),
-                ("User ID", user_id),
-                ("Trade Account ID", trade_account_id),
-                ("Account", _mask_account_number_for_log(login)),
-                ("Server", server),
-                ("Action", "password cleared, terminal cleanup queued, user emailed"),
-            ],
-            level=logging.ERROR,
-        )
-        raise  # no retry
-
     except PermanentSetupError as exc:
         db.session.rollback()
         finished_at = datetime.now(timezone.utc)
@@ -1125,119 +526,27 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             ],
             level=logging.ERROR,
         )
-        current_retry = getattr(getattr(self, "request", None), "retries", 0)
-        at_max_retries = current_retry >= getattr(self, "max_retries", 2)
-        if at_max_retries:
-            logger.error(
-                "MT5 setup exhausted retries — marking failed. task_id=%s mt5_account_id=%s user_id=%s",
-                task_id,
-                mt5_account_id,
-                user_id,
-            )
-            user_message = _classify_setup_error(str(exc))
-            _write_mt5_account_status(mt5_account_id, "failed", user_message)
-            try:
-                failed_account = db.session.get(MT5Account, mt5_account_id)
-                if failed_account is not None:
-                    _send_mt5_setup_failed_email(failed_account, user_message)
-            except Exception as email_exc:
-                logger.warning(
-                    "MT5 setup failed email error mt5_account_id=%s: %s",
-                    mt5_account_id,
-                    email_exc,
-                )
-        else:
-            logger.exception(
-                "MT5 setup failed and will retry. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s",
-                task_id,
-                mt5_account_id,
-                user_id,
-                trade_account_id,
-            )
+        logger.exception(
+            "MT5 setup failed and will retry. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s",
+            task_id,
+            mt5_account_id,
+            user_id,
+            trade_account_id,
+        )
         _retry_with_backoff(self, exc, base_delay=30, max_delay=300)
-    finally:
-        if global_lock_enabled and global_lock_acquired:
-            try:
-                release_mt5_global_lock(global_lock_token)
-                logger.info(
-                    "MT5 setup global lock released mt5_account_id=%s token=%s",
-                    mt5_account_id,
-                    global_lock_token,
-                )
-            except CacheUnavailableError:
-                pass
 
 
 @celery.task(bind=True, max_retries=2, default_retry_delay=10, queue="mt5_setup")
-def cleanup_mt5_terminal(
-    self,
-    terminal_path: str,
-    appdata_hash: str,
-    mt5_account_id=None,
-    delete_account_row=None,
-    clear_cleanup_mark=False,
-    cleanup_marked_at=None,
-):
+def cleanup_mt5_terminal(self, terminal_path: str, appdata_hash: str):
     """
-    Clean up MT5 terminal files when an MT5Account is deleted or unlinked.
-    Runs on VM only — kills process, deletes terminal folder and AppData hash
-    folder.
-
-    When *delete_account_row* is true the MT5Account DB row is deleted **after**
-    the file cleanup succeeds. When it is omitted, legacy callers that pass only
-    *mt5_account_id* still delete the row unless *clear_cleanup_mark* is set.
-    Otherwise the task can optionally clear `cleanup_marked_at` on the
-    still-linked row after reset cleanup finishes.
+    Clean up MT5 terminal files when an MT5Account is deleted.
+    Runs on VM only - kills process, deletes terminal folder
+    and AppData hash folder.
     """
-    from celery_workers.cache import (
-        CacheUnavailableError,
-        MT5_GLOBAL_LOCK_CLEANUP_TTL,
-        acquire_mt5_global_lock,
-        peek_mt5_global_lock_holder,
-        release_mt5_global_lock,
-    )
-
     task_id = getattr(getattr(self, "request", None), "id", None)
     started_at = datetime.now(timezone.utc)
     finished_at = None
-    terminal_dir = os.path.dirname(terminal_path) if str(terminal_path or "").strip() else ""
-    if delete_account_row is None:
-        delete_account_row = mt5_account_id is not None and not clear_cleanup_mark
-
-    # Global MT5 lock (shared with mt5_sync + mt5_setup): block briefly so
-    # an in-flight sync doesn't run against a terminal we're about to kill.
-    global_lock_token = f"cleanup:{task_id or 'no-task'}:{mt5_account_id or 'na'}"
-    global_lock_acquired = False
-    global_lock_enabled = True
-    try:
-        global_lock_acquired = acquire_mt5_global_lock(
-            global_lock_token,
-            ttl=MT5_GLOBAL_LOCK_CLEANUP_TTL,
-            wait_seconds=45,
-        )
-    except CacheUnavailableError:
-        global_lock_enabled = False
-        global_lock_acquired = True
-    if not global_lock_acquired:
-        try:
-            current_holder = peek_mt5_global_lock_holder()
-        except CacheUnavailableError:
-            current_holder = None
-        logger.warning(
-            "MT5 cleanup global lock busy — retrying task_id=%s mt5_account_id=%s holder=%s",
-            task_id,
-            mt5_account_id,
-            current_holder or "unknown",
-        )
-        raise self.retry(
-            countdown=30,
-            exc=RuntimeError("global MT5 lock busy"),
-        )
-    logger.info(
-        "MT5 cleanup global lock acquired mt5_account_id=%s token=%s",
-        mt5_account_id,
-        global_lock_token,
-    )
+    terminal_dir = os.path.dirname(terminal_path)
 
     try:
         if os.name != "nt":
@@ -1251,7 +560,6 @@ def cleanup_mt5_terminal(
                     ("Task ID", task_id),
                     ("Terminal Dir", terminal_dir),
                     ("AppData Hash", appdata_hash),
-                    ("MT5 Account ID", mt5_account_id),
                     ("Status", "not Windows, skipping cleanup"),
                 ],
                 level=logging.WARNING,
@@ -1260,59 +568,15 @@ def cleanup_mt5_terminal(
 
         terminal_exe = terminal_path
 
-        if str(terminal_exe or "").strip():
-            _terminate_mt5_processes(terminal_exe)
+        _terminate_mt5_processes(terminal_exe)
 
-        if terminal_dir:
-            _remove_tree_strict(terminal_dir, label="terminal dir")
+        if terminal_dir and os.path.exists(terminal_dir):
+            shutil.rmtree(terminal_dir, ignore_errors=True)
 
         # Prefer the stored MT5 hash when it is valid, but fall back to origin.txt lookup.
         appdata_folder = _resolve_cleanup_appdata_folder(terminal_dir, appdata_hash)
-        if appdata_folder:
-            _remove_tree_strict(appdata_folder, label="appdata folder")
-
-        # --- DB row follow-up (only after file cleanup succeeds) ---
-        db_deleted = False
-        cleanup_mark_cleared = False
-        if mt5_account_id is not None:
-            try:
-                from models import MT5Account, db
-
-                account = db.session.get(MT5Account, mt5_account_id)
-                if account is not None:
-                    if delete_account_row:
-                        db.session.delete(account)
-                        db.session.commit()
-                        db_deleted = True
-                    elif clear_cleanup_mark:
-                        current_mark = getattr(account, "cleanup_marked_at", None)
-                        current_mark_token = (
-                            current_mark.isoformat() if current_mark is not None else None
-                        )
-                        if cleanup_marked_at and current_mark_token not in {cleanup_marked_at, None}:
-                            logger.warning(
-                                "MT5 cleanup skipped cleanup_mark clear due to mark mismatch "
-                                "mt5_account_id=%s expected=%s actual=%s",
-                                mt5_account_id,
-                                cleanup_marked_at,
-                                current_mark_token,
-                            )
-                        else:
-                            account.cleanup_marked_at = None
-                            db.session.commit()
-                            cleanup_mark_cleared = True
-                else:
-                    db_deleted = bool(delete_account_row)
-                    cleanup_mark_cleared = bool(clear_cleanup_mark)
-            except Exception as db_exc:
-                db.session.rollback()
-                logger.warning(
-                    "MT5 cleanup succeeded but DB follow-up failed mt5_account_id=%s delete_row=%s clear_mark=%s: %s",
-                    mt5_account_id,
-                    delete_account_row,
-                    clear_cleanup_mark,
-                    db_exc,
-                )
+        if appdata_folder and os.path.exists(appdata_folder):
+            shutil.rmtree(appdata_folder, ignore_errors=True)
 
         finished_at = datetime.now(timezone.utc)
         log_ascii_table(
@@ -1325,9 +589,6 @@ def cleanup_mt5_terminal(
                 ("Terminal Dir", terminal_dir),
                 ("AppData Hash", appdata_hash),
                 ("AppData Folder", appdata_folder),
-                ("MT5 Account ID", mt5_account_id),
-                ("DB Row Deleted", db_deleted if mt5_account_id else "n/a"),
-                ("Cleanup Mark Cleared", cleanup_mark_cleared if mt5_account_id else "n/a"),
                 ("Status", "cleanup complete"),
             ],
         )
@@ -1335,9 +596,6 @@ def cleanup_mt5_terminal(
         return {
             "terminal_dir": terminal_dir,
             "appdata_hash": appdata_hash,
-            "mt5_account_id": mt5_account_id,
-            "db_deleted": db_deleted,
-            "cleanup_mark_cleared": cleanup_mark_cleared,
             "status": "cleanup complete",
         }
     except Exception as exc:
@@ -1351,27 +609,14 @@ def cleanup_mt5_terminal(
                 ("Task ID", task_id),
                 ("Terminal Dir", terminal_dir),
                 ("AppData Hash", appdata_hash),
-                ("MT5 Account ID", mt5_account_id),
                 ("Error", exc),
             ],
             level=logging.ERROR,
         )
         logger.exception(
-            "MT5 cleanup failed. task_id=%s terminal_path=%s appdata_hash=%s mt5_account_id=%s",
+            "MT5 cleanup failed. task_id=%s terminal_path=%s appdata_hash=%s",
             task_id,
             terminal_path,
             appdata_hash,
-            mt5_account_id,
         )
         raise
-    finally:
-        if global_lock_enabled and global_lock_acquired:
-            try:
-                release_mt5_global_lock(global_lock_token)
-                logger.info(
-                    "MT5 cleanup global lock released mt5_account_id=%s token=%s",
-                    mt5_account_id,
-                    global_lock_token,
-                )
-            except CacheUnavailableError:
-                pass
