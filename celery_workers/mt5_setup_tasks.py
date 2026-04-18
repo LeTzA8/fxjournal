@@ -33,6 +33,15 @@ APPDATA_TERMINAL_PATH = os.path.join(
 IGNORED_APPDATA_FOLDERS = {"Common", "Community"}
 MT5_SETUP_VERIFY_ATTEMPTS = 2
 MT5_SETUP_VERIFY_RETRY_DELAY_SECONDS = 2
+MT5_MARKET_WATCH_CRYPTO_SEED_SYMBOLS = (
+    "BTCUSD",
+    "BTCUSDT",
+    "XBTUSD",
+)
+MT5_MARKET_WATCH_FALLBACK_SYMBOLS = (
+    "XAUUSD",
+    "EURUSD",
+)
 
 
 def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
@@ -156,6 +165,76 @@ def _clear_market_watch_selection(appdata_path: str, server_name: str):
                 os.remove(entry.path)
             except OSError:
                 pass
+
+
+def _seed_market_watch_symbols(
+    mt5,
+    *,
+    terminal_exe: str,
+    login: int,
+    investor_password: str,
+    server: str,
+):
+    """
+    Best-effort MarketWatch seeding for symbols used by broker-time probing.
+
+    Prefer a few common 24/7 crypto names first so weekend/off-hours broker-time
+    probes have something live to read. If none of those symbols exist on the
+    broker, fall back to liquid baseline symbols.
+    """
+    symbol_select = getattr(mt5, "symbol_select", None)
+    if not callable(symbol_select):
+        return {
+            "selected_symbols": [],
+            "attempted_symbols": [],
+            "used_fallback": False,
+            "symbol_select_available": False,
+        }
+
+    attempted_symbols = []
+    selected_symbols = []
+    used_fallback = False
+
+    if not mt5.initialize(path=terminal_exe, timeout=60000):
+        raise RuntimeError(f"mt5.initialize() failed during MarketWatch seed: {_mt5_last_error(mt5)}")
+
+    try:
+        if not mt5.login(login, password=investor_password, server=server):
+            raise RuntimeError(f"mt5.login() failed during MarketWatch seed: {_mt5_last_error(mt5)}")
+
+        for symbol in MT5_MARKET_WATCH_CRYPTO_SEED_SYMBOLS:
+            selected = False
+            try:
+                selected = bool(symbol_select(symbol, True))
+            except Exception:
+                selected = False
+            attempted_symbols.append({"symbol": symbol, "selected": selected, "group": "crypto"})
+            if selected:
+                selected_symbols.append(symbol)
+
+        if not selected_symbols:
+            used_fallback = True
+            for symbol in MT5_MARKET_WATCH_FALLBACK_SYMBOLS:
+                selected = False
+                try:
+                    selected = bool(symbol_select(symbol, True))
+                except Exception:
+                    selected = False
+                attempted_symbols.append({"symbol": symbol, "selected": selected, "group": "fallback"})
+                if selected:
+                    selected_symbols.append(symbol)
+    finally:
+        try:
+            mt5.shutdown()
+        except Exception:
+            pass
+
+    return {
+        "selected_symbols": selected_symbols,
+        "attempted_symbols": attempted_symbols,
+        "used_fallback": used_fallback,
+        "symbol_select_available": True,
+    }
 
 
 class PermanentSetupError(RuntimeError):
@@ -446,6 +525,46 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         )
 
         _clear_market_watch_selection(new_appdata, server)
+        try:
+            market_watch_seed_result = _seed_market_watch_symbols(
+                mt5,
+                terminal_exe=terminal_exe,
+                login=login,
+                investor_password=investor_password,
+                server=server,
+            )
+            log_ascii_table(
+                logger,
+                "MT5 MarketWatch Seed",
+                [
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("Account", _mask_account_number_for_log(login)),
+                    ("Server", server),
+                    ("Crypto Seed Set", ", ".join(MT5_MARKET_WATCH_CRYPTO_SEED_SYMBOLS)),
+                    ("Fallback Seed Set", ", ".join(MT5_MARKET_WATCH_FALLBACK_SYMBOLS)),
+                    (
+                        "Selected Symbols",
+                        ", ".join(market_watch_seed_result.get("selected_symbols") or []) or "-",
+                    ),
+                    ("Used Fallback", market_watch_seed_result.get("used_fallback")),
+                    ("Selection API", market_watch_seed_result.get("symbol_select_available")),
+                ],
+                level=logging.INFO,
+            )
+        except Exception as exc:
+            log_ascii_table(
+                logger,
+                "MT5 MarketWatch Seed Failed",
+                [
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("Account", _mask_account_number_for_log(login)),
+                    ("Server", server),
+                    ("Error", exc),
+                ],
+                level=logging.WARNING,
+            )
 
         account.terminal_path = terminal_exe
         account.is_active = True

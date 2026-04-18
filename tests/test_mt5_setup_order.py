@@ -42,7 +42,7 @@ class RecordingMt5Module:
 
 
 class FlakyInitializeMt5Module:
-    """Bootstrap init succeeds; second ``initialize`` (ensure) fails; third succeeds."""
+    """First verify initialize fails once; second attempt succeeds."""
 
     def __init__(self, expected_login):
         self.expected_login = expected_login
@@ -53,8 +53,8 @@ class FlakyInitializeMt5Module:
 
     def initialize(self, path=None, **kwargs):
         self.initialize_calls.append({"path": path})
-        # Call 1: bootstrap succeeds. Call 2: ensure first attempt fails. Call 3: ensure succeeds.
-        return len(self.initialize_calls) != 2
+        # Call 1 fails, call 2 succeeds.
+        return len(self.initialize_calls) != 1
 
     def last_error(self):
         return (-6, "Terminal: Authorization failed")
@@ -72,6 +72,30 @@ class FlakyInitializeMt5Module:
 
     def symbol_select(self, symbol, select):
         pass
+
+
+class SeedRecordingMt5Module:
+    def __init__(self, selection_results):
+        self.selection_results = selection_results
+        self.events = []
+
+    def initialize(self, path=None, **kwargs):
+        self.events.append(("initialize", path))
+        return True
+
+    def login(self, login, password=None, server=None):
+        self.events.append(("login", login, server))
+        return True
+
+    def shutdown(self):
+        self.events.append(("shutdown",))
+
+    def last_error(self):
+        return (0, "OK")
+
+    def symbol_select(self, symbol, select):
+        self.events.append(("symbol_select", symbol, select))
+        return self.selection_results.get(symbol, False)
 
 
 def _create_user_with_account():
@@ -113,6 +137,19 @@ def _create_mt5_account(user_id, trade_account_id, account_number="12345678"):
     return mt5_account
 
 
+class DummyPopen:
+    def __init__(self, *_args, **_kwargs):
+        self.terminated = False
+        self.wait_calls = []
+
+    def terminate(self):
+        self.terminated = True
+
+    def wait(self, timeout=None):
+        self.wait_calls.append(timeout)
+        return 0
+
+
 def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monkeypatch, tmp_path):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
 
@@ -133,6 +170,7 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
     monkeypatch.setattr(mt5_setup_module, "MT5_TERMINALS_ROOT", str(terminals_root))
     monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
     monkeypatch.setattr(mt5_setup_module.time, "sleep", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(mt5_setup_module.subprocess, "Popen", lambda *args, **kwargs: DummyPopen(*args, **kwargs))
 
     def _fake_find_base_appdata(path):
         if path == str(base_dir):
@@ -158,7 +196,15 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
     monkeypatch.setattr(
         mt5_setup_module,
         "_seed_market_watch_symbols",
-        lambda *_a, **_kw: None,
+        lambda *_a, **_kw: (
+            events.append(("seed_market_watch",)),
+            {
+                "selected_symbols": ["BTCUSD"],
+                "attempted_symbols": [],
+                "used_fallback": False,
+                "symbol_select_available": True,
+            },
+        )[1],
     )
 
     fake_mt5 = RecordingMt5Module(events, int(mt5_account.account_number))
@@ -172,13 +218,11 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
 
     # Bootstrap: initialize → shutdown; then charts; ensure: initialize → login; final shutdown
     assert events == [
-        ("initialize", str(terminal_exe)),
-        ("shutdown",),
         ("clear_charts", str(new_appdata)),
         ("initialize", str(terminal_exe)),
-        ("login", int(mt5_account.account_number), mt5_account.server),
         ("shutdown",),
         ("clear_market_watch", str(new_appdata), mt5_account.server),
+        ("seed_market_watch",),
     ]
 
 
@@ -201,6 +245,7 @@ def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, m
     monkeypatch.setattr(mt5_setup_module, "MT5_BASE_PATH", str(base_dir))
     monkeypatch.setattr(mt5_setup_module, "MT5_TERMINALS_ROOT", str(terminals_root))
     monkeypatch.setattr(mt5_setup_module.os, "name", "nt")
+    monkeypatch.setattr(mt5_setup_module.subprocess, "Popen", lambda *args, **kwargs: DummyPopen(*args, **kwargs))
 
     sleep_calls = []
     monkeypatch.setattr(mt5_setup_module.time, "sleep", lambda seconds: sleep_calls.append(seconds))
@@ -217,7 +262,12 @@ def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, m
     monkeypatch.setattr(
         mt5_setup_module,
         "_seed_market_watch_symbols",
-        lambda *_a, **_kw: None,
+        lambda *_a, **_kw: {
+            "selected_symbols": ["BTCUSD"],
+            "attempted_symbols": [],
+            "used_fallback": False,
+            "symbol_select_available": True,
+        },
     )
 
     fake_mt5 = FlakyInitializeMt5Module(expected_login=int(mt5_account.account_number))
@@ -229,14 +279,75 @@ def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, m
 
     assert result["status"] == "setup complete"
 
-    # Bootstrap init succeeds; ensure retries initialize once (call 2 fails, 3 succeeds).
     assert fake_mt5.initialize_calls == [
         {"path": str(terminal_exe)},
         {"path": str(terminal_exe)},
-        {"path": str(terminal_exe)},
     ]
-    assert len(fake_mt5.login_calls) == 1
+    assert len(fake_mt5.login_calls) == 0
     assert fake_mt5.account_info_calls == 1
-    # shutdown: bootstrap finally + ensure retry cleanup + final setup shutdown
-    assert fake_mt5.shutdown_calls == 3
-    assert mt5_setup_module.MT5_TERMINAL_READY_ATTEMPT_DELAY in sleep_calls
+    assert fake_mt5.shutdown_calls == 2
+    assert mt5_setup_module.MT5_SETUP_VERIFY_RETRY_DELAY_SECONDS in sleep_calls
+
+
+def test_seed_market_watch_symbols_prefers_crypto_before_fallback():
+    fake_mt5 = SeedRecordingMt5Module(
+        {
+            "BTCUSD": True,
+            "BTCUSDT": False,
+            "XBTUSD": True,
+            "XAUUSD": True,
+            "EURUSD": True,
+        }
+    )
+
+    result = mt5_setup_module._seed_market_watch_symbols(
+        fake_mt5,
+        terminal_exe=r"C:\MT5Terminals\seed\terminal64.exe",
+        login=12345678,
+        investor_password="investor-pass",
+        server="Broker-Server",
+    )
+
+    assert result["selected_symbols"] == ["BTCUSD", "XBTUSD"]
+    assert result["used_fallback"] is False
+    assert fake_mt5.events == [
+        ("initialize", r"C:\MT5Terminals\seed\terminal64.exe"),
+        ("login", 12345678, "Broker-Server"),
+        ("symbol_select", "BTCUSD", True),
+        ("symbol_select", "BTCUSDT", True),
+        ("symbol_select", "XBTUSD", True),
+        ("shutdown",),
+    ]
+
+
+def test_seed_market_watch_symbols_falls_back_when_no_crypto_symbol_exists():
+    fake_mt5 = SeedRecordingMt5Module(
+        {
+            "BTCUSD": False,
+            "BTCUSDT": False,
+            "XBTUSD": False,
+            "XAUUSD": True,
+            "EURUSD": True,
+        }
+    )
+
+    result = mt5_setup_module._seed_market_watch_symbols(
+        fake_mt5,
+        terminal_exe=r"C:\MT5Terminals\seed\terminal64.exe",
+        login=12345678,
+        investor_password="investor-pass",
+        server="Broker-Server",
+    )
+
+    assert result["selected_symbols"] == ["XAUUSD", "EURUSD"]
+    assert result["used_fallback"] is True
+    assert fake_mt5.events == [
+        ("initialize", r"C:\MT5Terminals\seed\terminal64.exe"),
+        ("login", 12345678, "Broker-Server"),
+        ("symbol_select", "BTCUSD", True),
+        ("symbol_select", "BTCUSDT", True),
+        ("symbol_select", "XBTUSD", True),
+        ("symbol_select", "XAUUSD", True),
+        ("symbol_select", "EURUSD", True),
+        ("shutdown",),
+    ]
