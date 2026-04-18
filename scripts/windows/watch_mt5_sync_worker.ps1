@@ -3,6 +3,8 @@ param(
     [string]$PythonExe = "",
     [int]$CheckIntervalSeconds = 60,
     [int]$RestartDelaySeconds = 5,
+    [ValidateSet("Normal", "Minimized", "Maximized")]
+    [string]$LauncherWindowStyle = "",
     [switch]$RunOnce
 )
 
@@ -80,6 +82,19 @@ function Get-Mt5SyncLauncherProcesses {
 
 function Start-Mt5SyncLauncher {
     $launcherPath = Join-Path $RepoRoot "scripts\windows\run_mt5_sync_worker.ps1"
+    $resolvedWindowStyle = $LauncherWindowStyle
+    if (-not $resolvedWindowStyle) {
+        $envWindowStyle = ($env:FXJ_MT5_SYNC_LAUNCHER_WINDOW_STYLE | ForEach-Object { $_.Trim() })
+        if ($envWindowStyle) {
+            $resolvedWindowStyle = $envWindowStyle
+        } else {
+            $resolvedWindowStyle = "Normal"
+        }
+    }
+    if ($resolvedWindowStyle -eq "Hidden") {
+        $resolvedWindowStyle = "Normal"
+        Write-WatchdogLog "Ignored hidden sync launcher window style override; forcing Normal for visible MT5 sync worker." "WARN"
+    }
     $arguments = @(
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
@@ -92,8 +107,8 @@ function Start-Mt5SyncLauncher {
     if (-not (Test-Path $powerShellExe)) {
         $powerShellExe = "powershell.exe"
     }
-    Start-Process -FilePath $powerShellExe -ArgumentList $arguments -WorkingDirectory $RepoRoot -WindowStyle Hidden | Out-Null
-    Write-WatchdogLog "Started MT5 sync worker launcher."
+    Start-Process -FilePath $powerShellExe -ArgumentList $arguments -WorkingDirectory $RepoRoot -WindowStyle $resolvedWindowStyle | Out-Null
+    Write-WatchdogLog "Started MT5 sync worker launcher window_style=$resolvedWindowStyle."
 }
 
 function Ensure-Mt5SyncLauncher {
