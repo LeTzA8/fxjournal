@@ -318,11 +318,30 @@ def test_positions_to_open_trades_maps_fields():
 
 
 def test_sync_mt5_account_skips_when_same_account_is_already_locked(monkeypatch):
+    monkeypatch.setattr(
+        "celery_workers.cache.acquire_mt5_global_lock",
+        lambda *args, **kwargs: True,
+    )
     monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: False)
 
     result = sync_mt5_account.run(123)
 
     assert result == {"skipped": "sync already running"}
+
+
+def test_sync_mt5_account_skips_when_global_mt5_lock_busy(monkeypatch):
+    monkeypatch.setattr(
+        "celery_workers.cache.acquire_mt5_global_lock",
+        lambda *args, **kwargs: False,
+    )
+    monkeypatch.setattr(
+        "celery_workers.cache.peek_mt5_global_lock_holder",
+        lambda: "setup:task-xyz:42",
+    )
+
+    result = sync_mt5_account.run(123)
+
+    assert result == {"skipped": "global MT5 lock busy"}
 
 
 def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):

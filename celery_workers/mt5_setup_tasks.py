@@ -670,6 +670,13 @@ def setup_mt5_terminal(self, mt5_account_id: int):
     Copies base MT5 installation and verifies login via Python API.
     Windows only - fails permanently on other platforms.
     """
+    from celery_workers.cache import (
+        CacheUnavailableError,
+        MT5_GLOBAL_LOCK_SETUP_TTL,
+        acquire_mt5_global_lock,
+        peek_mt5_global_lock_holder,
+        release_mt5_global_lock,
+    )
     from helpers.utils import decrypt_password
     from models import MT5Account, db
 
@@ -684,6 +691,42 @@ def setup_mt5_terminal(self, mt5_account_id: int):
     terminal_exe = None
     was_active = None
     appdata_hash = None
+
+    # Global MT5 lock (shared with mt5_sync workers): block briefly so any
+    # in-flight sync (~300ms–7s) can finish before we touch the runtime. If
+    # the lock stays busy we retry the whole task rather than racing MT5.
+    global_lock_token = f"setup:{task_id or 'no-task'}:{mt5_account_id}"
+    global_lock_acquired = False
+    global_lock_enabled = True
+    try:
+        global_lock_acquired = acquire_mt5_global_lock(
+            global_lock_token,
+            ttl=MT5_GLOBAL_LOCK_SETUP_TTL,
+            wait_seconds=60,
+        )
+    except CacheUnavailableError:
+        global_lock_enabled = False
+        global_lock_acquired = True
+    if not global_lock_acquired:
+        try:
+            current_holder = peek_mt5_global_lock_holder()
+        except CacheUnavailableError:
+            current_holder = None
+        logger.warning(
+            "MT5 setup global lock busy — retrying task_id=%s mt5_account_id=%s holder=%s",
+            task_id,
+            mt5_account_id,
+            current_holder or "unknown",
+        )
+        raise self.retry(
+            countdown=30,
+            exc=RuntimeError("global MT5 lock busy"),
+        )
+    logger.info(
+        "MT5 setup global lock acquired mt5_account_id=%s token=%s",
+        mt5_account_id,
+        global_lock_token,
+    )
 
     try:
         if os.name != "nt":
@@ -1112,6 +1155,17 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                 trade_account_id,
             )
         _retry_with_backoff(self, exc, base_delay=30, max_delay=300)
+    finally:
+        if global_lock_enabled and global_lock_acquired:
+            try:
+                release_mt5_global_lock(global_lock_token)
+                logger.info(
+                    "MT5 setup global lock released mt5_account_id=%s token=%s",
+                    mt5_account_id,
+                    global_lock_token,
+                )
+            except CacheUnavailableError:
+                pass
 
 
 @celery.task(bind=True, max_retries=2, default_retry_delay=10, queue="mt5_setup")
@@ -1135,12 +1189,55 @@ def cleanup_mt5_terminal(
     Otherwise the task can optionally clear `cleanup_marked_at` on the
     still-linked row after reset cleanup finishes.
     """
+    from celery_workers.cache import (
+        CacheUnavailableError,
+        MT5_GLOBAL_LOCK_CLEANUP_TTL,
+        acquire_mt5_global_lock,
+        peek_mt5_global_lock_holder,
+        release_mt5_global_lock,
+    )
+
     task_id = getattr(getattr(self, "request", None), "id", None)
     started_at = datetime.now(timezone.utc)
     finished_at = None
     terminal_dir = os.path.dirname(terminal_path) if str(terminal_path or "").strip() else ""
     if delete_account_row is None:
         delete_account_row = mt5_account_id is not None and not clear_cleanup_mark
+
+    # Global MT5 lock (shared with mt5_sync + mt5_setup): block briefly so
+    # an in-flight sync doesn't run against a terminal we're about to kill.
+    global_lock_token = f"cleanup:{task_id or 'no-task'}:{mt5_account_id or 'na'}"
+    global_lock_acquired = False
+    global_lock_enabled = True
+    try:
+        global_lock_acquired = acquire_mt5_global_lock(
+            global_lock_token,
+            ttl=MT5_GLOBAL_LOCK_CLEANUP_TTL,
+            wait_seconds=45,
+        )
+    except CacheUnavailableError:
+        global_lock_enabled = False
+        global_lock_acquired = True
+    if not global_lock_acquired:
+        try:
+            current_holder = peek_mt5_global_lock_holder()
+        except CacheUnavailableError:
+            current_holder = None
+        logger.warning(
+            "MT5 cleanup global lock busy — retrying task_id=%s mt5_account_id=%s holder=%s",
+            task_id,
+            mt5_account_id,
+            current_holder or "unknown",
+        )
+        raise self.retry(
+            countdown=30,
+            exc=RuntimeError("global MT5 lock busy"),
+        )
+    logger.info(
+        "MT5 cleanup global lock acquired mt5_account_id=%s token=%s",
+        mt5_account_id,
+        global_lock_token,
+    )
 
     try:
         if os.name != "nt":
@@ -1267,3 +1364,14 @@ def cleanup_mt5_terminal(
             mt5_account_id,
         )
         raise
+    finally:
+        if global_lock_enabled and global_lock_acquired:
+            try:
+                release_mt5_global_lock(global_lock_token)
+                logger.info(
+                    "MT5 cleanup global lock released mt5_account_id=%s token=%s",
+                    mt5_account_id,
+                    global_lock_token,
+                )
+            except CacheUnavailableError:
+                pass

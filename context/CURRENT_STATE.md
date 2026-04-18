@@ -2,6 +2,30 @@
 
 Last Updated: 2026-04-18
 
+## MT5 global runtime lock — setup + sync no longer overlap (2026-04-18)
+
+**Problem:** MT5's Python API keeps process-global state on the VM, but the `mt5_setup` and `mt5_sync` workers are separate processes. With sync now every 30s, a sync cycle could fire while setup was bootstrapping/logging in, causing the IPC/auth hiccups that made "delete + re-setup" the workaround.
+
+**Change:** a Redis-backed global lock (`mt5_global_lock`) serializes every MT5 runtime operation on the VM — setup, sync, cleanup, bar fetch — across both queues. Queues remain split (`mt5_setup` / `mt5_sync`, no Celery routing change); the lock only gates concurrent MT5 access.
+
+**Lock design (`celery_workers/cache.py`):**
+- Built on existing token-based `claim_lock` / `release_lock` (Lua-script release, SET NX EX).
+- Key: `mt5_global_lock`. Per-operation TTLs: setup 600s, cleanup 180s, sync 120s, bar fetch 120s.
+- New helpers: `acquire_mt5_global_lock(token, ttl, wait_seconds=0, poll_interval=0.5)`, `release_mt5_global_lock(token)`, `peek_mt5_global_lock_holder()`.
+- Crash safety: Redis TTL auto-recovers the lock if an owner dies; release is token-gated so a late release can never unlock another owner.
+
+**Behavior:**
+- `setup_mt5_terminal` (`celery_workers/mt5_setup_tasks.py`): blocking acquire (wait up to 60s). If still busy → Celery retry in 30s. Released in `finally:` (covers success, retry, `PermanentSetupError`, `TradingPasswordDetectedError`).
+- `cleanup_mt5_terminal`: blocking acquire (wait 45s) then retry. Released in `finally:`. Prevents sync from running against a terminal we're about to kill.
+- `sync_mt5_account` (`celery_workers/mt5_sync_tasks.py`): **non-blocking** acquire — if setup holds the lock, log `"global MT5 lock busy (setup in progress)"` and return `{"skipped": "global MT5 lock busy"}`. Combined with existing `expires=28` on sync tasks and the beat-level queue-depth guard, no backlog builds. Acquired before the existing per-account `mt5_sync_lock:<id>`; released in the same `finally:`.
+- `fetch_trade_bars`: blocking acquire (wait 45s) around the `_MT5_API_SESSION_LOCK` block; if still busy → Celery retry.
+
+**Logging:** every acquire/release logs with the owner token (e.g. `setup:<task_id>:<mt5_account_id>`); busy/skip paths log the current holder via `peek_mt5_global_lock_holder()` so ops can see which task is blocking.
+
+**Why not unify queues:** `mt5_setup` and `mt5_sync` still route to different Windows VM workers (separate processes, separate Task Scheduler entries, separate watchdogs) so a stuck setup can't starve sync of its consumer. The global lock gives mutual exclusion on the MT5 runtime without giving up that isolation, and leaves the existing beat/expires/per-account-lock safeguards untouched.
+
+**Tests:** `tests/test_mt5_sync.py` updated — existing "already locked" test now pins `acquire_mt5_global_lock` to True so it still exercises the per-account lock branch; new `test_sync_mt5_account_skips_when_global_mt5_lock_busy` covers the new skip path.
+
 ## MT5 lifecycle refactor — `ensure_mt5_terminal_ready` (2026-04-18)
 
 **Problem:** MT5 IPC (`mt5.initialize()`) fails unless the terminal is opened properly. Headless-style launches and MT5's auto-launch are unreliable. Manual double-clicking works because the terminal fully initializes.

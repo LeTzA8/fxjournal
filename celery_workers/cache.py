@@ -4,6 +4,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
+import time
 from datetime import datetime, timezone
 
 from redis import Redis
@@ -14,6 +15,15 @@ AI_STATUS_QUEUED_TTL = 900
 AI_STATUS_RUNNING_TTL = 900
 AI_STATUS_FAILED_TTL = 600
 WORKER_MONITOR_TTL = 60 * 60 * 24
+
+# Shared across MT5 setup + sync workers on the VM so only one MT5 runtime
+# operation (bootstrap, login, sync, bar fetch, terminal cleanup) runs at a
+# time. Token-based release + TTL means a crashed owner can't brick access.
+MT5_GLOBAL_LOCK_KEY = "mt5_global_lock"
+MT5_GLOBAL_LOCK_SETUP_TTL = 600   # 10 min: copytree + bootstrap + login + verify
+MT5_GLOBAL_LOCK_SYNC_TTL = 120    # 2 min: one sync cycle
+MT5_GLOBAL_LOCK_CLEANUP_TTL = 180  # 3 min: kill terminal + rmtree
+MT5_GLOBAL_LOCK_BAR_FETCH_TTL = 120
 
 _redis_client = None
 _LOCK_RELEASE_SCRIPT = """
@@ -285,6 +295,45 @@ def release_lock(lock_key, token):
             str(token),
         )
     )
+
+
+def peek_lock_holder(lock_key):
+    """Return the current token stored under *lock_key* (or None)."""
+    return _run_redis(lambda: _client().get(str(lock_key)))
+
+
+def acquire_mt5_global_lock(token, ttl, *, wait_seconds=0.0, poll_interval=0.5):
+    """Acquire the shared MT5 runtime lock used across setup + sync workers.
+
+    *token* identifies the owner (e.g. "setup:<task_id>") — release must use
+    the same value. *wait_seconds=0* is non-blocking (single attempt). TTL is
+    the safety expiry so a crashed owner can't brick the lock.
+
+    Returns True on success; False if the lock stayed busy for the full wait.
+    Raises CacheUnavailableError if Redis is down — callers decide whether to
+    treat that as fatal or degrade to unlocked operation.
+    """
+    if claim_lock(MT5_GLOBAL_LOCK_KEY, token, ttl):
+        return True
+    if wait_seconds <= 0:
+        return False
+    deadline = time.monotonic() + float(wait_seconds)
+    sleep_for = max(float(poll_interval), 0.05)
+    while time.monotonic() < deadline:
+        time.sleep(sleep_for)
+        if claim_lock(MT5_GLOBAL_LOCK_KEY, token, ttl):
+            return True
+    return False
+
+
+def release_mt5_global_lock(token):
+    """Release the shared MT5 runtime lock iff *token* still owns it."""
+    release_lock(MT5_GLOBAL_LOCK_KEY, token)
+
+
+def peek_mt5_global_lock_holder():
+    """Return the token of the current MT5 global lock holder (or None)."""
+    return peek_lock_holder(MT5_GLOBAL_LOCK_KEY)
 
 
 def get_queue_depth(queue_name):

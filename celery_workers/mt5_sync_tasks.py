@@ -818,8 +818,12 @@ def sync_mt5_account(
 ):
     from celery_workers.cache import (
         CacheUnavailableError,
+        MT5_GLOBAL_LOCK_SYNC_TTL,
+        acquire_mt5_global_lock,
         claim_lock,
+        peek_mt5_global_lock_holder,
         release_lock,
+        release_mt5_global_lock,
         set_worker_state,
     )
 
@@ -827,6 +831,9 @@ def sync_mt5_account(
     lock_token = uuid.uuid4().hex
     lock_acquired = False
     lock_enabled = True
+    global_lock_token = f"sync:{task_id or 'no-task'}:{mt5_account_id}:{lock_token[:8]}"
+    global_lock_acquired = False
+    global_lock_enabled = True
     user_id = None
     trade_account_id = None
     account_suffix = "unknown"
@@ -863,6 +870,42 @@ def sync_mt5_account(
     history_stale = False
     mt5_soft_reconnect_done = False
     try:
+        # Global MT5 lock (shared with mt5_setup workers): non-blocking. If
+        # setup is running on the VM we skip this sync cycle cleanly rather
+        # than racing the MT5 runtime. Redis-side TTL recovers stale locks.
+        try:
+            global_lock_acquired = acquire_mt5_global_lock(
+                global_lock_token,
+                ttl=MT5_GLOBAL_LOCK_SYNC_TTL,
+                wait_seconds=0,
+            )
+        except CacheUnavailableError:
+            global_lock_enabled = False
+            global_lock_acquired = True
+
+        if not global_lock_acquired:
+            try:
+                current_holder = peek_mt5_global_lock_holder()
+            except CacheUnavailableError:
+                current_holder = None
+            log_ascii_table(
+                logger,
+                "MT5 Sync Skipped",
+                [
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("Reason", "global MT5 lock busy (setup in progress)"),
+                    ("Lock Holder", current_holder or "unknown"),
+                ],
+            )
+            return {"skipped": "global MT5 lock busy"}
+
+        logger.info(
+            "MT5 sync global lock acquired mt5_account_id=%s token=%s",
+            mt5_account_id,
+            global_lock_token,
+        )
+
         try:
             lock_acquired = claim_lock(_sync_lock_key(mt5_account_id), lock_token, ttl=120)
         except CacheUnavailableError:
@@ -1477,6 +1520,16 @@ def sync_mt5_account(
                 release_lock(_sync_lock_key(mt5_account_id), lock_token)
             except CacheUnavailableError:
                 pass
+        if global_lock_enabled and global_lock_acquired:
+            try:
+                release_mt5_global_lock(global_lock_token)
+                logger.info(
+                    "MT5 sync global lock released mt5_account_id=%s token=%s",
+                    mt5_account_id,
+                    global_lock_token,
+                )
+            except CacheUnavailableError:
+                pass
 
 
 @celery.task(
@@ -1579,84 +1632,138 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
 
     bars = []
     mt5_server_delta_minutes = 0
-    with _MT5_API_SESSION_LOCK:
-        from celery_workers.mt5_setup_tasks import ensure_mt5_terminal_ready  # noqa: PLC0415
 
-        ready_result = ensure_mt5_terminal_ready(
-            mt5,
-            terminal_path=terminal_path,
-            login=int(account_number),
-            password=investor_password,
-            server=server,
-            mt5_account_id=mt5_account_id,
-        )
-        if not ready_result["success"]:
-            raise RuntimeError(
-                f"MT5 terminal not ready for bar fetch: {ready_result['error']}"
-            )
+    # Global MT5 lock (shared with mt5_setup workers): block briefly — if
+    # setup holds it we retry this bar fetch rather than race the runtime.
+    from celery_workers.cache import (
+        CacheUnavailableError,
+        MT5_GLOBAL_LOCK_BAR_FETCH_TTL,
+        acquire_mt5_global_lock,
+        peek_mt5_global_lock_holder,
+        release_mt5_global_lock,
+    )
+
+    bar_lock_token = f"bars:{task_id or 'no-task'}:{mt5_account_id}:{trade_id}:{uuid.uuid4().hex[:8]}"
+    bar_lock_acquired = False
+    bar_lock_enabled = True
+    try:
         try:
-
-            mt5_server_delta_minutes = _resolve_mt5_server_offset_minutes(
-                mt5, mt5_account_id, preferred_symbol=mt5_symbol_names
+            bar_lock_acquired = acquire_mt5_global_lock(
+                bar_lock_token,
+                ttl=MT5_GLOBAL_LOCK_BAR_FETCH_TTL,
+                wait_seconds=45,
             )
-            start_dt_shifted = _shift_datetime_by_minutes(start_dt, minutes=mt5_server_delta_minutes)
-            end_dt_shifted = _shift_datetime_by_minutes(end_dt, minutes=mt5_server_delta_minutes)
-            tf_constant = mt5_timeframe_constant("M5", mt5)
+        except CacheUnavailableError:
+            bar_lock_enabled = False
+            bar_lock_acquired = True
+        if not bar_lock_acquired:
+            try:
+                current_holder = peek_mt5_global_lock_holder()
+            except CacheUnavailableError:
+                current_holder = None
+            logger.info(
+                "Bar fetch global MT5 lock busy — retrying task_id=%s mt5_account_id=%s trade_id=%s holder=%s",
+                task_id,
+                mt5_account_id,
+                trade_id,
+                current_holder or "unknown",
+            )
+            raise self.retry(countdown=60, exc=RuntimeError("global MT5 lock busy"))
+        logger.info(
+            "Bar fetch global lock acquired mt5_account_id=%s trade_id=%s token=%s",
+            mt5_account_id,
+            trade_id,
+            bar_lock_token,
+        )
+        with _MT5_API_SESSION_LOCK:
+            from celery_workers.mt5_setup_tasks import ensure_mt5_terminal_ready  # noqa: PLC0415
 
-            def _first_rates(window_from, window_to):
-                for sym in mt5_symbol_names:
-                    chunk = mt5.copy_rates_range(sym, tf_constant, window_from, window_to)
-                    if chunk is not None and len(chunk) > 0:
-                        return sym, chunk
-                return None, None
+            ready_result = ensure_mt5_terminal_ready(
+                mt5,
+                terminal_path=terminal_path,
+                login=int(account_number),
+                password=investor_password,
+                server=server,
+                mt5_account_id=mt5_account_id,
+            )
+            if not ready_result["success"]:
+                raise RuntimeError(
+                    f"MT5 terminal not ready for bar fetch: {ready_result['error']}"
+                )
+            try:
+                mt5_server_delta_minutes = _resolve_mt5_server_offset_minutes(
+                    mt5, mt5_account_id, preferred_symbol=mt5_symbol_names
+                )
+                start_dt_shifted = _shift_datetime_by_minutes(start_dt, minutes=mt5_server_delta_minutes)
+                end_dt_shifted = _shift_datetime_by_minutes(end_dt, minutes=mt5_server_delta_minutes)
+                tf_constant = mt5_timeframe_constant("M5", mt5)
 
-            bar_normalization_offset = 0
-            fetch_strategy = "none"
-            sym_used, raw_bars = _first_rates(start_dt_shifted, end_dt_shifted)
-            if raw_bars is not None:
-                symbol = sym_used
-                bar_normalization_offset = mt5_server_delta_minutes
-                fetch_strategy = "shifted"
-            else:
-                # Broker/API mismatch: some servers return empty for shifted windows but
-                # accept UTC-aware boundaries (MetaQuotes Python docs). Retry without shift.
-                sym_used, raw_bars = _first_rates(start_dt, end_dt)
+                def _first_rates(window_from, window_to):
+                    for sym in mt5_symbol_names:
+                        chunk = mt5.copy_rates_range(sym, tf_constant, window_from, window_to)
+                        if chunk is not None and len(chunk) > 0:
+                            return sym, chunk
+                    return None, None
+
+                bar_normalization_offset = 0
+                fetch_strategy = "none"
+                sym_used, raw_bars = _first_rates(start_dt_shifted, end_dt_shifted)
                 if raw_bars is not None:
                     symbol = sym_used
-                    bar_normalization_offset = 0
-                    fetch_strategy = "utc_fallback"
+                    bar_normalization_offset = mt5_server_delta_minutes
+                    fetch_strategy = "shifted"
+                else:
+                    # Broker/API mismatch: some servers return empty for shifted windows but
+                    # accept UTC-aware boundaries (MetaQuotes Python docs). Retry without shift.
+                    sym_used, raw_bars = _first_rates(start_dt, end_dt)
+                    if raw_bars is not None:
+                        symbol = sym_used
+                        bar_normalization_offset = 0
+                        fetch_strategy = "utc_fallback"
 
-            if raw_bars is None:
-                logger.warning(
-                    "Bar fetch no rates mt5_account_id=%s trade_id=%s trade_symbol=%s "
-                    "candidates=%s delta_min=%s window_shifted=%s..%s window_utc=%s..%s last_error=%s",
+                if raw_bars is None:
+                    logger.warning(
+                        "Bar fetch no rates mt5_account_id=%s trade_id=%s trade_symbol=%s "
+                        "candidates=%s delta_min=%s window_shifted=%s..%s window_utc=%s..%s last_error=%s",
+                        mt5_account_id,
+                        trade_id,
+                        trade.symbol,
+                        list(mt5_symbol_names),
+                        mt5_server_delta_minutes,
+                        start_dt_shifted.isoformat(),
+                        end_dt_shifted.isoformat(),
+                        start_dt.isoformat(),
+                        end_dt.isoformat(),
+                        mt5.last_error(),
+                    )
+                else:
+                    for bar in raw_bars:
+                        bar_open_utc = _adjust_mt5_unix_epoch(
+                            int(bar["time"]),
+                            offset_minutes=bar_normalization_offset,
+                        )
+                        bars.append({
+                            "time": int(bar_open_utc),
+                            "open": float(bar["open"]),
+                            "high": float(bar["high"]),
+                            "low": float(bar["low"]),
+                            "close": float(bar["close"]),
+                            "tick_volume": int(bar["tick_volume"]) if bar["tick_volume"] is not None else None,
+                        })
+            finally:
+                mt5.shutdown()
+    finally:
+        if bar_lock_enabled and bar_lock_acquired:
+            try:
+                release_mt5_global_lock(bar_lock_token)
+                logger.info(
+                    "Bar fetch global lock released mt5_account_id=%s trade_id=%s token=%s",
                     mt5_account_id,
                     trade_id,
-                    trade.symbol,
-                    list(mt5_symbol_names),
-                    mt5_server_delta_minutes,
-                    start_dt_shifted.isoformat(),
-                    end_dt_shifted.isoformat(),
-                    start_dt.isoformat(),
-                    end_dt.isoformat(),
-                    mt5.last_error(),
+                    bar_lock_token,
                 )
-            else:
-                for bar in raw_bars:
-                    bar_open_utc = _adjust_mt5_unix_epoch(
-                        int(bar["time"]),
-                        offset_minutes=bar_normalization_offset,
-                    )
-                    bars.append({
-                        "time": int(bar_open_utc),
-                        "open": float(bar["open"]),
-                        "high": float(bar["high"]),
-                        "low": float(bar["low"]),
-                        "close": float(bar["close"]),
-                        "tick_volume": int(bar["tick_volume"]) if bar["tick_volume"] is not None else None,
-                    })
-        finally:
-            mt5.shutdown()
+            except CacheUnavailableError:
+                pass
 
     fetch_finished_at = datetime.now(timezone.utc)
     log_ascii_table(
