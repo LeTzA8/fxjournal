@@ -621,6 +621,7 @@ class MT5Account(db.Model):
     appdata_hash = db.Column(db.String(100), nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
     last_synced_at = db.Column(db.DateTime, nullable=True)
+    last_full_history_sync_at = db.Column(db.DateTime, nullable=True)
     vm_id = db.Column(db.String(64), nullable=True)
     cleanup_marked_at = db.Column(db.DateTime, nullable=True, index=True)
     archived_at = db.Column(db.DateTime, nullable=True, index=True)

@@ -404,7 +404,6 @@ def sync_mt5_account(
     trade_account_id = None
     account_suffix = "unknown"
     trade_account_name = None
-    is_first_sync = None
     from_date = None
     to_date = None
     mt5_from_date = None
@@ -420,7 +419,7 @@ def sync_mt5_account(
     applied_offset_minutes = 0
     sync_started_at = None
     sync_finished_at = None
-    sync_mode = "full_history" if full_history else "rolling_7d"
+    sync_mode = "rolling_7d"
     trigger_label = str(trigger_source or "unknown").strip() or "unknown"
     try:
         try:
@@ -485,7 +484,8 @@ def sync_mt5_account(
         account_suffix = _mask_account_number_for_log(account_number)
         server = account.server
         terminal_path = account.terminal_path
-        is_first_sync = account.last_synced_at is None
+        used_full_history_window = full_history or account.last_full_history_sync_at is None
+        sync_mode = "full_history" if used_full_history_window else "rolling_7d"
         sync_started_at = datetime.now(timezone.utc)
 
         init_kwargs = {}
@@ -514,7 +514,7 @@ def sync_mt5_account(
                         f"Wrong MT5 account logged in during sync: expected {expected_login}, got {actual_login}"
                     )
 
-                if full_history or is_first_sync:
+                if used_full_history_window:
                     from_date = datetime(2000, 1, 1, tzinfo=timezone.utc)
                 else:
                     from_date = datetime.now(timezone.utc) - timedelta(days=7)
@@ -611,6 +611,7 @@ def sync_mt5_account(
             "applied_time_offset_minutes": applied_offset_minutes,
             "include_skip_reasons": True,
             "include_skip_debug": True,
+            "history_scope": "full" if used_full_history_window else "rolling",
         }
         if recalibrate_trade_timestamps:
             sync_payload["refresh_closed_trade_timestamps"] = True

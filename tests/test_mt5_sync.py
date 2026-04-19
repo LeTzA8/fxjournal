@@ -1003,6 +1003,70 @@ def test_sync_mt5_account_uses_utc_history_window_without_server_shift(app_ctx, 
     assert captured_from_date < captured_to_date
 
 
+def test_sync_mt5_account_posts_history_scope_full_until_full_history_stamped(app_ctx, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-history-scope-user",
+        email="mt5-history-scope@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="61616161",
+    )
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+
+    def _empty_history(from_date, to_date):
+        return []
+
+    fake_mt5 = SimpleNamespace(
+        DEAL_ENTRY_IN=0,
+        DEAL_ENTRY_OUT=1,
+        DEAL_ENTRY_INOUT=2,
+        DEAL_ENTRY_OUT_BY=3,
+        DEAL_TYPE_BUY=0,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
+        history_deals_get=_empty_history,
+        positions_get=lambda: [],
+        symbol_info_tick=lambda symbol: None,
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"saved": 0, "updated": 0, "skipped": 0, "errors": 0}
+
+    captured = {}
+
+    def capture_post(url, json=None, **kwargs):
+        captured["json"] = json
+        return DummyResponse()
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", capture_post)
+
+    sync_mt5_account.run(mt5_account.id)
+    assert captured["json"].get("history_scope") == "full"
+
+    mt5_account.last_full_history_sync_at = datetime(2026, 1, 1, 12, 0, 0)
+    db.session.commit()
+
+    sync_mt5_account.run(mt5_account.id)
+    assert captured["json"].get("history_scope") == "rolling"
+
+
 def test_sync_mt5_account_shifts_history_window_into_broker_time(app_ctx, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
@@ -1413,8 +1477,8 @@ def test_internal_mt5_sync_preserves_account_size_without_broker_fields(app_ctx,
     assert ta.account_size == pytest.approx(777.0)
 
 
-def test_internal_mt5_sync_empty_payload_keeps_last_synced_null_until_rows_arrive(app_ctx, client, monkeypatch):
-    """First successful API call with zero trade rows must not flip last_synced (full-history retry)."""
+def test_internal_mt5_sync_empty_payload_stamps_last_synced_without_history_scope(app_ctx, client, monkeypatch):
+    """Successful sync always stamps last_synced_at; full-history marker requires explicit history_scope."""
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
     monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
@@ -1433,7 +1497,33 @@ def test_internal_mt5_sync_empty_payload_keeps_last_synced_null_until_rows_arriv
     )
     assert empty.status_code == 200
     db.session.expire_all()
-    assert db.session.get(MT5Account, mt5_account.id).last_synced_at is None
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert refreshed.last_synced_at is not None
+    assert refreshed.last_full_history_sync_at is None
+
+
+def test_internal_mt5_sync_history_scope_full_stamps_full_history_marker(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="sync-full-scope",
+        email="sync-full-scope@example.com",
+    )
+    mt5_account = _create_mt5_account(user_id=user.id, trade_account_id=trade_account.id)
+
+    resp = client.post(
+        "/api/internal/mt5/sync",
+        json={"mt5_account_id": mt5_account.id, "trades": [], "history_scope": "full"},
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+    assert resp.status_code == 200
+    db.session.expire_all()
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert refreshed.last_synced_at is not None
+    assert refreshed.last_full_history_sync_at is not None
+    assert refreshed.last_full_history_sync_at == refreshed.last_synced_at
 
 
 def test_internal_mt5_sync_updates_vm_id_on_success(app_ctx, client, monkeypatch):

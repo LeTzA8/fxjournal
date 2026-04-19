@@ -158,6 +158,8 @@ def sync_mt5_trades():
     skip_debug_mode = _resolve_skip_debug_mode(payload)
     refresh_trade_timestamps = bool(payload.get("refresh_closed_trade_timestamps"))
     sync_vm_id = _normalize_vm_id(payload.get("vm_id"))
+    history_scope = str(payload.get("history_scope") or "").strip().lower()
+    stamp_full_history = history_scope == "full"
     try:
         mt5_account_id = int(payload.get("mt5_account_id"))
     except (TypeError, ValueError):
@@ -512,11 +514,11 @@ def sync_mt5_trades():
 
         if insert_batch:
             db.session.add_all(insert_batch)
-        # If MT5 returned zero trade rows on the account's first-ever sync, do not
-        # stamp last_synced_at — otherwise the worker switches to a short rolling
-        # window and never retries the full-history pull.
-        if not (account.last_synced_at is None and len(normalized_rows) == 0):
-            account.last_synced_at = utcnow_naive()
+        stamp = utcnow_naive()
+        account.last_synced_at = stamp
+        if stamp_full_history:
+            account.last_full_history_sync_at = stamp
+        if sync_vm_id is not None:
             account.vm_id = sync_vm_id
         # Reaching this point means MT5 connected and the sync HTTP call succeeded.
         # Clear any stale "failed" connection state so the dashboard/admin don't show

@@ -524,7 +524,8 @@
                                 <th>Trade Account</th>
                                 <th>MT5</th>
                                 <th>Status</th>
-                                <th>Last Synced</th>
+                                <th>Last synced</th>
+                                <th>Last full history</th>
                                 <th class="actions-cell">Sync tools</th>
                             </tr>
                         </thead>
@@ -582,6 +583,7 @@
                                     </span>
                                 </td>
                                 <td>{{ account.last_synced_at.strftime("%Y-%m-%d %H:%M UTC") if account.last_synced_at else "Never" }}</td>
+                                <td>{{ account.last_full_history_sync_at.strftime("%Y-%m-%d %H:%M UTC") if account.last_full_history_sync_at else "Never" }}</td>
                                 <td class="actions-cell">
                                     <div class="inline-actions">
                                         <form action="{{ url_for('admin_mt5_reactivate_account', mt5_account_id=account.id) if account.is_archived else url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">

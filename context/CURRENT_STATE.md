@@ -1,6 +1,13 @@
 # CURRENT_STATE
 
-Last Updated: 2026-04-18
+Last Updated: 2026-04-19
+
+## MT5 sync timestamps — last sync vs full history (2026-04-19)
+
+- `MT5Account.last_synced_at` is stamped on every **successful** internal `/api/internal/mt5/sync` completion (including zero trade rows).
+- New nullable column `last_full_history_sync_at` is stamped only when the worker reports `history_scope: full` (initial backfill until first full run completes, every manual `full_history` sync, or any beat run while the marker is still null).
+- Celery `sync_mt5_account` chooses the wide history window when `last_full_history_sync_at` is null **or** `full_history=True`, and sends the matching `history_scope` for the API to record.
+- Admin MT5 table shows both columns.
 
 ## MT5 pipeline rollback — setup + sync restored to Apr 11 baseline (2026-04-18)
 
