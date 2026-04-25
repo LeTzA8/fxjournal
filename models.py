@@ -676,6 +676,27 @@ class MT5SyncVMState(db.Model):
     updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
 
 
+class MT5BrokerServerOffset(db.Model):
+    __tablename__ = "mt5_broker_server_offset"
+    __table_args__ = (
+        db.Index("ix_mt5_broker_server_offset_server_key", "server_key", unique=True),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    server_name = db.Column(db.String(100), nullable=False)
+    server_key = db.Column(db.String(100), nullable=False)
+    offset_minutes = db.Column(db.Integer, nullable=False)
+    probe_symbol = db.Column(db.String(64), nullable=True)
+    probed_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+    )
+
+
 class MT5AccessRequest(db.Model):
     __tablename__ = "mt5_access_request"
     __table_args__ = (

@@ -293,8 +293,10 @@ def test_seed_market_watch_symbols_prefers_crypto_before_fallback():
     fake_mt5 = SeedRecordingMt5Module(
         {
             "BTCUSD": True,
+            "BTCUSD.m": True,
             "BTCUSDT": False,
             "XBTUSD": True,
+            "ETHUSD.m": True,
             "XAUUSD": True,
             "EURUSD": True,
         }
@@ -308,16 +310,18 @@ def test_seed_market_watch_symbols_prefers_crypto_before_fallback():
         server="Broker-Server",
     )
 
-    assert result["selected_symbols"] == ["BTCUSD", "XBTUSD"]
+    assert result["selected_symbols"] == ["BTCUSD", "BTCUSD.m", "XBTUSD", "ETHUSD.m"]
     assert result["used_fallback"] is False
-    assert fake_mt5.events == [
+    selected_attempts = [event[1] for event in fake_mt5.events if event[0] == "symbol_select"]
+    assert selected_attempts[0:3] == ["BTCUSD", "BTCUSD.m", "BTCUSD.r"]
+    assert "BTCUSD.m" in selected_attempts
+    assert "ETHUSD.m" in selected_attempts
+    assert "XAUUSD" not in selected_attempts
+    assert fake_mt5.events[0:2] == [
         ("initialize", r"C:\MT5Terminals\seed\terminal64.exe"),
         ("login", 12345678, "Broker-Server"),
-        ("symbol_select", "BTCUSD", True),
-        ("symbol_select", "BTCUSDT", True),
-        ("symbol_select", "XBTUSD", True),
-        ("shutdown",),
     ]
+    assert fake_mt5.events[-1] == ("shutdown",)
 
 
 def test_seed_market_watch_symbols_falls_back_when_no_crypto_symbol_exists():
@@ -341,13 +345,14 @@ def test_seed_market_watch_symbols_falls_back_when_no_crypto_symbol_exists():
 
     assert result["selected_symbols"] == ["XAUUSD", "EURUSD"]
     assert result["used_fallback"] is True
-    assert fake_mt5.events == [
+    selected_attempts = [event[1] for event in fake_mt5.events if event[0] == "symbol_select"]
+    assert selected_attempts[0:3] == ["BTCUSD", "BTCUSD.m", "BTCUSD.r"]
+    assert "ETHUSD" in selected_attempts
+    xau_index = selected_attempts.index("XAUUSD")
+    assert selected_attempts[xau_index:xau_index + 3] == ["XAUUSD", "XAUUSD.m", "XAUUSD.r"]
+    assert "EURUSD" in selected_attempts[xau_index:]
+    assert fake_mt5.events[0:2] == [
         ("initialize", r"C:\MT5Terminals\seed\terminal64.exe"),
         ("login", 12345678, "Broker-Server"),
-        ("symbol_select", "BTCUSD", True),
-        ("symbol_select", "BTCUSDT", True),
-        ("symbol_select", "XBTUSD", True),
-        ("symbol_select", "XAUUSD", True),
-        ("symbol_select", "EURUSD", True),
-        ("shutdown",),
     ]
+    assert fake_mt5.events[-1] == ("shutdown",)

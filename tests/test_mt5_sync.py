@@ -10,6 +10,7 @@ from cryptography.fernet import Fernet
 
 from celery_workers.mt5_sync_tasks import (
     _adjust_mt5_unix_epoch,
+    _resolve_mt5_server_offset_minutes,
     aggregate_deals_to_trades,
     fetch_trade_bars,
     _positions_to_open_trades,
@@ -18,7 +19,7 @@ from celery_workers.mt5_sync_tasks import (
 from celery_app import celery
 from helpers.core import delete_users_with_related_data
 from helpers.utils import decrypt_password, encrypt_password
-from models import MT5Account, Trade, TradeAccount, TradeBars, User, db
+from models import MT5Account, MT5BrokerServerOffset, Trade, TradeAccount, TradeBars, User, db
 
 
 def _create_user_with_account(*, username, email, account_name="Main Account"):
@@ -123,6 +124,98 @@ def test_mt5_bar_epoch_adjustment_matches_deal_timestamp_normalization():
     raw = 1_717_200_000
     assert int(_adjust_mt5_unix_epoch(raw, offset_minutes=120)) == raw - 7200
     assert int(_adjust_mt5_unix_epoch(raw, offset_minutes=-60)) == raw + 3600
+
+
+def test_mt5_server_offset_probe_seeds_crypto_alias_when_initial_probe_has_no_tick(monkeypatch):
+    monkeypatch.setattr(
+        "celery_workers.cache._client",
+        lambda: (_ for _ in ()).throw(RuntimeError("cache unavailable")),
+    )
+    broker_offset_minutes = 120
+    selected_symbols = []
+
+    def _symbol_select(symbol, select):
+        selected_symbols.append(symbol)
+        return symbol == "ETHUSD.m"
+
+    def _symbol_info_tick(symbol):
+        if symbol == "ETHUSD.m" and symbol in selected_symbols:
+            return SimpleNamespace(
+                time=int(datetime.now(timezone.utc).timestamp()) + (broker_offset_minutes * 60)
+            )
+        return None
+
+    fake_mt5 = SimpleNamespace(
+        symbol_select=_symbol_select,
+        symbol_info_tick=_symbol_info_tick,
+    )
+
+    offset_minutes = _resolve_mt5_server_offset_minutes(fake_mt5, 123)
+
+    assert offset_minutes == broker_offset_minutes
+    assert selected_symbols[0:3] == ["BTCUSD", "BTCUSD.m", "BTCUSD.r"]
+    assert "ETHUSD.m" in selected_symbols
+
+
+def test_mt5_server_offset_probe_stores_live_offset_by_server_name(app_ctx, monkeypatch):
+    monkeypatch.setattr(
+        "celery_workers.cache._client",
+        lambda: (_ for _ in ()).throw(RuntimeError("cache unavailable")),
+    )
+    broker_offset_minutes = 180
+    fake_mt5 = SimpleNamespace(
+        symbol_info_tick=lambda symbol: SimpleNamespace(
+            time=int(datetime.now(timezone.utc).timestamp()) + (broker_offset_minutes * 60)
+        ),
+        symbol_select=lambda *_args, **_kwargs: False,
+    )
+
+    offset_minutes = _resolve_mt5_server_offset_minutes(
+        fake_mt5,
+        123,
+        preferred_symbol="BTCUSD",
+        server_name="Broker-Live",
+    )
+
+    stored = MT5BrokerServerOffset.query.filter_by(server_key="broker-live").one()
+    assert offset_minutes == broker_offset_minutes
+    assert stored.server_name == "Broker-Live"
+    assert stored.offset_minutes == broker_offset_minutes
+    assert stored.probe_symbol == "BTCUSD"
+    assert stored.probed_at is not None
+
+
+def test_mt5_server_offset_uses_db_offset_when_live_probe_unavailable(app_ctx, monkeypatch):
+    monkeypatch.setattr(
+        "celery_workers.cache._client",
+        lambda: (_ for _ in ()).throw(RuntimeError("cache unavailable")),
+    )
+    db.session.add(
+        MT5BrokerServerOffset(
+            server_name="Broker-Down",
+            server_key="broker-down",
+            offset_minutes=120,
+            probe_symbol="BTCUSD.m",
+            probed_at=datetime(2026, 4, 25, 12, 0, 0),
+        )
+    )
+    db.session.commit()
+
+    selected_symbols = []
+    fake_mt5 = SimpleNamespace(
+        symbol_info_tick=lambda symbol: None,
+        symbol_select=lambda symbol, select: selected_symbols.append(symbol) or False,
+    )
+
+    offset_minutes = _resolve_mt5_server_offset_minutes(
+        fake_mt5,
+        123,
+        preferred_symbol="BTCUSD",
+        server_name="broker-down",
+    )
+
+    assert offset_minutes == 120
+    assert selected_symbols[0:3] == ["BTCUSD", "BTCUSD.m", "BTCUSD.r"]
 
 
 def test_aggregate_deals_to_trades_closes_position_with_multiple_exit_deals():

@@ -2,6 +2,13 @@
 
 Last Updated: 2026-04-25
 
+## MT5 broker-time probe seeds 24/7 aliases on demand (2026-04-25)
+
+- Shared MT5 Market Watch probe candidates now live in `celery_workers/mt5_market_watch.py`, covering expanded BTC/XBT/ETH aliases with common broker suffixes (`.m`, `.r`, `.raw`, `.pro`, `.ecn`, `micro`, etc.) plus slash forms like `BTC/USD` and `ETH/USD`.
+- Setup still clears inherited Market Watch state and seeds crypto-first symbols before fallback symbols, but now uses the expanded shared alias set.
+- Sync and bar fetch now retry broker-time offset probing after best-effort selecting the first available 24/7 crypto alias into Market Watch when the initial probe finds no fresh tick.
+- Last known broker-server UTC offsets are persisted by normalized MT5 server name in `mt5_broker_server_offset` (`20260425_0050`). A fresh live probe wins and updates the DB; if the broker/feed is down, sync/bar fetch falls back to the DB server offset before the older per-account Redis cache and only then `0`. This protects weekend/off-hours and downtime timestamp correction for history windows and bar backfills. (`models.py`, migration, `celery_workers/mt5_market_watch.py`, `celery_workers/mt5_setup_tasks.py`, `celery_workers/mt5_sync_tasks.py`, MT5 tests)
+
 ## MT5 priority queue + beat starvation guard restored (2026-04-25)
 
 - Admin/manual MT5 sync actions now publish to `mt5_priority` instead of the shared `mt5_sync` beat lane, specifically manual **Trigger Sync**, trade-time recalibration, and **Backfill Bars** dispatches. The VM sync worker now consumes `mt5_priority,mt5_sync` so operator-triggered work is picked first.

@@ -12,6 +12,7 @@ import requests
 
 from celery_app import celery
 from celery_workers.logging_utils import duration_label, log_ascii_table
+from celery_workers.mt5_market_watch import MT5_MARKET_WATCH_CRYPTO_SEED_SYMBOLS
 from trading import MT5_DEFAULT_SOURCE_TIMEZONE_NAME
 
 logger = logging.getLogger(__name__)
@@ -267,33 +268,10 @@ def _sync_lock_key(mt5_account_id):
     return f"mt5_sync_lock:{mt5_account_id}"
 
 
-_PROBE_ALWAYS_ON_SYMBOLS = [
-    "BTCUSD",
-    "BTCUSDT",
-    "XBTUSD",
-    "BTCUSD.r",
-    "BTC/USD",
-]
+_PROBE_ALWAYS_ON_SYMBOLS = list(MT5_MARKET_WATCH_CRYPTO_SEED_SYMBOLS)
 
 
-def _probe_mt5_server_delta_minutes(mt5, *, preferred_symbol=None):
-    """
-    Estimate MT5 server clock drift relative to UTC using latest tick timestamp.
-    Returns minute delta where positive means MT5 clock appears ahead of UTC.
-
-    Symbol priority:
-      1. preferred_symbol candidates (trade-specific, e.g. XAUUSD)
-      2. EURUSD (liquid FX baseline; stale on weekends)
-      3. Common BTC/USD names (24/7 crypto — reliable during forex market closure)
-
-    The 6-hour sanity guard filters ticks that are too stale to give a useful
-    reading regardless of which symbol supplied them. The Redis cache in
-    _resolve_mt5_server_offset_minutes is a final safety net for brokers that
-    offer no crypto instruments at all.
-    """
-    symbol_info_tick = getattr(mt5, "symbol_info_tick", None)
-    if not callable(symbol_info_tick):
-        return 0
+def _mt5_probe_symbol_candidates(*, preferred_symbol=None):
     symbol_candidates = []
     if preferred_symbol is not None:
         if isinstance(preferred_symbol, (list, tuple)):
@@ -309,6 +287,30 @@ def _probe_mt5_server_delta_minutes(mt5, *, preferred_symbol=None):
     for sym in _PROBE_ALWAYS_ON_SYMBOLS:
         if sym not in symbol_candidates:
             symbol_candidates.append(sym)
+    return symbol_candidates
+
+
+def _probe_mt5_server_delta_result(mt5, *, preferred_symbol=None, symbol_candidates=None):
+    """
+    Estimate MT5 server clock drift relative to UTC using latest tick timestamp.
+    Returns minute delta where positive means MT5 clock appears ahead of UTC,
+    plus the symbol that supplied a fresh tick.
+
+    Symbol priority:
+      1. preferred_symbol candidates (trade-specific, e.g. XAUUSD)
+      2. EURUSD (liquid FX baseline; stale on weekends)
+      3. Common 24/7 crypto aliases — reliable during forex market closure
+
+    The 6-hour sanity guard filters ticks that are too stale to give a useful
+    reading regardless of which symbol supplied them. The Redis cache in
+    _resolve_mt5_server_offset_minutes is a final safety net for brokers that
+    offer no crypto instruments at all.
+    """
+    symbol_info_tick = getattr(mt5, "symbol_info_tick", None)
+    if not callable(symbol_info_tick):
+        return {"offset_minutes": 0, "symbol": None}
+    if symbol_candidates is None:
+        symbol_candidates = _mt5_probe_symbol_candidates(preferred_symbol=preferred_symbol)
     for symbol in symbol_candidates:
         if not symbol:
             continue
@@ -320,15 +322,94 @@ def _probe_mt5_server_delta_minutes(mt5, *, preferred_symbol=None):
         delta_seconds = int(tick_time) - now_utc
         if abs(delta_seconds) > 6 * 3600:
             continue
-        return int(round(delta_seconds / 60))
-    return 0
+        return {"offset_minutes": int(round(delta_seconds / 60)), "symbol": symbol}
+    return {"offset_minutes": 0, "symbol": None}
+
+
+def _probe_mt5_server_delta_minutes(mt5, *, preferred_symbol=None):
+    result = _probe_mt5_server_delta_result(mt5, preferred_symbol=preferred_symbol)
+    return result["offset_minutes"]
+
+
+def _seed_market_watch_probe_symbol(mt5, symbol_candidates):
+    """Best-effort select one 24/7 probe alias into Market Watch."""
+    symbol_select = getattr(mt5, "symbol_select", None)
+    if not callable(symbol_select):
+        return None
+    for symbol in symbol_candidates:
+        if symbol not in _PROBE_ALWAYS_ON_SYMBOLS:
+            continue
+        try:
+            if symbol_select(symbol, True):
+                return symbol
+        except Exception:
+            continue
+    return None
 
 
 def _mt5_offset_cache_key(mt5_account_id):
     return f"mt5_server_offset_minutes:{mt5_account_id}"
 
 
-def _resolve_mt5_server_offset_minutes(mt5, mt5_account_id, *, preferred_symbol=None):
+def _mt5_server_offset_key(server_name):
+    normalized = str(server_name or "").strip().lower()
+    return normalized or None
+
+
+def _load_db_server_offset_minutes(server_name):
+    server_key = _mt5_server_offset_key(server_name)
+    if not server_key:
+        return None
+    try:
+        from models import MT5BrokerServerOffset  # noqa: PLC0415
+
+        row = MT5BrokerServerOffset.query.filter_by(server_key=server_key).one_or_none()
+        if row is None:
+            return None
+        return int(row.offset_minutes)
+    except Exception as exc:
+        logger.warning("MT5 server offset DB read failed server=%s error=%s", server_name, exc)
+        return None
+
+
+def _store_db_server_offset_minutes(server_name, offset_minutes, *, probe_symbol=None):
+    server_key = _mt5_server_offset_key(server_name)
+    if not server_key:
+        return
+    try:
+        from models import MT5BrokerServerOffset, db, utcnow_naive  # noqa: PLC0415
+
+        now = utcnow_naive()
+        row = MT5BrokerServerOffset.query.filter_by(server_key=server_key).one_or_none()
+        if row is None:
+            row = MT5BrokerServerOffset(
+                server_name=str(server_name or "").strip(),
+                server_key=server_key,
+                offset_minutes=int(offset_minutes or 0),
+                probe_symbol=probe_symbol,
+                probed_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+            db.session.add(row)
+        else:
+            row.server_name = str(server_name or "").strip() or row.server_name
+            row.offset_minutes = int(offset_minutes or 0)
+            row.probe_symbol = probe_symbol
+            row.probed_at = now
+            row.updated_at = now
+        db.session.commit()
+    except Exception as exc:
+        try:
+            from models import db  # noqa: PLC0415
+
+            db.session.rollback()
+        except Exception:
+            pass
+        logger.warning("MT5 server offset DB write failed server=%s error=%s", server_name, exc)
+
+
+def _resolve_mt5_server_offset_minutes(mt5, mt5_account_id, *, preferred_symbol=None, server_name=None):
     """
     Return the broker UTC offset in minutes.
 
@@ -338,10 +419,49 @@ def _resolve_mt5_server_offset_minutes(mt5, mt5_account_id, *, preferred_symbol=
     in Redis (7-day TTL) so off-hours syncs and bar-fetches still use the correct
     offset rather than falling back to 0 and storing raw broker-server-time.
 
-    Returns 0 if the probe fires AND no cached value exists (UTC broker, or first
-    run before a market-hours measurement has been stored).
+    Live probe wins when available. If the broker server/feed is down, use the
+    last known good server-level DB offset before falling back to the older
+    per-account Redis cache and finally 0.
     """
-    probed = _probe_mt5_server_delta_minutes(mt5, preferred_symbol=preferred_symbol)
+    symbol_candidates = _mt5_probe_symbol_candidates(preferred_symbol=preferred_symbol)
+    probe_result = _probe_mt5_server_delta_result(
+        mt5,
+        preferred_symbol=preferred_symbol,
+        symbol_candidates=symbol_candidates,
+    )
+    probed = probe_result["offset_minutes"]
+    if probe_result["symbol"] is None:
+        seeded_symbol = _seed_market_watch_probe_symbol(mt5, symbol_candidates)
+        if seeded_symbol:
+            probe_result = _probe_mt5_server_delta_result(
+                mt5,
+                preferred_symbol=preferred_symbol,
+                symbol_candidates=symbol_candidates,
+            )
+            probed = probe_result["offset_minutes"]
+
+    if probe_result["symbol"] is not None:
+        _store_db_server_offset_minutes(
+            server_name,
+            probed,
+            probe_symbol=probe_result["symbol"],
+        )
+        redis_client = None
+        try:
+            from celery_workers.cache import _client as _cache_client  # noqa: PLC0415
+            redis_client = _cache_client()
+        except Exception:
+            pass
+        if redis_client is not None and probed != 0:
+            try:
+                redis_client.set(_mt5_offset_cache_key(mt5_account_id), str(probed), ex=60 * 60 * 24 * 7)
+            except Exception:
+                pass
+        return probed
+
+    db_offset = _load_db_server_offset_minutes(server_name)
+    if db_offset is not None:
+        return db_offset
 
     redis_client = None
     try:
@@ -351,14 +471,6 @@ def _resolve_mt5_server_offset_minutes(mt5, mt5_account_id, *, preferred_symbol=
         pass
 
     cache_key = _mt5_offset_cache_key(mt5_account_id)
-
-    if probed != 0:
-        if redis_client is not None:
-            try:
-                redis_client.set(cache_key, str(probed), ex=60 * 60 * 24 * 7)
-            except Exception:
-                pass
-        return probed
 
     if redis_client is not None:
         try:
@@ -535,6 +647,7 @@ def sync_mt5_account(
                     mt5,
                     mt5_account_id,
                     preferred_symbol=probe_symbol,
+                    server_name=server,
                 )
                 applied_offset_minutes = mt5_server_delta_minutes
                 mt5_from_date = _shift_datetime_by_minutes(
@@ -812,7 +925,10 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
                 raise RuntimeError(f"MT5 login failed during bar fetch: {mt5.last_error()}")
 
             mt5_server_delta_minutes = _resolve_mt5_server_offset_minutes(
-                mt5, mt5_account_id, preferred_symbol=symbol
+                mt5,
+                mt5_account_id,
+                preferred_symbol=symbol,
+                server_name=server,
             )
             start_dt_shifted = _shift_datetime_by_minutes(start_dt, minutes=mt5_server_delta_minutes)
             end_dt_shifted = _shift_datetime_by_minutes(end_dt, minutes=mt5_server_delta_minutes)

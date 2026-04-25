@@ -12,6 +12,10 @@ from datetime import datetime, timezone
 
 from celery_app import celery
 from celery_workers.logging_utils import duration_label, log_ascii_table
+from celery_workers.mt5_market_watch import (
+    MT5_MARKET_WATCH_CRYPTO_SEED_SYMBOLS,
+    MT5_MARKET_WATCH_FALLBACK_SYMBOLS,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -33,15 +37,6 @@ APPDATA_TERMINAL_PATH = os.path.join(
 IGNORED_APPDATA_FOLDERS = {"Common", "Community"}
 MT5_SETUP_VERIFY_ATTEMPTS = 2
 MT5_SETUP_VERIFY_RETRY_DELAY_SECONDS = 2
-MT5_MARKET_WATCH_CRYPTO_SEED_SYMBOLS = (
-    "BTCUSD",
-    "BTCUSDT",
-    "XBTUSD",
-)
-MT5_MARKET_WATCH_FALLBACK_SYMBOLS = (
-    "XAUUSD",
-    "EURUSD",
-)
 
 
 def _retry_with_backoff(task, exc, *, base_delay=30, max_delay=300):
