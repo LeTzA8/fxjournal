@@ -31,7 +31,7 @@ def dispatch_celery_task(task, *, args=None, kwargs=None, queue=None, log=None, 
     if queue is not None:
         publish_kwargs["queue"] = queue
 
-    logger.info(
+    logger.warning(
         "Celery publish attempt label=%s task=%s queue=%s broker=%s extra=%s",
         label_text,
         task_name,
@@ -52,7 +52,7 @@ def dispatch_celery_task(task, *, args=None, kwargs=None, queue=None, log=None, 
             exc,
         )
         raise
-    logger.info(
+    logger.warning(
         "Celery publish success label=%s task=%s task_id=%s queue=%s broker=%s extra=%s",
         label_text,
         task_name,
