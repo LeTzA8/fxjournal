@@ -2127,14 +2127,24 @@ def test_weekly_dashboard_advice_runs_rewrite_pass_without_trade_payload(app_ctx
             return {
                 "model": "gpt-5-mini",
                 "status": "completed",
-                "output_text": "Pass one review with repeated wording.",
+                "output_text": (
+                    "Pass one review with repeated wording.\n\n"
+                    "Key Takeaways\n"
+                    "- Repeated point.\n"
+                    "Improve this week: Keep the rule simple."
+                ),
                 "usage": {},
                 "output": [],
             }
         return {
             "model": "gpt-5-mini",
             "status": "completed",
-            "output_text": "Pass one review, clearer.",
+            "output_text": (
+                "Pass one review, clearer.\n\n"
+                "Key Takeaways\n"
+                "- Clearer point.\n"
+                "Improve this week: Keep the rule simple."
+            ),
             "usage": {},
             "output": [],
         }
@@ -2152,14 +2162,48 @@ def test_weekly_dashboard_advice_runs_rewrite_pass_without_trade_payload(app_ctx
     assert len(calls) == 2
     assert "TRADE PAYLOAD" not in rewrite_prompt
     assert "Pass one review with repeated wording." in rewrite_prompt
-    assert result["record"].pass_1_output == "Pass one review with repeated wording."
-    assert result["record"].pass_2_output == "Pass one review, clearer."
-    assert result["record"].response_text == "Pass one review, clearer."
+    assert result["record"].pass_1_output.startswith("Pass one review with repeated wording.")
+    assert result["record"].pass_2_output.startswith("Pass one review, clearer.")
+    assert result["record"].response_text.startswith("Pass one review, clearer.")
     assert result["record"].prompt_version_pass_1 == "two-pass-weekly-sha"
     assert result["record"].prompt_version_pass_2 == ai_service.hash_text(
         load_prompt_text(ai_service.DEFAULT_REWRITE_PROMPT_FILE)["prompt_text"]
     )
     assert result["record"].model_used == "gpt-5-mini"
+
+
+def test_weekly_rewrite_falls_back_when_format_is_lost(app_ctx, monkeypatch):
+    pass_1_output = (
+        "Formatted story.\n\n"
+        "Key Takeaways\n"
+        "- Keep the structure.\n"
+        "Improve this week: Keep the plan simple."
+    )
+    monkeypatch.setattr(
+        ai_service,
+        "request_openai_response",
+        lambda messages, model=None: {
+            "model": "gpt-5-mini",
+            "status": "completed",
+            "output_text": "Shorter but now just one unstructured paragraph.",
+            "usage": {},
+            "output": [],
+        },
+    )
+
+    output, response_payload, prompt_data = ai_service.rewrite_weekly_dashboard_review_or_fallback(
+        pass_1_output,
+        user_id=1,
+        trade_account_id=2,
+        period={
+            "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
+            "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
+        },
+    )
+
+    assert output == pass_1_output
+    assert response_payload is None
+    assert prompt_data is None
 
 
 def test_weekly_dashboard_advice_falls_back_when_rewrite_fails(app_ctx, monkeypatch):

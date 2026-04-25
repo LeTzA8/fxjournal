@@ -9,12 +9,18 @@ Do NOT:
 * add new insights
 * change conclusions
 * introduce new claims
+* flatten the review into one paragraph
+* remove the existing section structure
 
 Do:
 
 * remove repetition
 * simplify language
 * make each sentence easy to understand
+* write so a non-native English speaker can understand it without making it sound childish
+* preserve the opening story, Key Takeaways heading, bullet list, and action lines when they exist
+* keep the voice human and calm, like a direct trading coach speaking to one trader
+* use natural sentences, not clipped report fragments
 
 Keep meaning identical.
 

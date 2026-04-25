@@ -828,6 +828,38 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
     assert display["experiment"]["text"].startswith("Run one-session focus")
 
 
+def test_weekly_ai_review_display_falls_back_when_rewrite_loses_format():
+    review = type(
+        "Review",
+        (),
+        {
+            "response_text": "Shorter but unstructured rewrite.",
+            "pass_1_output": (
+                "Original story.\n\n"
+                "Key Takeaways\n"
+                "- Original takeaway.\n"
+                "Improve this week: Keep the plan simple."
+            ),
+            "pass_2_output": "Shorter but unstructured rewrite.",
+            "prompt_version_pass_2": "rewrite-sha",
+            "response_meta_json": json.dumps(
+                {
+                    "summary": {"text": "Original story.", "refs": []},
+                    "takeaways": [{"text": "Original takeaway.", "refs": []}],
+                    "improvement": {"text": "Improve this week: Keep the plan simple.", "refs": []},
+                }
+            ),
+            "payload_json": "{}",
+        },
+    )()
+
+    display = dashboard_routes._build_weekly_ai_review_display(review, "UTC")
+
+    assert display["summary"]["text"] == "Original story."
+    assert display["takeaways"][0]["text"] == "Original takeaway."
+    assert display["improvement"]["text"] == "Improve this week: Keep the plan simple."
+
+
 def test_rewrite_review_text_refs_drops_stray_clitic_after_brackets_and_labels():
     """Model sometimes emits '[B1]d' or 'B1 d' before 'trade'; avoid a lone 'd' after the pill."""
     lookup = {

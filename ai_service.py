@@ -2504,6 +2504,15 @@ def extract_rewrite_response_text(response_payload):
     return extract_response_text(response_payload)
 
 
+def weekly_review_text_preserves_display_format(response_text):
+    display = build_dashboard_review_display(response_text)
+    return bool(
+        (display.get("summary") or {}).get("text")
+        and display.get("takeaways")
+        and (display.get("improvement") or {}).get("text")
+    )
+
+
 def rewrite_weekly_dashboard_review(pass_1_output, *, model=None):
     prompt_data, messages = build_weekly_rewrite_messages(pass_1_output)
     response_payload = request_openai_response(
@@ -2513,6 +2522,8 @@ def rewrite_weekly_dashboard_review(pass_1_output, *, model=None):
     response_text = extract_rewrite_response_text(response_payload)
     if not response_text:
         raise AIRequestError(describe_empty_response(response_payload))
+    if not weekly_review_text_preserves_display_format(response_text):
+        raise AIRequestError("Weekly rewrite response did not preserve the dashboard review format.")
     return response_text, response_payload, prompt_data
 
 

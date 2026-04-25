@@ -18,6 +18,7 @@ from ai_service import (
     normalize_dashboard_advice_text,
     should_generate_weekly_dashboard_advice,
     weekly_review_generation_past_market_week_cutoff,
+    weekly_review_text_preserves_display_format,
 )
 from celery_workers.cache import (
     AI_STATUS_FAILED_TTL,
@@ -461,7 +462,9 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
         if getattr(review_record, "prompt_version_pass_2", None)
         else None
     )
-    display_text = pass_2_output or review_record.response_text or ""
+    if pass_2_output and not weekly_review_text_preserves_display_format(pass_2_output):
+        pass_2_output = None
+    display_text = pass_2_output or getattr(review_record, "pass_1_output", None) or review_record.response_text or ""
     display_meta_json = None if pass_2_output else getattr(review_record, "response_meta_json", None)
     display = build_dashboard_review_display(
         display_text,
