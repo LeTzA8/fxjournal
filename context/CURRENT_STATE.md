@@ -2,6 +2,11 @@
 
 Last Updated: 2026-04-25
 
+## Weekly AI dashboard advice tuned away from report voice (2026-04-25)
+
+- `prompts/dashboard_advice.txt` now keeps the fixed dashboard AI structure but explicitly treats the format as a container for coaching judgment, not recap. The prompt tells the model that every sentence inside the structure should explain why evidence matters, challenge the trader's likely read, or turn evidence into a next decision rule.
+- The good/bad examples were tightened so Key Takeaways are interpretations anchored in evidence, while report filler like "this week showed a mix of strengths and weaknesses," session recaps, and category-label advice are explicitly rejected.
+
 ## MT5 broker-time probe seeds 24/7 aliases on demand (2026-04-25)
 
 - Shared MT5 Market Watch probe candidates now live in `celery_workers/mt5_market_watch.py`, covering expanded BTC/XBT/ETH aliases with common broker suffixes (`.m`, `.r`, `.raw`, `.pro`, `.ecn`, `micro`, etc.) plus slash forms like `BTC/USD` and `ETH/USD`.
