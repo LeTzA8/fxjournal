@@ -53,6 +53,56 @@ def _shift_datetime_by_minutes(value, *, minutes=0):
     return value + timedelta(minutes=int(minutes or 0))
 
 
+def _resolve_bar_epoch_normalization_offset(
+    raw_bars,
+    *,
+    offset_minutes=0,
+    opened_at_utc=None,
+    closed_at_utc=None,
+):
+    """
+    Decide whether returned bar epochs still need broker-offset normalization.
+
+    Some MT5 servers accept broker-shifted copy_rates_range boundaries but still
+    return Unix epochs that already line up with UTC trade times. In that case,
+    subtracting the server offset would persist shifted chart bars.
+    """
+    offset_minutes = int(offset_minutes or 0)
+    if offset_minutes == 0:
+        return 0
+
+    raw_times = []
+    if raw_bars is None:
+        return offset_minutes
+    for bar in raw_bars:
+        try:
+            raw_times.append(int(bar["time"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+
+    anchor_times = []
+    for value in (opened_at_utc, closed_at_utc):
+        if value is None:
+            continue
+        aware_value = _naive_utc_to_aware(value)
+        anchor_times.append(int(aware_value.timestamp()))
+
+    if raw_times and anchor_times:
+        offset_seconds = offset_minutes * 60
+        utc_distance = min(abs(raw_time - anchor) for raw_time in raw_times for anchor in anchor_times)
+        shifted_distance = min(
+            abs(raw_time - (anchor + offset_seconds))
+            for raw_time in raw_times
+            for anchor in anchor_times
+        )
+        if utc_distance < shifted_distance:
+            return 0
+        if shifted_distance < utc_distance:
+            return offset_minutes
+
+    return offset_minutes
+
+
 def _naive_utc_to_aware(value):
     """Trade datetimes are naive UTC in DB; MT5 Python treats naive datetimes as *local* time."""
     if value is None:
@@ -938,15 +988,25 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             fetch_strategy = "none"
             raw_bars = mt5.copy_rates_range(symbol, tf_constant, start_dt_shifted, end_dt_shifted)
             if raw_bars is not None and len(raw_bars) > 0:
-                bar_normalization_offset = mt5_server_delta_minutes
+                bar_normalization_offset = _resolve_bar_epoch_normalization_offset(
+                    raw_bars,
+                    offset_minutes=mt5_server_delta_minutes,
+                    opened_at_utc=opened_at_utc,
+                    closed_at_utc=closed_at_utc,
+                )
                 fetch_strategy = "shifted"
             else:
                 # Broker/API mismatch: some servers return empty for shifted windows but
-                # accept UTC-aware boundaries. Even on that fallback, normalize returned
-                # epochs using the probed broker delta so stored bar_time stays UTC.
+                # accept UTC-aware boundaries. Infer whether returned epochs still carry
+                # broker offset before storing bar_time as UTC.
                 raw_bars = mt5.copy_rates_range(symbol, tf_constant, start_dt, end_dt)
                 if raw_bars is not None and len(raw_bars) > 0:
-                    bar_normalization_offset = mt5_server_delta_minutes
+                    bar_normalization_offset = _resolve_bar_epoch_normalization_offset(
+                        raw_bars,
+                        offset_minutes=mt5_server_delta_minutes,
+                        opened_at_utc=opened_at_utc,
+                        closed_at_utc=closed_at_utc,
+                    )
                     fetch_strategy = "utc_fallback"
 
             if raw_bars is None or len(raw_bars) == 0:
@@ -993,6 +1053,8 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             ("Stored TF", "M5"),
             ("Bars Fetched", len(bars)),
             ("MT5-UTC Delta (min)", mt5_server_delta_minutes),
+            ("Bar Epoch Offset Applied (min)", bar_normalization_offset),
+            ("Fetch Strategy", fetch_strategy),
             ("Window (UTC)", f"{start_dt.isoformat()} -> {end_dt.isoformat()}"),
             ("Duration", duration_label(fetch_started_at, fetch_finished_at)),
         ],

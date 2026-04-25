@@ -2108,6 +2108,109 @@ def test_internal_mt5_trade_bars_replaces_existing_timeframe_rows(app_ctx, clien
     assert rows[0].close == pytest.approx(1.1025)
 
 
+def test_fetch_trade_bars_keeps_already_utc_bar_epochs_with_stored_server_offset(app_ctx, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+    monkeypatch.setattr(
+        "celery_workers.cache._client",
+        lambda: (_ for _ in ()).throw(RuntimeError("cache unavailable")),
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="trade-bars-stored-offset-user",
+        email="trade-bars-stored-offset@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="84848484",
+    )
+    mt5_account.server = "Broker-Stored-Offset"
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1,
+        exit_price=1.101,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 9, 0, 0),
+        closed_at=datetime(2026, 4, 10, 10, 0, 0),
+        mt5_position="848484",
+    )
+    db.session.add(
+        MT5BrokerServerOffset(
+            server_name="Broker-Stored-Offset",
+            server_key="broker-stored-offset",
+            offset_minutes=120,
+            probe_symbol="BTCUSD.m",
+            probed_at=datetime(2026, 4, 9, 12, 0, 0),
+        )
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    broker_offset_minutes = 120
+    bar_time_utc = int(datetime(2026, 4, 10, 9, 0, 0, tzinfo=timezone.utc).timestamp())
+    raw_bar_time = bar_time_utc
+    copy_calls = []
+    posted_payload = {}
+
+    def _copy_rates_range(symbol, timeframe, date_from, date_to):
+        copy_calls.append((date_from, date_to))
+        return [
+            {
+                "time": raw_bar_time,
+                "open": 1.1,
+                "high": 1.101,
+                "low": 1.099,
+                "close": 1.1005,
+                "tick_volume": 100,
+            }
+        ]
+
+    fake_mt5 = SimpleNamespace(
+        TIMEFRAME_M5=5,
+        TIMEFRAME_M15=15,
+        TIMEFRAME_H1=60,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        copy_rates_range=_copy_rates_range,
+        symbol_info_tick=lambda symbol: None,
+        symbol_select=lambda symbol, select: False,
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"saved": 1, "timeframe": "M5"}
+
+    def _fake_post(url, json, headers, timeout):
+        posted_payload["json"] = json
+        return DummyResponse()
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", _fake_post)
+
+    result = fetch_trade_bars.run(mt5_account.id, trade.id)
+
+    assert result == {"saved": 1, "timeframe": "M5"}
+    assert len(copy_calls) == 1
+    expected_start = datetime(2026, 4, 10, 9, 0, 0, tzinfo=timezone.utc) - timedelta(hours=36)
+    expected_end = datetime(2026, 4, 10, 10, 0, 0, tzinfo=timezone.utc) + timedelta(hours=12)
+    assert copy_calls[0] == (
+        expected_start + timedelta(minutes=broker_offset_minutes),
+        expected_end + timedelta(minutes=broker_offset_minutes),
+    )
+    assert posted_payload["json"]["bars"][0]["time"] == bar_time_utc
+
+
 def test_fetch_trade_bars_normalizes_broker_epoch_after_utc_fallback(app_ctx, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)

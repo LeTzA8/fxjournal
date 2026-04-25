@@ -8,6 +8,7 @@ Last Updated: 2026-04-25
 - Setup still clears inherited Market Watch state and seeds crypto-first symbols before fallback symbols, but now uses the expanded shared alias set.
 - Sync and bar fetch now retry broker-time offset probing after best-effort selecting the first available 24/7 crypto alias into Market Watch when the initial probe finds no fresh tick.
 - Last known broker-server UTC offsets are persisted by normalized MT5 server name in `mt5_broker_server_offset` (`20260425_0050`). A fresh live probe wins and updates the DB; if the broker/feed is down, sync/bar fetch falls back to the DB server offset before the older per-account Redis cache and only then `0`. This protects weekend/off-hours and downtime timestamp correction for history windows and bar backfills. (`models.py`, migration, `celery_workers/mt5_market_watch.py`, `celery_workers/mt5_setup_tasks.py`, `celery_workers/mt5_sync_tasks.py`, MT5 tests)
+- Bar backfill now avoids blindly subtracting the server offset from returned candle epochs. `fetch_trade_bars` still uses the resolved/stored server offset to shift the `copy_rates_range` request window into broker time, then infers whether returned bar epochs are already aligned with UTC trade times before deciding whether to subtract the offset for storage. This fixes persisted `trade_bars.bar_time` rows that were shifted by the broker delta when MT5 returned UTC-aligned epochs. (`celery_workers/mt5_sync_tasks.py`, `tests/test_mt5_sync.py`)
 
 ## MT5 priority queue + beat starvation guard restored (2026-04-25)
 
