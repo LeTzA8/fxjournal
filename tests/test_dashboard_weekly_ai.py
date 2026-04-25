@@ -261,7 +261,7 @@ def test_weekly_review_chat_route_is_rate_limited(app_ctx, client, monkeypatch):
 
     monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fake_reply)
 
-    for i in range(5):
+    for i in range(3):
         response = client.post(
             f"/dashboard/weekly-review/{review.id}/chat",
             json={"message": f"q{i}"},
@@ -269,10 +269,79 @@ def test_weekly_review_chat_route_is_rate_limited(app_ctx, client, monkeypatch):
         assert response.status_code == 200, f"unexpected at {i}"
     over = client.post(
         f"/dashboard/weekly-review/{review.id}/chat",
-        json={"message": "q6"},
+        json={"message": "q3"},
     )
     assert over.status_code == 429
-    assert "error" in (over.get_json() or {})
+    assert (over.get_json() or {}).get("error") == "rate_limit_exceeded"
+
+
+def test_weekly_review_chat_route_enforces_per_review_limit(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-review-cap-user",
+        email="dashboard-review-chat-review-cap@example.com",
+    )
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-review-cap")
+    for i in range(5):
+        db.session.add(
+            WeeklyReviewChatMessage(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                ai_response_id=review.id,
+                role=WeeklyReviewChatMessage.ROLE_USER,
+                content=f"prior-{i}",
+            )
+        )
+    db.session.commit()
+
+    def fail_if_called(*_a, **_k):
+        raise AssertionError("AI should not run when per-review cap is reached")
+
+    monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fail_if_called)
+
+    response = client.post(
+        f"/dashboard/weekly-review/{review.id}/chat",
+        json={"message": "sixth question"},
+    )
+    assert response.status_code == 429
+    assert response.get_json()["error"] == "review_limit_reached"
+
+
+def test_weekly_review_chat_route_enforces_daily_limit(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-daily-cap-user",
+        email="dashboard-review-chat-daily-cap@example.com",
+    )
+    reviews = [
+        _create_weekly_review(user, trade_account, prompt_id=f"weekly-chat-daily-{i}")
+        for i in range(4)
+    ]
+    for review in reviews[:3]:
+        for j in range(5):
+            db.session.add(
+                WeeklyReviewChatMessage(
+                    user_id=user.id,
+                    trade_account_id=trade_account.id,
+                    ai_response_id=review.id,
+                    role=WeeklyReviewChatMessage.ROLE_USER,
+                    content=f"seed-{review.id}-{j}",
+                )
+            )
+    db.session.commit()
+    fresh_review = reviews[3]
+
+    def fail_if_called(*_a, **_k):
+        raise AssertionError("AI should not run when daily cap is reached")
+
+    monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fail_if_called)
+
+    response = client.post(
+        f"/dashboard/weekly-review/{fresh_review.id}/chat",
+        json={"message": "first question on fourth review"},
+    )
+    assert response.status_code == 429
+    assert response.get_json()["error"] == "daily_limit_reached"
 
 
 def test_dashboard_home_renders_weekly_review_chat_inside_review_panel(app_ctx, client, monkeypatch):

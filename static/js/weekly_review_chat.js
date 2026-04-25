@@ -31,6 +31,14 @@
         return bubble;
     };
 
+    const limitErrorMessages = {
+        review_limit_reached: "You've reached the follow-up limit for this review.",
+        daily_limit_reached: "You've reached today's AI chat limit.",
+        rate_limit_exceeded: "You're sending messages too quickly. Try again in a moment.",
+    };
+
+    const MIN_SEND_SPACING_MS = 2000;
+
     chatRoots.forEach((root) => {
         const form = root.querySelector("[data-review-chat-form]");
         const input = root.querySelector("[data-review-chat-input]");
@@ -78,6 +86,7 @@
                 return;
             }
 
+            const sendStartedAt = Date.now();
             clearError();
             log.appendChild(createBubble("user", message));
             const loadingBubble = createLoadingBubble();
@@ -98,7 +107,12 @@
                 });
                 const payload = await response.json().catch(() => ({}));
                 if (!response.ok) {
-                    throw new Error(payload.error || "Could not answer that right now.");
+                    const code = payload.error;
+                    const friendly =
+                        (code && limitErrorMessages[code]) ||
+                        code ||
+                        "Could not answer that right now.";
+                    throw new Error(friendly);
                 }
                 loadingBubble.remove();
                 log.appendChild(createBubble("assistant", payload.reply || "I could not produce a reply."));
@@ -106,6 +120,12 @@
                 loadingBubble.remove();
                 showError(err.message || "Could not answer that right now. Please try again.");
             } finally {
+                const elapsed = Date.now() - sendStartedAt;
+                if (elapsed < MIN_SEND_SPACING_MS) {
+                    await new Promise((resolve) =>
+                        setTimeout(resolve, MIN_SEND_SPACING_MS - elapsed),
+                    );
+                }
                 setBusy(false);
                 input.focus();
             }

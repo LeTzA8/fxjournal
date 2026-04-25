@@ -1009,6 +1009,12 @@ class WeeklyReviewChatMessage(db.Model):
             "trade_account_id",
             "ai_response_id",
         ),
+        db.Index(
+            "ix_weekly_review_chat_user_role_created",
+            "user_id",
+            "role",
+            "created_at",
+        ),
     )
 
     ROLE_USER = "user"
