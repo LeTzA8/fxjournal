@@ -14,11 +14,15 @@
         <h2>1. Information We Collect</h2>
         <p>We may collect:</p>
         <ul>
-            <li>Account details such as username, email address, hashed password, and account verification status.</li>
+            <li>Account details such as username, email address, hashed password, and account verification status, and
+            if you use “Sign in with Google,” basic profile identifiers Google shares for authentication (as permitted by
+            your Google settings).</li>
             <li>Trading journal data you choose to upload or enter, including trade account names, trade notes, import metadata, symbols, timestamps, pricing, position size, and performance metrics.</li>
             <li>MT5 sync workflow data if you use that feature, including MT5 sync batch status, linked trade account mapping, MT5 account number, MT5 server, and MT5 investor/read-only credentials submitted for sync. MT5 passwords are encrypted before storage.</li>
             <li>Operational data such as IP address, browser or device metadata, display timezone, session activity, and logs needed for security, fraud prevention, troubleshooting, and performance.</li>
             <li>Cookie, session, and similar technical data reasonably required to keep you signed in, protect the service, and remember basic product state.</li>
+            <li>Messages you send in optional weekly-review follow-up chat (Q&amp;A) tied to a stored review, and the
+            assistant replies we return, when you use that feature.</li>
             <li>Feedback, support, and communication content you submit to us.</li>
         </ul>
 
@@ -30,14 +34,16 @@
             <li>Process MT5 and Tradovate imports, normalize timestamps, and generate performance analytics, equity curves, and related summaries.</li>
             <li>Manage and support MT5 sync onboarding, including securely storing submitted MT5 investor/read-only credentials and using them to connect linked accounts for trade-history sync.</li>
             <li>Respond to support requests, feedback submissions, and communicate service-related updates. Authorized MyFXJournal staff may access account data, including dashboards, analytics, trade history, AI review history, MT5 sync status, and related account pages, on a read-only basis to diagnose technical issues, investigate abuse, and resolve support requests. Routine troubleshooting access does not include editing your trade data or placing trades.</li>
-            <li>Generate AI-assisted outputs, including weekly AI reviews and other journal insights, using your trade history, notes, and derived performance metrics.</li>
+            <li>Generate AI-assisted outputs, including weekly AI reviews, optional follow-up Q&amp;A tied to a stored weekly review, and other journal insights, using your trade history, notes, and derived performance metrics.</li>
         </ul>
 
         <h2>3. AI Processing and Data Sharing</h2>
         <p>
             We do not sell personal information. We may share limited data with service providers that help us
-            operate the app (for example, hosting, database, email delivery, security tooling, and AI model
-            providers), subject to appropriate contractual safeguards.
+            operate the app subject to appropriate safeguards. Typical categories include: application and database
+            hosting (e.g. PostgreSQL), background task and cache infrastructure (e.g. Redis and related workers), email
+            delivery, sign-in with Google (OAuth) when you choose it, and AI model providers (e.g. OpenAI or equivalent)
+            for AI-assisted features—each only as needed to run the product you are using.
         </p>
         <p>
             If AI-assisted features are enabled, relevant trade data, trade notes, and derived performance metrics

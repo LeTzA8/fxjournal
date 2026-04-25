@@ -4,7 +4,7 @@ import sqlite3
 from datetime import timedelta
 from urllib.parse import urlparse
 from dotenv import load_dotenv
-from flask import Flask, current_app, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, current_app, flash, g, jsonify, redirect, render_template, request, session, url_for
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import event
@@ -412,6 +412,18 @@ def handle_rate_limit(_error):
                 title="MyFXJournal | Login",
                 body_class="auth-layout",
                 error="Too many sign-in attempts. Please wait a minute and try again.",
+            ),
+            429,
+        )
+    wants_json = request.path.startswith("/api/") or request.path.startswith("/dashboard/weekly-review/")
+    if not wants_json and (request.accept_mimetypes.best or "") == "application/json":
+        wants_json = True
+    if wants_json:
+        return (
+            jsonify(
+                {
+                    "error": "Too many requests. Please try again later.",
+                }
             ),
             429,
         )
