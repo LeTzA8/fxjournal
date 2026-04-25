@@ -958,6 +958,11 @@ class AIGeneratedResponse(db.Model):
     kind = db.Column(db.String(64), nullable=False, default="dashboard_advice")
     model = db.Column(db.String(64), nullable=False, default="gpt-5-mini")
     response_text = db.Column(db.Text, nullable=False)
+    pass_1_output = db.Column(db.Text, nullable=True)
+    pass_2_output = db.Column(db.Text, nullable=True)
+    prompt_version_pass_1 = db.Column(db.String(64), nullable=True)
+    prompt_version_pass_2 = db.Column(db.String(64), nullable=True)
+    model_used = db.Column(db.String(64), nullable=True)
     response_meta_json = db.Column(db.Text, nullable=True)
     payload_json = db.Column(db.Text, nullable=True)
     payload_hash = db.Column(db.String(64), nullable=True, index=True)
@@ -965,6 +970,7 @@ class AIGeneratedResponse(db.Model):
     source_last_trade_id = db.Column(db.Integer, nullable=True)
     period_start_utc = db.Column(db.DateTime, nullable=True)
     period_end_utc = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
     generated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
 
 

@@ -1,6 +1,11 @@
 # CURRENT_STATE
 
-Last Updated: 2026-04-25
+Last Updated: 2026-04-26
+
+## Weekly AI dashboard advice now runs a clarity rewrite pass (2026-04-26)
+
+- Weekly dashboard AI generation keeps the existing pass-1 insight prompt and trade payload path unchanged, then calls the same AI client a second time with only the pass-1 review text and the strict clarity/tone rewrite prompt from `prompts/dashboard_advice_rewrite.txt`.
+- `ai_generated_responses` now stores `pass_1_output`, `pass_2_output`, `prompt_version_pass_1`, `prompt_version_pass_2`, `model_used`, and `created_at` while keeping `response_text` as the final user-facing text for existing frontend/admin paths. Pass-2 failures log a warning and fall back to pass 1 so weekly review generation still completes. (`ai_service.py`, `models.py`, migration `20260426_0051`, weekly AI tests)
 
 ## Weekly AI dashboard advice tuned away from report voice (2026-04-25)
 

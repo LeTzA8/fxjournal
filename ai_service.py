@@ -54,6 +54,7 @@ DEFAULT_TIMEOUT_SECONDS = 30
 DEFAULT_HISTORICAL_CONTEXT_DAYS = 90
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 WEEKLY_DASHBOARD_KIND = "weekly_dashboard_advice"
+DEFAULT_REWRITE_PROMPT_FILE = "dashboard_advice_rewrite.txt"
 WEEKLY_MARKET_TIMEZONE = ZoneInfo("America/New_York")
 WEEKLY_CUTOFF_WEEKDAY = 4
 WEEKLY_CUTOFF_HOUR = 17
@@ -2470,8 +2471,65 @@ def build_dashboard_advice_messages(payload, prompt_filename=None, profile_adjus
     ], payload_json
 
 
+def build_weekly_rewrite_messages(pass_1_output, prompt_filename=DEFAULT_REWRITE_PROMPT_FILE):
+    prompt_data = load_prompt_text(prompt_filename)
+    prompt_text = prompt_data["prompt_text"]
+    if "{PASS_1_OUTPUT}" not in prompt_text:
+        raise AIConfigError("Weekly rewrite prompt must include {PASS_1_OUTPUT}.")
+    return prompt_data, [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": prompt_text.replace("{PASS_1_OUTPUT}", pass_1_output),
+                }
+            ],
+        }
+    ]
+
+
 def extract_response_text(response_payload):
     return normalize_dashboard_advice_text(_extract_response_raw_text(response_payload))
+
+
+def extract_rewrite_response_text(response_payload):
+    structured_review = _extract_structured_review(
+        response_payload,
+        set(),
+        experiment_eligible=True,
+    )
+    if structured_review is not None:
+        return structured_review["response_text"]
+    return extract_response_text(response_payload)
+
+
+def rewrite_weekly_dashboard_review(pass_1_output, *, model=None):
+    prompt_data, messages = build_weekly_rewrite_messages(pass_1_output)
+    response_payload = request_openai_response(
+        messages,
+        model=model or get_ai_model(),
+    )
+    response_text = extract_rewrite_response_text(response_payload)
+    if not response_text:
+        raise AIRequestError(describe_empty_response(response_payload))
+    return response_text, response_payload, prompt_data
+
+
+def rewrite_weekly_dashboard_review_or_fallback(pass_1_output, *, user_id, trade_account_id, period, model=None):
+    try:
+        return rewrite_weekly_dashboard_review(pass_1_output, model=model)
+    except Exception as exc:
+        logger.warning(
+            "Weekly AI rewrite pass failed; falling back to pass 1. user_id=%s trade_account_id=%s "
+            "period_start_utc=%s period_end_utc=%s error=%s",
+            user_id,
+            trade_account_id,
+            (period or {}).get("period_start_utc"),
+            (period or {}).get("period_end_utc"),
+            exc,
+        )
+        return pass_1_output, None, None
 
 
 def describe_empty_response(response_payload):
@@ -2567,6 +2625,11 @@ def save_ai_response(
     kind,
     period_start_utc=None,
     period_end_utc=None,
+    pass_1_output=None,
+    pass_2_output=None,
+    prompt_version_pass_1=None,
+    prompt_version_pass_2=None,
+    model_used=None,
 ):
     ai_response = AIGeneratedResponse(
         user_id=user_id,
@@ -2575,6 +2638,11 @@ def save_ai_response(
         kind=kind,
         model=model,
         response_text=response_text,
+        pass_1_output=pass_1_output,
+        pass_2_output=pass_2_output,
+        prompt_version_pass_1=prompt_version_pass_1,
+        prompt_version_pass_2=prompt_version_pass_2,
+        model_used=model_used,
         response_meta_json=response_meta_json,
         payload_json=payload_json,
         payload_hash=hash_text(payload_json),
@@ -2816,6 +2884,22 @@ def maybe_generate_weekly_dashboard_advice(
             )
             raise AIRequestError(describe_empty_response(response_payload))
 
+        pass_1_output = response_text
+        pass_1_model = str(response_payload.get("model") or get_ai_model())
+        pass_2_output, rewrite_response_payload, rewrite_prompt_data = rewrite_weekly_dashboard_review_or_fallback(
+            pass_1_output,
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            period=period,
+            model=get_ai_model(),
+        )
+        final_response_text = pass_2_output
+        model_used = str(
+            (rewrite_response_payload or {}).get("model")
+            or response_payload.get("model")
+            or get_ai_model()
+        )
+
         latest_trade = (
             Trade.query.filter_by(user_id=user_id, trade_account_id=trade_account_id)
             .order_by(Trade.id.desc())
@@ -2828,8 +2912,8 @@ def maybe_generate_weekly_dashboard_advice(
             user_id=user_id,
             trade_account_id=trade_account_id,
             prompt_history=prompt_history,
-            model=str(response_payload.get("model") or get_ai_model()),
-            response_text=response_text,
+            model=pass_1_model,
+            response_text=final_response_text,
             response_meta_json=(
                 structured_review["response_meta_json"]
                 if structured_review is not None
@@ -2841,6 +2925,15 @@ def maybe_generate_weekly_dashboard_advice(
             kind=WEEKLY_DASHBOARD_KIND,
             period_start_utc=period["period_start_utc"],
             period_end_utc=period["period_end_utc"],
+            pass_1_output=pass_1_output,
+            pass_2_output=pass_2_output,
+            prompt_version_pass_1=prompt_history.prompt_sha256,
+            prompt_version_pass_2=(
+                hash_text(rewrite_prompt_data["prompt_text"])
+                if rewrite_prompt_data is not None
+                else None
+            ),
+            model_used=model_used,
         )
         db.session.commit()
         return {
@@ -2849,7 +2942,10 @@ def maybe_generate_weekly_dashboard_advice(
             "period": period,
             "payload": payload,
             "response_payload": response_payload,
-            "response_text": response_text,
+            "rewrite_response_payload": rewrite_response_payload,
+            "response_text": final_response_text,
+            "pass_1_output": pass_1_output,
+            "pass_2_output": pass_2_output,
             "response_meta": (
                 structured_review["response_meta"]
                 if structured_review is not None

@@ -456,9 +456,16 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
     if review_record is None:
         return None
 
+    pass_2_output = (
+        getattr(review_record, "pass_2_output", None)
+        if getattr(review_record, "prompt_version_pass_2", None)
+        else None
+    )
+    display_text = pass_2_output or review_record.response_text or ""
+    display_meta_json = None if pass_2_output else getattr(review_record, "response_meta_json", None)
     display = build_dashboard_review_display(
-        review_record.response_text or "",
-        getattr(review_record, "response_meta_json", None),
+        display_text,
+        display_meta_json,
     )
     citation_lookup = _build_weekly_review_citation_lookup(
         getattr(review_record, "payload_json", None),

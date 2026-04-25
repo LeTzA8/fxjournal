@@ -1,0 +1,22 @@
+Rewrite the following trading review to be:
+
+* shorter
+* clearer
+* more direct
+
+Do NOT:
+
+* add new insights
+* change conclusions
+* introduce new claims
+
+Do:
+
+* remove repetition
+* simplify language
+* make each sentence easy to understand
+
+Keep meaning identical.
+
+Text:
+{PASS_1_OUTPUT}

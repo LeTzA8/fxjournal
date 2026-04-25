@@ -2063,6 +2063,192 @@ def test_force_weekly_generation_appends_new_response_for_same_period(app_ctx, m
     assert rows[1].payload_json == '{"payload":"new"}'
 
 
+def test_weekly_dashboard_advice_runs_rewrite_pass_without_trade_payload(app_ctx, monkeypatch):
+    user, trade_account = _create_user_and_account(
+        username="ai-two-pass-user",
+        email="ai-two-pass@example.com",
+    )
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.1010,
+            lot_size=1.0,
+            pnl=100.0,
+            opened_at=datetime(2026, 3, 10, 9, 0, 0),
+            closed_at=datetime(2026, 3, 10, 10, 0, 0),
+        )
+    )
+    prompt_history = AIPromptHistory(
+        prompt_id="dashboard_advice",
+        prompt_sha256="two-pass-weekly-sha",
+        prompt_text="Prompt text",
+        source_path="prompts/dashboard_advice.txt",
+    )
+    db.session.add(prompt_history)
+    db.session.commit()
+
+    period = {
+        "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
+        "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
+    }
+    monkeypatch.setattr(ai_service, "get_latest_trade_week_period", lambda **kwargs: period)
+    monkeypatch.setattr(ai_service, "should_generate_weekly_dashboard_advice", lambda **kwargs: True)
+    monkeypatch.setattr(
+        ai_service,
+        "build_trade_payload",
+        lambda **kwargs: {
+            "generated_at": "2026-03-12T12:00:00Z",
+            "period_start_utc": "2026-03-07T21:30:00Z",
+            "period_end_utc": "2026-03-14T21:30:00Z",
+            "historical_context": {},
+            "summary": {"closed_trades": 1},
+            "trades": [{"review_ref": "T1", "symbol": "EURUSD"}],
+        },
+    )
+    monkeypatch.setattr(
+        ai_service,
+        "build_dashboard_advice_messages",
+        lambda payload, prompt_filename=None, profile_adjustments="": (
+            prompt_history,
+            [{"role": "user", "content": [{"type": "input_text", "text": "TRADE PAYLOAD"}]}],
+            '{"payload":"two-pass"}',
+        ),
+    )
+
+    calls = []
+
+    def fake_request(messages, model=None):
+        calls.append(messages)
+        if len(calls) == 1:
+            return {
+                "model": "gpt-5-mini",
+                "status": "completed",
+                "output_text": "Pass one review with repeated wording.",
+                "usage": {},
+                "output": [],
+            }
+        return {
+            "model": "gpt-5-mini",
+            "status": "completed",
+            "output_text": "Pass one review, clearer.",
+            "usage": {},
+            "output": [],
+        }
+
+    monkeypatch.setattr(ai_service, "request_openai_response", fake_request)
+
+    result = maybe_generate_weekly_dashboard_advice(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        prompt_filename="dashboard_advice.txt",
+        force_regenerate=True,
+    )
+
+    rewrite_prompt = calls[1][0]["content"][0]["text"]
+    assert len(calls) == 2
+    assert "TRADE PAYLOAD" not in rewrite_prompt
+    assert "Pass one review with repeated wording." in rewrite_prompt
+    assert result["record"].pass_1_output == "Pass one review with repeated wording."
+    assert result["record"].pass_2_output == "Pass one review, clearer."
+    assert result["record"].response_text == "Pass one review, clearer."
+    assert result["record"].prompt_version_pass_1 == "two-pass-weekly-sha"
+    assert result["record"].prompt_version_pass_2 == ai_service.hash_text(
+        load_prompt_text(ai_service.DEFAULT_REWRITE_PROMPT_FILE)["prompt_text"]
+    )
+    assert result["record"].model_used == "gpt-5-mini"
+
+
+def test_weekly_dashboard_advice_falls_back_when_rewrite_fails(app_ctx, monkeypatch):
+    user, trade_account = _create_user_and_account(
+        username="ai-two-pass-fallback-user",
+        email="ai-two-pass-fallback@example.com",
+    )
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.1010,
+            lot_size=1.0,
+            pnl=100.0,
+            opened_at=datetime(2026, 3, 10, 9, 0, 0),
+            closed_at=datetime(2026, 3, 10, 10, 0, 0),
+        )
+    )
+    prompt_history = AIPromptHistory(
+        prompt_id="dashboard_advice",
+        prompt_sha256="two-pass-fallback-sha",
+        prompt_text="Prompt text",
+        source_path="prompts/dashboard_advice.txt",
+    )
+    db.session.add(prompt_history)
+    db.session.commit()
+
+    period = {
+        "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
+        "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
+    }
+    monkeypatch.setattr(ai_service, "get_latest_trade_week_period", lambda **kwargs: period)
+    monkeypatch.setattr(ai_service, "should_generate_weekly_dashboard_advice", lambda **kwargs: True)
+    monkeypatch.setattr(
+        ai_service,
+        "build_trade_payload",
+        lambda **kwargs: {
+            "generated_at": "2026-03-12T12:00:00Z",
+            "period_start_utc": "2026-03-07T21:30:00Z",
+            "period_end_utc": "2026-03-14T21:30:00Z",
+            "historical_context": {},
+            "summary": {"closed_trades": 1},
+            "trades": [{"review_ref": "T1", "symbol": "EURUSD"}],
+        },
+    )
+    monkeypatch.setattr(
+        ai_service,
+        "build_dashboard_advice_messages",
+        lambda payload, prompt_filename=None, profile_adjustments="": (
+            prompt_history,
+            [{"role": "user", "content": []}],
+            '{"payload":"fallback"}',
+        ),
+    )
+
+    calls = []
+
+    def fake_request(messages, model=None):
+        calls.append(messages)
+        if len(calls) == 1:
+            return {
+                "model": "gpt-5-mini",
+                "status": "completed",
+                "output_text": "Pass one survives.",
+                "usage": {},
+                "output": [],
+            }
+        raise ai_service.AIRequestError("rewrite unavailable")
+
+    monkeypatch.setattr(ai_service, "request_openai_response", fake_request)
+
+    result = maybe_generate_weekly_dashboard_advice(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        prompt_filename="dashboard_advice.txt",
+        force_regenerate=True,
+    )
+
+    assert len(calls) == 2
+    assert result["generated"] is True
+    assert result["record"].pass_1_output == "Pass one survives."
+    assert result["record"].pass_2_output == "Pass one survives."
+    assert result["record"].response_text == "Pass one survives."
+    assert result["rewrite_response_payload"] is None
+
+
 def test_weekly_generation_allows_thin_sample_with_cautious_review(app_ctx, monkeypatch):
     user = User(
         username="ai-thin-week-user",
