@@ -8,10 +8,13 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import load_only, selectinload
 
 from ai_service import (
+    AIRequestError,
     MIN_CLOSED_TRADES_FOR_ADVICE,
+    WEEKLY_REVIEW_CHAT_PROMPT_VERSION,
     WEEKLY_DASHBOARD_KIND,
     build_dashboard_review_display,
     count_closed_trade_ideas_in_period,
+    generate_weekly_review_chat_reply,
     get_latest_trade_week_period,
     get_latest_weekly_dashboard_advice,
     get_weekly_dashboard_period,
@@ -51,7 +54,7 @@ from helpers.trade_analysis import detect_outliers, get_trade_identity
 from helpers.trends import trend_direction_ei_scores, trend_direction_expectancy_weeks, trend_direction_win_rate_weeks
 from auth_account import build_external_url
 from helpers.utils import login_required, utcnow_naive
-from models import AccountCashFlow, AIGeneratedResponse, Trade, UserProfile, WeeklyCheckin, db
+from models import AccountCashFlow, AIGeneratedResponse, Trade, UserProfile, WeeklyCheckin, WeeklyReviewChatMessage, db
 from trading import (
     SMALL_SAMPLE_MIN_TRADES,
     build_rr_summary,
@@ -87,6 +90,8 @@ WEEKLY_AI_PROMPT_FILENAME = "dashboard_advice.txt"
 DASHBOARD_CACHE_PREFIX = "dashboard_v3"
 ANALYTICS_CACHE_PREFIX = "analytics_v5"
 RR_SUMMARY_CACHE_PREFIX = "rr_summary_v5"
+WEEKLY_REVIEW_CHAT_MAX_CHARS = 800
+WEEKLY_REVIEW_CHAT_HISTORY_LIMIT = 6
 
 
 def _serialize_datetime(value):
@@ -1543,6 +1548,95 @@ def ai_status():
         current_app.logger.warning("Weekly AI status poll unavailable: %s", exc)
         status = None
     return jsonify({"ready": status is None})
+
+
+@bp.route("/dashboard/weekly-review/<int:review_id>/chat", methods=["POST"])
+@login_required
+def weekly_review_chat(review_id):
+    user_id = get_effective_user_id()
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    account_id = getattr(active_trade_account, "id", None)
+    if account_id is None:
+        return jsonify({"error": "No active trade account is selected."}), 404
+
+    payload = request.get_json(silent=True) or {}
+    message = str(payload.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "Ask a question about this weekly review first."}), 400
+    if len(message) > WEEKLY_REVIEW_CHAT_MAX_CHARS:
+        return jsonify({"error": f"Keep questions under {WEEKLY_REVIEW_CHAT_MAX_CHARS} characters."}), 400
+
+    review = (
+        AIGeneratedResponse.query.filter(
+            AIGeneratedResponse.id == review_id,
+            AIGeneratedResponse.user_id == user_id,
+            AIGeneratedResponse.trade_account_id == account_id,
+            AIGeneratedResponse.kind == WEEKLY_DASHBOARD_KIND,
+        )
+        .first()
+    )
+    if review is None:
+        return jsonify({"error": "Weekly review not found for this account."}), 404
+
+    chat_history = (
+        WeeklyReviewChatMessage.query.filter_by(
+            user_id=user_id,
+            trade_account_id=account_id,
+            ai_response_id=review.id,
+        )
+        .order_by(WeeklyReviewChatMessage.created_at.desc(), WeeklyReviewChatMessage.id.desc())
+        .limit(WEEKLY_REVIEW_CHAT_HISTORY_LIMIT)
+        .all()
+    )
+    chat_history.reverse()
+
+    try:
+        reply, _response_payload, model_used = generate_weekly_review_chat_reply(
+            review,
+            message,
+            chat_history=chat_history,
+        )
+    except AIRequestError as exc:
+        current_app.logger.warning(
+            "Weekly review chat AI request failed. user_id=%s trade_account_id=%s review_id=%s error=%s",
+            user_id,
+            account_id,
+            review.id,
+            exc,
+        )
+        return jsonify({"error": "Could not answer that right now. Please try again shortly."}), 502
+    except Exception as exc:
+        current_app.logger.exception(
+            "Weekly review chat failed. user_id=%s trade_account_id=%s review_id=%s",
+            user_id,
+            account_id,
+            review.id,
+        )
+        return jsonify({"error": "Could not answer that right now. Please try again shortly."}), 500
+
+    db.session.add_all(
+        [
+            WeeklyReviewChatMessage(
+                user_id=user_id,
+                trade_account_id=account_id,
+                ai_response_id=review.id,
+                role=WeeklyReviewChatMessage.ROLE_USER,
+                content=message,
+                prompt_version=WEEKLY_REVIEW_CHAT_PROMPT_VERSION,
+            ),
+            WeeklyReviewChatMessage(
+                user_id=user_id,
+                trade_account_id=account_id,
+                ai_response_id=review.id,
+                role=WeeklyReviewChatMessage.ROLE_ASSISTANT,
+                content=reply,
+                model_used=model_used,
+                prompt_version=WEEKLY_REVIEW_CHAT_PROMPT_VERSION,
+            ),
+        ]
+    )
+    db.session.commit()
+    return jsonify({"reply": reply})
 
 
 @bp.route("/dashboard/analytics")

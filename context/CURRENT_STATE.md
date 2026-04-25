@@ -2,6 +2,12 @@
 
 Last Updated: 2026-04-26
 
+## Weekly AI review follow-up chat (2026-04-26)
+
+- Dashboard Weekly AI Review now includes a compact "💬 Ask about this review" follow-up chat rendered inside the existing review panel only when a persisted weekly review is shown. The UI uses Jinja + vanilla `fetch()` via `static/js/weekly_review_chat.js`, appends user/assistant bubbles without refreshing, includes quick prompts, loading/error states, and posts with the existing CSRF header.
+- New `POST /dashboard/weekly-review/<review_id>/chat` route requires login, resolves the active trade account, verifies the review belongs to the current user and active account, validates message length, calls the existing OpenAI Responses infrastructure with only the stored weekly review/pass-1/payload/meta context plus optional recent chat history, and does not mutate the review row itself.
+- New `WeeklyReviewChatMessage` model/table stores successful user and assistant chat turns with user/account/review scope, model used, prompt version, and timestamps. Migration `20260426_0052` creates `weekly_review_chat_messages`.
+
 ## Weekly AI dashboard panel readability pass (2026-04-26)
 
 - Dashboard-only presentation change: the Weekly AI Review main card now leads with "🧠 What mattered this week" using the existing summary as the focal paragraph, relabels takeaways to "What this suggests", renders only the first two takeaways, lightly separates takeaway items, and line-clamps the actionable improvement card to keep the action scannable. No AI generation, payload, schema, backend sync, or analytics logic changed. (`templates/index.html`)

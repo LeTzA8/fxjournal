@@ -115,6 +115,13 @@ class User(db.Model):
         lazy=True,
         passive_deletes=True,
     )
+    weekly_review_chat_messages = db.relationship(
+        "WeeklyReviewChatMessage",
+        backref="user",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     weekly_checkins = db.relationship(
         "WeeklyCheckin",
         backref="user",
@@ -272,6 +279,13 @@ class TradeAccount(db.Model):
         "AIGeneratedResponse",
         backref="trade_account",
         lazy=True,
+        passive_deletes=True,
+    )
+    weekly_review_chat_messages = db.relationship(
+        "WeeklyReviewChatMessage",
+        backref="trade_account",
+        lazy=True,
+        cascade="all, delete-orphan",
         passive_deletes=True,
     )
     weekly_checkins = db.relationship(
@@ -972,6 +986,58 @@ class AIGeneratedResponse(db.Model):
     period_end_utc = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
     generated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    chat_messages = db.relationship(
+        "WeeklyReviewChatMessage",
+        backref="ai_response",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class WeeklyReviewChatMessage(db.Model):
+    __tablename__ = "weekly_review_chat_messages"
+    __table_args__ = (
+        db.Index(
+            "ix_weekly_review_chat_review_created",
+            "ai_response_id",
+            "created_at",
+        ),
+        db.Index(
+            "ix_weekly_review_chat_user_account_review",
+            "user_id",
+            "trade_account_id",
+            "ai_response_id",
+        ),
+    )
+
+    ROLE_USER = "user"
+    ROLE_ASSISTANT = "assistant"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    trade_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trade_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ai_response_id = db.Column(
+        db.Integer,
+        db.ForeignKey("ai_generated_responses.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role = db.Column(db.String(16), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, index=True)
+    model_used = db.Column(db.String(64), nullable=True)
+    prompt_version = db.Column(db.String(64), nullable=True)
 
 
 @event.listens_for(Session, "before_flush")

@@ -5,7 +5,7 @@ import json
 from sqlalchemy import inspect as sa_inspect
 
 from ai_service import WEEKLY_DASHBOARD_KIND
-from models import AIGeneratedResponse, AIPromptHistory, MT5Account
+from models import AIGeneratedResponse, AIPromptHistory, MT5Account, WeeklyReviewChatMessage
 
 import routes.dashboard as dashboard_routes
 from helpers.trade_interpretation import apply_interpretation
@@ -37,6 +37,189 @@ def _create_logged_in_user(client, username, email):
         session_state["active_trade_account_id"] = trade_account.id
 
     return user, trade_account
+
+
+def _create_prompt_history(prompt_id):
+    prompt_history = AIPromptHistory(
+        prompt_id=prompt_id,
+        prompt_sha256=f"{prompt_id}-sha",
+        prompt_text="Prompt text",
+        source_path="prompts/dashboard_advice.txt",
+    )
+    db.session.add(prompt_history)
+    db.session.flush()
+    return prompt_history
+
+
+def _create_weekly_review(user, trade_account, prompt_id="weekly-chat"):
+    prompt_history = _create_prompt_history(prompt_id)
+    review = AIGeneratedResponse(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        prompt_history_id=prompt_history.id,
+        kind=WEEKLY_DASHBOARD_KIND,
+        model="gpt-5-mini",
+        response_text="This week was driven by one oversized XAUUSD loss.",
+        pass_1_output="Pass one: sizing was the main issue.",
+        payload_json=json.dumps({"trades": [{"symbol": "XAUUSD", "pnl": -120.0}]}),
+        payload_hash="weekly-chat-hash",
+        trade_count_used=3,
+        period_start_utc=datetime(2026, 4, 6, 21, 30, 0),
+        period_end_utc=datetime(2026, 4, 13, 21, 30, 0),
+        generated_at=datetime(2026, 4, 14, 12, 0, 0),
+    )
+    db.session.add(review)
+    db.session.commit()
+    return review
+
+
+def test_weekly_review_chat_route_stores_user_and_assistant_messages(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-user",
+        email="dashboard-review-chat@example.com",
+    )
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-success")
+    db.session.add(
+        WeeklyReviewChatMessage(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            ai_response_id=review.id,
+            role=WeeklyReviewChatMessage.ROLE_USER,
+            content="Explain this simply",
+        )
+    )
+    db.session.commit()
+
+    calls = {}
+
+    def fake_generate_weekly_review_chat_reply(review_record, user_message, chat_history=None):
+        calls["review_id"] = review_record.id
+        calls["message"] = user_message
+        calls["history"] = [message.content for message in chat_history or []]
+        return "Start with the XAUUSD loss because it drove most of the damage.", {}, "gpt-test"
+
+    monkeypatch.setattr(
+        dashboard_routes,
+        "generate_weekly_review_chat_reply",
+        fake_generate_weekly_review_chat_reply,
+    )
+
+    response = client.post(
+        f"/dashboard/weekly-review/{review.id}/chat",
+        json={"message": "Which trade should I review first?"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["reply"] == "Start with the XAUUSD loss because it drove most of the damage."
+    assert calls == {
+        "review_id": review.id,
+        "message": "Which trade should I review first?",
+        "history": ["Explain this simply"],
+    }
+    messages = (
+        WeeklyReviewChatMessage.query.filter_by(ai_response_id=review.id)
+        .order_by(WeeklyReviewChatMessage.id.asc())
+        .all()
+    )
+    assert [message.role for message in messages] == ["user", "user", "assistant"]
+    assert messages[-2].content == "Which trade should I review first?"
+    assert messages[-1].content.startswith("Start with the XAUUSD loss")
+    assert messages[-1].model_used == "gpt-test"
+
+
+def test_weekly_review_chat_route_rejects_wrong_active_account(app_ctx, client, monkeypatch):
+    user, active_trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-scope-user",
+        email="dashboard-review-chat-scope@example.com",
+    )
+    other_account = TradeAccount(
+        user_id=user.id,
+        name="Other Account",
+        account_type="CFD",
+        is_default=False,
+    )
+    db.session.add(other_account)
+    db.session.flush()
+    review = _create_weekly_review(user, other_account, prompt_id="weekly-chat-scope")
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("AI should not be called for another account's review")
+
+    monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fail_if_called)
+
+    response = client.post(
+        f"/dashboard/weekly-review/{review.id}/chat",
+        json={"message": "Explain this simply"},
+    )
+
+    assert active_trade_account.id != other_account.id
+    assert response.status_code == 404
+    assert WeeklyReviewChatMessage.query.filter_by(ai_response_id=review.id).count() == 0
+
+
+def test_weekly_review_chat_route_rejects_empty_and_long_messages(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-validation-user",
+        email="dashboard-review-chat-validation@example.com",
+    )
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-validation")
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("AI should not be called for invalid messages")
+
+    monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fail_if_called)
+
+    empty_response = client.post(
+        f"/dashboard/weekly-review/{review.id}/chat",
+        json={"message": "   "},
+    )
+    long_response = client.post(
+        f"/dashboard/weekly-review/{review.id}/chat",
+        json={"message": "x" * (dashboard_routes.WEEKLY_REVIEW_CHAT_MAX_CHARS + 1)},
+    )
+
+    assert empty_response.status_code == 400
+    assert long_response.status_code == 400
+    assert WeeklyReviewChatMessage.query.filter_by(ai_response_id=review.id).count() == 0
+
+
+def test_dashboard_home_renders_weekly_review_chat_inside_review_panel(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-render-user",
+        email="dashboard-review-chat-render@example.com",
+    )
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-render")
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": review,
+            "weekly_ai_review_display": {
+                "summary": {"text": "Summary", "segments": [{"type": "text", "text": "Summary"}], "refs": [], "citations": []},
+                "takeaways": [],
+                "improvement": {"text": "Improve this week: Keep risk fixed.", "segments": [{"type": "text", "text": "Improve this week: Keep risk fixed."}], "refs": [], "citations": []},
+                "strength": {"text": "You're already strong at: Waiting.", "segments": [{"type": "text", "text": "You're already strong at: Waiting."}], "refs": [], "citations": []},
+                "experiment": {},
+                "has_citations": False,
+            },
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    response = client.get("/dashboard")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "💬 Ask about this review" in response_text
+    assert f"/dashboard/weekly-review/{review.id}/chat" in response_text
+    assert "weekly_review_chat.js" in response_text
 
 
 def test_dashboard_home_shows_no_trades_weekly_ai_message(app_ctx, client, monkeypatch):

@@ -55,6 +55,21 @@ DEFAULT_HISTORICAL_CONTEXT_DAYS = 90
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 WEEKLY_DASHBOARD_KIND = "weekly_dashboard_advice"
 DEFAULT_REWRITE_PROMPT_FILE = "dashboard_advice_rewrite.txt"
+WEEKLY_REVIEW_CHAT_PROMPT_VERSION = "weekly_review_followup_v1"
+WEEKLY_REVIEW_CHAT_SYSTEM_PROMPT = """
+You are answering a follow-up question about this specific weekly trading review.
+Use only the provided weekly review, available trade context, and the user's question.
+Your job is to explain the review clearly in plain trader language.
+Do NOT:
+- give market predictions
+- suggest new trades
+- invent strategy details
+- make claims not supported by the review or trade data
+- give financial advice
+If the answer is uncertain, say so clearly.
+If the question is unrelated to this review, safely redirect the user back to reviewing past trades.
+Keep the answer short, practical, and easy to understand.
+""".strip()
 WEEKLY_MARKET_TIMEZONE = ZoneInfo("America/New_York")
 WEEKLY_CUTOFF_WEEKDAY = 4
 WEEKLY_CUTOFF_HOUR = 17
@@ -2541,6 +2556,80 @@ def rewrite_weekly_dashboard_review_or_fallback(pass_1_output, *, user_id, trade
             exc,
         )
         return pass_1_output, None, None
+
+
+def _compact_json_for_prompt(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return ""
+        try:
+            parsed = json.loads(text)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return text
+        return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def build_weekly_review_chat_messages(review_record, user_message, chat_history=None):
+    final_review_text = normalize_dashboard_advice_text(
+        getattr(review_record, "response_text", None) or ""
+    )
+    pass_1_output = normalize_dashboard_advice_text(
+        getattr(review_record, "pass_1_output", None) or ""
+    )
+    raw_review_text = pass_1_output if pass_1_output and pass_1_output != final_review_text else ""
+    payload_json = _compact_json_for_prompt(getattr(review_record, "payload_json", None))
+    response_meta_json = _compact_json_for_prompt(getattr(review_record, "response_meta_json", None))
+
+    history_lines = []
+    for message in chat_history or []:
+        role = str(getattr(message, "role", "") or "").strip().lower()
+        if role not in {"user", "assistant"}:
+            continue
+        content = normalize_dashboard_advice_text(getattr(message, "content", "") or "")
+        if not content:
+            continue
+        history_lines.append(f"{role}: {content}")
+
+    user_context = "\n\n".join(
+        part
+        for part in [
+            "FINAL_WEEKLY_REVIEW_SHOWN_TO_USER\n" + (final_review_text or "-"),
+            "RAW_PASS_1_REVIEW_IF_AVAILABLE\n" + (raw_review_text or "-"),
+            "STRUCTURED_REVIEW_META_IF_AVAILABLE\n" + (response_meta_json or "-"),
+            "ORIGINAL_WEEKLY_REVIEW_PAYLOAD_AND_TRADE_CONTEXT_IF_AVAILABLE\n" + (payload_json or "-"),
+            "RECENT_CHAT_HISTORY_FOR_THIS_REVIEW\n" + ("\n".join(history_lines) if history_lines else "-"),
+            "USER_QUESTION\n" + normalize_dashboard_advice_text(user_message),
+        ]
+    )
+
+    return [
+        {
+            "role": "system",
+            "content": [{"type": "input_text", "text": WEEKLY_REVIEW_CHAT_SYSTEM_PROMPT}],
+        },
+        {
+            "role": "user",
+            "content": [{"type": "input_text", "text": user_context}],
+        },
+    ]
+
+
+def generate_weekly_review_chat_reply(review_record, user_message, chat_history=None, *, model=None):
+    resolved_model = model or get_ai_model()
+    messages = build_weekly_review_chat_messages(
+        review_record,
+        user_message,
+        chat_history=chat_history,
+    )
+    response_payload = request_openai_response(messages, model=resolved_model)
+    reply = extract_response_text(response_payload)
+    if not reply:
+        raise AIRequestError(describe_empty_response(response_payload))
+    return reply, response_payload, resolved_model
 
 
 def describe_empty_response(response_payload):

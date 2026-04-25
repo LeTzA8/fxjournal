@@ -1092,6 +1092,40 @@
                     {% endif %}
                     {% endif %}
                 </div>
+                {% if weekly_ai_review and weekly_ai_review.id is defined %}
+                <section
+                    class="weekly-review-chat"
+                    data-weekly-review-chat
+                    data-chat-url="{{ url_for('dashboard.weekly_review_chat', review_id=weekly_ai_review.id) }}"
+                    data-csrf-token="{{ csrf_token() }}"
+                    aria-label="Ask about this weekly AI review"
+                >
+                    <div class="weekly-review-chat-head">
+                        <h3>💬 Ask about this review</h3>
+                        <p>Follow-ups use only this review and its stored trade context.</p>
+                    </div>
+                    <div class="weekly-review-chat-prompts" aria-label="Quick prompts">
+                        <button type="button" data-review-chat-prompt="Explain this simply">Explain this simply</button>
+                        <button type="button" data-review-chat-prompt="Was this bad luck or my execution?">Was this bad luck or my execution?</button>
+                        <button type="button" data-review-chat-prompt="Which trade should I review first?">Which trade should I review first?</button>
+                    </div>
+                    <div class="weekly-review-chat-log" data-review-chat-log aria-live="polite"></div>
+                    <p class="weekly-review-chat-error" data-review-chat-error role="alert" hidden></p>
+                    <form class="weekly-review-chat-form" data-review-chat-form>
+                        <label class="sr-only" for="weekly-review-chat-input-{{ weekly_ai_review.id }}">Ask a question about this review</label>
+                        <input
+                            id="weekly-review-chat-input-{{ weekly_ai_review.id }}"
+                            data-review-chat-input
+                            type="text"
+                            name="message"
+                            maxlength="800"
+                            autocomplete="off"
+                            placeholder="Ask what this means..."
+                        >
+                        <button type="submit">Ask</button>
+                    </form>
+                </section>
+                {% endif %}
                 <div class="ai-hero-meta">
                     {% if is_state_one and not weekly_ai_review %}
                     <p class="insight-note">Journaling only; not financial advice.</p>
@@ -3901,6 +3935,128 @@
         to { --dashboard-focus-angle: 360deg; }
     }
 
+    .weekly-review-chat {
+        margin-top: 0.85rem;
+        padding: 0.78rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
+        border-radius: 18px;
+        background: color-mix(in srgb, var(--surface) 84%, var(--card) 16%);
+    }
+
+    .weekly-review-chat-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        align-items: baseline;
+        flex-wrap: wrap;
+        margin-bottom: 0.55rem;
+    }
+
+    .weekly-review-chat-head h3 {
+        margin: 0;
+        font-size: 0.92rem;
+        color: var(--ink);
+    }
+
+    .weekly-review-chat-head p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.76rem;
+    }
+
+    .weekly-review-chat-prompts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.42rem;
+        margin-bottom: 0.6rem;
+    }
+
+    .weekly-review-chat-prompts button,
+    .weekly-review-chat-form button {
+        border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
+        border-radius: 999px;
+        background: var(--card);
+        color: var(--ink);
+        font: inherit;
+        font-size: 0.76rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .weekly-review-chat-prompts button {
+        padding: 0.28rem 0.55rem;
+    }
+
+    .weekly-review-chat-log {
+        display: grid;
+        gap: 0.45rem;
+        margin-bottom: 0.55rem;
+    }
+
+    .weekly-review-chat-bubble {
+        max-width: min(88%, 42rem);
+        padding: 0.48rem 0.62rem;
+        border-radius: 14px;
+        font-size: 0.84rem;
+        line-height: 1.45;
+        white-space: pre-wrap;
+    }
+
+    .weekly-review-chat-bubble--user {
+        justify-self: end;
+        background: color-mix(in srgb, var(--accent) 13%, var(--card));
+        border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+        color: var(--ink);
+    }
+
+    .weekly-review-chat-bubble--assistant {
+        justify-self: start;
+        background: var(--card);
+        border: 1px solid var(--border);
+        color: var(--text);
+    }
+
+    .weekly-review-chat-bubble--loading {
+        color: var(--muted);
+        font-style: italic;
+    }
+
+    .weekly-review-chat-error {
+        margin: 0 0 0.5rem;
+        color: var(--bad);
+        font-size: 0.82rem;
+    }
+
+    .weekly-review-chat-form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.45rem;
+    }
+
+    .weekly-review-chat-form input {
+        min-width: 0;
+        border: 1px solid var(--field-border);
+        border-radius: 999px;
+        padding: 0.5rem 0.72rem;
+        font: inherit;
+        font-size: 0.84rem;
+        color: var(--ink);
+        background: var(--card);
+    }
+
+    .weekly-review-chat-form button {
+        padding: 0.48rem 0.72rem;
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+    }
+
+    .weekly-review-chat-form button:disabled,
+    .weekly-review-chat-prompts button:disabled {
+        cursor: wait;
+        opacity: 0.62;
+    }
+
     @keyframes draw-line { to { stroke-dashoffset: 0; } }
 
     @keyframes area-fade { to { opacity: 1; } }
@@ -4008,6 +4164,19 @@
             width: 100%;
         }
 
+        .weekly-review-chat-head {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .weekly-review-chat-form {
+            grid-template-columns: 1fr;
+        }
+
+        .weekly-review-chat-bubble {
+            max-width: 100%;
+        }
+
         .journey-steps {
             grid-template-columns: 1fr;
         }
@@ -4038,6 +4207,9 @@
 <script src="{{ url_for('static', filename='js/trade_filters_shared.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard_page.js') }}"></script>
 <script src="{{ url_for('static', filename='js/mt5_request_form.js') }}"></script>
+{% if weekly_ai_review and weekly_ai_review.id is defined %}
+<script src="{{ url_for('static', filename='js/weekly_review_chat.js') }}"></script>
+{% endif %}
 {% if weekly_ai_is_generating %}
 <script>
 (() => {
