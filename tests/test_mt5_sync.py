@@ -185,6 +185,93 @@ def test_mt5_server_offset_probe_stores_live_offset_by_server_name(app_ctx, monk
     assert stored.probed_at is not None
 
 
+def test_mt5_server_offset_probe_snaps_fresh_tick_to_nearest_hour(app_ctx, monkeypatch):
+    monkeypatch.setattr(
+        "celery_workers.cache._client",
+        lambda: (_ for _ in ()).throw(RuntimeError("cache unavailable")),
+    )
+    fake_mt5 = SimpleNamespace(
+        symbol_info_tick=lambda symbol: SimpleNamespace(
+            time=int(datetime.now(timezone.utc).timestamp()) + (120 * 60) - 45
+        ),
+        symbol_select=lambda *_args, **_kwargs: False,
+    )
+
+    offset_minutes = _resolve_mt5_server_offset_minutes(
+        fake_mt5,
+        123,
+        preferred_symbol="BTCUSD",
+        server_name="Broker-Slightly-Old-Tick",
+    )
+
+    assert offset_minutes == 120
+
+
+def test_mt5_server_offset_probe_rejects_non_hour_delta_and_uses_db_fallback(app_ctx, monkeypatch):
+    monkeypatch.setattr(
+        "celery_workers.cache._client",
+        lambda: (_ for _ in ()).throw(RuntimeError("cache unavailable")),
+    )
+    db.session.add(
+        MT5BrokerServerOffset(
+            server_name="Broker-Minute-Drift",
+            server_key="broker-minute-drift",
+            offset_minutes=180,
+            probe_symbol="BTCUSD.m",
+            probed_at=datetime(2026, 4, 25, 12, 0, 0),
+        )
+    )
+    db.session.commit()
+    fake_mt5 = SimpleNamespace(
+        symbol_info_tick=lambda symbol: SimpleNamespace(
+            time=int(datetime.now(timezone.utc).timestamp()) + (90 * 60)
+        ),
+        symbol_select=lambda *_args, **_kwargs: False,
+    )
+
+    offset_minutes = _resolve_mt5_server_offset_minutes(
+        fake_mt5,
+        123,
+        preferred_symbol="BTCUSD",
+        server_name="Broker-Minute-Drift",
+    )
+
+    assert offset_minutes == 180
+
+
+def test_mt5_server_offset_probe_rejects_stale_minute_mismatch_and_uses_db_fallback(app_ctx, monkeypatch):
+    monkeypatch.setattr(
+        "celery_workers.cache._client",
+        lambda: (_ for _ in ()).throw(RuntimeError("cache unavailable")),
+    )
+    db.session.add(
+        MT5BrokerServerOffset(
+            server_name="Broker-Minute-Mismatch",
+            server_key="broker-minute-mismatch",
+            offset_minutes=120,
+            probe_symbol="BTCUSD.m",
+            probed_at=datetime(2026, 4, 25, 12, 0, 0),
+        )
+    )
+    db.session.commit()
+    now_utc = int(datetime.now(timezone.utc).timestamp())
+    fake_mt5 = SimpleNamespace(
+        symbol_info_tick=lambda symbol: SimpleNamespace(
+            time=now_utc + (120 * 60) - (20 * 60)
+        ),
+        symbol_select=lambda *_args, **_kwargs: False,
+    )
+
+    offset_minutes = _resolve_mt5_server_offset_minutes(
+        fake_mt5,
+        123,
+        preferred_symbol="BTCUSD",
+        server_name="Broker-Minute-Mismatch",
+    )
+
+    assert offset_minutes == 120
+
+
 def test_mt5_server_offset_uses_db_offset_when_live_probe_unavailable(app_ctx, monkeypatch):
     monkeypatch.setattr(
         "celery_workers.cache._client",

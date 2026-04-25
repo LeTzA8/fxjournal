@@ -21,6 +21,8 @@ MT5_SYNC_QUEUE_NAME = "mt5_sync"
 MT5_PRIORITY_QUEUE_NAME = "mt5_priority"
 MT5_SYNC_BEAT_EXPIRES_SECONDS = 28
 MT5_SYNC_BEAT_MAX_QUEUE_DEPTH = 150
+MT5_SERVER_OFFSET_STALE_TICK_SECONDS = 6 * 3600
+MT5_SERVER_OFFSET_HOUR_TOLERANCE_SECONDS = 5 * 60
 
 # MetaTrader5 keeps process-global session state, so sync tasks must not
 # overlap MT5 API calls inside the same worker process.
@@ -320,9 +322,30 @@ def _probe_mt5_server_delta_result(mt5, *, preferred_symbol=None, symbol_candida
             continue
         now_utc = int(datetime.now(timezone.utc).timestamp())
         delta_seconds = int(tick_time) - now_utc
-        if abs(delta_seconds) > 6 * 3600:
+        if abs(delta_seconds) > MT5_SERVER_OFFSET_STALE_TICK_SECONDS:
             continue
-        return {"offset_minutes": int(round(delta_seconds / 60)), "symbol": symbol}
+        nearest_hour_minutes = int(round(delta_seconds / 3600) * 60)
+        nearest_hour_seconds = nearest_hour_minutes * 60
+        if abs(delta_seconds - nearest_hour_seconds) > MT5_SERVER_OFFSET_HOUR_TOLERANCE_SECONDS:
+            logger.warning(
+                "MT5 server offset probe rejected non-hour delta symbol=%s delta_seconds=%s nearest_hour_minutes=%s",
+                symbol,
+                delta_seconds,
+                nearest_hour_minutes,
+            )
+            continue
+        tick_hour_remainder = int(tick_time) % 3600
+        now_hour_remainder = now_utc % 3600
+        remainder_distance = abs(tick_hour_remainder - now_hour_remainder)
+        remainder_distance = min(remainder_distance, 3600 - remainder_distance)
+        if remainder_distance > MT5_SERVER_OFFSET_HOUR_TOLERANCE_SECONDS:
+            logger.warning(
+                "MT5 server offset probe rejected stale minute mismatch symbol=%s remainder_distance_seconds=%s",
+                symbol,
+                remainder_distance,
+            )
+            continue
+        return {"offset_minutes": nearest_hour_minutes, "symbol": symbol}
     return {"offset_minutes": 0, "symbol": None}
 
 
