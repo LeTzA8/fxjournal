@@ -41,6 +41,7 @@ from helpers.core import (
     queue_mt5_account_cleanup,
     sanitize_error_message,
 )
+from helpers.celery_dispatch import describe_celery_broker, dispatch_celery_task
 from trading import (
     clear_cfd_symbol_cache,
     collect_active_cfd_alias_key_conflicts,
@@ -2737,9 +2738,11 @@ def register_public_auth_routes(
                 "info",
             )
 
+        weekly_ai_broker = "unknown"
         try:
             from celery_workers.cache import CacheUnavailableError, clear_ai_status
             from celery_workers.weekly_tasks import generate_weekly_ai_task
+            weekly_ai_broker = describe_celery_broker(generate_weekly_ai_task)
 
             try:
                 clear_ai_status(
@@ -2750,20 +2753,40 @@ def register_public_auth_routes(
             except CacheUnavailableError:
                 pass
 
-            generate_weekly_ai_task.delay(
+            dispatch_result = dispatch_celery_task(
+                generate_weekly_ai_task,
+                args=[
+                    user_id,
+                    account.id,
+                    "dashboard_advice.txt",
+                    period["period_start_utc"].isoformat(),
+                ],
+                kwargs={
+                    "force_regenerate": True,
+                    "send_weekly_email": False,
+                },
+                log=current_app.logger,
+                label="admin_ai_regeneration",
+                extra={
+                    "user_id": user_id,
+                    "trade_account_id": account.id,
+                    "admin_user_id": session.get("user_id"),
+                },
+            )
+            current_app.logger.info(
+                "Admin queued weekly AI regeneration user_id=%s trade_account_id=%s task_id=%s broker=%s",
                 user_id,
                 account.id,
-                "dashboard_advice.txt",
-                period["period_start_utc"].isoformat(),
-                force_regenerate=True,
-                send_weekly_email=False,
+                getattr(dispatch_result, "id", None),
+                weekly_ai_broker,
             )
         except Exception as exc:
             db.session.rollback()
             current_app.logger.warning(
-                "Admin AI regeneration unavailable: user_id=%s trade_account_id=%s error=%s",
+                "Admin AI regeneration unavailable: user_id=%s trade_account_id=%s broker=%s error=%s",
                 user_id,
                 trade_account_id,
+                weekly_ai_broker,
                 exc,
             )
             occurred_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -3537,21 +3560,34 @@ def register_public_auth_routes(
                 "error",
             )
 
+        setup_broker = "unknown"
         try:
             from celery_workers.mt5_setup_tasks import setup_mt5_terminal
+            setup_broker = describe_celery_broker(setup_mt5_terminal)
 
-            setup_mt5_terminal.apply_async(
+            dispatch_result = dispatch_celery_task(
+                setup_mt5_terminal,
                 args=[mt5_account.id],
                 queue="mt5_setup",
+                log=current_app.logger,
+                label="admin_mt5_add_and_setup",
+                extra={
+                    "mt5_account_id": mt5_account.id,
+                    "account_number": account_number,
+                    "admin_user_id": session.get("user_id"),
+                },
             )
             current_app.logger.info(
-                "Admin queued MT5 setup_terminal mt5_account_id=%s queue=mt5_setup",
+                "Admin queued MT5 setup_terminal mt5_account_id=%s queue=mt5_setup task_id=%s broker=%s",
                 mt5_account.id,
+                getattr(dispatch_result, "id", None),
+                setup_broker,
             )
         except Exception as exc:
             current_app.logger.warning(
-                "MT5 setup queue failed for mt5_account_id=%s: %s",
+                "MT5 setup queue failed for mt5_account_id=%s broker=%s: %s",
                 mt5_account.id,
+                setup_broker,
                 sanitize_error_message(exc),
             )
             return build_admin_redirect(
@@ -3589,22 +3625,34 @@ def register_public_auth_routes(
                 "error",
             )
 
+        setup_broker = "unknown"
         try:
             from celery_workers.mt5_setup_tasks import setup_mt5_terminal
+            setup_broker = describe_celery_broker(setup_mt5_terminal)
 
-            setup_mt5_terminal.apply_async(
+            dispatch_result = dispatch_celery_task(
+                setup_mt5_terminal,
                 args=[mt5_account_id],
                 queue="mt5_setup",
+                log=current_app.logger,
+                label="admin_mt5_setup_terminal",
+                extra={
+                    "mt5_account_id": mt5_account_id,
+                    "admin_user_id": session.get("user_id"),
+                },
             )
             current_app.logger.info(
-                "Admin queued MT5 setup_terminal mt5_account_id=%s queue=mt5_setup",
+                "Admin queued MT5 setup_terminal mt5_account_id=%s queue=mt5_setup task_id=%s broker=%s",
                 mt5_account_id,
+                getattr(dispatch_result, "id", None),
+                setup_broker,
             )
         except Exception as exc:
             db.session.rollback()
             current_app.logger.warning(
-                "MT5 setup queue failed for mt5_account_id=%s: %s",
+                "MT5 setup queue failed for mt5_account_id=%s broker=%s: %s",
                 mt5_account_id,
+                setup_broker,
                 sanitize_error_message(exc),
             )
             return build_admin_redirect(
@@ -3787,23 +3835,36 @@ def register_public_auth_routes(
         if not account.is_active:
             return build_admin_redirect("mt5", "That MT5 account is inactive.", "error")
 
+        sync_broker = "unknown"
         try:
             from celery_workers.mt5_sync_tasks import sync_mt5_account
+            sync_broker = describe_celery_broker(sync_mt5_account)
 
-            sync_mt5_account.apply_async(
+            dispatch_result = dispatch_celery_task(
+                sync_mt5_account,
                 args=[mt5_account_id],
                 kwargs={"full_history": True, "trigger_source": "manual"},
                 queue="mt5_sync",
+                log=current_app.logger,
+                label="admin_mt5_trigger_sync",
+                extra={
+                    "mt5_account_id": mt5_account_id,
+                    "admin_user_id": session.get("user_id"),
+                    "trigger_source": "manual",
+                },
             )
             current_app.logger.info(
-                "Admin queued sync_mt5_account mt5_account_id=%s full_history=True trigger=manual",
+                "Admin queued sync_mt5_account mt5_account_id=%s full_history=True trigger=manual task_id=%s broker=%s",
                 mt5_account_id,
+                getattr(dispatch_result, "id", None),
+                sync_broker,
             )
         except Exception as exc:
             db.session.rollback()
             current_app.logger.warning(
-                "MT5 sync queue failed for mt5_account_id=%s: %s",
+                "MT5 sync queue failed for mt5_account_id=%s broker=%s: %s",
                 mt5_account_id,
+                sync_broker,
                 sanitize_error_message(exc),
             )
             return build_admin_redirect(
@@ -3844,11 +3905,15 @@ def register_public_auth_routes(
                 "No active CFD MT5 accounts to recalibrate trade times for.",
                 "info",
             )
+        sync_broker = "unknown"
         try:
             from celery_workers.mt5_sync_tasks import sync_mt5_account
+            sync_broker = describe_celery_broker(sync_mt5_account)
 
+            task_ids = []
             for account in eligible:
-                sync_mt5_account.apply_async(
+                dispatch_result = dispatch_celery_task(
+                    sync_mt5_account,
                     args=[account.id],
                     kwargs={
                         "full_history": True,
@@ -3856,15 +3921,26 @@ def register_public_auth_routes(
                         "recalibrate_trade_timestamps": True,
                     },
                     queue="mt5_sync",
+                    log=current_app.logger,
+                    label="admin_mt5_recalibrate_times_all",
+                    extra={
+                        "mt5_account_id": account.id,
+                        "admin_user_id": session.get("user_id"),
+                        "trigger_source": "admin_recalibrate_times",
+                    },
                 )
+                task_ids.append(getattr(dispatch_result, "id", None))
             current_app.logger.info(
-                "Admin queued sync_mt5_account recalibrate_times for %s mt5_account_id(s)",
+                "Admin queued sync_mt5_account recalibrate_times for %s mt5_account_id(s) task_ids=%s broker=%s",
                 len(eligible),
+                task_ids,
+                sync_broker,
             )
         except Exception as exc:
             db.session.rollback()
             current_app.logger.warning(
-                "MT5 recalibrate-times queue failed: %s",
+                "MT5 recalibrate-times queue failed broker=%s: %s",
+                sync_broker,
                 sanitize_error_message(exc),
             )
             return build_admin_redirect(
@@ -3933,10 +4009,13 @@ def register_public_auth_routes(
                 "Trade time recalibration applies to CFD MT5 accounts only.",
                 "error",
             )
+        sync_broker = "unknown"
         try:
             from celery_workers.mt5_sync_tasks import sync_mt5_account
+            sync_broker = describe_celery_broker(sync_mt5_account)
 
-            sync_mt5_account.apply_async(
+            dispatch_result = dispatch_celery_task(
+                sync_mt5_account,
                 args=[mt5_account_id],
                 kwargs={
                     "full_history": True,
@@ -3944,16 +4023,26 @@ def register_public_auth_routes(
                     "recalibrate_trade_timestamps": True,
                 },
                 queue="mt5_sync",
+                log=current_app.logger,
+                label="admin_mt5_recalibrate_times_single",
+                extra={
+                    "mt5_account_id": mt5_account_id,
+                    "admin_user_id": session.get("user_id"),
+                    "trigger_source": "admin_recalibrate_times",
+                },
             )
             current_app.logger.info(
-                "Admin queued sync_mt5_account mt5_account_id=%s recalibrate_trade_timestamps=True",
+                "Admin queued sync_mt5_account mt5_account_id=%s recalibrate_trade_timestamps=True task_id=%s broker=%s",
                 mt5_account_id,
+                getattr(dispatch_result, "id", None),
+                sync_broker,
             )
         except Exception as exc:
             db.session.rollback()
             current_app.logger.warning(
-                "MT5 recalibrate-times queue failed for mt5_account_id=%s: %s",
+                "MT5 recalibrate-times queue failed for mt5_account_id=%s broker=%s: %s",
                 mt5_account_id,
+                sync_broker,
                 sanitize_error_message(exc),
             )
             return build_admin_redirect(
@@ -4059,27 +4148,43 @@ def register_public_auth_routes(
                 "info",
             )
 
+        backfill_broker = "unknown"
         try:
             from celery_workers.mt5_sync_tasks import fetch_trade_bars
+            backfill_broker = describe_celery_broker(fetch_trade_bars)
             queued = 0
+            task_ids = []
             for trade in trades_to_queue:
-                fetch_trade_bars.apply_async(
+                dispatch_result = dispatch_celery_task(
+                    fetch_trade_bars,
                     args=[mt5_account_id, trade.id],
                     queue="mt5_sync",
+                    log=current_app.logger,
+                    label="admin_mt5_backfill_bars",
+                    extra={
+                        "mt5_account_id": mt5_account_id,
+                        "trade_id": trade.id,
+                        "admin_user_id": session.get("user_id"),
+                        "force_backfill": force_backfill,
+                    },
                 )
+                task_ids.append(getattr(dispatch_result, "id", None))
                 queued += 1
             current_app.logger.info(
-                "Admin queued fetch_trade_bars mt5_account_id=%s tasks=%s closed=%s skipped_existing=%s force=%s queue=mt5_sync",
+                "Admin queued fetch_trade_bars mt5_account_id=%s tasks=%s closed=%s skipped_existing=%s force=%s queue=mt5_sync task_ids=%s broker=%s",
                 mt5_account_id,
                 queued,
                 len(closed_trades),
                 max(len(closed_trades) - queued, 0),
                 force_backfill,
+                task_ids,
+                backfill_broker,
             )
         except Exception as exc:
             current_app.logger.warning(
-                "Bar backfill dispatch failed for mt5_account_id=%s: %s",
+                "Bar backfill dispatch failed for mt5_account_id=%s broker=%s: %s",
                 mt5_account_id,
+                backfill_broker,
                 sanitize_error_message(exc),
             )
             return build_admin_redirect("mt5", "Bar backfill could not be queued. Please try again.", "error")

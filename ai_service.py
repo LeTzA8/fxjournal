@@ -20,6 +20,7 @@ from helpers.trade_analysis import (
     get_trade_identity as _get_trade_identity,
     get_trade_session as _get_trade_session,
 )
+from helpers.weekly_signals import build_weekly_signals as _build_weekly_signals
 from models import (
     AIGeneratedResponse,
     AIPromptHistory,
@@ -1534,6 +1535,7 @@ def build_trade_payload(
             (largest_trade_abs_pnl / total_absolute_trade_pnl) * 100.0
         )
 
+    account_size_for_risk = _first_positive_account_size_from_trades(trades)
     serialized_trades = []
     next_trade_ref = 1
     next_bundle_ref = 1
@@ -1549,6 +1551,12 @@ def build_trade_payload(
             next_bundle_ref += 1
         else:
             next_trade_ref += 1
+        planned_risk_dollars = resolve_planned_risk_dollars(trade)
+        trade_risk_pct = None
+        if planned_risk_dollars is not None and account_size_for_risk:
+            trade_risk_pct = _round_metric(
+                (float(planned_risk_dollars) / account_size_for_risk) * 100.0, digits=4
+            )
         serialized_trades.append(
             {
                 "review_ref": review_ref,
@@ -1562,6 +1570,8 @@ def build_trade_payload(
                 "take_profit": trade.take_profit,
                 "lot_size": trade.lot_size,
                 "pnl": trade_pnl,
+                "planned_risk_dollars": _round_metric(planned_risk_dollars) if planned_risk_dollars is not None else None,
+                "trade_risk_pct": trade_risk_pct,
                 "entry_session": _classify_trade_session(trade.opened_at),
                 "exit_session": _classify_trade_session(trade.closed_at),
                 "session": _get_trade_session(trade),
@@ -1685,6 +1695,32 @@ def build_trade_payload(
         median_planned_risk_dollars=med_planned_risk_d,
         median_risk_pct_of_account=med_risk_pct,
     )
+    _summary_for_signals = {
+        "net_pnl": _round_metric(analytics["summary"].get("net_pnl")),
+        "win_rate": _round_metric(analytics["summary"].get("win_rate")),
+        "closed_trades": analytics["summary"].get("closed_trades"),
+        "open_trades": analytics["summary"].get("open_trades"),
+        "top_symbol_by_trade_count": top_symbol_by_trade_count,
+        "top_symbol_by_abs_pnl": top_symbol_by_abs_pnl,
+        "largest_trade_symbol": largest_trade_symbol,
+        "largest_trade_abs_pnl_share_pct": largest_trade_abs_pnl_share_pct,
+    }
+    weekly_signals = _build_weekly_signals(
+        serialized_trades=serialized_trades,
+        summary=_summary_for_signals,
+        current_week_breakdowns=current_week_breakdowns,
+        median_risk_pct_of_account=med_risk_pct,
+        median_planned_risk_dollars=med_planned_risk_d,
+        median_lot_size=median_lot_size,
+        account_age_days=account_age_days,
+        notes_confidence=notes_confidence,
+    )
+    current_week_breakdowns["risk_authority"] = weekly_signals["risk_authority"]
+    current_week_breakdowns["post_loss_response"] = weekly_signals["post_loss_response"]
+    current_week_breakdowns["single_trade_dominance"] = weekly_signals["single_trade_dominance"]
+    current_week_breakdowns["tp_capture_shortfalls"] = weekly_signals["tp_capture_shortfalls"]
+    current_week_breakdowns["session_concentration"] = weekly_signals["session_concentration"]
+    current_week_breakdowns["revenge_evidence"] = weekly_signals["revenge_evidence"]
     tone_context = _build_tone_context(
         weekly_checkin=weekly_checkin,
         emotional_index=emotional_index,
@@ -1719,6 +1755,8 @@ def build_trade_payload(
         "performance_trends": performance_trends,
         "historical_context": historical_ctx,
         "tone_context": tone_context,
+        "surface_facts": weekly_signals["surface_facts"],
+        "confidence_envelope": weekly_signals["confidence_envelope"],
         "current_week_breakdowns": current_week_breakdowns,
         "four_week_patterns": four_week_patterns,
         "experiment_context": experiment_context,
@@ -1893,6 +1931,8 @@ def format_payload_for_prompt(payload):
     four_week_patterns = payload.get("four_week_patterns") or {}
     experiment_context = payload.get("experiment_context") or {}
     recent_experiments = payload.get("recent_experiments") or []
+    surface_facts = payload.get("surface_facts") or []
+    confidence_envelope = payload.get("confidence_envelope") or {}
     trades = payload.get("trades", [])
 
     lines = [
@@ -1987,6 +2027,27 @@ def format_payload_for_prompt(payload):
                 f"- reasons: {', '.join(tone_context.get('reasons') or []) or '-'}",
             ]
         )
+
+    if confidence_envelope:
+        lines.extend(
+            [
+                "",
+                "CONFIDENCE_ENVELOPE",
+                f"- level: {confidence_envelope.get('level') or '-'}",
+                f"- reasons: {', '.join(confidence_envelope.get('reasons') or []) or '-'}",
+            ]
+        )
+
+    if surface_facts:
+        lines.extend(
+            [
+                "",
+                "SURFACE_FACTS",
+                "- semantics: facts the dashboard already shows; takeaways must add information beyond echoing these strings",
+            ]
+        )
+        for fact in surface_facts:
+            lines.append(f"- {fact}")
 
     if _payload_section_has_values(emotional_index):
         signals = emotional_index.get("signals") or {}
@@ -2097,6 +2158,87 @@ def format_payload_for_prompt(payload):
                 f"- exit_quality.avg_tp_capture_pct: {_format_percent(exit_quality.get('avg_tp_capture_pct'))}",
             ]
         )
+
+        risk_authority = current_week_breakdowns.get("risk_authority") or {}
+        if risk_authority:
+            lines.extend(
+                [
+                    f"- risk_authority.basis: {risk_authority.get('basis') or '-'}",
+                    f"- risk_authority.value: {_format_number(risk_authority.get('value'))}",
+                    f"- risk_authority.stable: {_format_bool(risk_authority.get('stable'))}",
+                    f"- risk_authority.dispersion_pct: {_format_percent(risk_authority.get('dispersion_pct'))}",
+                    f"- risk_authority.single_sample: {_format_bool(risk_authority.get('single_sample'))}",
+                ]
+            )
+
+        post_loss = current_week_breakdowns.get("post_loss_response") or {}
+        if post_loss:
+            lines.append(f"- post_loss_response.basis: {post_loss.get('basis') or '-'}")
+            lines.append(f"- post_loss_response.pattern_count: {post_loss.get('pattern_count', 0)}")
+            lines.append(
+                f"- post_loss_response.repeated_increased_risk: {_format_bool(post_loss.get('repeated_increased_risk'))}"
+            )
+            biggest = post_loss.get("biggest_loss") or {}
+            if biggest:
+                lines.append(
+                    f"- post_loss_response.biggest_loss: loss_ref={biggest.get('loss_ref') or '-'}, "
+                    f"next_ref={biggest.get('next_ref') or '-'}, risk_change={biggest.get('risk_change') or '-'}, "
+                    f"next_outcome={biggest.get('next_outcome') or '-'}"
+                )
+            for index, seq in enumerate(post_loss.get("sequences") or [], start=1):
+                lines.append(
+                    f"- post_loss_response.sequences[{index}]: loss_ref={seq.get('loss_ref') or '-'}, "
+                    f"next_ref={seq.get('next_ref') or '-'}, risk_change={seq.get('risk_change') or '-'}, "
+                    f"next_outcome={seq.get('next_outcome') or '-'}"
+                )
+
+        dominance = current_week_breakdowns.get("single_trade_dominance")
+        if dominance:
+            lines.append(
+                f"- single_trade_dominance: dominant_symbol={dominance.get('dominant_symbol') or '-'}, "
+                f"dominant_ref={dominance.get('dominant_ref') or '-'}, "
+                f"abs_pnl_share_pct={_format_percent(dominance.get('abs_pnl_share_pct'))}, "
+                f"threshold={dominance.get('threshold_basis') or '-'}"
+            )
+        else:
+            lines.append("- single_trade_dominance: -")
+
+        tp_shortfalls = current_week_breakdowns.get("tp_capture_shortfalls") or {}
+        lines.append(
+            f"- tp_capture_shortfalls.recurring: {_format_bool(tp_shortfalls.get('recurring'))}"
+        )
+        for index, item in enumerate(tp_shortfalls.get("trades") or [], start=1):
+            lines.append(
+                f"- tp_capture_shortfalls.trades[{index}]: ref={item.get('ref') or '-'}, "
+                f"symbol={item.get('symbol') or '-'}, capture_pct={_format_percent(item.get('tp_capture_pct'))}"
+            )
+
+        session_concentration = current_week_breakdowns.get("session_concentration") or {}
+        if session_concentration:
+            lines.extend(
+                [
+                    f"- session_concentration.dominant_session: {session_concentration.get('dominant_session') or '-'}",
+                    f"- session_concentration.share_pct: {_format_percent(session_concentration.get('share_pct'))}",
+                    f"- session_concentration.single_session: {_format_bool(session_concentration.get('single_session'))}",
+                    f"- session_concentration.mixed_outcome: {_format_bool(session_concentration.get('mixed_outcome'))}",
+                ]
+            )
+
+        revenge_evidence = current_week_breakdowns.get("revenge_evidence") or {}
+        if revenge_evidence:
+            lines.extend(
+                [
+                    f"- revenge_evidence.pattern_class: {revenge_evidence.get('pattern_class') or '-'}",
+                    f"- revenge_evidence.confirmed_count: {revenge_evidence.get('confirmed_count', 0)}",
+                    f"- revenge_evidence.heuristic_count: {revenge_evidence.get('heuristic_count', 0)}",
+                ]
+            )
+            for index, seq in enumerate(revenge_evidence.get("strong_sequences") or [], start=1):
+                lines.append(
+                    f"- revenge_evidence.strong_sequences[{index}]: ref={seq.get('ref') or '-'}, "
+                    f"minutes_since_prev_close={_format_number(seq.get('minutes_since_prev_close'))}, "
+                    f"size_vs_prev_trade={seq.get('size_vs_prev_trade') or '-'}, confirmed={_format_bool(seq.get('confirmed'))}"
+                )
 
     if four_week_patterns:
         lines.extend(
@@ -2239,6 +2381,8 @@ def format_payload_for_prompt(payload):
                 f"   stop_loss: {_format_number(trade.get('stop_loss'), digits=5)}",
                 f"   take_profit: {_format_number(trade.get('take_profit'), digits=5)}",
                 f"   lot_size: {_format_number(trade.get('lot_size'))}",
+                f"   planned_risk_dollars: {_format_currency_magnitude(trade.get('planned_risk_dollars'))}",
+                f"   trade_risk_pct: {_format_percent(trade.get('trade_risk_pct'))}",
                 f"   pnl: {_format_signed_currency(trade.get('pnl'))}",
                 f"   entry_session: {trade.get('entry_session') or '-'}",
                 f"   exit_session: {trade.get('exit_session') or '-'}",

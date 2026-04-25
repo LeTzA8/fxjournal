@@ -554,6 +554,7 @@
                                     <div class="user-cell">
                                         <div class="mt5-account-title-row">
                                             <strong>{{ account.account_number }}</strong>
+                                            <span class="user-id-inline">MT5 ID: {{ account.id }}</span>
                                             <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                 <button type="submit" class="ghost-btn danger-btn inline-btn-compact">Delete</button>

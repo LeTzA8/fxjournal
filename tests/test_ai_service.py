@@ -701,11 +701,20 @@ def test_build_dashboard_advice_messages_appends_profile_adjustments(app_ctx):
 
 
 def test_dashboard_prompt_uses_exit_price_language():
+    """Pin the structural contract of the dashboard prompt.
+
+    The prompt was rewritten to offload deterministic logic to code and to
+    enforce a strict risk-priority rule plus an insight mandate. This test
+    locks in the spine (steps + output format + forbidden legacy framings)
+    plus the new precomputed-signal references the prompt now consumes.
+    """
     prompt_text = load_prompt_text("dashboard_advice.txt")["prompt_text"]
 
+    # Trade fields surfaced for the model
     assert "close_price" not in prompt_text
     assert "entry_price, exit_price, stop_loss, take_profit" in prompt_text
     assert "entry_session, exit_session, session, duration_minutes" in prompt_text
+    assert "planned_risk_dollars, trade_risk_pct" in prompt_text
     assert "same_trade_idea_reentry" in prompt_text
     assert "is_potential_revenge" in prompt_text
     assert "is_potential_reactive" in prompt_text
@@ -717,6 +726,7 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "split_group_size" in prompt_text
     assert "review_ref" in prompt_text
 
+    # Step spine preserved
     assert "INTERNAL WORKFLOW" in prompt_text
     assert "STEP 1 - INTERPRET THE DATA CORRECTLY" in prompt_text
     assert "STEP 2 - JUDGE DATA CONFIDENCE" in prompt_text
@@ -726,56 +736,60 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "STEP 6 - CHOOSE REVIEW MODE" in prompt_text
     assert "STEP 7 - SELECT THE BEST 1-4 INSIGHTS" in prompt_text
     assert "STEP 8 - WRITE THE RESPONSE" in prompt_text
-    assert "affirm_and_refine: profitable or orderly week with strengths worth" in prompt_text
-    assert "encouraging_with_limited_evidence: thin sample (trade_idea_count 1-4)" in prompt_text
+    assert "affirm_and_refine" in prompt_text
+    assert "balanced_review" in prompt_text
+    assert "corrective_but_encouraging" in prompt_text
+    assert "encouraging_with_limited_evidence" in prompt_text
 
+    # Output format spine
     assert "OUTPUT FORMAT" in prompt_text
     assert "Key Takeaways" in prompt_text
     assert 'One line prefixed exactly with "Improve this week:"' in prompt_text
     assert 'One line prefixed exactly with "You\'re already strong at:"' in prompt_text
-    assert "These are candidate insight buckets, not a checklist." in prompt_text
-    assert "A bucket can contribute zero, one, or more bullets depending on the" in prompt_text
-    assert "The only heading allowed in the output is Key Takeaways." in prompt_text
 
-    assert "PRIVACY AND WORDING" in prompt_text
+    # New precomputed-signal references
+    assert "risk_authority" in prompt_text
+    assert "post_loss_response" in prompt_text
+    assert "single_trade_dominance" in prompt_text
+    assert "tp_capture_shortfalls" in prompt_text
+    assert "session_concentration" in prompt_text
+    assert "revenge_evidence" in prompt_text
+    assert "SURFACE_FACTS" in prompt_text
+    assert "CONFIDENCE_ENVELOPE" in prompt_text or "confidence_envelope" in prompt_text
+
+    # Risk priority rule (the headline behavioural change)
+    assert "Risk authority order" in prompt_text
+    assert "Lot size is descriptive" in prompt_text
+    assert "risk_authority.stable" in prompt_text
+
+    # Insight mandate
+    assert "INSIGHT REQUIREMENT" in prompt_text or "Insight requirement" in prompt_text or "Surface facts and insight" in prompt_text
+    assert "Restating numbers from the dashboard is not insight" in prompt_text
+
+    # Voice / interpretation tension (replaces the long tone+plain-english blocks)
+    assert "VOICE" in prompt_text
+    assert "INTERPRETATION TENSION" in prompt_text
+    assert "jumped back in" in prompt_text  # keep at least one plain-english anchor
+
+    # Privacy and exact numbers (kept; section was renamed)
     assert "Use exact user numbers when they materially support a point." in prompt_text
-    assert "Round sensibly for readability but keep values materially true." in prompt_text
-    assert "If all closed trades lost, say there were no winning trades instead" in prompt_text
-    assert "Avoid awkward phrasing like Tokyo-related sessions." in prompt_text
 
-    assert "EMOTIONAL INDEX" in prompt_text
-    assert "emotional_index.score is on a 0.0 to 10.0 scale." in prompt_text
-    assert "total_closed_trades in EMOTIONAL INDEX is the denominator used for" in prompt_text
-    assert "Never mention emotional index, internal scores, or internal labels" in prompt_text
-    assert "net_pnl is the realized result for the reviewed period." in prompt_text
-    assert "weekly_pnl and monthly_pnl are rolling calendar aggregates relative" in prompt_text
-    assert "total_trades includes open and closed trades in the review window." in prompt_text
-    assert "HISTORICAL_CONTEXT, HISTORICAL_TOP_PAIRS, HISTORICAL_TOP_SESSIONS," in prompt_text
-    assert "pair_sample_is_diverse and equity_has_outlier_dominance are boolean" in prompt_text
-    assert "notes_coverage is a ratio between 0.0 and 1.0" in prompt_text
+    # Tone modes still present
+    assert "stressed:" in prompt_text
+    assert "calm_sharp:" in prompt_text
+    assert "neutral_no_checkin:" in prompt_text
 
-    assert "same_trade_idea_reentry alone does not mean revenge or impulsiveness." in prompt_text
-    assert "One heuristic revenge or reactive clue does not justify a rigid" in prompt_text
-    assert "Do not invent staged-entry lessons like" in prompt_text
-    assert "Overnight holding alone is not a mistake." in prompt_text
-
-    assert "IMPROVEMENT AND STRENGTH WRITING" in prompt_text
-    assert 'Do not prescribe a fixed cooldown unless repeated same-session' in prompt_text
-    assert "If the week was all losses, the improvement must be constructive and" in prompt_text
-
-    assert "TONE" in prompt_text
-    assert "Overall tone should be encouraging, grounded, and honest." in prompt_text
-    assert "On all-win weeks: reinforce what worked first, then add one" in prompt_text
-    assert "On limited-evidence weeks: keep claims modest" in prompt_text
-
+    # Examples kept
     assert "GOOD FORMAT EXAMPLE" in prompt_text
     assert "BAD FORMAT EXAMPLES" in prompt_text
-    assert "This was a profitable week driven by one clean trade idea, with the" in prompt_text
     assert "One split-entry cluster should be treated as one setup, not several" in prompt_text
 
+    # Removed verbose legacy framings (signal: rewrite actually compressed)
     assert "Do not use paragraph prose anywhere in the response." not in prompt_text
     assert "Keep the response between 100 and 150 words." not in prompt_text
     assert "Use only these optional plain-text section labels in the response:" not in prompt_text
+    # The 3x outlier_size threshold prose was moved to code
+    assert "more than 3x the cohort median" not in prompt_text
 
 
 def test_normalize_dashboard_advice_text_fixes_improvement_prefix_variants():

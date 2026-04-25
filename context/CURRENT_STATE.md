@@ -1,6 +1,13 @@
 # CURRENT_STATE
 
-Last Updated: 2026-04-19
+Last Updated: 2026-04-25
+
+## Celery publish diagnostics for admin/web-triggered tasks (2026-04-25)
+
+- Added shared producer-side dispatch helper `helpers/celery_dispatch.py` so site-triggered Celery publishes log a sanitized broker URL plus the returned task id.
+- Admin routes that queue MT5 setup/sync/recalibration/bar backfill and weekly AI regeneration now log `Celery publish attempt` / `success` / `failed` on the Render web side, with route context (account/trade ids, admin user id) before redirecting.
+- Goal: separate "website accepted the POST" from "task was actually published to Redis" when VM logs stay quiet. (`helpers/celery_dispatch.py`, `auth_account.py`, `tests/test_celery_dispatch.py`)
+
 
 ## MT5 sync timestamps — last sync vs full history (2026-04-19)
 

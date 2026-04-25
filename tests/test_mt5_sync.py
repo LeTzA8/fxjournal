@@ -2582,6 +2582,7 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
     assert create_captured["args"] == [mt5_account.id]
     assert list_response.status_code == 200
     assert account_number.encode("ascii") in list_response.data
+    assert f"MT5 ID: {mt5_account.id}".encode("ascii") in list_response.data
     assert b"Setup Terminal" in list_response.data
     assert b"Terminal not set up yet" in list_response.data
     assert b"AppData hash pending" in list_response.data
