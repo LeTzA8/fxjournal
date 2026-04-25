@@ -762,9 +762,28 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Lot size is descriptive" in prompt_text
     assert "risk_authority.stable" in prompt_text
 
-    # Insight mandate
-    assert "INSIGHT REQUIREMENT" in prompt_text or "Insight requirement" in prompt_text or "Surface facts and insight" in prompt_text
-    assert "Restating numbers from the dashboard is not insight" in prompt_text
+    # HARD RULES block — the new top-of-prompt enforcement layer
+    assert "HARD RULES" in prompt_text
+    assert "R1. LOT SIZE IS NOT RISK." in prompt_text
+    assert "R2. NO RECAP TAKEAWAYS." in prompt_text
+    assert "R3. NO TEMPLATES IN OUTPUT." in prompt_text
+    assert "R4. STRENGTH OVER COUNT." in prompt_text
+    assert "risk_judgment_allowed" in prompt_text
+    assert (
+        '"Risk cannot be determined reliably from available data."'
+        in prompt_text
+    )
+
+    # SELF-CHECK gate exists and references the rules by id
+    assert "SELF-CHECK BEFORE EMITTING" in prompt_text
+
+    # Insight mandate is now "every", not "at least one"
+    assert "EVERY Key Takeaway" in prompt_text or "every Key Takeaway" in prompt_text
+    assert "at least one Key Takeaway" not in prompt_text
+
+    # Bullet ceiling reframing
+    assert "1-3 bullets by default" in prompt_text
+    assert "CEILING, not a quota" in prompt_text or "ceiling, not a quota" in prompt_text
 
     # Voice / interpretation tension (replaces the long tone+plain-english blocks)
     assert "VOICE" in prompt_text
@@ -790,6 +809,16 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Use only these optional plain-text section labels in the response:" not in prompt_text
     # The 3x outlier_size threshold prose was moved to code
     assert "more than 3x the cohort median" not in prompt_text
+
+    # Conflicting permissions that previously undercut R1 are gone
+    assert "lot size when it helps" not in prompt_text
+    assert "before lot size" not in prompt_text
+    # The DRAWDOWN bucket no longer contains the broken template phrasing
+    # that produced "risked less and loss." Curly-brace tokens may still
+    # appear inside R3 (where they are forbidden by name), so check the
+    # specific broken template phrasing instead.
+    assert "risked {risk_change} and" not in prompt_text
+    assert "{next_outcome}." not in prompt_text
 
 
 def test_normalize_dashboard_advice_text_fixes_improvement_prefix_variants():

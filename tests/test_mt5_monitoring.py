@@ -121,19 +121,27 @@ def test_check_mt5_sync_health_sends_one_alert_per_outage_and_resets_on_recovery
 
 def test_build_mt5_sync_health_snapshot_flags_stale_backlog(monkeypatch):
     now = datetime(2026, 4, 13, 12, 0, 0, tzinfo=timezone.utc)
-    monkeypatch.setattr(mt5_monitoring, "get_queue_depth", lambda queue_name: 4)
+    monkeypatch.setattr(
+        mt5_monitoring,
+        "get_queue_depth",
+        lambda queue_name: 3 if queue_name == "mt5_sync" else 1,
+    )
     monkeypatch.setattr(
         mt5_monitoring,
         "get_queue_monitor_state",
-        lambda queue_name: {
-            "last_task_received_at": "2026-04-13T11:40:00+00:00",
-            "last_task_started_at": "2026-04-13T11:41:00+00:00",
-            "last_task_processed_at": "2026-04-13T11:45:00+00:00",
-            "last_processed_vm_id": "vm-1",
-            "last_processed_worker_hostname": "mt5-sync@VM-1",
-            "last_broker_connected_at": "2026-04-13T11:00:00+00:00",
-            "last_celery_heartbeat_at": "2026-04-13T11:59:30+00:00",
-        },
+        lambda queue_name: (
+            {
+                "last_task_received_at": "2026-04-13T11:40:00+00:00",
+                "last_task_started_at": "2026-04-13T11:41:00+00:00",
+                "last_task_processed_at": "2026-04-13T11:45:00+00:00",
+                "last_processed_vm_id": "vm-1",
+                "last_processed_worker_hostname": "mt5-sync@VM-1",
+                "last_broker_connected_at": "2026-04-13T11:00:00+00:00",
+                "last_celery_heartbeat_at": "2026-04-13T11:59:30+00:00",
+            }
+            if queue_name == "mt5_sync"
+            else {}
+        ),
     )
     monkeypatch.setattr(
         mt5_monitoring,
@@ -150,8 +158,60 @@ def test_build_mt5_sync_health_snapshot_flags_stale_backlog(monkeypatch):
 
     assert snapshot["stale"] is True
     assert snapshot["queue_depth"] == 4
+    assert snapshot["queue_depths"] == {"mt5_priority": 1, "mt5_sync": 3}
     assert snapshot["last_processed_vm_id"] == "vm-1"
     assert snapshot["seconds_since_last_processed"] == 900
+
+
+def test_build_mt5_sync_health_snapshot_uses_latest_priority_queue_activity(monkeypatch):
+    now = datetime(2026, 4, 13, 12, 0, 0, tzinfo=timezone.utc)
+
+    def _fake_get_queue_depth(queue_name):
+        if queue_name == "mt5_sync":
+            return 2
+        if queue_name == "mt5_priority":
+            return 1
+        return 0
+
+    def _fake_get_queue_monitor_state(queue_name):
+        if queue_name == "mt5_sync":
+            return {
+                "last_task_received_at": "2026-04-13T11:40:00+00:00",
+                "last_task_started_at": "2026-04-13T11:41:00+00:00",
+                "last_task_processed_at": "2026-04-13T11:45:00+00:00",
+                "last_processed_vm_id": "vm-sync",
+                "last_processed_worker_hostname": "mt5-sync@VM-SYNC",
+                "last_broker_connected_at": "2026-04-13T11:00:00+00:00",
+                "last_celery_heartbeat_at": "2026-04-13T11:59:30+00:00",
+            }
+        return {
+            "last_task_received_at": "2026-04-13T11:56:00+00:00",
+            "last_task_started_at": "2026-04-13T11:57:00+00:00",
+            "last_task_processed_at": "2026-04-13T11:58:00+00:00",
+            "last_processed_vm_id": "vm-priority",
+            "last_processed_worker_hostname": "mt5-sync@VM-PRIORITY",
+        }
+
+    monkeypatch.setattr(mt5_monitoring, "get_queue_depth", _fake_get_queue_depth)
+    monkeypatch.setattr(mt5_monitoring, "get_queue_monitor_state", _fake_get_queue_monitor_state)
+    monkeypatch.setattr(
+        mt5_monitoring,
+        "list_worker_states",
+        lambda worker_kind: [
+            {
+                "worker_id": "vm-priority",
+                "last_task_processed_at": "2026-04-13T11:58:00+00:00",
+            }
+        ],
+    )
+
+    snapshot = mt5_monitoring.build_mt5_sync_health_snapshot(now=now)
+
+    assert snapshot["stale"] is False
+    assert snapshot["queue_depth"] == 3
+    assert snapshot["last_task_processed_at"] == "2026-04-13T11:58:00+00:00"
+    assert snapshot["last_processed_vm_id"] == "vm-priority"
+    assert snapshot["seconds_since_last_processed"] == 120
 
 
 def test_build_mt5_setup_health_snapshot_uses_started_or_processed_activity(monkeypatch):

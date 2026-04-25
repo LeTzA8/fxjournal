@@ -68,7 +68,7 @@ function Get-Mt5SyncWorkerProcesses {
         Where-Object {
             $_.CommandLine -and
             $_.CommandLine -like "*-A celery_app.celery worker*" -and
-            $_.CommandLine -like "*--queues=mt5_sync*"
+            $_.CommandLine -like "*--queues=*mt5_sync*"
         }
 }
 

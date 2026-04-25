@@ -255,6 +255,7 @@ def _get_mt5_worker_window_config(hostname):
         return {
             "worker_kind": "mt5_sync",
             "queue_name": "mt5_sync",
+            "queue_names": ("mt5_priority", "mt5_sync"),
             "title_prefix": "MT5 Sync Window",
             "task_prefix": "celery_workers.mt5_sync_tasks.",
             "primary_label": "Accounts Active",
@@ -396,7 +397,8 @@ def _load_mt5_worker_window_stats(config):
     try:
         from celery_workers.cache import CacheUnavailableError, get_queue_depth, list_worker_states
 
-        queue_depth = get_queue_depth(config["queue_name"])
+        queue_names = config.get("queue_names") or (config["queue_name"],)
+        queue_depth = sum(get_queue_depth(queue_name) for queue_name in queue_names)
         if config["worker_kind"] == "mt5_sync":
             diag_summary = _summarize_mt5_sync_diag_states(
                 [

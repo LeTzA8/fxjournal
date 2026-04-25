@@ -3844,7 +3844,7 @@ def register_public_auth_routes(
                 sync_mt5_account,
                 args=[mt5_account_id],
                 kwargs={"full_history": True, "trigger_source": "manual"},
-                queue="mt5_sync",
+                queue="mt5_priority",
                 log=current_app.logger,
                 label="admin_mt5_trigger_sync",
                 extra={
@@ -3920,7 +3920,7 @@ def register_public_auth_routes(
                         "trigger_source": "admin_recalibrate_times",
                         "recalibrate_trade_timestamps": True,
                     },
-                    queue="mt5_sync",
+                    queue="mt5_priority",
                     log=current_app.logger,
                     label="admin_mt5_recalibrate_times_all",
                     extra={
@@ -4022,7 +4022,7 @@ def register_public_auth_routes(
                     "trigger_source": "admin_recalibrate_times",
                     "recalibrate_trade_timestamps": True,
                 },
-                queue="mt5_sync",
+                queue="mt5_priority",
                 log=current_app.logger,
                 label="admin_mt5_recalibrate_times_single",
                 extra={
@@ -4158,7 +4158,7 @@ def register_public_auth_routes(
                 dispatch_result = dispatch_celery_task(
                     fetch_trade_bars,
                     args=[mt5_account_id, trade.id],
-                    queue="mt5_sync",
+                    queue="mt5_priority",
                     log=current_app.logger,
                     label="admin_mt5_backfill_bars",
                     extra={
@@ -4171,7 +4171,7 @@ def register_public_auth_routes(
                 task_ids.append(getattr(dispatch_result, "id", None))
                 queued += 1
             current_app.logger.info(
-                "Admin queued fetch_trade_bars mt5_account_id=%s tasks=%s closed=%s skipped_existing=%s force=%s queue=mt5_sync task_ids=%s broker=%s",
+                "Admin queued fetch_trade_bars mt5_account_id=%s tasks=%s closed=%s skipped_existing=%s force=%s queue=mt5_priority task_ids=%s broker=%s",
                 mt5_account_id,
                 queued,
                 len(closed_trades),

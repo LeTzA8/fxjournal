@@ -16,6 +16,11 @@ from trading import MT5_DEFAULT_SOURCE_TIMEZONE_NAME
 
 logger = logging.getLogger(__name__)
 
+MT5_SYNC_QUEUE_NAME = "mt5_sync"
+MT5_PRIORITY_QUEUE_NAME = "mt5_priority"
+MT5_SYNC_BEAT_EXPIRES_SECONDS = 28
+MT5_SYNC_BEAT_MAX_QUEUE_DEPTH = 150
+
 # MetaTrader5 keeps process-global session state, so sync tasks must not
 # overlap MT5 API calls inside the same worker process.
 _MT5_API_SESSION_LOCK = threading.Lock()
@@ -906,6 +911,24 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
 @celery.task
 def sync_all_active_mt5_accounts():
     from models import MT5Account
+    from celery_workers.cache import CacheUnavailableError, get_queue_depth
+
+    try:
+        sync_queue_depth = get_queue_depth(MT5_SYNC_QUEUE_NAME)
+        priority_queue_depth = get_queue_depth(MT5_PRIORITY_QUEUE_NAME)
+        total_queue_depth = sync_queue_depth + priority_queue_depth
+        if total_queue_depth > MT5_SYNC_BEAT_MAX_QUEUE_DEPTH:
+            logger.warning(
+                "MT5 beat skipped queue_depth_total=%s sync_queue_depth=%s priority_queue_depth=%s max=%s",
+                total_queue_depth,
+                sync_queue_depth,
+                priority_queue_depth,
+                MT5_SYNC_BEAT_MAX_QUEUE_DEPTH,
+            )
+            return
+    except CacheUnavailableError as exc:
+        logger.warning("MT5 beat queue-depth guard unavailable: %s", exc)
+
     accounts = (
         MT5Account.query.filter(
             MT5Account.is_active.is_(True),
@@ -919,5 +942,6 @@ def sync_all_active_mt5_accounts():
         sync_mt5_account.apply_async(
             args=[account.id],
             kwargs={"trigger_source": "beat"},
-            queue="mt5_sync",
+            queue=MT5_SYNC_QUEUE_NAME,
+            expires=MT5_SYNC_BEAT_EXPIRES_SECONDS,
         )

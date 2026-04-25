@@ -89,6 +89,7 @@ def test_risk_authority_falls_back_to_dollars_then_lots():
         median_lot_size=0.1,
     )
     assert out_dollars["basis"] == "dollars"
+    assert out_dollars["risk_judgment_allowed"] is True
 
     trades_no_dollars = [
         _trade(ref="T1", seq=1, pnl=10.0, risk_pct=None, risk_dollars=None, lot=0.1)
@@ -100,6 +101,30 @@ def test_risk_authority_falls_back_to_dollars_then_lots():
         median_lot_size=0.1,
     )
     assert out_lots["basis"] == "lots"
+    # R1: judgment forbidden when only lot sizes are available
+    assert out_lots["risk_judgment_allowed"] is False
+
+
+def test_risk_authority_judgment_allowed_when_pct_present():
+    trades = [_trade(ref="T1", seq=1, pnl=10.0, risk_pct=0.5)]
+    out = build_risk_authority(
+        trades,
+        median_risk_pct_of_account=0.5,
+        median_planned_risk_dollars=50.0,
+        median_lot_size=0.1,
+    )
+    assert out["risk_judgment_allowed"] is True
+
+
+def test_risk_authority_judgment_blocked_when_no_data():
+    out = build_risk_authority(
+        [],
+        median_risk_pct_of_account=None,
+        median_planned_risk_dollars=None,
+        median_lot_size=None,
+    )
+    assert out["basis"] is None
+    assert out["risk_judgment_allowed"] is False
 
 
 def test_post_loss_response_classifies_biggest_loss_followup():
@@ -108,13 +133,73 @@ def test_post_loss_response_classifies_biggest_loss_followup():
         _trade(ref="T2", seq=2, pnl=-90.0, risk_pct=0.5),
         _trade(ref="T3", seq=3, pnl=-15.0, risk_pct=0.5, prev_trade_pnl=-90.0),
     ]
-    risk_authority = {"basis": "pct_of_account"}
+    risk_authority = {"basis": "pct_of_account", "risk_judgment_allowed": True}
     out = build_post_loss_response(trades, risk_authority=risk_authority)
     assert out["biggest_loss"]["loss_ref"] == "T2"
     assert out["biggest_loss"]["next_ref"] == "T3"
     assert out["biggest_loss"]["risk_change"] == "same"
     assert out["biggest_loss"]["next_outcome"] == "loss"
     assert out["pattern_count"] >= 1
+
+
+def test_post_loss_biggest_loss_phrase_is_complete_sentence_for_each_branch():
+    """The phrase replaces the prompt's curly-brace template (R3)."""
+    # same risk + loss outcome
+    trades = [
+        _trade(ref="T1", seq=1, pnl=30.0, risk_pct=0.5),
+        _trade(ref="T2", seq=2, pnl=-90.0, risk_pct=0.5),
+        _trade(ref="T3", seq=3, pnl=-15.0, risk_pct=0.5),
+    ]
+    out = build_post_loss_response(
+        trades, risk_authority={"basis": "pct_of_account", "risk_judgment_allowed": True}
+    )
+    phrase = out["biggest_loss"]["phrase"]
+    assert phrase.startswith("After your biggest loss")
+    assert "{" not in phrase and "}" not in phrase
+    assert "risk_change" not in phrase
+    assert "kept risk roughly the same" in phrase
+    assert "a loss" in phrase
+
+    # increased risk + win outcome
+    trades_more = [
+        _trade(ref="T1", seq=1, pnl=20.0, risk_pct=0.5),
+        _trade(ref="T2", seq=2, pnl=-80.0, risk_pct=0.5),
+        _trade(ref="T3", seq=3, pnl=40.0, risk_pct=1.0),
+    ]
+    out_more = build_post_loss_response(
+        trades_more, risk_authority={"basis": "pct_of_account", "risk_judgment_allowed": True}
+    )
+    assert "increased risk" in out_more["biggest_loss"]["phrase"]
+    assert "a win" in out_more["biggest_loss"]["phrase"]
+
+
+def test_post_loss_biggest_loss_phrase_when_no_followup_is_clean():
+    trades = [
+        _trade(ref="T1", seq=1, pnl=20.0, risk_pct=0.5),
+        _trade(ref="T2", seq=2, pnl=-150.0, risk_pct=0.5),
+    ]
+    out = build_post_loss_response(
+        trades, risk_authority={"basis": "pct_of_account", "risk_judgment_allowed": True}
+    )
+    phrase = out["biggest_loss"]["phrase"]
+    assert "no follow-up" in phrase
+    assert "{" not in phrase
+
+
+def test_post_loss_biggest_loss_phrase_omits_risk_when_not_allowed():
+    """When risk_judgment_allowed is false, phrase must not assert direction."""
+    trades = [
+        _trade(ref="T1", seq=1, pnl=10.0, risk_pct=None, lot=0.1),
+        _trade(ref="T2", seq=2, pnl=-50.0, risk_pct=None, lot=0.5),
+        _trade(ref="T3", seq=3, pnl=-10.0, risk_pct=None, lot=0.1),
+    ]
+    out = build_post_loss_response(
+        trades, risk_authority={"basis": "lots", "risk_judgment_allowed": False}
+    )
+    phrase = out["biggest_loss"]["phrase"]
+    assert "Risk direction cannot be compared" in phrase
+    assert "increased risk" not in phrase
+    assert "reduced risk" not in phrase
 
 
 def test_post_loss_response_flags_repeated_increased_risk():

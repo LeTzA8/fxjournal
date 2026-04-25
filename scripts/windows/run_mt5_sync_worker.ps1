@@ -107,7 +107,7 @@ while ($true) {
         --pool=solo `
         --concurrency=$Concurrency `
         --loglevel=$LogLevel `
-        --queues=mt5_sync `
+        --queues=mt5_priority,mt5_sync `
         --hostname="mt5-sync@$env:COMPUTERNAME"
 
     $exitCode = $LASTEXITCODE

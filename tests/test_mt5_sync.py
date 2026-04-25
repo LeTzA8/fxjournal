@@ -2627,7 +2627,7 @@ def test_admin_mt5_manual_trigger_sync_queues_full_history_for_active_account(ap
     )
 
     assert trigger_response.status_code == 302
-    assert sync_captured["queue"] == "mt5_sync"
+    assert sync_captured["queue"] == "mt5_priority"
     assert sync_captured["args"] == [mt5_account.id]
     assert sync_captured["kwargs"] == {"full_history": True, "trigger_source": "manual"}
 
@@ -2762,7 +2762,7 @@ def test_admin_mt5_backfill_bars_queues_only_missing_m5_timeframes(app_ctx, clie
     )
 
     assert response.status_code == 302
-    assert queued == [{"args": [mt5_account.id, second_trade.id], "queue": "mt5_sync"}]
+    assert queued == [{"args": [mt5_account.id, second_trade.id], "queue": "mt5_priority"}]
 
 
 def test_admin_mt5_backfill_bars_requeues_trade_with_incomplete_recent_m5_coverage(app_ctx, client, monkeypatch):
@@ -2856,7 +2856,99 @@ def test_admin_mt5_backfill_bars_requeues_trade_with_incomplete_recent_m5_covera
     )
 
     assert response.status_code == 302
-    assert queued == [{"args": [mt5_account.id, recent_trade.id], "queue": "mt5_sync"}]
+    assert queued == [{"args": [mt5_account.id, recent_trade.id], "queue": "mt5_priority"}]
+
+
+def test_sync_all_active_mt5_accounts_uses_sync_queue_with_short_expiry(app_ctx, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    for existing_account in MT5Account.query.all():
+        existing_account.is_active = False
+    db.session.commit()
+
+    user, trade_account = _create_user_with_account(
+        username="beat-queue-user",
+        email="beat-queue-user@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="85858585",
+    )
+
+    captured = []
+
+    def _fake_apply_async(*, args, kwargs=None, queue, expires=None):
+        captured.append(
+            {
+                "args": args,
+                "kwargs": kwargs,
+                "queue": queue,
+                "expires": expires,
+            }
+        )
+
+    import celery_workers.mt5_sync_tasks as mt5_sync_module
+
+    monkeypatch.setattr("celery_workers.cache.get_queue_depth", lambda queue_name: 0)
+    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+
+    mt5_sync_module.sync_all_active_mt5_accounts.run()
+
+    assert captured == [
+        {
+            "args": [mt5_account.id],
+            "kwargs": {"trigger_source": "beat"},
+            "queue": "mt5_sync",
+            "expires": 28,
+        }
+    ]
+
+
+def test_sync_all_active_mt5_accounts_skips_when_sync_queues_are_backed_up(app_ctx, monkeypatch, caplog):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    for existing_account in MT5Account.query.all():
+        existing_account.is_active = False
+    db.session.commit()
+
+    user, trade_account = _create_user_with_account(
+        username="beat-backup-user",
+        email="beat-backup-user@example.com",
+    )
+    _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="86868686",
+    )
+
+    captured = []
+
+    def _fake_apply_async(*, args, kwargs=None, queue, expires=None):
+        captured.append(
+            {
+                "args": args,
+                "kwargs": kwargs,
+                "queue": queue,
+                "expires": expires,
+            }
+        )
+
+    def _fake_get_queue_depth(queue_name):
+        if queue_name == "mt5_sync":
+            return 140
+        if queue_name == "mt5_priority":
+            return 11
+        return 0
+
+    import celery_workers.mt5_sync_tasks as mt5_sync_module
+
+    monkeypatch.setattr("celery_workers.cache.get_queue_depth", _fake_get_queue_depth)
+    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+    caplog.set_level(logging.WARNING, logger="celery_workers.mt5_sync_tasks")
+
+    mt5_sync_module.sync_all_active_mt5_accounts.run()
+
+    assert captured == []
+    assert "MT5 beat skipped queue_depth_total=151" in caplog.text
 
 
 def test_admin_mt5_create_persists_inactive_account_when_setup_queue_fails(app_ctx, client, monkeypatch):

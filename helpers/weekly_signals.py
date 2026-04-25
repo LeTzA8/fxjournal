@@ -66,11 +66,14 @@ def build_risk_authority(
     """Decide which risk basis is authoritative and whether weekly risk was stable.
 
     Output keys:
-    - basis: one of pct_of_account, dollars, lots
+    - basis: one of pct_of_account, dollars, lots, or None
     - value: the median used as the anchor
     - stable: True when per-trade risk stays inside +/-15% of median
     - dispersion_pct: max relative deviation from median (None if not enough data)
     - single_sample: True when only one closed trade exists
+    - risk_judgment_allowed: True only when basis is pct_of_account or
+      dollars. The prompt's R1 forbids any risk claim when this is False
+      (basis is lots or no risk data exists).
     """
     closed = _closed_trades(serialized_trades)
     if median_risk_pct_of_account is not None:
@@ -96,8 +99,10 @@ def build_risk_authority(
             "stable": None,
             "dispersion_pct": None,
             "single_sample": len(closed) <= 1,
+            "risk_judgment_allowed": False,
         }
 
+    risk_judgment_allowed = basis in ("pct_of_account", "dollars")
     populated = [v for v in per_trade_values if v is not None and value > 0]
     if not populated:
         return {
@@ -106,6 +111,7 @@ def build_risk_authority(
             "stable": None,
             "dispersion_pct": None,
             "single_sample": len(closed) <= 1,
+            "risk_judgment_allowed": risk_judgment_allowed,
         }
     deviations = [abs((v - value) / value) for v in populated]
     dispersion = max(deviations)
@@ -119,6 +125,7 @@ def build_risk_authority(
         "stable": bool(stable),
         "dispersion_pct": _round(dispersion * 100.0, 1),
         "single_sample": len(populated) == 1,
+        "risk_judgment_allowed": risk_judgment_allowed,
     }
 
 
@@ -132,17 +139,56 @@ def _per_trade_risk_value(trade, basis):
     return None
 
 
+_OUTCOME_PHRASE = {
+    "win": "a win",
+    "loss": "a loss",
+    "breakeven": "breakeven",
+    "open": "still open",
+}
+
+
+def _build_biggest_loss_phrase(*, risk_judgment_allowed, risk_change, next_outcome, no_followup_reason):
+    """Compose a complete English sentence the prompt can quote verbatim.
+
+    Centralising this in code prevents the model from spliceing variable
+    names ({risk_change}, {next_outcome}) into prose.
+    """
+    if no_followup_reason == "biggest_loss_was_last_trade":
+        return (
+            "Your biggest loss was the last trade of the week, so there is "
+            "no follow-up trade to assess."
+        )
+    outcome_phrase = _OUTCOME_PHRASE.get(next_outcome or "", "an unrecorded outcome")
+    if not risk_judgment_allowed:
+        return (
+            f"After your biggest loss, the next trade was {outcome_phrase}. "
+            "Risk direction cannot be compared from available data."
+        )
+    if risk_change == "more":
+        return f"After your biggest loss, the next trade increased risk and was {outcome_phrase}."
+    if risk_change == "less":
+        return f"After your biggest loss, the next trade reduced risk and was {outcome_phrase}."
+    if risk_change == "same":
+        return f"After your biggest loss, the next trade kept risk roughly the same and was {outcome_phrase}."
+    return (
+        f"After your biggest loss, the next trade was {outcome_phrase}. "
+        "Risk change could not be confirmed from available data."
+    )
+
+
 def build_post_loss_response(serialized_trades, *, risk_authority):
     """Detect how risk and outcome changed after losses, ordered by sequence.
 
     Output:
     - basis: same as risk_authority.basis (or null)
     - sequences: list of {loss_ref, next_ref, risk_change, next_outcome, ...}
-    - biggest_loss: dedicated entry for the worst loss of the week (or null)
+    - biggest_loss: dedicated entry for the worst loss of the week (or null),
+      including a precomputed `phrase` the prompt can quote verbatim
     - pattern_count: len(sequences)
     - repeated_increased_risk: True when 2+ sequences show risk_change == 'more'
     """
     basis = (risk_authority or {}).get("basis")
+    risk_judgment_allowed = bool((risk_authority or {}).get("risk_judgment_allowed"))
     closed = sorted(
         [t for t in _closed_trades(serialized_trades) if t.get("trade_sequence_number") is not None],
         key=lambda t: t.get("trade_sequence_number"),
@@ -192,18 +238,32 @@ def build_post_loss_response(serialized_trades, *, risk_authority):
                 "risk_change": None,
                 "next_outcome": None,
                 "no_followup_reason": "biggest_loss_was_last_trade",
+                "phrase": _build_biggest_loss_phrase(
+                    risk_judgment_allowed=risk_judgment_allowed,
+                    risk_change=None,
+                    next_outcome=None,
+                    no_followup_reason="biggest_loss_was_last_trade",
+                ),
             }
         else:
             prev_risk = _per_trade_risk_value(biggest, basis)
             next_risk = _per_trade_risk_value(next_trade, basis)
+            risk_change = _classify_change(next_risk, prev_risk)
+            next_outcome = _outcome(next_trade)
             biggest_loss_entry = {
                 "loss_ref": biggest.get("review_ref"),
                 "loss_pnl": _round(_safe_float(biggest.get("pnl"))),
                 "next_ref": next_trade.get("review_ref"),
-                "risk_change": _classify_change(next_risk, prev_risk),
+                "risk_change": risk_change,
                 "prev_risk": _round(prev_risk, 4) if prev_risk is not None else None,
                 "next_risk": _round(next_risk, 4) if next_risk is not None else None,
-                "next_outcome": _outcome(next_trade),
+                "next_outcome": next_outcome,
+                "phrase": _build_biggest_loss_phrase(
+                    risk_judgment_allowed=risk_judgment_allowed,
+                    risk_change=risk_change,
+                    next_outcome=next_outcome,
+                    no_followup_reason=None,
+                ),
             }
 
     repeated_increased_risk = (

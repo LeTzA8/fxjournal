@@ -297,6 +297,7 @@ def _worker_block(now):
 
     snapshots = {}
     for queue_name, worker_kind, label in (
+        ("mt5_priority", "mt5_sync", "mt5_prio"),
         ("mt5_sync", "mt5_sync", "mt5_sync "),
         ("mt5_setup", "mt5_setup", "mt5_setup"),
     ):

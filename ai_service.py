@@ -2168,6 +2168,7 @@ def format_payload_for_prompt(payload):
                     f"- risk_authority.stable: {_format_bool(risk_authority.get('stable'))}",
                     f"- risk_authority.dispersion_pct: {_format_percent(risk_authority.get('dispersion_pct'))}",
                     f"- risk_authority.single_sample: {_format_bool(risk_authority.get('single_sample'))}",
+                    f"- risk_authority.risk_judgment_allowed: {_format_bool(risk_authority.get('risk_judgment_allowed'))}",
                 ]
             )
 
@@ -2185,6 +2186,10 @@ def format_payload_for_prompt(payload):
                     f"next_ref={biggest.get('next_ref') or '-'}, risk_change={biggest.get('risk_change') or '-'}, "
                     f"next_outcome={biggest.get('next_outcome') or '-'}"
                 )
+                if biggest.get("phrase"):
+                    lines.append(
+                        f"- post_loss_response.biggest_loss.phrase: {biggest.get('phrase')}"
+                    )
             for index, seq in enumerate(post_loss.get("sequences") or [], start=1):
                 lines.append(
                     f"- post_loss_response.sequences[{index}]: loss_ref={seq.get('loss_ref') or '-'}, "

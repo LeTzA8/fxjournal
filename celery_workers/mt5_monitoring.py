@@ -90,6 +90,22 @@ def _latest_timestamp(*values):
     return max(parsed_values)
 
 
+def _latest_queue_state_timestamp(queue_states, field_name):
+    latest_value = None
+    latest_raw = None
+    latest_state = None
+    for queue_state in (queue_states or {}).values():
+        raw_value = queue_state.get(field_name)
+        parsed_value = _parse_iso_datetime(raw_value)
+        if parsed_value is None:
+            continue
+        if latest_value is None or parsed_value > latest_value:
+            latest_value = parsed_value
+            latest_raw = raw_value
+            latest_state = queue_state
+    return latest_value, latest_raw, latest_state
+
+
 def _normalize_vm_id(value):
     text_value = str(value or "").strip()
     return text_value[:64] or "unknown"
@@ -148,22 +164,46 @@ def _build_queue_health_snapshot(
     stale_threshold_minutes,
     activity_basis,
     now=None,
+    queue_names=None,
 ):
     current_time = now or _utcnow()
+    queue_names = tuple(queue_names or (queue_name,))
     try:
-        queue_depth = get_queue_depth(queue_name)
-        queue_state = get_queue_monitor_state(queue_name)
+        queue_depths = {
+            configured_queue_name: get_queue_depth(configured_queue_name)
+            for configured_queue_name in queue_names
+        }
+        queue_states = {
+            configured_queue_name: get_queue_monitor_state(configured_queue_name)
+            for configured_queue_name in queue_names
+        }
         worker_states = list_worker_states(worker_kind)
     except CacheUnavailableError as exc:
         return {
             "queue_name": queue_name,
+            "queue_names": list(queue_names),
             "current_time": current_time.isoformat(timespec="seconds"),
             "stale": False,
             "error": str(exc),
         }
 
-    last_processed_at = _parse_iso_datetime(queue_state.get("last_task_processed_at"))
-    last_started_at = _parse_iso_datetime(queue_state.get("last_task_started_at"))
+    queue_depth = sum(queue_depths.values())
+    primary_queue_state = queue_states.get(queue_name) or {}
+    (
+        last_received_at,
+        last_received_raw,
+        _last_received_state,
+    ) = _latest_queue_state_timestamp(queue_states, "last_task_received_at")
+    (
+        last_started_at,
+        last_started_raw,
+        _last_started_state,
+    ) = _latest_queue_state_timestamp(queue_states, "last_task_started_at")
+    (
+        last_processed_at,
+        last_processed_raw,
+        last_processed_state,
+    ) = _latest_queue_state_timestamp(queue_states, "last_task_processed_at")
     if activity_basis == "started_or_processed":
         activity_reference_at = _latest_timestamp(last_started_at, last_processed_at)
     else:
@@ -178,29 +218,33 @@ def _build_queue_health_snapshot(
     )
     return {
         "queue_name": queue_name,
+        "queue_names": list(queue_names),
         "queue_depth": queue_depth,
+        "queue_depths": queue_depths,
         "current_time": current_time.isoformat(timespec="seconds"),
         "stale": stale,
         "stale_threshold_minutes": stale_threshold_minutes,
-        "stale_alert_active": _bool_from_cache_value(queue_state.get("stale_alert_active")),
-        "last_task_received_at": queue_state.get("last_task_received_at"),
-        "last_task_started_at": queue_state.get("last_task_started_at"),
-        "last_task_processed_at": queue_state.get("last_task_processed_at"),
+        "stale_alert_active": _bool_from_cache_value(primary_queue_state.get("stale_alert_active")),
+        "last_task_received_at": last_received_raw,
+        "last_task_started_at": last_started_raw,
+        "last_task_processed_at": last_processed_raw,
         "activity_basis": activity_basis,
         "activity_reference_at": (
             activity_reference_at.isoformat(timespec="seconds")
             if activity_reference_at is not None
             else None
         ),
-        "last_finished_state": queue_state.get("last_finished_state"),
-        "last_processed_vm_id": queue_state.get("last_processed_vm_id"),
-        "last_processed_worker_hostname": queue_state.get("last_processed_worker_hostname"),
-        "last_celery_heartbeat_at": queue_state.get("last_celery_heartbeat_at"),
-        "last_broker_connect_attempt_at": queue_state.get("last_broker_connect_attempt_at"),
-        "last_broker_connected_at": queue_state.get("last_broker_connected_at"),
-        "last_broker_retry_at": queue_state.get("last_broker_retry_at"),
-        "last_broker_disconnect_at": queue_state.get("last_broker_disconnect_at"),
-        "last_broker_error": queue_state.get("last_broker_error"),
+        "last_finished_state": (last_processed_state or primary_queue_state).get("last_finished_state"),
+        "last_processed_vm_id": (last_processed_state or primary_queue_state).get("last_processed_vm_id"),
+        "last_processed_worker_hostname": (
+            last_processed_state or primary_queue_state
+        ).get("last_processed_worker_hostname"),
+        "last_celery_heartbeat_at": primary_queue_state.get("last_celery_heartbeat_at"),
+        "last_broker_connect_attempt_at": primary_queue_state.get("last_broker_connect_attempt_at"),
+        "last_broker_connected_at": primary_queue_state.get("last_broker_connected_at"),
+        "last_broker_retry_at": primary_queue_state.get("last_broker_retry_at"),
+        "last_broker_disconnect_at": primary_queue_state.get("last_broker_disconnect_at"),
+        "last_broker_error": primary_queue_state.get("last_broker_error"),
         "worker_states": worker_states,
         "seconds_since_last_processed": (
             max(int((current_time - last_processed_at).total_seconds()), 0)
@@ -222,6 +266,7 @@ def build_mt5_sync_health_snapshot(*, now=None):
         stale_threshold_minutes=_sync_stale_threshold_minutes(),
         activity_basis="processed",
         now=now,
+        queue_names=("mt5_priority", "mt5_sync"),
     )
 
 

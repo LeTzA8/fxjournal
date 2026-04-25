@@ -2,6 +2,13 @@
 
 Last Updated: 2026-04-25
 
+## MT5 priority queue + beat starvation guard restored (2026-04-25)
+
+- Admin/manual MT5 sync actions now publish to `mt5_priority` instead of the shared `mt5_sync` beat lane, specifically manual **Trigger Sync**, trade-time recalibration, and **Backfill Bars** dispatches. The VM sync worker now consumes `mt5_priority,mt5_sync` so operator-triggered work is picked first.
+- Beat-driven `sync_all_active_mt5_accounts` once again protects the queue from permanent buildup: each beat-published sync task gets `expires=28`, and the beat skips publishing when combined `mt5_priority` + `mt5_sync` depth exceeds `150`.
+- MT5 sync worker health/monitoring now treats `mt5_priority` + `mt5_sync` as one combined sync lane for queue depth and activity timestamps, while still storing the stale-alert flag on the existing `mt5_sync` monitor key.
+- Goal: stop 30s beat traffic from starving manual sync/backfill tasks indefinitely on the solo VM worker. (`auth_account.py`, `celery_workers/mt5_sync_tasks.py`, `celery_app.py`, `scripts/windows/run_mt5_sync_worker.ps1`, `scripts/windows/watch_mt5_sync_worker.ps1`, tests)
+
 ## Celery publish diagnostics for admin/web-triggered tasks (2026-04-25)
 
 - Added shared producer-side dispatch helper `helpers/celery_dispatch.py` so site-triggered Celery publishes log a sanitized broker URL plus the returned task id.
