@@ -2108,7 +2108,7 @@ def test_internal_mt5_trade_bars_replaces_existing_timeframe_rows(app_ctx, clien
     assert rows[0].close == pytest.approx(1.1025)
 
 
-def test_fetch_trade_bars_keeps_already_utc_bar_epochs_with_stored_server_offset(app_ctx, monkeypatch):
+def test_fetch_trade_bars_normalizes_server_epoch_with_stored_server_offset(app_ctx, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
     monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
@@ -2154,7 +2154,7 @@ def test_fetch_trade_bars_keeps_already_utc_bar_epochs_with_stored_server_offset
 
     broker_offset_minutes = 120
     bar_time_utc = int(datetime(2026, 4, 10, 9, 0, 0, tzinfo=timezone.utc).timestamp())
-    raw_bar_time = bar_time_utc
+    raw_bar_time = bar_time_utc + (broker_offset_minutes * 60)
     copy_calls = []
     posted_payload = {}
 
@@ -2211,7 +2211,7 @@ def test_fetch_trade_bars_keeps_already_utc_bar_epochs_with_stored_server_offset
     assert posted_payload["json"]["bars"][0]["time"] == bar_time_utc
 
 
-def test_fetch_trade_bars_normalizes_broker_epoch_after_utc_fallback(app_ctx, monkeypatch):
+def test_fetch_trade_bars_does_not_query_utc_fallback_when_broker_window_has_no_rates(app_ctx, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
     monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
@@ -2242,25 +2242,12 @@ def test_fetch_trade_bars_normalizes_broker_epoch_after_utc_fallback(app_ctx, mo
     db.session.commit()
 
     broker_offset_minutes = 120
-    bar_time_utc = int(datetime(2026, 4, 10, 9, 0, 0, tzinfo=timezone.utc).timestamp())
-    raw_bar_time = bar_time_utc + (broker_offset_minutes * 60)
     copy_calls = []
-    posted_payload = {}
+    post_calls = []
 
     def _copy_rates_range(symbol, timeframe, date_from, date_to):
         copy_calls.append((date_from, date_to))
-        if len(copy_calls) == 1:
-            return []
-        return [
-            {
-                "time": raw_bar_time,
-                "open": 1.1,
-                "high": 1.101,
-                "low": 1.099,
-                "close": 1.1005,
-                "tick_volume": 100,
-            }
-        ]
+        return []
 
     fake_mt5 = SimpleNamespace(
         TIMEFRAME_M5=5,
@@ -2285,21 +2272,22 @@ def test_fetch_trade_bars_normalizes_broker_epoch_after_utc_fallback(app_ctx, mo
             return {"saved": 1, "timeframe": "M5"}
 
     def _fake_post(url, json, headers, timeout):
-        posted_payload["url"] = url
-        posted_payload["json"] = json
-        posted_payload["headers"] = headers
-        posted_payload["timeout"] = timeout
+        post_calls.append({"url": url, "json": json, "headers": headers, "timeout": timeout})
         return DummyResponse()
 
     monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", _fake_post)
 
     result = fetch_trade_bars.run(mt5_account.id, trade.id)
 
-    assert result == {"saved": 1, "timeframe": "M5"}
-    assert len(copy_calls) == 2
-    assert copy_calls[0][0] == copy_calls[1][0] + timedelta(minutes=broker_offset_minutes)
-    assert copy_calls[0][1] == copy_calls[1][1] + timedelta(minutes=broker_offset_minutes)
-    assert posted_payload["json"]["bars"][0]["time"] == bar_time_utc
+    assert result == {"saved": 0, "timeframe": "M5"}
+    assert len(copy_calls) == 1
+    expected_start = datetime(2026, 4, 10, 9, 0, 0, tzinfo=timezone.utc) - timedelta(hours=36)
+    expected_end = datetime(2026, 4, 10, 10, 0, 0, tzinfo=timezone.utc) + timedelta(hours=12)
+    assert copy_calls[0] == (
+        expected_start + timedelta(minutes=broker_offset_minutes),
+        expected_end + timedelta(minutes=broker_offset_minutes),
+    )
+    assert post_calls == []
 
 
 def test_internal_mt5_sync_inserts_new_running_trade(app_ctx, client, monkeypatch):
