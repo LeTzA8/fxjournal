@@ -14,6 +14,23 @@
         return bubble;
     };
 
+    const createLoadingBubble = () => {
+        const bubble = document.createElement("div");
+        bubble.className =
+            "weekly-review-chat-bubble weekly-review-chat-bubble--assistant weekly-review-chat-bubble--loading";
+        bubble.setAttribute("aria-busy", "true");
+        bubble.setAttribute("aria-label", "Assistant is responding");
+        const row = document.createElement("div");
+        row.className = "weekly-review-chat-typing";
+        for (let i = 0; i < 3; i += 1) {
+            const dot = document.createElement("span");
+            dot.className = "weekly-review-chat-typing-dot";
+            row.appendChild(dot);
+        }
+        bubble.appendChild(row);
+        return bubble;
+    };
+
     chatRoots.forEach((root) => {
         const form = root.querySelector("[data-review-chat-form]");
         const input = root.querySelector("[data-review-chat-input]");
@@ -63,7 +80,7 @@
 
             clearError();
             log.appendChild(createBubble("user", message));
-            const loadingBubble = createBubble("assistant", "Thinking...", "weekly-review-chat-bubble--loading");
+            const loadingBubble = createLoadingBubble();
             log.appendChild(loadingBubble);
             input.value = "";
             setBusy(true);
@@ -75,6 +92,7 @@
                     headers: {
                         "Content-Type": "application/json",
                         "X-CSRFToken": csrfToken,
+                        "X-Requested-With": "XMLHttpRequest",
                     },
                     body: JSON.stringify({ message }),
                 });

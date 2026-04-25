@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import json
 import logging
@@ -21,6 +22,11 @@ from helpers.trade_analysis import (
     get_trade_session as _get_trade_session,
 )
 from helpers.weekly_signals import build_weekly_signals as _build_weekly_signals
+from helpers.weekly_review_ref_rewrite import (
+    build_weekly_review_citation_lookup,
+    parse_json_blob,
+    rewrite_review_text_refs,
+)
 from models import (
     AIGeneratedResponse,
     AIPromptHistory,
@@ -68,6 +74,7 @@ Do NOT:
 - give financial advice
 If the answer is uncertain, say so clearly.
 If the question is unrelated to this review, safely redirect the user back to reviewing past trades.
+Do not use internal review codes like T1 or B1; describe trades in plain language using symbol and timing from the context when needed.
 Keep the answer short, practical, and easy to understand.
 """.strip()
 WEEKLY_MARKET_TIMEZONE = ZoneInfo("America/New_York")
@@ -2573,23 +2580,127 @@ def _compact_json_for_prompt(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-def build_weekly_review_chat_messages(review_record, user_message, chat_history=None):
-    final_review_text = normalize_dashboard_advice_text(
-        getattr(review_record, "response_text", None) or ""
+_WEEKLY_REVIEW_REF_TOKEN_RE = re.compile(r"\b[BT]\d+\b", re.IGNORECASE)
+_ISO_DATE_T_TIME_SEPARATOR_RE = re.compile(r"(?<=\d{4}-\d{2}-\d{2})T(?=\d{2}:)")
+
+
+def _spacify_iso_datetime_t_separator(obj):
+    """Avoid literal 'T' between calendar date and clock time (e.g. 2026-04-02T10:00:00Z) in chat prompts."""
+    if isinstance(obj, dict):
+        return {key: _spacify_iso_datetime_t_separator(val) for key, val in obj.items()}
+    if isinstance(obj, list):
+        return [_spacify_iso_datetime_t_separator(item) for item in obj]
+    if isinstance(obj, str):
+        return _ISO_DATE_T_TIME_SEPARATOR_RE.sub(" ", obj)
+    return obj
+
+
+def _strip_residual_weekly_review_ref_codes(text):
+    """Remove internal T1/B1-style tokens the user never sees on the dashboard."""
+    normalized = str(text or "").strip()
+    if not normalized:
+        return ""
+
+    def _ref_repl(match):
+        # Do not strip the "T" in ISO-8601 fragments like 2026-04-02T10:00:00Z
+        if normalized[match.end() : match.end() + 1] == ":":
+            return match.group(0)
+        return ""
+
+    cleaned = _WEEKLY_REVIEW_REF_TOKEN_RE.sub(_ref_repl, normalized)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
+    return cleaned.strip()
+
+
+def _chat_context_rewrite_review_text(text, citation_lookup):
+    normalized = normalize_dashboard_advice_text(text or "")
+    if not normalized:
+        return ""
+    rewritten = rewrite_review_text_refs(normalized, citation_lookup)
+    return _strip_residual_weekly_review_ref_codes(rewritten)
+
+
+def _drop_refs_keys_recursive(obj):
+    if isinstance(obj, dict):
+        return {key: _drop_refs_keys_recursive(val) for key, val in obj.items() if key != "refs"}
+    if isinstance(obj, list):
+        return [_drop_refs_keys_recursive(item) for item in obj]
+    return obj
+
+
+def _rewrite_strings_in_structure(obj, citation_lookup):
+    if isinstance(obj, dict):
+        return {key: _rewrite_strings_in_structure(val, citation_lookup) for key, val in obj.items()}
+    if isinstance(obj, list):
+        return [_rewrite_strings_in_structure(item, citation_lookup) for item in obj]
+    if isinstance(obj, str):
+        return _chat_context_rewrite_review_text(obj, citation_lookup)
+    return obj
+
+
+def _sanitize_response_meta_json_for_chat(meta_json_text, citation_lookup):
+    parsed = parse_json_blob(meta_json_text)
+    if not isinstance(parsed, dict):
+        return _compact_json_for_prompt(meta_json_text)
+    without_refs = _drop_refs_keys_recursive(parsed)
+    rewritten = _rewrite_strings_in_structure(without_refs, citation_lookup)
+    spacified = _spacify_iso_datetime_t_separator(rewritten)
+    return json.dumps(spacified, ensure_ascii=False, separators=(",", ":"))
+
+
+def _sanitize_payload_json_for_chat(payload_json_text):
+    parsed = parse_json_blob(payload_json_text)
+    if not isinstance(parsed, dict):
+        return _compact_json_for_prompt(payload_json_text)
+    stripped = copy.deepcopy(parsed)
+    trades = stripped.get("trades")
+    if isinstance(trades, list):
+        for trade in trades:
+            if isinstance(trade, dict):
+                trade.pop("review_ref", None)
+    spacified = _spacify_iso_datetime_t_separator(stripped)
+    return json.dumps(spacified, ensure_ascii=False, separators=(",", ":"))
+
+
+def build_weekly_review_chat_messages(
+    review_record,
+    user_message,
+    chat_history=None,
+    *,
+    timezone_name="UTC",
+):
+    tz = str(timezone_name or "").strip() or "UTC"
+    citation_lookup = build_weekly_review_citation_lookup(
+        getattr(review_record, "payload_json", None),
+        tz,
     )
-    pass_1_output = normalize_dashboard_advice_text(
-        getattr(review_record, "pass_1_output", None) or ""
+
+    final_review_text = _chat_context_rewrite_review_text(
+        getattr(review_record, "response_text", None) or "",
+        citation_lookup,
     )
-    raw_review_text = pass_1_output if pass_1_output and pass_1_output != final_review_text else ""
-    payload_json = _compact_json_for_prompt(getattr(review_record, "payload_json", None))
-    response_meta_json = _compact_json_for_prompt(getattr(review_record, "response_meta_json", None))
+    pass_1_rw = _chat_context_rewrite_review_text(
+        getattr(review_record, "pass_1_output", None) or "",
+        citation_lookup,
+    )
+    raw_review_text = pass_1_rw if pass_1_rw and pass_1_rw != final_review_text else ""
+
+    payload_json = _sanitize_payload_json_for_chat(getattr(review_record, "payload_json", None))
+    response_meta_json = _sanitize_response_meta_json_for_chat(
+        getattr(review_record, "response_meta_json", None),
+        citation_lookup,
+    )
 
     history_lines = []
     for message in chat_history or []:
         role = str(getattr(message, "role", "") or "").strip().lower()
         if role not in {"user", "assistant"}:
             continue
-        content = normalize_dashboard_advice_text(getattr(message, "content", "") or "")
+        content = _chat_context_rewrite_review_text(
+            getattr(message, "content", "") or "",
+            citation_lookup,
+        )
         if not content:
             continue
         history_lines.append(f"{role}: {content}")
@@ -2602,7 +2713,7 @@ def build_weekly_review_chat_messages(review_record, user_message, chat_history=
             "STRUCTURED_REVIEW_META_IF_AVAILABLE\n" + (response_meta_json or "-"),
             "ORIGINAL_WEEKLY_REVIEW_PAYLOAD_AND_TRADE_CONTEXT_IF_AVAILABLE\n" + (payload_json or "-"),
             "RECENT_CHAT_HISTORY_FOR_THIS_REVIEW\n" + ("\n".join(history_lines) if history_lines else "-"),
-            "USER_QUESTION\n" + normalize_dashboard_advice_text(user_message),
+            "USER_QUESTION\n" + _chat_context_rewrite_review_text(user_message, citation_lookup),
         ]
     )
 
@@ -2618,17 +2729,26 @@ def build_weekly_review_chat_messages(review_record, user_message, chat_history=
     ]
 
 
-def generate_weekly_review_chat_reply(review_record, user_message, chat_history=None, *, model=None):
+def generate_weekly_review_chat_reply(
+    review_record,
+    user_message,
+    chat_history=None,
+    *,
+    model=None,
+    timezone_name="UTC",
+):
     resolved_model = model or get_ai_model()
     messages = build_weekly_review_chat_messages(
         review_record,
         user_message,
         chat_history=chat_history,
+        timezone_name=timezone_name,
     )
     response_payload = request_openai_response(messages, model=resolved_model)
     reply = extract_response_text(response_payload)
     if not reply:
         raise AIRequestError(describe_empty_response(response_payload))
+    reply = _strip_residual_weekly_review_ref_codes(reply)
     return reply, response_payload, resolved_model
 
 

@@ -46,13 +46,21 @@ from helpers.core import (
     get_user_trade_accounts,
     is_weekly_checkin_complete,
     is_support_view_active,
+    is_support_view_session_active,
     is_trade_running,
     normalize_timezone_name,
 )
 from helpers.running_pnl import build_running_pnl_events, summarize_running_pnl
 from helpers.trade_analysis import detect_outliers, get_trade_identity
 from helpers.trends import trend_direction_ei_scores, trend_direction_expectancy_weeks, trend_direction_win_rate_weeks
+from helpers.weekly_review_ref_rewrite import (
+    build_weekly_review_citation_lookup as _build_weekly_review_citation_lookup,
+    deserialize_datetime_iso as _deserialize_datetime,
+    parse_json_blob as _parse_json_blob,
+    rewrite_review_text_refs as _rewrite_review_text_refs,
+)
 from auth_account import build_external_url
+from extensions import limiter
 from helpers.utils import login_required, utcnow_naive
 from models import AccountCashFlow, AIGeneratedResponse, Trade, UserProfile, WeeklyCheckin, WeeklyReviewChatMessage, db
 from trading import (
@@ -98,170 +106,6 @@ def _serialize_datetime(value):
     if value is None:
         return None
     return value.isoformat()
-
-
-def _deserialize_datetime(value):
-    if not value:
-        return None
-    try:
-        text = str(value).strip()
-        if text.endswith("Z"):
-            text = f"{text[:-1]}+00:00"
-        return datetime.fromisoformat(text)
-    except ValueError:
-        return None
-
-
-def _parse_json_blob(value):
-    text = str(value or "").strip()
-    if not text:
-        return None
-    try:
-        return json.loads(text)
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return None
-
-
-def _build_weekly_review_citation_lookup(payload_json, timezone_name):
-    payload = _parse_json_blob(payload_json) or {}
-    trades = payload.get("trades") if isinstance(payload.get("trades"), list) else []
-    lookup = {}
-
-    for trade in trades:
-        if not isinstance(trade, dict):
-            continue
-        review_ref = str(trade.get("review_ref") or "").strip().upper()
-        if not review_ref:
-            continue
-
-        symbol = str(trade.get("symbol") or "-").strip() or "-"
-        opened_at = _deserialize_datetime(trade.get("opened_at"))
-        opened_local = to_display_timezone(opened_at, timezone_name)
-        date_label = opened_local.strftime("%d %b %Y (%a)") if opened_local is not None else "Date unavailable"
-        bundle_key = str(trade.get("bundle_pubkey") or "").strip()
-        trade_id = trade.get("trade_id")
-        try:
-            pnl_value = float(trade.get("pnl"))
-        except (TypeError, ValueError):
-            pnl_value = None
-        tone = "good" if pnl_value is not None and pnl_value > 0 else "bad" if pnl_value is not None and pnl_value < 0 else "neutral"
-
-        if bool(trade.get("is_bundle")) and bundle_key:
-            lookup[review_ref] = {
-                "ref": review_ref,
-                "type": "bundle",
-                "bundle_key": bundle_key,
-                "inline_label": f"{symbol} bundle",
-                "label": f"{symbol} bundle | {date_label}",
-                "tone": tone,
-            }
-            continue
-
-        try:
-            normalized_trade_id = int(trade_id)
-        except (TypeError, ValueError):
-            continue
-
-        lookup[review_ref] = {
-            "ref": review_ref,
-            "type": "trade",
-            "trade_id": normalized_trade_id,
-            "inline_label": symbol,
-            "label": f"{symbol} | {date_label}",
-            "tone": tone,
-        }
-
-    return lookup
-
-
-_STRAY_CLITIC_KEYWORD_LOOKAHEAD = (
-    r"(?:trade|trades|loss|losses|win|wins|winner|losers?|idea|ideas|setup|setups|"
-    r"entry|entries|exit|exits|position|positions|scalp|runner)\b"
-)
-
-_STRAY_CLITIC_AFTER_LABEL_SUFFIX = (
-    rf"\s+[ds]\s+(?={_STRAY_CLITIC_KEYWORD_LOOKAHEAD})"
-)
-
-# Model sometimes omits the space before a clitic (e.g. "(Mon)d position" from "gold" bleed-through).
-_GLUED_CLITIC_AFTER_LABEL = (
-    rf"['\u2019']?[ds](?=\s*(?:{_STRAY_CLITIC_KEYWORD_LOOKAHEAD}))"
-)
-
-
-def _strip_stray_possessive_after_review_labels(text, citation_lookup):
-    """Remove a lone d/s after an inline label (e.g. 'B1 d trade' -> label + ' trade')."""
-    normalized = str(text or "")
-    if not normalized or not citation_lookup:
-        return normalized
-
-    seen = set()
-    for citation in citation_lookup.values():
-        if not isinstance(citation, dict):
-            continue
-        for raw in (
-            str(citation.get("label") or "").strip(),
-            str(citation.get("inline_label") or "").strip(),
-        ):
-            if not raw:
-                continue
-            key = raw.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-
-            normalized = re.sub(
-                rf"(?i){re.escape(raw)}{_STRAY_CLITIC_AFTER_LABEL_SUFFIX}",
-                f"{raw} ",
-                normalized,
-            )
-            normalized = re.sub(
-                rf"(?i){re.escape(raw)}{_GLUED_CLITIC_AFTER_LABEL}",
-                f"{raw} ",
-                normalized,
-            )
-    return normalized
-
-
-def _rewrite_review_text_refs(text, citation_lookup):
-    normalized = str(text or "").strip()
-    if not normalized or not citation_lookup:
-        return normalized
-
-    ref_codes = [ref for ref in citation_lookup.keys() if ref]
-    if not ref_codes:
-        return normalized
-
-    ref_pattern = "|".join(re.escape(ref) for ref in sorted(ref_codes, key=len, reverse=True))
-    # Consume optional clitic glued to the closing bracket (e.g. "[B1]d trade" from a missing
-    # apostrophe before "trade") so we do not leave a stray "d"/"s" in the sentence.
-    bracket_close = (
-        rf"\s*[\)\]\}}](?:['\u2019']?[ds](?=\s|[,.;:!?]|$))?"
-    )
-    normalized = re.sub(
-        rf"\s*[\(\[\{{]\s*(?:{ref_pattern})(?:\s*,\s*(?:{ref_pattern}))*{bracket_close}",
-        "",
-        normalized,
-        flags=re.IGNORECASE,
-    )
-
-    def replace_ref(match):
-        ref = str(match.group(0) or "").strip().upper()
-        citation = citation_lookup.get(ref)
-        if citation is None:
-            return ""
-        return str(citation.get("inline_label") or citation.get("label") or "").strip()
-
-    normalized = re.sub(
-        rf"\b(?:{ref_pattern})\b",
-        replace_ref,
-        normalized,
-        flags=re.IGNORECASE,
-    )
-    normalized = _strip_stray_possessive_after_review_labels(normalized, citation_lookup)
-    normalized = re.sub(r"\s{2,}", " ", normalized)
-    normalized = re.sub(r"\s+([,.;:!?])", r"\1", normalized)
-    return normalized.strip()
 
 
 def _dedupe_review_citations(citations, seen_keys):
@@ -1529,6 +1373,11 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
 
 
 @bp.route("/api/ai-status")
+@limiter.limit(
+    "120 per minute",
+    methods=["GET"],
+    error_message="Too many status checks. Please wait and try again.",
+)
 @login_required
 def ai_status():
     user_id = get_effective_user_id()
@@ -1551,8 +1400,22 @@ def ai_status():
 
 
 @bp.route("/dashboard/weekly-review/<int:review_id>/chat", methods=["POST"])
+@limiter.limit(
+    "5 per minute; 120 per hour",
+    methods=["POST"],
+    error_message="Too many review chat messages. Please wait and try again.",
+)
 @login_required
 def weekly_review_chat(review_id):
+    if is_support_view_session_active():
+        return (
+            jsonify(
+                {
+                    "error": "That action is not available in read-only support view.",
+                }
+            ),
+            403,
+        )
     user_id = get_effective_user_id()
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_id = getattr(active_trade_account, "id", None)
@@ -1595,6 +1458,7 @@ def weekly_review_chat(review_id):
             review,
             message,
             chat_history=chat_history,
+            timezone_name=get_display_timezone_name(),
         )
     except AIRequestError as exc:
         current_app.logger.warning(

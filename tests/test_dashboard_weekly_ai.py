@@ -2,14 +2,24 @@ from datetime import datetime
 
 import json
 
+import pytest
 from sqlalchemy import inspect as sa_inspect
 
-from ai_service import WEEKLY_DASHBOARD_KIND
+from ai_service import WEEKLY_DASHBOARD_KIND, build_weekly_review_chat_messages
 from models import AIGeneratedResponse, AIPromptHistory, MT5Account, WeeklyReviewChatMessage
 
 import routes.dashboard as dashboard_routes
 from helpers.trade_interpretation import apply_interpretation
 from models import Trade, TradeAccount, TradeProfile, TradeProfileVersion, User, UserProfile, db
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter_for_isolation():
+    """Flask-Limiter is process-global; reset so chat rate tests do not cross-contaminate."""
+    from extensions import limiter
+
+    limiter.reset()
+    yield
 
 
 def _create_logged_in_user(client, username, email):
@@ -73,6 +83,58 @@ def _create_weekly_review(user, trade_account, prompt_id="weekly-chat"):
     return review
 
 
+def test_weekly_review_chat_prompt_scrubs_internal_refs_from_review_meta_and_payload(app_ctx):
+    review = type(
+        "Review",
+        (),
+        {
+            "response_text": "T1 was clean compared with B1.",
+            "pass_1_output": "Pass: watch B1 sizing.",
+            "response_meta_json": json.dumps(
+                {
+                    "summary": {"text": "T1 vs B1 story.", "refs": ["T1", "B1"]},
+                    "takeaways": [{"text": "B1 mattered", "refs": ["B1"]}],
+                }
+            ),
+            "payload_json": json.dumps(
+                {
+                    "trades": [
+                        {
+                            "review_ref": "T1",
+                            "trade_id": 101,
+                            "symbol": "EURUSD",
+                            "opened_at": "2026-04-01T09:00:00Z",
+                            "pnl": 10.0,
+                            "is_bundle": False,
+                        },
+                        {
+                            "review_ref": "B1",
+                            "trade_id": 202,
+                            "symbol": "GBPUSD",
+                            "opened_at": "2026-04-02T10:00:00Z",
+                            "pnl": -42.0,
+                            "is_bundle": True,
+                            "bundle_pubkey": "bundle-xyz",
+                        },
+                    ]
+                }
+            ),
+        },
+    )()
+    messages = build_weekly_review_chat_messages(
+        review,
+        "What does T1 mean?",
+        timezone_name="UTC",
+    )
+    user_blob = messages[1]["content"][0]["text"]
+    assert "T1" not in user_blob
+    assert "B1" not in user_blob
+    assert '"refs"' not in user_blob
+    assert "review_ref" not in user_blob
+    assert "EURUSD" in user_blob
+    assert "GBPUSD" in user_blob
+
+
 def test_weekly_review_chat_route_stores_user_and_assistant_messages(app_ctx, client, monkeypatch):
     user, trade_account = _create_logged_in_user(
         client,
@@ -93,7 +155,7 @@ def test_weekly_review_chat_route_stores_user_and_assistant_messages(app_ctx, cl
 
     calls = {}
 
-    def fake_generate_weekly_review_chat_reply(review_record, user_message, chat_history=None):
+    def fake_generate_weekly_review_chat_reply(review_record, user_message, chat_history=None, **kwargs):
         calls["review_id"] = review_record.id
         calls["message"] = user_message
         calls["history"] = [message.content for message in chat_history or []]
@@ -184,6 +246,33 @@ def test_weekly_review_chat_route_rejects_empty_and_long_messages(app_ctx, clien
     assert empty_response.status_code == 400
     assert long_response.status_code == 400
     assert WeeklyReviewChatMessage.query.filter_by(ai_response_id=review.id).count() == 0
+
+
+def test_weekly_review_chat_route_is_rate_limited(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-rl-user",
+        email="dashboard-review-chat-rl@example.com",
+    )
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-rl")
+
+    def fake_reply(*_a, **_k):
+        return "brief", {}, "gpt-test"
+
+    monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fake_reply)
+
+    for i in range(5):
+        response = client.post(
+            f"/dashboard/weekly-review/{review.id}/chat",
+            json={"message": f"q{i}"},
+        )
+        assert response.status_code == 200, f"unexpected at {i}"
+    over = client.post(
+        f"/dashboard/weekly-review/{review.id}/chat",
+        json={"message": "q6"},
+    )
+    assert over.status_code == 429
+    assert "error" in (over.get_json() or {})
 
 
 def test_dashboard_home_renders_weekly_review_chat_inside_review_panel(app_ctx, client, monkeypatch):
