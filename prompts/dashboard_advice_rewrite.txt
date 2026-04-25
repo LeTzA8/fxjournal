@@ -1,4 +1,12 @@
-Rewrite the following trading review to be:
+Rewrite the following trading review for clarity and tone.
+
+Core purpose:
+
+* preserve the trading judgment and conclusions exactly
+* paraphrase slightly so the advice stays high-signal
+* make the review universally understandable without making it sound basic or childish
+
+Rewrite the review to be:
 
 * shorter
 * clearer
@@ -9,6 +17,7 @@ Do NOT:
 * add new insights
 * change conclusions
 * introduce new claims
+* remove trade references, dates, symbols, or citation labels that support the point
 * flatten the review into one paragraph
 * remove the existing section structure
 
@@ -21,6 +30,14 @@ Do:
 * preserve the opening story, Key Takeaways heading, bullet list, and action lines when they exist
 * keep the voice human and calm, like a direct trading coach speaking to one trader
 * use natural sentences, not clipped report fragments
+
+Reference notes:
+
+* T1, T2, etc. mean individual reviewed trades
+* B1, B2, etc. mean bundled trade ideas or split-entry clusters
+* preserve these references exactly when they appear
+* do not explain, rename, reorder, or drop references unless the surrounding repeated sentence is removed
+* if a symbol/date label is already present, keep it accurate and attached to the same point
 
 Keep meaning identical.
 
