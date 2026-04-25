@@ -860,6 +860,55 @@ def test_weekly_ai_review_display_falls_back_when_rewrite_loses_format():
     assert display["improvement"]["text"] == "Improve this week: Keep the plan simple."
 
 
+def test_weekly_ai_review_display_keeps_experiment_from_meta_with_rewrite():
+    review = type(
+        "Review",
+        (),
+        {
+            "response_text": (
+                "Rewritten story.\n\n"
+                "Key Takeaways\n"
+                "- Rewritten takeaway.\n"
+                "Improve this week: Keep one rule."
+            ),
+            "pass_1_output": (
+                "Original story.\n\n"
+                "Key Takeaways\n"
+                "- Original takeaway.\n"
+                "Improve this week: Keep one rule."
+            ),
+            "pass_2_output": (
+                "Rewritten story.\n\n"
+                "Key Takeaways\n"
+                "- Rewritten takeaway.\n"
+                "Improve this week: Keep one rule."
+            ),
+            "prompt_version_pass_2": "rewrite-sha",
+            "response_meta_json": json.dumps(
+                {
+                    "summary": {"text": "Original story.", "refs": []},
+                    "takeaways": [{"text": "Original takeaway.", "refs": []}],
+                    "improvement": {"text": "Improve this week: Keep one rule.", "refs": []},
+                    "experiment": {
+                        "text": "Run a one-week rule: take only the first valid setup each session.",
+                        "refs": [],
+                    },
+                }
+            ),
+            "payload_json": "{}",
+        },
+    )()
+
+    display = dashboard_routes._build_weekly_ai_review_display(review, "UTC")
+
+    assert display["summary"]["text"] == "Rewritten story."
+    assert display["takeaways"][0]["text"] == "Rewritten takeaway."
+    assert display["experiment"]["text"] == "Run a one-week rule: take only the first valid setup each session."
+    assert display["experiment"]["segments"] == [
+        {"type": "text", "text": display["experiment"]["text"]},
+    ]
+
+
 def test_rewrite_review_text_refs_drops_stray_clitic_after_brackets_and_labels():
     """Model sometimes emits '[B1]d' or 'B1 d' before 'trade'; avoid a lone 'd' after the pill."""
     lookup = {

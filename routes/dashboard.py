@@ -470,6 +470,15 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
         display_text,
         display_meta_json,
     )
+    if pass_2_output:
+        original_display = build_dashboard_review_display(
+            getattr(review_record, "pass_1_output", None) or review_record.response_text or "",
+            getattr(review_record, "response_meta_json", None),
+        )
+        if not (display.get("experiment") or {}).get("text"):
+            display["experiment"] = (original_display.get("experiment") or {})
+        if not (display.get("strength") or {}).get("text"):
+            display["strength"] = (original_display.get("strength") or {})
     citation_lookup = _build_weekly_review_citation_lookup(
         getattr(review_record, "payload_json", None),
         timezone_name,

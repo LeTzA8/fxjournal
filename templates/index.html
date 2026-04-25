@@ -1026,16 +1026,20 @@
                         {% if weekly_ai_review_display and (weekly_ai_review_display.summary.text or weekly_ai_review_display.takeaways or weekly_ai_review_display.improvement.text or weekly_ai_review_display.strength.text) %}
                         <div class="ai-review-structured">
                             {% if weekly_ai_review_display.summary.text %}
-                            <div class="ai-review-block">
-                                <p class="insight-body ai-review-copy">{% for segment in weekly_ai_review_display.summary.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
+                            <div class="ai-review-block ai-review-main-insight">
+                                <p class="ai-review-heading">🧠 What mattered this week</p>
+                                <p class="insight-body ai-review-copy ai-review-summary">{% for segment in weekly_ai_review_display.summary.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
+                                {% if weekly_ai_review.trade_count_used is defined and weekly_ai_review.trade_count_used < 3 %}
+                                <p class="ai-review-confidence-note">⚠️ Confidence is limited (few trades or missing notes)</p>
+                                {% endif %}
                             </div>
                             {% endif %}
 
                             {% if weekly_ai_review_display.takeaways %}
                             <div class="ai-review-block">
-                                <p class="ai-review-heading">Key Takeaways</p>
+                                <p class="ai-review-heading">What this suggests</p>
                                 <ul class="ai-review-list">
-                                    {% for takeaway in weekly_ai_review_display.takeaways %}
+                                    {% for takeaway in weekly_ai_review_display.takeaways[:2] %}
                                     <li class="ai-review-item">
                                         <p class="insight-body ai-review-copy">{% for segment in takeaway.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
                                     </li>
@@ -1058,10 +1062,10 @@
                     </div>
 
                     {% if weekly_ai_review or not is_state_one %}
-                    <div class="insight-content session-ai-card ai-hero-card ai-review-panel-improvement">
+                    <div class="insight-content session-ai-card ai-hero-card ai-review-panel-improvement ai-review-action-card">
                         <p class="insight-title">🎯 Actionable Improvement</p>
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.improvement.text %}
-                        <p class="insight-body ai-review-copy ai-review-improvement">{% for segment in weekly_ai_review_display.improvement.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
+                        <p class="insight-body ai-review-copy ai-review-improvement ai-review-action">{% for segment in weekly_ai_review_display.improvement.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
                         {% elif weekly_ai_is_generating %}
                         <p class="insight-body ai-generating-copy muted-value">{{ weekly_ai_empty_message|trim }}</p>
                         {% else %}
@@ -2350,7 +2354,28 @@
 
     .ai-review-block {
         display: grid;
-        gap: 0.58rem;
+        gap: 0.66rem;
+    }
+
+    .ai-review-main-insight {
+        padding-bottom: 0.86rem;
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    }
+
+    .ai-review-summary {
+        max-width: 78ch;
+        font-size: clamp(1.03rem, 1.08vw, 1.12rem);
+        font-weight: 650;
+        line-height: 1.78;
+        color: color-mix(in srgb, var(--ink) 94%, white);
+    }
+
+    .ai-review-confidence-note {
+        margin: 0.1rem 0 0;
+        color: color-mix(in srgb, #f59e0b 70%, var(--ink));
+        font-size: 0.86rem;
+        font-weight: 700;
+        line-height: 1.45;
     }
 
     .ai-review-mini-card {
@@ -2412,7 +2437,7 @@
 
     .ai-review-list {
         display: grid;
-        gap: 0.85rem;
+        gap: 0.95rem;
         margin: 0;
         padding: 0;
         list-style: none;
@@ -2421,6 +2446,28 @@
     .ai-review-item {
         display: grid;
         gap: 0.5rem;
+        padding: 0.72rem 0.78rem;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        background: color-mix(in srgb, var(--surface) 76%, transparent);
+    }
+
+    .ai-review-item .insight-body {
+        line-height: 1.7;
+    }
+
+    .ai-review-action-card {
+        padding-bottom: 1rem;
+    }
+
+    .ai-review-action {
+        padding-top: 0.28rem;
+        border-top: 1px solid color-mix(in srgb, #f59e0b 34%, transparent);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        line-height: 1.62;
     }
 
     .session-ai-card .ai-review-copy {
