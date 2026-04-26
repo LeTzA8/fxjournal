@@ -210,6 +210,7 @@ def _create_celery():
             "celery_workers.mt5_setup_tasks.*": {"queue": "mt5_setup"},
             "celery_workers.mt5_sync_tasks.sync_mt5_account": {"queue": "mt5_sync"},
             "celery_workers.mt5_sync_tasks.fetch_trade_bars": {"queue": "mt5_sync"},
+            "celery_workers.mt5_sync_tasks.fetch_trade_bars_batch": {"queue": "mt5_sync"},
         },
     }
     configured_pool = os.environ.get("CELERY_POOL", "").strip().lower()

@@ -9,6 +9,7 @@ import threading
 import uuid
 
 import requests
+from sqlalchemy import func
 
 from celery_app import celery
 from celery_workers.logging_utils import duration_label, log_ascii_table
@@ -520,6 +521,33 @@ def _summarize_trade_states(trades):
     return open_trades, closed_trades
 
 
+def _trade_has_complete_m5_bars_for_worker(trade, *, db, TradeBars):
+    if trade is None or trade.opened_at is None or trade.closed_at is None:
+        return False
+    coverage = (
+        db.session.query(
+            func.count(TradeBars.id),
+            func.min(TradeBars.bar_time),
+            func.max(TradeBars.bar_time),
+        )
+        .filter(TradeBars.trade_id == trade.id, TradeBars.timeframe == "M5")
+        .one()
+    )
+    bar_count = int(coverage[0] or 0)
+    min_bar_time = coverage[1]
+    max_bar_time = coverage[2]
+    if bar_count <= 0 or min_bar_time is None or max_bar_time is None:
+        return False
+    bar_tolerance_seconds = 15 * 60
+    opened_at_epoch = int(trade.opened_at.replace(tzinfo=timezone.utc).timestamp())
+    closed_at_epoch = int(trade.closed_at.replace(tzinfo=timezone.utc).timestamp())
+    if int(min_bar_time) > opened_at_epoch + bar_tolerance_seconds:
+        return False
+    if int(max_bar_time) < closed_at_epoch - bar_tolerance_seconds:
+        return False
+    return True
+
+
 @celery.task(
     bind=True,
     max_retries=2,
@@ -871,13 +899,9 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
     task_id = getattr(getattr(self, "request", None), "id", None)
     fetch_started_at = None
     fetch_finished_at = None
-    try:
-        import MetaTrader5 as mt5
-    except ImportError as exc:
-        raise RuntimeError("MetaTrader5 not installed on this worker.") from exc
 
     from helpers.utils import decrypt_password
-    from models import MT5Account, Trade, db
+    from models import MT5Account, Trade, TradeBars, db
     from trading import cfd_mt5_symbol_name_candidates, chart_timeframe_bar_seconds, mt5_timeframe_constant
 
     fetch_started_at = datetime.now(timezone.utc)
@@ -912,6 +936,19 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
         )
         return {"skipped": "trade not closed"}
 
+    if _trade_has_complete_m5_bars_for_worker(trade, db=db, TradeBars=TradeBars):
+        log_ascii_table(
+            logger,
+            "Bar Fetch Skipped",
+            [
+                ("Task ID", task_id),
+                ("MT5 Account ID", mt5_account_id),
+                ("Trade ID", trade_id),
+                ("Reason", "complete M5 bars already stored"),
+            ],
+        )
+        return {"saved": 0, "timeframe": "M5", "skipped_existing": 1}
+
     symbol = trade.symbol
     symbol_candidates = cfd_mt5_symbol_name_candidates(symbol) or (symbol,)
     opened_at_utc = _naive_utc_to_aware(trade.opened_at)
@@ -940,6 +977,11 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
     end_dt = closed_at_utc + timedelta(seconds=post_exit_m5_bars * m5_seconds)
     if end_dt > now_utc:
         end_dt = now_utc
+
+    try:
+        import MetaTrader5 as mt5
+    except ImportError as exc:
+        raise RuntimeError("MetaTrader5 not installed on this worker.") from exc
 
     bars = []
     mt5_server_delta_minutes = 0
@@ -1057,6 +1099,218 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             "Content-Type": "application/json",
         },
         timeout=30,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+@celery.task(
+    bind=True,
+    max_retries=1,
+    default_retry_delay=60,
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
+def fetch_trade_bars_batch(self, mt5_account_id, trade_ids):
+    """Fetch OHLC bars for several closed trades with one MT5 session and one API POST."""
+    task_id = getattr(getattr(self, "request", None), "id", None)
+    fetch_started_at = datetime.now(timezone.utc)
+
+    from helpers.utils import decrypt_password
+    from models import MT5Account, Trade, TradeBars, db
+    from trading import cfd_mt5_symbol_name_candidates, chart_timeframe_bar_seconds, mt5_timeframe_constant
+
+    account = db.session.get(MT5Account, mt5_account_id)
+    if account is None or not account.is_active or account.is_orphaned:
+        log_ascii_table(
+            logger,
+            "Bar Fetch Batch Skipped",
+            [
+                ("Task ID", task_id),
+                ("MT5 Account ID", mt5_account_id),
+                ("Reason", "account missing, inactive, or orphaned"),
+            ],
+            level=logging.WARNING,
+        )
+        return {"skipped": "account unavailable"}
+
+    normalized_trade_ids = []
+    for raw_trade_id in trade_ids or []:
+        try:
+            trade_id = int(raw_trade_id)
+        except (TypeError, ValueError):
+            continue
+        if trade_id not in normalized_trade_ids:
+            normalized_trade_ids.append(trade_id)
+    if not normalized_trade_ids:
+        return {"saved": 0, "items": [], "skipped": "no valid trade ids"}
+
+    trades_by_id = {
+        trade.id: trade
+        for trade in Trade.query.filter(Trade.id.in_(normalized_trade_ids)).all()
+    }
+    candidate_trades = [
+        trades_by_id[trade_id]
+        for trade_id in normalized_trade_ids
+        if trade_id in trades_by_id
+        and trades_by_id[trade_id].closed_at is not None
+        and trades_by_id[trade_id].user_id == account.user_id
+        and trades_by_id[trade_id].trade_account_id == account.trade_account_id
+    ]
+    trades_to_fetch = [
+        trade
+        for trade in candidate_trades
+        if not _trade_has_complete_m5_bars_for_worker(trade, db=db, TradeBars=TradeBars)
+    ]
+    skipped_existing = max(len(candidate_trades) - len(trades_to_fetch), 0)
+    if not trades_to_fetch:
+        log_ascii_table(
+            logger,
+            "Bar Fetch Batch Skipped",
+            [
+                ("Task ID", task_id),
+                ("MT5 Account ID", mt5_account_id),
+                ("Requested Trades", len(normalized_trade_ids)),
+                ("Eligible Closed Trades", len(candidate_trades)),
+                ("Skipped Existing", skipped_existing),
+                ("Reason", "complete M5 bars already stored"),
+            ],
+        )
+        return {"saved": 0, "items": [], "skipped_existing": skipped_existing}
+
+    try:
+        import MetaTrader5 as mt5
+    except ImportError as exc:
+        raise RuntimeError("MetaTrader5 not installed on this worker.") from exc
+
+    investor_password = decrypt_password(account.investor_password_encrypted)
+    init_kwargs = {}
+    if account.terminal_path:
+        init_kwargs["path"] = account.terminal_path
+
+    m5_seconds = chart_timeframe_bar_seconds("M5")
+    pre_entry_m5_bars = 432
+    post_exit_m5_bars = 144
+    now_utc = datetime.now(timezone.utc)
+    fetched_items = []
+    no_rate_count = 0
+    sample_broker_symbol = None
+    mt5_server_delta_minutes = 0
+    with _MT5_API_SESSION_LOCK:
+        if not mt5.initialize(**init_kwargs):
+            raise RuntimeError(f"MT5 init failed during bar fetch batch: {mt5.last_error()}")
+        try:
+            if not mt5.login(int(account.account_number), password=investor_password, server=account.server):
+                raise RuntimeError(f"MT5 login failed during bar fetch batch: {mt5.last_error()}")
+            mt5_server_delta_minutes = _resolve_mt5_server_offset_minutes(
+                mt5,
+                mt5_account_id,
+                preferred_symbol=trades_to_fetch[0].symbol,
+                server_name=account.server,
+            )
+            tf_constant = mt5_timeframe_constant("M5", mt5)
+            symbol_select = getattr(mt5, "symbol_select", None)
+            for trade in trades_to_fetch:
+                opened_at_utc = _naive_utc_to_aware(trade.opened_at)
+                closed_at_utc = _naive_utc_to_aware(trade.closed_at)
+                start_dt = opened_at_utc - timedelta(seconds=pre_entry_m5_bars * m5_seconds)
+                end_dt = closed_at_utc + timedelta(seconds=post_exit_m5_bars * m5_seconds)
+                if end_dt > now_utc:
+                    end_dt = now_utc
+                start_dt_shifted = _shift_datetime_by_minutes(start_dt, minutes=mt5_server_delta_minutes)
+                end_dt_shifted = _shift_datetime_by_minutes(end_dt, minutes=mt5_server_delta_minutes)
+                bars = []
+                selected_symbol = None
+                symbol_candidates = cfd_mt5_symbol_name_candidates(trade.symbol) or (trade.symbol,)
+                last_bar_error = None
+                for candidate_symbol in symbol_candidates:
+                    if callable(symbol_select):
+                        try:
+                            symbol_select(candidate_symbol, True)
+                        except Exception:
+                            pass
+                    raw_bars = mt5.copy_rates_range(
+                        candidate_symbol,
+                        tf_constant,
+                        start_dt_shifted,
+                        end_dt_shifted,
+                    )
+                    last_bar_error = mt5.last_error()
+                    if raw_bars is None or len(raw_bars) == 0:
+                        continue
+                    selected_symbol = candidate_symbol
+                    sample_broker_symbol = sample_broker_symbol or selected_symbol
+                    for bar in raw_bars:
+                        bar_open_utc = _adjust_mt5_unix_epoch(
+                            int(bar["time"]),
+                            offset_minutes=mt5_server_delta_minutes,
+                        )
+                        bars.append({
+                            "time": int(bar_open_utc),
+                            "open": float(bar["open"]),
+                            "high": float(bar["high"]),
+                            "low": float(bar["low"]),
+                            "close": float(bar["close"]),
+                            "tick_volume": int(bar["tick_volume"]) if bar["tick_volume"] is not None else None,
+                        })
+                    break
+                if not bars:
+                    no_rate_count += 1
+                    logger.warning(
+                        "Bar fetch batch no rates mt5_account_id=%s trade_id=%s symbol=%s candidates=%s "
+                        "delta_min=%s broker_window=%s..%s utc_window=%s..%s last_error=%s",
+                        mt5_account_id,
+                        trade.id,
+                        trade.symbol,
+                        list(symbol_candidates)[:12],
+                        mt5_server_delta_minutes,
+                        start_dt_shifted.isoformat(),
+                        end_dt_shifted.isoformat(),
+                        start_dt.isoformat(),
+                        end_dt.isoformat(),
+                        last_bar_error,
+                    )
+                    continue
+                fetched_items.append({"trade_id": trade.id, "timeframe": "M5", "bars": bars})
+        finally:
+            mt5.shutdown()
+
+    fetch_finished_at = datetime.now(timezone.utc)
+    total_bars = sum(len(item["bars"]) for item in fetched_items)
+    log_ascii_table(
+        logger,
+        "Bar Fetch Batch Result",
+        [
+            ("Task ID", task_id),
+            ("MT5 Account ID", mt5_account_id),
+            ("Requested Trades", len(normalized_trade_ids)),
+            ("Eligible Closed Trades", len(candidate_trades)),
+            ("Skipped Existing", skipped_existing),
+            ("Fetched Trades", len(fetched_items)),
+            ("No Rate Trades", no_rate_count),
+            ("Bars Fetched", total_bars),
+            ("Sample Broker Symbol", sample_broker_symbol or "none"),
+            ("MT5-UTC Delta (min)", mt5_server_delta_minutes),
+            ("Duration", duration_label(fetch_started_at, fetch_finished_at)),
+        ],
+    )
+
+    if not fetched_items:
+        return {"saved": 0, "items": [], "skipped_existing": skipped_existing}
+
+    base_url = os.environ.get("FLASK_API_URL", "https://myfxjournal.com").strip() or "https://myfxjournal.com"
+    sync_secret = os.environ.get("MT5_SYNC_SECRET", "").strip()
+    if not sync_secret:
+        raise RuntimeError("MT5_SYNC_SECRET is required for bar fetch.")
+
+    response = requests.post(
+        f"{base_url}/api/internal/mt5/trade-bars/batch",
+        json={"mt5_account_id": mt5_account_id, "timeframe": "M5", "items": fetched_items},
+        headers={
+            "X-Sync-Secret": sync_secret,
+            "Content-Type": "application/json",
+        },
+        timeout=60,
     )
     response.raise_for_status()
     return response.json()

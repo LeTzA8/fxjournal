@@ -120,6 +120,7 @@ def _queue_auto_trade_bar_sync(account):
         "closed_trades": 0,
         "missing_m5": 0,
         "queued": 0,
+        "queued_tasks": 0,
         "capped": False,
         "max_tasks_per_sync": max_tasks_per_sync,
         "queue": None,
@@ -144,27 +145,29 @@ def _queue_auto_trade_bar_sync(account):
     if not trades_to_queue:
         return status
 
-    from celery_workers.mt5_sync_tasks import MT5_PRIORITY_QUEUE_NAME, fetch_trade_bars
+    from celery_workers.mt5_sync_tasks import MT5_PRIORITY_QUEUE_NAME, fetch_trade_bars_batch
 
     status["queue"] = MT5_PRIORITY_QUEUE_NAME
 
     if len(trades_to_queue) > max_tasks_per_sync:
         status["capped"] = True
-    for trade in trades_to_queue[:max_tasks_per_sync]:
-        dispatch_celery_task(
-            fetch_trade_bars,
-            args=[account.id, trade.id],
-            queue=MT5_PRIORITY_QUEUE_NAME,
-            log=current_app.logger,
-            label="mt5_auto_bar_sync_after_ingest",
-            extra={
-                "mt5_account_id": account.id,
-                "trade_id": trade.id,
-                "user_id": account.user_id,
-                "trade_account_id": account.trade_account_id,
-            },
-        )
-        status["queued"] += 1
+    queued_trades = trades_to_queue[:max_tasks_per_sync]
+    dispatch_celery_task(
+        fetch_trade_bars_batch,
+        args=[account.id, [trade.id for trade in queued_trades]],
+        queue=MT5_PRIORITY_QUEUE_NAME,
+        log=current_app.logger,
+        label="mt5_auto_bar_sync_batch_after_ingest",
+        extra={
+            "mt5_account_id": account.id,
+            "trade_ids": [trade.id for trade in queued_trades],
+            "user_id": account.user_id,
+            "trade_account_id": account.trade_account_id,
+            "trade_count": len(queued_trades),
+        },
+    )
+    status["queued"] = len(queued_trades)
+    status["queued_tasks"] = 1
     return status
 
 
@@ -663,6 +666,7 @@ def sync_mt5_trades():
             "closed_trades": 0,
             "missing_m5": 0,
             "queued": 0,
+            "queued_tasks": 0,
             "capped": False,
             "max_tasks_per_sync": 20,
             "queue": None,
@@ -790,7 +794,7 @@ def ingest_trade_bars():
     if trade is None:
         return jsonify({"error": "trade not found"}), 404
 
-    if trade.user_id != account.user_id:
+    if trade.user_id != account.user_id or trade.trade_account_id != account.trade_account_id:
         return jsonify({"error": "trade does not belong to this account's user"}), 403
 
     try:
@@ -826,6 +830,103 @@ def ingest_trade_bars():
         current_app.logger.exception(
             "trade-bars ingest failed for trade_id=%s mt5_account_id=%s: %s",
             trade_id,
+            mt5_account_id,
+            exc,
+        )
+        return jsonify({"error": "internal error"}), 500
+
+
+@bp.route("/api/internal/mt5/trade-bars/batch", methods=["POST"])
+def ingest_trade_bars_batch():
+    sync_secret = os.getenv("MT5_SYNC_SECRET", "").strip()
+    header_secret = request.headers.get("X-Sync-Secret", "").strip()
+    if not sync_secret or not secrets.compare_digest(header_secret, sync_secret):
+        return jsonify({"error": "forbidden"}), 403
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        mt5_account_id = int(payload.get("mt5_account_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid mt5_account_id"}), 400
+
+    items = payload.get("items")
+    if not isinstance(items, list):
+        return jsonify({"error": "items must be a list"}), 400
+    if len(items) > 50:
+        return jsonify({"error": "too many items"}), 400
+
+    account = MT5Account.query.filter_by(id=mt5_account_id).first()
+    if account is None:
+        return jsonify({"error": "mt5 account not found"}), 404
+
+    trade_ids = []
+    normalized_items = []
+    for item in items:
+        if not isinstance(item, dict):
+            return jsonify({"error": "items must be objects"}), 400
+        try:
+            trade_id = int(item.get("trade_id"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "invalid trade_id"}), 400
+        timeframe = str(item.get("timeframe") or payload.get("timeframe") or "").strip()
+        if not timeframe:
+            return jsonify({"error": "timeframe required"}), 400
+        bars = item.get("bars")
+        if not isinstance(bars, list):
+            return jsonify({"error": "bars must be a list"}), 400
+        trade_ids.append(trade_id)
+        normalized_items.append({"trade_id": trade_id, "timeframe": timeframe, "bars": bars})
+
+    trades_by_id = {
+        trade.id: trade
+        for trade in Trade.query.filter(Trade.id.in_(trade_ids)).all()
+    }
+    missing_trade_ids = [trade_id for trade_id in trade_ids if trade_id not in trades_by_id]
+    if missing_trade_ids:
+        return jsonify({"error": "trade not found", "trade_ids": missing_trade_ids}), 404
+    for trade in trades_by_id.values():
+        if trade.user_id != account.user_id or trade.trade_account_id != account.trade_account_id:
+            return jsonify({"error": "trade does not belong to this account's user"}), 403
+
+    try:
+        now = utcnow_naive()
+        saved_total = 0
+        result_items = []
+        for item in normalized_items:
+            trade_id = item["trade_id"]
+            timeframe = item["timeframe"]
+            TradeBars.query.filter_by(trade_id=trade_id, timeframe=timeframe).delete()
+            bar_rows = [
+                TradeBars(
+                    trade_id=trade_id,
+                    timeframe=timeframe,
+                    bar_time=int(bar["time"]),
+                    open=float(bar["open"]),
+                    high=float(bar["high"]),
+                    low=float(bar["low"]),
+                    close=float(bar["close"]),
+                    tick_volume=bar.get("tick_volume"),
+                    fetched_at=now,
+                )
+                for bar in item["bars"]
+                if isinstance(bar, dict) and bar.get("time") is not None
+            ]
+            db.session.add_all(bar_rows)
+            saved_count = len(bar_rows)
+            saved_total += saved_count
+            result_items.append({"trade_id": trade_id, "timeframe": timeframe, "saved": saved_count})
+        db.session.commit()
+        current_app.logger.info(
+            "MT5 trade bars batch ingested mt5_account_id=%s trades=%s saved=%s",
+            mt5_account_id,
+            len(result_items),
+            saved_total,
+        )
+        return jsonify({"saved": saved_total, "items": result_items})
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception(
+            "trade-bars batch ingest failed mt5_account_id=%s: %s",
             mt5_account_id,
             exc,
         )

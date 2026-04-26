@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-Last Updated: 2026-04-26
+Last Updated: 2026-04-27
 
 ## Dashboard latest closed trade snapshot (2026-04-26)
 
@@ -14,10 +14,11 @@ Last Updated: 2026-04-26
 ## Admin-gated public automatic MT5 chart bars (2026-04-26)
 
 - Added a root-admin MT5 panel switch for automatic chart-bar sync for public users. The setting is persisted in `app_settings` (`20260426_0054`) and defaults off.
-- When enabled, every successful internal MT5 trade ingest scans that MT5 account's closed MT5 trades for missing complete M5 coverage and queues `fetch_trade_bars`, including normal non-admin/public users and older closed trades not present in the current rolling broker payload. Automatic dispatch is explicitly routed to `mt5_sync` and guarded by a short Redis dispatch lock per trade to avoid requeue spam. The VM sync result table now shows `Auto Bar Tasks`; manual Backfill Bars remains available and uses the priority queue. (`auth_account.py`, `routes/mt5_internal.py`, `celery_workers/mt5_sync_tasks.py`, `templates/admin_signup_access.html`, `helpers/app_settings.py`, tests)
+- When enabled, every successful internal MT5 trade ingest scans that MT5 account's closed MT5 trades for missing complete M5 coverage and queues bar fetch work, including normal non-admin/public users and older closed trades not present in the current rolling broker payload. Automatic dispatch is routed to `mt5_priority`, capped per sync, and visible in the VM sync result table as `Auto Bar Tasks`; manual Backfill Bars remains available. (`auth_account.py`, `routes/mt5_internal.py`, `celery_workers/mt5_sync_tasks.py`, `templates/admin_signup_access.html`, `helpers/app_settings.py`, tests)
 - Follow-up diagnosis/fix: `fetch_trade_bars` now tries broker-visible CFD symbol candidates from `cfd_mt5_symbol_name_candidates()` and best-effort `symbol_select()` before `copy_rates_range`, then logs the broker symbol that worked. This covers suffix/alias servers where the journal stores canonical symbols but MT5 exposes names such as broker-suffixed FX/metals or `GOLD`. (`celery_workers/mt5_sync_tasks.py`, tests)
 - Follow-up dispatch visibility: automatic bar fetches now route to `mt5_priority` so the solo VM sync worker should consume them before normal beat syncs, and beat sync responses/logs include an `auto_bar_sync` diagnostic object (`enabled`, `closed_trades`, `missing_m5`, `queued`, `capped`, `max_tasks_per_sync`, `queue`) even when no bars are queued. (`routes/mt5_internal.py`, `celery_workers/mt5_sync_tasks.py`, tests)
 - Follow-up dispatch control: removed the per-trade Redis debounce lock for automatic bar fetches. Each sync now queues at most 20 missing-bar tasks per MT5 account, making progress visible without silently suppressing dispatch. (`routes/mt5_internal.py`)
+- Follow-up batching: automatic bar sync now queues one `fetch_trade_bars_batch` task per account sync with up to 20 trade IDs. The VM worker skips trades whose complete M5 bars are already stored before logging into MT5, opens one MT5 session for the remaining trades, and POSTs all fetched bars once to `/api/internal/mt5/trade-bars/batch`. The single-trade endpoint/task remain for manual compatibility. (`routes/mt5_internal.py`, `celery_workers/mt5_sync_tasks.py`, `celery_app.py`, tests)
 
 ## Landing section order pass (2026-04-26)
 

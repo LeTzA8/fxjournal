@@ -13,6 +13,7 @@ from celery_workers.mt5_sync_tasks import (
     _resolve_mt5_server_offset_minutes,
     aggregate_deals_to_trades,
     fetch_trade_bars,
+    fetch_trade_bars_batch,
     _positions_to_open_trades,
     sync_mt5_account,
 )
@@ -2196,6 +2197,80 @@ def test_internal_mt5_trade_bars_replaces_existing_timeframe_rows(app_ctx, clien
     assert rows[0].close == pytest.approx(1.1025)
 
 
+def test_internal_mt5_trade_bars_batch_replaces_rows_for_multiple_trades(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="trade-bars-batch-ingest-user",
+        email="trade-bars-batch-ingest@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="81818181",
+    )
+    first_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1,
+        exit_price=1.101,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 9, 0, 0),
+        closed_at=datetime(2026, 4, 10, 10, 0, 0),
+        mt5_position="818181",
+    )
+    second_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="GBPUSD",
+        side="SELL",
+        entry_price=1.25,
+        exit_price=1.245,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 11, 0, 0),
+        closed_at=datetime(2026, 4, 10, 12, 0, 0),
+        mt5_position="818182",
+    )
+    db.session.add_all([first_trade, second_trade])
+    db.session.commit()
+
+    response = client.post(
+        "/api/internal/mt5/trade-bars/batch",
+        json={
+            "mt5_account_id": mt5_account.id,
+            "timeframe": "M5",
+            "items": [
+                {
+                    "trade_id": first_trade.id,
+                    "bars": [
+                        {"time": 1_700_000_000, "open": 1.1, "high": 1.101, "low": 1.099, "close": 1.1005, "tick_volume": 100}
+                    ],
+                },
+                {
+                    "trade_id": second_trade.id,
+                    "bars": [
+                        {"time": 1_700_000_300, "open": 1.25, "high": 1.251, "low": 1.249, "close": 1.2505, "tick_volume": 120},
+                        {"time": 1_700_000_600, "open": 1.2505, "high": 1.252, "low": 1.25, "close": 1.2515, "tick_volume": 140},
+                    ],
+                },
+            ],
+        },
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    first_rows = TradeBars.query.filter_by(trade_id=first_trade.id, timeframe="M5").all()
+    second_rows = TradeBars.query.filter_by(trade_id=second_trade.id, timeframe="M5").all()
+
+    assert response.status_code == 200
+    assert response.get_json()["saved"] == 3
+    assert len(first_rows) == 1
+    assert len(second_rows) == 2
+
+
 def test_fetch_trade_bars_normalizes_server_epoch_with_stored_server_offset(app_ctx, monkeypatch):
     key = Fernet.generate_key().decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
@@ -2375,8 +2450,146 @@ def test_fetch_trade_bars_does_not_query_utc_fallback_when_broker_window_has_no_
         assert (date_from, date_to) == (
             expected_start + timedelta(minutes=broker_offset_minutes),
             expected_end + timedelta(minutes=broker_offset_minutes),
-        )
+    )
     assert post_calls == []
+
+
+def test_fetch_trade_bars_batch_posts_one_bulk_payload_and_skips_existing(app_ctx, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+
+    user, trade_account = _create_user_with_account(
+        username="trade-bars-batch-user",
+        email="trade-bars-batch@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="82828282",
+    )
+    first_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1,
+        exit_price=1.101,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 9, 0, 0),
+        closed_at=datetime(2026, 4, 10, 10, 0, 0),
+        mt5_position="828281",
+    )
+    second_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="GBPUSD",
+        side="SELL",
+        entry_price=1.25,
+        exit_price=1.245,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 11, 0, 0),
+        closed_at=datetime(2026, 4, 10, 12, 0, 0),
+        mt5_position="828282",
+    )
+    skipped_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="AUDUSD",
+        side="BUY",
+        entry_price=0.65,
+        exit_price=0.651,
+        lot_size=1.0,
+        opened_at=datetime(2026, 4, 10, 13, 0, 0),
+        closed_at=datetime(2026, 4, 10, 14, 0, 0),
+        mt5_position="828283",
+    )
+    db.session.add_all([first_trade, second_trade, skipped_trade])
+    db.session.flush()
+    db.session.add_all(
+        [
+            TradeBars(
+                trade_id=skipped_trade.id,
+                timeframe="M5",
+                bar_time=int(datetime(2026, 4, 10, 13, 0, 0, tzinfo=timezone.utc).timestamp()),
+                open=0.65,
+                high=0.652,
+                low=0.649,
+                close=0.651,
+            ),
+            TradeBars(
+                trade_id=skipped_trade.id,
+                timeframe="M5",
+                bar_time=int(datetime(2026, 4, 10, 14, 0, 0, tzinfo=timezone.utc).timestamp()),
+                open=0.651,
+                high=0.653,
+                low=0.650,
+                close=0.652,
+            ),
+        ]
+    )
+    db.session.commit()
+
+    copy_calls = []
+    raw_bar_time = int(datetime(2026, 4, 10, 9, 0, 0, tzinfo=timezone.utc).timestamp())
+
+    def _copy_rates_range(symbol, timeframe, date_from, date_to):
+        copy_calls.append(symbol)
+        return [
+            {
+                "time": raw_bar_time + (len(copy_calls) * 300),
+                "open": 1.1,
+                "high": 1.101,
+                "low": 1.099,
+                "close": 1.1005,
+                "tick_volume": 100,
+            }
+        ]
+
+    fake_mt5 = SimpleNamespace(
+        TIMEFRAME_M5=5,
+        TIMEFRAME_M15=15,
+        TIMEFRAME_H1=60,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        copy_rates_range=_copy_rates_range,
+        symbol_info_tick=lambda symbol: None,
+        symbol_select=lambda symbol, select: True,
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+
+    post_calls = []
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"saved": 2, "items": []}
+
+    def _fake_post(url, json, headers, timeout):
+        post_calls.append({"url": url, "json": json, "headers": headers, "timeout": timeout})
+        return DummyResponse()
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", _fake_post)
+
+    result = fetch_trade_bars_batch.run(
+        mt5_account.id,
+        [first_trade.id, second_trade.id, skipped_trade.id],
+    )
+
+    assert result == {"saved": 2, "items": []}
+    assert len(post_calls) == 1
+    assert post_calls[0]["url"] == "https://example.com/api/internal/mt5/trade-bars/batch"
+    assert post_calls[0]["timeout"] == 60
+    assert [item["trade_id"] for item in post_calls[0]["json"]["items"]] == [
+        first_trade.id,
+        second_trade.id,
+    ]
+    assert skipped_trade.id not in [item["trade_id"] for item in post_calls[0]["json"]["items"]]
 
 
 def test_internal_mt5_sync_inserts_new_running_trade(app_ctx, client, monkeypatch):
@@ -2596,15 +2809,16 @@ def test_internal_mt5_sync_auto_queues_bars_for_public_user_when_enabled(app_ctx
     assert response.get_json()["auto_bar_sync_queued"] == 1
     assert queued == [
         {
-            "task": "celery_workers.mt5_sync_tasks.fetch_trade_bars",
-            "args": [mt5_account.id, trade.id],
+            "task": "celery_workers.mt5_sync_tasks.fetch_trade_bars_batch",
+            "args": [mt5_account.id, [trade.id]],
             "queue": "mt5_priority",
-            "label": "mt5_auto_bar_sync_after_ingest",
+            "label": "mt5_auto_bar_sync_batch_after_ingest",
             "extra": {
                 "mt5_account_id": mt5_account.id,
-                "trade_id": trade.id,
+                "trade_ids": [trade.id],
                 "user_id": user.id,
                 "trade_account_id": trade_account.id,
+                "trade_count": 1,
             },
         }
     ]
@@ -2658,9 +2872,9 @@ def test_internal_mt5_sync_auto_queues_bars_for_existing_closed_trade_on_empty_b
     assert response.get_json()["auto_bar_sync_queued"] == 1
     assert queued == [
         {
-            "args": [mt5_account.id, trade.id],
+            "args": [mt5_account.id, [trade.id]],
             "queue": "mt5_priority",
-            "label": "mt5_auto_bar_sync_after_ingest",
+            "label": "mt5_auto_bar_sync_batch_after_ingest",
         }
     ]
 
