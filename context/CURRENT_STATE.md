@@ -2,6 +2,22 @@
 
 Last Updated: 2026-04-26
 
+## Landing features simplification pass (2026-04-26)
+
+- Public landing "What's Live Right Now" / features section now leads with "Built so you actually stick with it." and a commented alternative, then replaces the previous dashboard/analytics/import/MT5-sync card spread with three outcome groups: Capture, Understand, and Act. Copy is shortened to 2-3 line blocks, AI chat is positioned as part of the Act step, and the trade replay panel is simplified to "See your trades on the chart" with the existing replay screenshot kept. Hero, above-the-fold proof, navigation, CTAs, SEO structure, and backend logic were not changed. (`templates/landing.html`)
+
+## Landing first proof review focus pass (2026-04-26)
+
+- Reworked the translucent weekly-review back panel from a pseudo-element into a real content wrapper so the panel starts below the proof heading instead of overlapping the title/subtitle. Restored dashboard-style emoji cues on the review, warning, improvement, strength, experiment, and ask labels. (`templates/landing.html`)
+- Added static landing-only versions of the dashboard "This week's experiment" and "Ask about this review" panels beneath the moved weekly-review proof, including example quick prompts and an inert ask input. No chat/backend routes were wired. (`templates/landing.html`)
+- Follow-up visual refinement: the moved weekly-review proof now uses a dashboard-like structure with "AI Coach" / "Weekly Only" pills, a "Weekly AI Review" title, a compact left review panel, and two right-side proof cards for actionable improvement and strength. The oversized sparse card treatment was replaced with denser, left-aligned review content while keeping the above-the-fold scope only. (`templates/landing.html`, `static/js/landing_page.js`)
+- Public landing above-the-fold now removes the smaller decorative hero preview/timeline panel and moves the real weekly review proof card into the hero flow immediately after the relief panel. The review card is static/readable immediately and reduced to a short outcome, pattern, and next-week fix. CTA copy, navigation, backend logic, and lower feature sections were left unchanged. (`templates/landing.html`, `static/js/landing_page.js`)
+
+## Landing above-the-fold relief pass (2026-04-26)
+
+- Public landing hero now uses the shorter "Stop guessing your trading." / "Understand your trading without turning journaling into a second job." copy with "guessing" color-accented only, plus commented headline/subheadline alternatives for future manual A/B edits.
+- The old "How Traders Start Here" 1-2-3 instructional block was removed from the above-the-fold landing hero and replaced with a compact relief panel: no spreadsheets, no manual reviews, one clear fix. The hero eyebrow now reads "Trade review without the homework." The hero content is top-aligned with tighter top padding so the review preview appears earlier. CTA buttons, review preview card, JS behavior, backend logic, and lower feature/AI demo sections were left unchanged. (`templates/landing.html`)
+
 ## Legal + security alignment pass (2026-04-26)
 
 - Terms and Privacy updated for weekly-review follow-up chat, import/sync data fallibility, optional Google OAuth, processors (hosting/Postgres/Redis/email/OAuth/AI), and service availability expectations. `LEGAL_LAST_UPDATED` bumped to match.

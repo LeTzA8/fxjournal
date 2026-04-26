@@ -5,16 +5,6 @@
     }
 
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const AI_DEMO_TEXT = [
-        "This was a profitable week driven by a standout XAUUSD swing, with a clean EURCHF split-entry capturing gains and a GBPCAD bundle producing a painful follow-up loss; overall execution looked controlled. There is limited behavioral confidence because the account is young and weekly trade notes are absent, so patterns need cautious confirmation.",
-        "",
-        "Key Takeaways",
-        "- XAUUSD trades dominated results, one large overnight sell outweighing two later XAUUSD losses.",
-        "- EURCHF split-entry (lead and add-on, Tokyo/London) produced a clear winner and one small stop exit.",
-        "- GBPCAD bundle showed a likely revenge re-entry and a larger follow-up loss during London/New York.",
-        "",
-        "Rule: After any post-loss same-symbol re-entry (eg GBPCAD this week), revert to baseline size and require one clear confirmation candle before entering.",
-    ].join("\n");
     body.classList.add("js-landing-animate");
 
     const pauseConveyorIfNeeded = () => {
@@ -199,67 +189,6 @@
         chartRoot.appendChild(fragment);
     };
 
-    const initAiDemoTypewriter = () => {
-        const card = document.querySelector("[data-typewriter-target]");
-        const textEl = document.getElementById("ai-demo-text");
-        if (!card || !textEl) {
-            return;
-        }
-
-        const renderCompleteText = () => {
-            textEl.textContent = AI_DEMO_TEXT;
-            card.classList.add("typing-done");
-        };
-
-        if (prefersReducedMotion.matches) {
-            renderCompleteText();
-            return;
-        }
-
-        const CHAR_DELAY = 15;
-        let started = false;
-
-        const startTyping = () => {
-            if (started) {
-                return;
-            }
-            started = true;
-
-            let index = Math.floor(AI_DEMO_TEXT.length * 0.5);
-            const typeNext = () => {
-                textEl.textContent = AI_DEMO_TEXT.slice(0, index);
-                if (index < AI_DEMO_TEXT.length) {
-                    index += 1;
-                    window.setTimeout(typeNext, CHAR_DELAY);
-                    return;
-                }
-                card.classList.add("typing-done");
-            };
-
-            typeNext();
-        };
-
-        if (typeof IntersectionObserver !== "function") {
-            startTyping();
-            return;
-        }
-
-        const observer = new IntersectionObserver(
-            (entries) => {
-                entries.forEach((entry) => {
-                    if (!entry.isIntersecting || started) {
-                        return;
-                    }
-                    observer.unobserve(card);
-                    startTyping();
-                });
-            },
-            { threshold: 0.4 }
-        );
-
-        observer.observe(card);
-    };
-
     const initFeatureShotLightbox = () => {
         const triggers = Array.from(document.querySelectorAll("[data-feature-shot-trigger]"));
         const lightbox = document.querySelector("[data-feature-shot-lightbox]");
@@ -425,7 +354,6 @@
 
     splitHeroTitleWords();
     buildReplayChart();
-    initAiDemoTypewriter();
     initFeatureShotLightbox();
     initNavDropdowns();
     pauseConveyorIfNeeded();

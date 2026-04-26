@@ -53,21 +53,27 @@
         </div>
     </header>
 
+    {% set hero_headline = "Stop guessing your trading." %}
+    {# Alternative hero headlines:
+       "Same mistakes. Different week."
+       "Finally understand your trades."
+    #}
+    {% set hero_subheadline = "Understand your trading without turning journaling into a second job." %}
+    {# Alternative hero subheadlines:
+       "Turn your trades into clear insight — without spreadsheets or manual review."
+       "See what’s actually happening in your trades — without the extra work."
+    #}
     <article class="landing-hero" data-reveal-scope data-reveal-immediate>
         <div class="landing-hero-inner">
             <p class="hero-badge landing-reveal" data-reveal-delay="240">Free beta. No credit card required.</p>
-            <p class="eyebrow landing-reveal" data-reveal-delay="340">Trading journal with weekly AI review</p>
+            <p class="eyebrow landing-reveal" data-reveal-delay="340">Trade review without the homework.</p>
             <h1
                 class="hero-title landing-reveal"
                 data-reveal-delay="460"
-                data-hero-accent-words="7-9"
-                data-hero-underline-words="9"
-            >Turn raw trade history into one clear weekly review.</h1>
+                data-hero-accent-words="2"
+            >{{ hero_headline }}</h1>
             <p class="muted lead landing-reveal" data-reveal-delay="760">
-                Start with an MT5 report upload or manual trades today, review the right account, and turn on optional read-only MT5 sync later when you want less export upkeep.
-            </p>
-            <p class="hero-note landing-reveal" data-reveal-delay="860">
-                Fastest first win: upload an MT5 report or add closed trades today. Your first weekly AI review appears after at least {{ weekly_ai_min_closed_trades }} closed trades land in a finished trade week.
+                {{ hero_subheadline }}
             </p>
             {% if signup_code_mode == "required" %}
             <p class="hero-note landing-reveal" data-reveal-delay="920">
@@ -111,32 +117,83 @@
             </div>
             {% endif %}
 
-            <div class="landing-copy landing-reveal" id="workflow" data-reveal-delay="1040">
-                <p class="landing-copy-title">How Traders Start Here</p>
-                <ol>
-                    <li>
-                        <span>1</span>
-                        <div>
-                            <strong>Start with the trades you already have</strong>
-                            <p>Recommended first path: upload an MT5 report or add manual trades without rebuilding the week in spreadsheets first.</p>
+            <section class="landing-relief landing-reveal" id="workflow" data-reveal-delay="1040" aria-labelledby="landing-relief-title">
+                <h2 id="landing-relief-title">Journal your trades without turning it into a second job.</h2>
+                <div class="landing-relief-lines">
+                    <p><strong>No spreadsheets.</strong> Import your trades.</p>
+                    <p><strong>No manual reviews.</strong> Your weekly review is built for you.</p>
+                    <p><strong>One clear fix.</strong> Not a report. Not a list.</p>
+                </div>
+            </section>
+
+            <section class="landing-proof landing-reveal" id="ai-demo" data-reveal-delay="1100" aria-labelledby="landing-proof-title">
+                <div class="landing-proof-heading">
+                    <div class="landing-proof-pills" aria-label="Weekly review attributes">
+                        <span>AI Coach</span>
+                        <span>Weekly Only</span>
+                    </div>
+                    <p class="landing-proof-kicker">Built from your real trade history</p>
+                    <h2 id="landing-proof-title">Weekly AI Review</h2>
+                    <p class="landing-proof-subtitle">Consistency, behavior patterns, and what to improve next.</p>
+                </div>
+
+                <div class="landing-proof-panel">
+                    <div class="landing-proof-grid">
+                        <article class="ai-demo-card typing-done landing-proof-review">
+                            <div class="ai-demo-card-head">
+                                <p class="ai-demo-label">Latest Weekly Review</p>
+                            </div>
+                            <div class="ai-demo-body">
+                                <section class="landing-proof-review-section" aria-labelledby="landing-proof-review-title">
+                                    <p class="landing-proof-section-label" id="landing-proof-review-title">🧠 What mattered this week</p>
+                                    <p class="ai-demo-title">This week's review</p>
+                                    <p class="ai-demo-text">
+                                        You made money - but size increased after losses.
+                                        That pattern explains most of the drawdown.
+                                    </p>
+                                    <p class="landing-proof-warning">⚠ Confidence is limited until the next week confirms it.</p>
+                                </section>
+                                <section class="landing-proof-suggests" aria-label="What this suggests">
+                                    <p class="landing-proof-section-label">What this suggests</p>
+                                    <p>Risk stayed calm while trades were working, then expanded after losses. The next fix is simple: keep size consistent after setbacks.</p>
+                                </section>
+                            </div>
+                        </article>
+
+                        <aside class="landing-proof-side" aria-label="Review side notes">
+                            <article class="landing-proof-side-card landing-proof-side-card-action">
+                                <p>🎯 Actionable Improvement</p>
+                                <strong>Fix next week: keep position size consistent after losses.</strong>
+                            </article>
+                            <article class="landing-proof-side-card">
+                                <p>✅ Strength to Reinforce</p>
+                                <strong>You still protected the week by cutting losers quickly.</strong>
+                            </article>
+                        </aside>
+
+                        <article class="landing-proof-experiment">
+                            <p>🧪 This week's experiment</p>
+                            <strong>For one week, use the same position size after every loss and write down whether the next trade still meets your setup rules.</strong>
+                        </article>
+                    </div>
+
+                    <section class="landing-proof-ask" aria-labelledby="landing-proof-ask-title">
+                        <div class="landing-proof-ask-head">
+                            <h3 id="landing-proof-ask-title">💬 Ask about this review</h3>
+                            <p>Follow-ups use only this review and its stored trade context.</p>
                         </div>
-                    </li>
-                    <li>
-                        <span>2</span>
-                        <div>
-                            <strong>Review one account with real context</strong>
-                            <p>See performance, execution behavior, and weekly AI feedback without piecing the story together by hand.</p>
+                        <div class="landing-proof-prompts" aria-label="Example follow-up questions">
+                            <button type="button">Explain this simply</button>
+                            <button type="button">Was this bad luck or my execution?</button>
+                            <button type="button">Which trade should I review first?</button>
                         </div>
-                    </li>
-                    <li>
-                        <span>3</span>
-                        <div>
-                            <strong>Leave with one rule worth using next week</strong>
-                            <p>Turn the week into one clear adjustment you can actually carry into the next session cycle.</p>
+                        <div class="landing-proof-ask-input" aria-label="Example review question input">
+                            <span>Ask what this means...</span>
+                            <button type="button">Ask</button>
                         </div>
-                    </li>
-                </ol>
-            </div>
+                    </section>
+                </div>
+            </section>
 
             <div class="landing-actions landing-reveal" data-reveal-delay="1120">
                 {% if user_logged_in %}
@@ -155,76 +212,8 @@
                 <span>No credit card required</span>
             </div>
             {% endif %}
-
-            <div class="hero-hook landing-reveal" data-reveal-delay="1360" aria-hidden="true">
-                <div class="hook-glow"></div>
-                <div class="hook-lane"></div>
-                <div class="hook-candles">
-                    <span class="candle up"></span>
-                    <span class="candle down"></span>
-                    <span class="candle up"></span>
-                    <span class="candle up"></span>
-                    <span class="candle down"></span>
-                    <span class="candle up"></span>
-                </div>
-                <svg class="hook-trend" viewBox="0 0 560 180" preserveAspectRatio="none">
-                    <defs>
-                        <linearGradient id="hookTrendStroke" x1="0%" y1="0%" x2="100%" y2="0%">
-                            <stop offset="0%" stop-color="rgba(59,130,246,0.35)"></stop>
-                            <stop offset="100%" stop-color="rgba(79,70,229,0.95)"></stop>
-                        </linearGradient>
-                    </defs>
-                    <path d="M20 140 C 90 132, 120 156, 170 122 C 220 88, 250 98, 300 80 C 345 64, 380 72, 430 50 C 468 34, 510 38, 540 24"></path>
-                </svg>
-                <div class="hook-stage-tag hook-stage-tag-trades">Trades captured</div>
-                <div class="hook-stage-tag hook-stage-tag-patterns">Patterns surfaced</div>
-                <div class="hook-signal"></div>
-                <article class="hook-journal-card">
-                    <p class="hook-kicker">Weekly Review</p>
-                    <h3>This week's review</h3>
-                    <p class="hook-card-meta">Auto-built from imported trading history</p>
-                    <ul>
-                        <li>11 trades imported before London open</li>
-                        <li>Pattern: size creep after same-symbol losses</li>
-                        <li>Next focus: reset to base size after revenge setups</li>
-                    </ul>
-                </article>
-                <div class="hook-chip">Review ready</div>
-            </div>
         </div>
     </article>
-
-    <section class="landing-section ai-demo-section" id="ai-demo" aria-labelledby="ai-demo-title" data-reveal-scope>
-        <div class="landing-inner">
-            <div class="ai-demo-chip-row landing-reveal" data-reveal-delay="20" aria-label="AI review scope">
-                <span class="ai-demo-chip is-accent">Weekly AI Review</span>
-                <span class="ai-demo-chip">Built from your trade history</span>
-            </div>
-            <p class="eyebrow landing-reveal" data-reveal-delay="40">What the weekly review actually looks like</p>
-            <h2 id="ai-demo-title" class="landing-reveal" data-reveal-delay="110">See what lands in front of you when the trading week closes</h2>
-            <p class="muted lead landing-reveal" data-reveal-delay="180">
-                The weekly review turns your most recent eligible trade week into a short read on what worked,
-                what slipped, and the one adjustment worth carrying into the next week.
-            </p>
-
-            <div class="ai-demo-card landing-reveal" data-reveal-delay="260" data-typewriter-target>
-                <div class="ai-demo-card-head">
-                    <span class="ai-demo-label">Latest Weekly Review</span>
-                </div>
-                <div class="ai-demo-body">
-                    <div class="ai-demo-cursor-wrap">
-                        <p class="ai-demo-text" id="ai-demo-text"></p>
-                        <span class="ai-demo-cursor" aria-hidden="true">|</span>
-                    </div>
-                </div>
-            </div>
-            <div class="ai-demo-meta landing-reveal" data-reveal-delay="320">
-                <p>Built from the active account's most recent eligible trade week, with older history used as supporting context when it helps explain behavior.</p>
-                <p>Designed to surface what changed, what slipped, and what deserves attention without turning review into another long document.</p>
-                <p>NFA: For journaling and educational use only. This AI review is not financial or investment advice.</p>
-            </div>
-        </div>
-    </section>
 
     <section class="landing-section workflow-automation-section" id="hands-off" aria-labelledby="workflow-automation-title" data-reveal-scope>
         <div class="landing-inner">
@@ -313,144 +302,55 @@
     <section class="landing-section" id="features" aria-labelledby="feature-showcase-title" data-reveal-scope>
         <div class="landing-inner">
             <p class="eyebrow landing-reveal" data-reveal-delay="40">What's Live Right Now</p>
-            <h2 id="feature-showcase-title" class="landing-reveal" data-reveal-delay="110">Everything you need to go from broker history to weekly review is already live</h2>
+            <h2 id="feature-showcase-title" class="landing-reveal" data-reveal-delay="110">Built so you actually stick with it.</h2>
+            {# Alternative: Everything works. No setup headache. #}
             <p class="muted landing-reveal" data-reveal-delay="180">
-                Import trades cleanly, review one account with context, and spot recurring mistakes without creating more journal admin around it.
+                Capture the week, understand the pattern, then ask better questions about your trades.
             </p>
 
             <div class="feature-showcase-stack">
-            <div class="feature-showcase-grid" role="list" aria-label="MyFXJournal feature showcase">
-                <article class="feature-showcase-card landing-reveal" data-reveal-delay="260">
-                    <div class="feature-showcase-copy">
-                        <p class="feature-kicker">📊 Dashboard</p>
-                        <h3><span class="feature-title-accent">Your dashboard</span> See account performance without digging through clutter</h3>
-                        <p>
-                            The dashboard keeps the active account front and center with quick access to trade history,
-                            account metrics, and the equity curve so you can review execution quality in one pass.
-                        </p>
-                        <p class="feature-detail">Switch accounts, scan the curve, and move straight into trade review without bouncing between tabs.</p>
-                    </div>
-                    <figure class="feature-shot">
-                        <button
-                            type="button"
-                            class="feature-shot-trigger"
-                            data-feature-shot-trigger
-                            aria-label="Expand the dashboard screenshot"
-                        >
-                            <img
-                                src="{{ url_for('static', filename='images/features/dashboard.png') }}"
-                                alt="MyFXJournal dashboard showing the equity curve, account summary, and recent trade data."
-                                loading="lazy"
-                            >
-                        </button>
-                    </figure>
-                </article>
-                <article class="feature-showcase-card landing-reveal" data-reveal-delay="340">
-                    <div class="feature-showcase-copy">
-                        <p class="feature-kicker">📈 Analytics</p>
-                        <h3><span class="feature-title-accent">See where you perform best</span> Break down performance by session, symbol, and behavior</h3>
-                        <p>
-                            The analytics view surfaces win rate, session timing, pair performance, and other account-specific patterns
-                            so review is based on real behavior instead of guesswork.
-                        </p>
-                        <p class="feature-detail">Use it to see where edge actually comes from and where recurring mistakes keep showing up before they turn into routine.</p>
-                    </div>
-                    <figure class="feature-shot">
-                        <button
-                            type="button"
-                            class="feature-shot-trigger"
-                            data-feature-shot-trigger
-                            aria-label="Expand the analytics screenshot"
-                        >
-                            <img
-                                src="{{ url_for('static', filename='images/features/analytics.png') }}"
-                                alt="MyFXJournal analytics page with detailed performance tables and breakdown charts."
-                                loading="lazy"
-                            >
-                        </button>
-                    </figure>
-                </article>
-                <article class="feature-showcase-card landing-reveal" data-reveal-delay="420">
-                    <div class="feature-showcase-copy">
-                        <p class="feature-kicker">📥 Import</p>
-                        <h3><span class="feature-title-accent">Less cleanup</span> Bring broker history in without rebuilding everything by hand</h3>
-                        <p>
-                            MT5 and Tradovate imports are built to land inside the correct account with duplicate checks,
-                            cleaner timestamps, and less manual cleanup after each upload.
-                        </p>
-                        <p class="feature-detail">Upload into the right account, keep timestamps consistent, and stop duplicate rows from muddying the journal.</p>
-                    </div>
-                    <figure class="feature-shot">
-                        <button
-                            type="button"
-                            class="feature-shot-trigger"
-                            data-feature-shot-trigger
-                            aria-label="Expand the import screenshot"
-                        >
-                            <img
-                                src="{{ url_for('static', filename='images/features/import.png') }}"
-                                alt="MyFXJournal import page showing upload options, import rules, and account destination controls."
-                                loading="lazy"
-                            >
-                        </button>
-                    </figure>
-                </article>
-                <article class="feature-showcase-card feature-showcase-card-sync landing-reveal" data-reveal-delay="500">
-                    <div class="feature-showcase-copy">
-                        <div class="feature-kicker-row">
-                            <p class="feature-kicker">🔄 Automatic MT5 Sync</p>
-                            <span class="feature-access-pill">Batch Slots</span>
+                <div class="feature-concept-grid" role="list" aria-label="MyFXJournal core workflow">
+                    <article class="feature-showcase-card feature-concept-card landing-reveal" data-reveal-delay="260" role="listitem">
+                        <div class="feature-showcase-copy">
+                            <p class="feature-concept-step">Capture</p>
+                            <h3>Import your trades in seconds.</h3>
+                            <p>
+                                No cleanup. No rebuilding your week.<br>
+                                Just bring in your history and start.
+                            </p>
                         </div>
-                        <h3><span class="feature-title-accent">Keep broker history fresh</span> Sync MT5 accounts into the journal without repeated exports</h3>
-                        <p>
-                            Automatic MT5 Sync lets read-only MT5 accounts pull history into MyFXJournal, so your dashboard, analytics, and trade review stay closer to the live account state.
-                        </p>
-                        <p class="feature-detail">
-                            Manual import works right away and is still the fastest first step. When a free sync slot is open, setup starts as soon as you submit read-only MT5 details.
-                        </p>
-                    </div>
-                    <figure class="feature-shot feature-shot-sync-card" aria-hidden="true">
-                        <div class="feature-sync-visual">
-                            <div class="feature-sync-visual-head">
-                                <span class="feature-sync-visual-pill">Batch slot open</span>
-                                <span class="feature-sync-visual-pill is-accent">Read-only only</span>
-                            </div>
-                            <div class="feature-sync-visual-list">
-                                <div class="feature-sync-visual-row">
-                                    <span class="feature-sync-visual-label">History pull</span>
-                                    <strong class="feature-sync-visual-value">Automatic</strong>
-                                </div>
-                                <div class="feature-sync-visual-row">
-                                    <span class="feature-sync-visual-label">Permissions</span>
-                                    <strong class="feature-sync-visual-value">Investor access</strong>
-                                </div>
-                                <div class="feature-sync-visual-row">
-                                    <span class="feature-sync-visual-label">Best for</span>
-                                    <strong class="feature-sync-visual-value">Less manual upkeep</strong>
-                                </div>
-                            </div>
-                            <div class="feature-sync-visual-badges">
-                                <span>Secure onboarding</span>
-                                <span>Sync status</span>
-                                <span>Open beta slots</span>
-                            </div>
+                    </article>
+                    <article class="feature-showcase-card feature-concept-card landing-reveal" data-reveal-delay="340" role="listitem">
+                        <div class="feature-showcase-copy">
+                            <p class="feature-concept-step">Understand</p>
+                            <h3>See where your trading actually breaks down.</h3>
+                            <p>
+                                One clear insight - not a wall of stats.<br>
+                                Know what's costing you, not just what happened.
+                            </p>
                         </div>
-                    </figure>
-                </article>
-            </div>
+                    </article>
+                    <article class="feature-showcase-card feature-concept-card landing-reveal" data-reveal-delay="420" role="listitem">
+                        <div class="feature-showcase-copy">
+                            <p class="feature-concept-step">Act</p>
+                            <h3>Ask questions. Get real answers.</h3>
+                            <p>
+                                Didn't understand your review?<br>
+                                Ask why a trade failed, or what you missed.<br>
+                                Get answers based on your actual trades.
+                            </p>
+                        </div>
+                    </article>
+                </div>
 
-                <article class="feature-showcase-card feature-showcase-card-replay-panel landing-reveal" data-reveal-delay="620" aria-label="Trade replay chart feature, coming soon">
+                <article class="feature-showcase-card feature-showcase-card-replay-panel landing-reveal" data-reveal-delay="520" aria-label="Trade replay chart feature">
                     <div class="feature-replay-panel-head">
                         <div class="feature-showcase-copy feature-replay-panel-copy">
-                            <div class="feature-kicker-row">
-                                <p class="feature-kicker">📉 Trade replay</p>
-                                <span class="feature-coming-soon-pill">Coming soon</span>
-                            </div>
-                            <h3><span class="feature-title-accent">My replay chart</span> Put entries and exits back on price for clearer review</h3>
+                            <h3>See your trades on the chart.</h3>
                             <p>
-                                We are building a trade replay chart so you can see fills on the market path—not only a row in a trade list. It is in <strong>admin-only preview</strong> today; everyone else gets it when we open the rollout.
+                                Entries and exits, back on price.<br>
+                                Not just a row in a list.
                             </p>
-                            <p class="feature-detail">Until then, analytics and weekly AI review stay fully available. <a href="{{ url_for('trade_replay_chart_page') }}">What trade replay will do</a></p>
                         </div>
                     </div>
                     <figure class="feature-shot feature-shot--wide">
@@ -1105,9 +1005,9 @@
         width: 100%;
         min-height: clamp(540px, 76vh, 900px);
         margin: 0;
-        padding: clamp(0.8rem, 2vw, 1.3rem);
+        padding: clamp(0.25rem, 0.9vw, 0.7rem) clamp(0.8rem, 2vw, 1.3rem) clamp(0.8rem, 2vw, 1.3rem);
         display: grid;
-        align-items: center;
+        align-items: start;
         position: relative;
         overflow: clip;
         min-width: 0;
@@ -1461,58 +1361,368 @@
         line-height: 1.55;
     }
 
-    .landing-copy {
-        margin: 1rem auto 1.15rem;
+    .landing-relief {
+        margin: 0.85rem auto 1rem;
         max-width: 760px;
         border-left: 3px solid color-mix(in srgb, var(--accent) 72%, transparent);
-        padding: 0.55rem 0.9rem;
+        padding: 0.65rem 0.95rem;
         text-align: left;
     }
 
-    .landing-copy-title {
+    .landing-relief h2 {
         margin: 0 0 0.55rem;
-        color: var(--muted);
-        font-size: 0.8rem;
+        color: var(--ink);
+        font-size: clamp(1.04rem, 1.7vw, 1.34rem);
         font-weight: 800;
-        letter-spacing: 0.08em;
+        line-height: 1.2;
+    }
+
+    .landing-relief-lines {
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 0.35rem;
+    }
+
+    .landing-relief-lines p {
+        margin: 0;
+        color: var(--muted);
+        font-size: clamp(0.92rem, 1.4vw, 1rem);
+        line-height: 1.42;
+    }
+
+    .landing-relief-lines strong {
+        color: color-mix(in srgb, var(--ink) 86%, var(--accent) 14%);
+        font-weight: 850;
+    }
+
+    .landing-proof#ai-demo {
+        width: min(1180px, 100%);
+        margin: 0.9rem auto 0;
+        padding: 0;
+        text-align: center;
+        border-radius: 0;
+        overflow: visible;
+        position: relative;
+        isolation: isolate;
+    }
+
+    .landing-proof#ai-demo::before {
+        content: none;
+    }
+
+    .landing-proof-heading {
+        display: grid;
+        justify-items: center;
+        gap: 0.22rem;
+        margin-bottom: 0.65rem;
+    }
+
+    .landing-proof-pills {
+        display: flex;
+        justify-content: center;
+        gap: 0.42rem;
+        flex-wrap: wrap;
+    }
+
+    .landing-proof-pills span {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 0 0.74rem;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+        background: color-mix(in srgb, var(--surface) 72%, transparent);
+        color: color-mix(in srgb, var(--ink) 82%, var(--accent) 18%);
+        font-family: var(--landing-font-mono);
+        font-size: 0.68rem;
+        font-weight: 850;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
     }
 
-    .landing-copy ol {
+    .landing-proof-kicker,
+    .landing-proof-subtitle {
         margin: 0;
-        padding: 0;
-        list-style: none;
-        display: grid;
-        gap: 0.65rem;
     }
 
-    .landing-copy li {
+    .landing-proof-kicker {
+        color: color-mix(in srgb, var(--accent) 64%, #b9adff 36%);
+        font-family: var(--landing-font-mono);
+        font-size: 0.72rem;
+        font-weight: 850;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+    }
+
+    .landing-proof h2 {
+        margin: 0;
+        color: var(--ink);
+        font-size: clamp(2rem, 4vw, 3rem);
+        font-weight: 900;
+        letter-spacing: 0;
+        line-height: 1.02;
+    }
+
+    .landing-proof-subtitle {
+        color: var(--muted);
+        font-size: clamp(0.92rem, 1.4vw, 1.04rem);
+        line-height: 1.22;
+    }
+
+    .landing-proof-panel {
+        padding: clamp(0.85rem, 1.6vw, 1rem);
+        border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+        border-radius: 22px;
+        background:
+            linear-gradient(180deg, color-mix(in srgb, #050816 76%, transparent), color-mix(in srgb, #07091a 68%, transparent)),
+            color-mix(in srgb, var(--surface) 46%, transparent);
+        box-shadow:
+            0 22px 56px rgba(2, 6, 23, 0.34),
+            inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+
+    .landing-proof-grid {
         display: grid;
-        grid-template-columns: 24px 1fr;
-        gap: 0.6rem;
+        grid-template-columns: minmax(0, 1fr) minmax(240px, 330px);
+        gap: 0.85rem;
         align-items: start;
     }
 
-    .landing-copy li span {
-        display: inline-flex;
-        align-items: center;
+    .landing-proof .ai-demo-card,
+    .landing-proof-side-card,
+    .landing-proof-experiment,
+    .landing-proof-ask {
+        margin: 0 auto;
+        text-align: left;
+        border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+        background:
+            linear-gradient(180deg, color-mix(in srgb, var(--card) 84%, transparent), color-mix(in srgb, var(--surface) 88%, transparent));
+        box-shadow:
+            0 18px 38px rgba(2, 6, 23, 0.22),
+            0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent);
+    }
+
+    .landing-proof-review {
+        width: 100%;
+        min-height: 0;
+        padding: 0.85rem 0.9rem;
+    }
+
+    .landing-proof .ai-demo-card-head {
         justify-content: center;
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        background: color-mix(in srgb, var(--accent) 22%, var(--surface));
-        font-size: 0.78rem;
-        font-weight: 800;
+        margin-bottom: 0.8rem;
+        padding-bottom: 0.62rem;
     }
 
-    .landing-copy li strong {
+    .landing-proof .ai-demo-label {
+        margin: 0;
+        color: color-mix(in srgb, #b9adff 72%, var(--ink) 28%);
+        font-size: 0.72rem;
+    }
+
+    .landing-proof-review-section {
+        display: grid;
+        gap: 0.55rem;
+    }
+
+    .landing-proof-section-label {
+        margin: 0;
+        color: color-mix(in srgb, #b9adff 74%, var(--ink) 26%);
+        font-family: var(--landing-font-mono);
+        font-size: 0.72rem;
+        font-weight: 850;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+
+    .landing-proof .ai-demo-title {
+        font-size: clamp(1.02rem, 1.55vw, 1.18rem);
+    }
+
+    .landing-proof .ai-demo-cursor-wrap {
+        min-height: 0;
         display: block;
-        margin-bottom: 0.15rem;
     }
 
-    .landing-copy li p {
+    .landing-proof .ai-demo-text,
+    .landing-proof-suggests p,
+    .landing-proof-side-card strong {
+        font-size: clamp(0.94rem, 1.28vw, 1.02rem);
+        line-height: 1.55;
+    }
+
+    .landing-proof .ai-demo-text {
+        color: color-mix(in srgb, var(--ink) 94%, white 6%);
+        font-weight: 760;
+        white-space: normal;
+    }
+
+    .landing-proof-warning {
+        margin: 0.12rem 0 0;
+        color: #f5c044;
+        font-size: 0.82rem;
+        font-weight: 780;
+        line-height: 1.35;
+    }
+
+    .landing-proof-suggests {
+        margin-top: 0.85rem;
+        padding-top: 0.85rem;
+        border-top: 1px solid color-mix(in srgb, var(--border) 58%, transparent);
+        display: grid;
+        gap: 0.55rem;
+    }
+
+    .landing-proof-suggests p:not(.landing-proof-section-label) {
+        margin: 0;
+        padding: 0.78rem 0.86rem;
+        border: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 72%, transparent);
+        color: color-mix(in srgb, var(--ink) 90%, var(--muted) 10%);
+    }
+
+    .landing-proof-side {
+        display: grid;
+        gap: 0.85rem;
+    }
+
+    .landing-proof-side-card {
+        width: 100%;
+        border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+        border-radius: 10px;
+        padding: 0.82rem 0.9rem;
+    }
+
+    .landing-proof-side-card p {
+        margin: 0 0 0.38rem;
+        color: color-mix(in srgb, var(--good) 70%, var(--ink) 30%);
+        font-family: var(--landing-font-mono);
+        font-size: 0.7rem;
+        font-weight: 850;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+
+    .landing-proof-side-card-action p {
+        color: color-mix(in srgb, #f5c044 78%, var(--ink) 22%);
+    }
+
+    .landing-proof-side-card strong {
+        display: block;
+        color: color-mix(in srgb, var(--ink) 92%, white 8%);
+        font-weight: 700;
+    }
+
+    .landing-proof-experiment {
+        grid-column: 1 / 2;
+        width: 100%;
+        border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+        border-radius: 10px;
+        padding: 0.82rem 0.9rem;
+    }
+
+    .landing-proof-experiment p,
+    .landing-proof-ask h3 {
+        margin: 0 0 0.38rem;
+        color: color-mix(in srgb, #b9adff 74%, var(--ink) 26%);
+        font-family: var(--landing-font-mono);
+        font-size: 0.72rem;
+        font-weight: 850;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+
+    .landing-proof-experiment strong {
+        display: block;
+        color: color-mix(in srgb, var(--ink) 92%, white 8%);
+        font-size: clamp(0.94rem, 1.24vw, 1rem);
+        font-weight: 700;
+        line-height: 1.55;
+    }
+
+    .landing-proof-ask {
+        width: 100%;
+        margin-top: 0.85rem;
+        border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+        border-radius: 16px;
+        padding: 0.82rem 0.9rem 0.9rem;
+        display: grid;
+        gap: 0.62rem;
+    }
+
+    .landing-proof-ask-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: baseline;
+        flex-wrap: wrap;
+    }
+
+    .landing-proof-ask h3 {
+        margin: 0;
+        color: var(--ink);
+        text-transform: none;
+        font-family: var(--landing-font-body);
+        font-size: 0.98rem;
+        letter-spacing: 0;
+    }
+
+    .landing-proof-ask-head p {
         margin: 0;
         color: var(--muted);
+        font-size: 0.74rem;
+        line-height: 1.35;
+    }
+
+    .landing-proof-prompts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+    }
+
+    .landing-proof-prompts button {
+        min-height: 28px;
+        padding: 0 0.62rem;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--accent) 44%, var(--border));
+        background: color-mix(in srgb, var(--surface) 74%, transparent);
+        color: var(--ink);
+        font-size: 0.72rem;
+        font-weight: 780;
+    }
+
+    .landing-proof-ask-input {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.45rem;
+        align-items: center;
+    }
+
+    .landing-proof-ask-input span {
+        min-height: 36px;
+        display: flex;
+        align-items: center;
+        padding: 0 0.75rem;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+        background: color-mix(in srgb, #020617 54%, transparent);
+        color: color-mix(in srgb, var(--muted) 82%, transparent);
+        font-size: 0.8rem;
+    }
+
+    .landing-proof-ask-input button {
+        min-height: 36px;
+        padding: 0 0.82rem;
+        border: 0;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--accent) 82%, white 18%);
+        color: white;
+        font-size: 0.78rem;
+        font-weight: 850;
     }
 
     .landing-actions {
@@ -1520,6 +1730,10 @@
         justify-content: center;
         gap: 0.65rem;
         flex-wrap: wrap;
+    }
+
+    .landing-proof + .landing-actions {
+        margin-top: clamp(0.85rem, 1.8vw, 1.35rem);
     }
 
     .hero-reassurance {
@@ -2091,6 +2305,14 @@
         color: var(--accent);
     }
 
+    .ai-demo-title {
+        margin: 0;
+        color: var(--ink);
+        font-size: clamp(1.08rem, 1.7vw, 1.32rem);
+        font-weight: 850;
+        line-height: 1.22;
+    }
+
     .ai-demo-period {
         font-size: 0.78rem;
         color: var(--muted);
@@ -2269,6 +2491,14 @@
         max-width: 100%;
     }
 
+    .feature-concept-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+        margin: 0;
+        width: 100%;
+    }
+
     .feature-showcase-card {
         border: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
         background: color-mix(in srgb, var(--surface) 80%, transparent);
@@ -2286,6 +2516,29 @@
         align-items: center;
         overflow: hidden;
         grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
+    }
+
+    .feature-concept-card {
+        grid-template-columns: 1fr;
+        align-items: start;
+        align-content: start;
+        gap: 0.72rem;
+        min-height: 220px;
+    }
+
+    .feature-concept-step {
+        width: fit-content;
+        margin: 0;
+        padding: 0.22rem 0.58rem;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+        background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+        color: color-mix(in srgb, var(--accent) 76%, var(--ink));
+        font-family: var(--landing-font-mono);
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
     }
 
     .feature-showcase-copy {
@@ -2306,6 +2559,10 @@
         margin: 0;
         font-size: clamp(1.2rem, 2.2vw, 1.6rem);
         line-height: 1.14;
+    }
+
+    .feature-concept-card .feature-showcase-copy h3 {
+        font-size: clamp(1.18rem, 1.8vw, 1.45rem);
     }
 
     .feature-title-accent {
@@ -3236,12 +3493,14 @@
         .workflow-automation-grid,
         .use-case-grid,
         .comparison-grid,
+        .feature-concept-grid,
         .feature-showcase-grid {
             width: 100%;
         }
 
         .workflow-automation-grid,
         .use-case-grid,
+        .feature-concept-grid,
         .comparison-grid {
             grid-template-columns: 1fr;
         }
@@ -3279,6 +3538,14 @@
 
         .feature-shot--wide img {
             max-height: min(56vh, 500px);
+        }
+
+        .landing-proof-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .landing-proof-side {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .feature-shot-lightbox-dialog {
@@ -3389,6 +3656,34 @@
         .hero-availability__count {
             min-width: 0;
             width: min(110px, 100%);
+        }
+
+        .landing-proof#ai-demo {
+            width: 100%;
+        }
+
+        .landing-proof h2 {
+            font-size: clamp(1.65rem, 9vw, 2.2rem);
+        }
+
+        .landing-proof-grid,
+        .landing-proof-side {
+            grid-template-columns: 1fr;
+        }
+
+        .landing-proof-review,
+        .landing-proof-side-card,
+        .landing-proof-experiment,
+        .landing-proof-ask {
+            padding: 0.8rem;
+        }
+
+        .landing-proof-ask-input {
+            grid-template-columns: 1fr;
+        }
+
+        .landing-proof-ask-input button {
+            justify-self: end;
         }
 
         .ai-demo-card {
