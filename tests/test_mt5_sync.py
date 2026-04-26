@@ -2598,7 +2598,7 @@ def test_internal_mt5_sync_auto_queues_bars_for_public_user_when_enabled(app_ctx
         {
             "task": "celery_workers.mt5_sync_tasks.fetch_trade_bars",
             "args": [mt5_account.id, trade.id],
-            "queue": "mt5_sync",
+            "queue": "mt5_priority",
             "label": "mt5_auto_bar_sync_after_ingest",
             "extra": {
                 "mt5_account_id": mt5_account.id,
@@ -2661,7 +2661,7 @@ def test_internal_mt5_sync_auto_queues_bars_for_existing_closed_trade_on_empty_b
     assert queued == [
         {
             "args": [mt5_account.id, trade.id],
-            "queue": "mt5_sync",
+            "queue": "mt5_priority",
             "label": "mt5_auto_bar_sync_after_ingest",
         }
     ]

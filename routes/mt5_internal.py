@@ -130,8 +130,17 @@ def _claim_auto_bar_sync_dispatch(trade_id):
 
 
 def _queue_auto_trade_bar_sync(account):
+    status = {
+        "enabled": False,
+        "closed_trades": 0,
+        "missing_m5": 0,
+        "queued": 0,
+        "lock_skipped": 0,
+        "queue": None,
+    }
     if not get_bool_app_setting(MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, False):
-        return 0
+        return status
+    status["enabled"] = True
 
     trades = (
         Trade.query.filter(
@@ -143,20 +152,24 @@ def _queue_auto_trade_bar_sync(account):
         .order_by(Trade.closed_at.desc(), Trade.id.desc())
         .all()
     )
+    status["closed_trades"] = len(trades)
     trades_to_queue = _filter_trades_missing_complete_m5_bars(trades)
+    status["missing_m5"] = len(trades_to_queue)
     if not trades_to_queue:
-        return 0
+        return status
 
-    from celery_workers.mt5_sync_tasks import fetch_trade_bars
+    from celery_workers.mt5_sync_tasks import MT5_PRIORITY_QUEUE_NAME, fetch_trade_bars
 
-    queued = 0
+    status["queue"] = MT5_PRIORITY_QUEUE_NAME
+
     for trade in trades_to_queue:
         if not _claim_auto_bar_sync_dispatch(trade.id):
+            status["lock_skipped"] += 1
             continue
         dispatch_celery_task(
             fetch_trade_bars,
             args=[account.id, trade.id],
-            queue="mt5_sync",
+            queue=MT5_PRIORITY_QUEUE_NAME,
             log=current_app.logger,
             label="mt5_auto_bar_sync_after_ingest",
             extra={
@@ -166,8 +179,8 @@ def _queue_auto_trade_bar_sync(account):
                 "trade_account_id": account.trade_account_id,
             },
         )
-        queued += 1
-    return queued
+        status["queued"] += 1
+    return status
 
 
 def _prefer_existing_mt5_trade(existing_trade, candidate_trade):
@@ -660,9 +673,16 @@ def sync_mt5_trades():
         for inserted_trade in insert_batch:
             if inserted_trade.closed_at is not None and inserted_trade.mt5_position is not None:
                 auto_bar_sync_candidate_trade_ids.add(inserted_trade.id)
-        auto_bar_sync_queued = 0
+        auto_bar_sync_status = {
+            "enabled": False,
+            "closed_trades": 0,
+            "missing_m5": 0,
+            "queued": 0,
+            "lock_skipped": 0,
+            "queue": None,
+        }
         try:
-            auto_bar_sync_queued = _queue_auto_trade_bar_sync(account)
+            auto_bar_sync_status = _queue_auto_trade_bar_sync(account)
         except Exception as exc:
             current_app.logger.warning(
                 "MT5 automatic bar sync queue failed mt5_account_id=%s touched_candidates=%s: %s",
@@ -670,11 +690,12 @@ def sync_mt5_trades():
                 len(auto_bar_sync_candidate_trade_ids),
                 sanitize_error_message(exc),
             )
+        auto_bar_sync_queued = int(auto_bar_sync_status.get("queued") or 0)
         current_app.logger.info(
             (
                 "MT5 internal sync summary mt5_account_id=%s user_id=%s trade_account_id=%s "
                 "incoming_rows=%s normalized_rows=%s incoming_positions=%s saved=%s updated=%s skipped=%s errors=%s "
-                "timestamp_refreshes=%s vm_id=%s skip_reasons=%s"
+                "timestamp_refreshes=%s vm_id=%s auto_bar_sync=%s skip_reasons=%s"
             ),
             mt5_account_id,
             account.user_id,
@@ -688,6 +709,7 @@ def sync_mt5_trades():
             error_count,
             timestamp_refresh_count,
             account.vm_id or "unknown",
+            auto_bar_sync_status,
             skip_reason_counts,
         )
         if saved_count or updated_count or timestamp_refresh_count:
@@ -730,8 +752,9 @@ def sync_mt5_trades():
             "skipped": skipped_count,
             "errors": error_count,
         }
-        if auto_bar_sync_queued:
+        if include_skip_reasons or auto_bar_sync_status.get("enabled"):
             response_payload["auto_bar_sync_queued"] = auto_bar_sync_queued
+            response_payload["auto_bar_sync"] = auto_bar_sync_status
         if timestamp_refresh_count:
             response_payload["timestamp_refreshes"] = timestamp_refresh_count
         if include_skip_reasons:

@@ -786,6 +786,7 @@ def sync_mt5_account(
                 ("Errors", result.get("errors")),
                 ("Timestamp Refreshes", result.get("timestamp_refreshes")),
                 ("Auto Bar Tasks", result.get("auto_bar_sync_queued")),
+                ("Auto Bar Scan", result.get("auto_bar_sync")),
                 ("Skip Reasons", result.get("skip_reasons")),
             ],
         )
