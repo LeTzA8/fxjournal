@@ -275,6 +275,31 @@ def test_weekly_review_chat_route_is_rate_limited(app_ctx, client, monkeypatch):
     assert (over.get_json() or {}).get("error") == "rate_limit_exceeded"
 
 
+def test_weekly_review_chat_admin_bypasses_usage_limits(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-admin-rl-user",
+        email="dashboard-review-chat-admin-rl@example.com",
+    )
+    user.email_verified = True
+    user.is_admin = True
+    db.session.commit()
+
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-admin-rl")
+
+    def fake_reply(*_a, **_k):
+        return "brief", {}, "gpt-test"
+
+    monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fake_reply)
+
+    for i in range(6):
+        response = client.post(
+            f"/dashboard/weekly-review/{review.id}/chat",
+            json={"message": f"q{i}"},
+        )
+        assert response.status_code == 200, f"unexpected at {i}"
+
+
 def test_weekly_review_chat_route_enforces_per_review_limit(app_ctx, client, monkeypatch):
     user, trade_account = _create_logged_in_user(
         client,

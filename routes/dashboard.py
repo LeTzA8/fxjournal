@@ -59,10 +59,19 @@ from helpers.weekly_review_ref_rewrite import (
     parse_json_blob as _parse_json_blob,
     rewrite_review_text_refs as _rewrite_review_text_refs,
 )
-from auth_account import build_external_url
+from auth_account import build_external_url, user_has_admin_access
 from extensions import limiter
 from helpers.utils import login_required, utcnow_naive
-from models import AccountCashFlow, AIGeneratedResponse, Trade, UserProfile, WeeklyCheckin, WeeklyReviewChatMessage, db
+from models import (
+    AccountCashFlow,
+    AIGeneratedResponse,
+    Trade,
+    User,
+    UserProfile,
+    WeeklyCheckin,
+    WeeklyReviewChatMessage,
+    db,
+)
 from trading import (
     SMALL_SAMPLE_MIN_TRADES,
     build_rr_summary,
@@ -1440,46 +1449,48 @@ def weekly_review_chat(review_id):
     if review is None:
         return jsonify({"error": "Weekly review not found for this account."}), 404
 
-    user_messages_this_review = (
-        WeeklyReviewChatMessage.query.filter_by(
-            user_id=user_id,
-            ai_response_id=review.id,
-            role=WeeklyReviewChatMessage.ROLE_USER,
-        ).count()
-    )
-    if user_messages_this_review >= WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_REVIEW:
-        return jsonify({"error": "review_limit_reached"}), 429
+    user_row = db.session.get(User, user_id)
+    if not user_has_admin_access(user_row):
+        user_messages_this_review = (
+            WeeklyReviewChatMessage.query.filter_by(
+                user_id=user_id,
+                ai_response_id=review.id,
+                role=WeeklyReviewChatMessage.ROLE_USER,
+            ).count()
+        )
+        if user_messages_this_review >= WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_REVIEW:
+            return jsonify({"error": "review_limit_reached"}), 429
 
-    now = utcnow_naive()
-    day_start = datetime(now.year, now.month, now.day)
-    daily_user_messages = (
-        WeeklyReviewChatMessage.query.filter(
-            WeeklyReviewChatMessage.user_id == user_id,
-            WeeklyReviewChatMessage.role == WeeklyReviewChatMessage.ROLE_USER,
-            WeeklyReviewChatMessage.created_at >= day_start,
-        ).count()
-    )
-    if daily_user_messages >= WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_DAY:
-        return jsonify({"error": "daily_limit_reached"}), 429
-
-    cutoff = now - timedelta(seconds=WEEKLY_REVIEW_CHAT_RATE_WINDOW_SECONDS)
-    try:
-        recent_user_messages = (
+        now = utcnow_naive()
+        day_start = datetime(now.year, now.month, now.day)
+        daily_user_messages = (
             WeeklyReviewChatMessage.query.filter(
                 WeeklyReviewChatMessage.user_id == user_id,
                 WeeklyReviewChatMessage.role == WeeklyReviewChatMessage.ROLE_USER,
-                WeeklyReviewChatMessage.created_at >= cutoff,
+                WeeklyReviewChatMessage.created_at >= day_start,
             ).count()
         )
-    except SQLAlchemyError as exc:
-        current_app.logger.warning(
-            "Weekly review chat per-minute limit check skipped (DB error). user_id=%s error=%s",
-            user_id,
-            exc,
-        )
-        recent_user_messages = 0
-    if recent_user_messages >= WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_MINUTE:
-        return jsonify({"error": "rate_limit_exceeded"}), 429
+        if daily_user_messages >= WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_DAY:
+            return jsonify({"error": "daily_limit_reached"}), 429
+
+        cutoff = now - timedelta(seconds=WEEKLY_REVIEW_CHAT_RATE_WINDOW_SECONDS)
+        try:
+            recent_user_messages = (
+                WeeklyReviewChatMessage.query.filter(
+                    WeeklyReviewChatMessage.user_id == user_id,
+                    WeeklyReviewChatMessage.role == WeeklyReviewChatMessage.ROLE_USER,
+                    WeeklyReviewChatMessage.created_at >= cutoff,
+                ).count()
+            )
+        except SQLAlchemyError as exc:
+            current_app.logger.warning(
+                "Weekly review chat per-minute limit check skipped (DB error). user_id=%s error=%s",
+                user_id,
+                exc,
+            )
+            recent_user_messages = 0
+        if recent_user_messages >= WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_MINUTE:
+            return jsonify({"error": "rate_limit_exceeded"}), 429
 
     chat_history = (
         WeeklyReviewChatMessage.query.filter_by(
