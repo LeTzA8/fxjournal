@@ -2648,8 +2648,6 @@ def test_internal_mt5_sync_auto_queues_bars_for_existing_closed_trade_on_empty_b
         return SimpleNamespace(id=f"queued-{len(queued)}")
 
     monkeypatch.setattr("routes.mt5_internal.dispatch_celery_task", _fake_dispatch)
-    monkeypatch.setattr("routes.mt5_internal.claim_lock", lambda *args, **kwargs: True)
-
     response = client.post(
         "/api/internal/mt5/sync",
         json={"mt5_account_id": mt5_account.id, "trades": []},

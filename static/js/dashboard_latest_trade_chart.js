@@ -99,7 +99,30 @@
         return sorted[low] + (sorted[high] - sorted[low]) * (index - low);
     }
 
+    function entryExitAnchoredRange(markers, scaleMultiplier) {
+        var entry = finiteNumber(markers ? markers.entry_price : null);
+        var exit = finiteNumber(markers ? markers.exit_price : null);
+        if (entry == null || exit == null || entry <= 0 || exit <= 0) return null;
+
+        var low = Math.min(entry, exit);
+        var high = Math.max(entry, exit);
+        var mid = (entry + exit) / 2;
+        var tradeMove = Math.abs(entry - exit);
+        var minReadableMove = Math.max(Math.abs(mid) * 0.0022, 1e-8);
+        var gauge = Math.max(tradeMove, minReadableMove);
+        var multiplier = isFinite(scaleMultiplier) ? Math.max(0.35, Math.min(4, scaleMultiplier)) : 1;
+        var pad = gauge * 0.8 * multiplier;
+
+        return {
+            minValue: low - pad,
+            maxValue: high + pad,
+        };
+    }
+
     function tradeFocusedPriceRange(bars, markers, scaleMultiplier) {
+        var entryExitRange = entryExitAnchoredRange(markers, scaleMultiplier);
+        if (entryExitRange) return entryExitRange;
+
         var markerVals = markerPrices(markers);
         var windowBars = tradeWindowBars(bars, markers);
         var windowVals = [];

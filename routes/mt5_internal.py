@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import func
 
-from celery_workers.cache import CacheUnavailableError, claim_lock, invalidate
+from celery_workers.cache import CacheUnavailableError, invalidate
 from helpers.app_settings import MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, get_bool_app_setting
 from helpers.celery_dispatch import dispatch_celery_task
 from helpers.core import (
@@ -113,29 +113,15 @@ def _filter_trades_missing_complete_m5_bars(trades):
     ]
 
 
-def _auto_bar_sync_lock_key(trade_id):
-    return f"mt5_auto_bar_sync_trade:{trade_id}"
-
-
-def _claim_auto_bar_sync_dispatch(trade_id):
-    try:
-        return claim_lock(_auto_bar_sync_lock_key(trade_id), secrets.token_hex(12), ttl=30 * 60)
-    except CacheUnavailableError as exc:
-        current_app.logger.warning(
-            "MT5 automatic bar sync dispatch lock unavailable trade_id=%s: %s",
-            trade_id,
-            exc,
-        )
-        return True
-
-
 def _queue_auto_trade_bar_sync(account):
+    max_tasks_per_sync = 20
     status = {
         "enabled": False,
         "closed_trades": 0,
         "missing_m5": 0,
         "queued": 0,
-        "lock_skipped": 0,
+        "capped": False,
+        "max_tasks_per_sync": max_tasks_per_sync,
         "queue": None,
     }
     if not get_bool_app_setting(MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, False):
@@ -162,10 +148,9 @@ def _queue_auto_trade_bar_sync(account):
 
     status["queue"] = MT5_PRIORITY_QUEUE_NAME
 
-    for trade in trades_to_queue:
-        if not _claim_auto_bar_sync_dispatch(trade.id):
-            status["lock_skipped"] += 1
-            continue
+    if len(trades_to_queue) > max_tasks_per_sync:
+        status["capped"] = True
+    for trade in trades_to_queue[:max_tasks_per_sync]:
         dispatch_celery_task(
             fetch_trade_bars,
             args=[account.id, trade.id],
@@ -678,7 +663,8 @@ def sync_mt5_trades():
             "closed_trades": 0,
             "missing_m5": 0,
             "queued": 0,
-            "lock_skipped": 0,
+            "capped": False,
+            "max_tasks_per_sync": 20,
             "queue": None,
         }
         try:
