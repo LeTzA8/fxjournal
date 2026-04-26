@@ -303,8 +303,8 @@
 
     .latest-trade-panel {
         display: grid;
-        gap: 0.72rem;
-        padding: 0.82rem;
+        gap: 0.8rem;
+        padding: 0.9rem;
     }
 
     .latest-trade-head {
@@ -401,8 +401,8 @@
 
     .latest-trade-chart-shell {
         position: relative;
-        min-height: 214px;
-        height: clamp(214px, 20vw, 260px);
+        min-height: 246px;
+        height: clamp(246px, 22vw, 292px);
         border-radius: 12px;
         border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         background:
@@ -413,6 +413,48 @@
     .latest-trade-chart-canvas {
         width: 100%;
         height: 100%;
+    }
+
+    .latest-trade-scale-controls {
+        position: absolute;
+        z-index: 3;
+        top: 0.48rem;
+        left: 0.48rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.18rem;
+        padding: 0.16rem;
+        border-radius: 8px;
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        background: color-mix(in srgb, var(--card) 88%, transparent);
+        box-shadow: 0 8px 18px rgba(2, 6, 23, 0.2);
+    }
+
+    .latest-trade-scale-controls button {
+        display: inline-grid;
+        place-items: center;
+        min-width: 1.65rem;
+        height: 1.55rem;
+        padding: 0 0.42rem;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--ink);
+        font: inherit;
+        font-size: 0.72rem;
+        font-weight: 900;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .latest-trade-scale-controls button:hover {
+        border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+        background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    }
+
+    .latest-trade-scale-controls button:disabled {
+        cursor: default;
+        opacity: 0.48;
     }
 
     .latest-trade-chart-status {
@@ -427,6 +469,10 @@
     }
 
     .latest-trade-chart-shell.is-ready .latest-trade-chart-status {
+        display: none;
+    }
+
+    .latest-trade-chart-shell:not(.is-ready) .latest-trade-scale-controls {
         display: none;
     }
 
@@ -1199,6 +1245,11 @@
                         data-chart-url="{{ latest_trade_snapshot.chart_data_url }}"
                     >
                         <div class="latest-trade-chart-canvas" data-latest-trade-chart-canvas></div>
+                        <div class="latest-trade-scale-controls" aria-label="Chart price scale controls">
+                            <button type="button" data-latest-trade-scale="in" aria-label="Tighten price scale" title="Tighten price scale">+</button>
+                            <button type="button" data-latest-trade-scale="out" aria-label="Widen price scale" title="Widen price scale">-</button>
+                            <button type="button" data-latest-trade-scale="reset" aria-label="Reset price scale" title="Reset price scale">Reset</button>
+                        </div>
                         <p class="latest-trade-chart-status soft" data-latest-trade-chart-status>Loading chart data&hellip;</p>
                     </div>
                     {% else %}

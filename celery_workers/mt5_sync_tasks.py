@@ -877,7 +877,7 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
 
     from helpers.utils import decrypt_password
     from models import MT5Account, Trade, db
-    from trading import chart_timeframe_bar_seconds, mt5_timeframe_constant
+    from trading import cfd_mt5_symbol_name_candidates, chart_timeframe_bar_seconds, mt5_timeframe_constant
 
     fetch_started_at = datetime.now(timezone.utc)
 
@@ -912,6 +912,7 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
         return {"skipped": "trade not closed"}
 
     symbol = trade.symbol
+    symbol_candidates = cfd_mt5_symbol_name_candidates(symbol) or (symbol,)
     opened_at_utc = _naive_utc_to_aware(trade.opened_at)
     closed_at_utc = _naive_utc_to_aware(trade.closed_at)
     # Always fetch M5; the window must be expressed in M5 bars. Using
@@ -960,23 +961,25 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
 
             bar_normalization_offset = mt5_server_delta_minutes
             fetch_strategy = "broker_time"
-            raw_bars = mt5.copy_rates_range(symbol, tf_constant, start_dt_shifted, end_dt_shifted)
-
-            if raw_bars is None or len(raw_bars) == 0:
-                logger.warning(
-                    "Bar fetch no rates mt5_account_id=%s trade_id=%s symbol=%s "
-                    "delta_min=%s broker_window=%s..%s utc_window=%s..%s last_error=%s",
-                    mt5_account_id,
-                    trade_id,
-                    symbol,
-                    mt5_server_delta_minutes,
-                    start_dt_shifted.isoformat(),
-                    end_dt_shifted.isoformat(),
-                    start_dt.isoformat(),
-                    end_dt.isoformat(),
-                    mt5.last_error(),
+            selected_symbol = None
+            symbol_select = getattr(mt5, "symbol_select", None)
+            last_bar_error = None
+            for candidate_symbol in symbol_candidates:
+                if callable(symbol_select):
+                    try:
+                        symbol_select(candidate_symbol, True)
+                    except Exception:
+                        pass
+                raw_bars = mt5.copy_rates_range(
+                    candidate_symbol,
+                    tf_constant,
+                    start_dt_shifted,
+                    end_dt_shifted,
                 )
-            else:
+                last_bar_error = mt5.last_error()
+                if raw_bars is None or len(raw_bars) == 0:
+                    continue
+                selected_symbol = candidate_symbol
                 for bar in raw_bars:
                     bar_open_utc = _adjust_mt5_unix_epoch(
                         int(bar["time"]),
@@ -990,6 +993,23 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
                         "close": float(bar["close"]),
                         "tick_volume": int(bar["tick_volume"]) if bar["tick_volume"] is not None else None,
                     })
+                break
+
+            if not bars:
+                logger.warning(
+                    "Bar fetch no rates mt5_account_id=%s trade_id=%s symbol=%s candidates=%s "
+                    "delta_min=%s broker_window=%s..%s utc_window=%s..%s last_error=%s",
+                    mt5_account_id,
+                    trade_id,
+                    symbol,
+                    list(symbol_candidates)[:12],
+                    mt5_server_delta_minutes,
+                    start_dt_shifted.isoformat(),
+                    end_dt_shifted.isoformat(),
+                    start_dt.isoformat(),
+                    end_dt.isoformat(),
+                    last_bar_error,
+                )
         finally:
             mt5.shutdown()
 
@@ -1002,6 +1022,8 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             ("MT5 Account ID", mt5_account_id),
             ("Trade ID", trade_id),
             ("Symbol", symbol),
+            ("Broker Symbol", selected_symbol or "none"),
+            ("Candidates Tried", min(len(symbol_candidates), 12)),
             ("M5 context", f"{pre_entry_m5_bars} pre / {post_exit_m5_bars} post bars"),
             ("Stored TF", "M5"),
             ("Bars Fetched", len(bars)),

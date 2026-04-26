@@ -50,7 +50,109 @@
         return 2;
     }
 
-    function fixedPriceRange(bars, markers) {
+    function finiteNumber(value) {
+        var n = Number(value);
+        return isFinite(n) ? n : null;
+    }
+
+    function markerPrices(markers) {
+        var prices = [];
+        ["entry_price", "exit_price", "stop_loss", "take_profit"].forEach(function (key) {
+            var n = finiteNumber(markers ? markers[key] : null);
+            if (n != null) prices.push(n);
+        });
+        return prices;
+    }
+
+    function barValues(bar) {
+        return [bar.open, bar.high, bar.low, bar.close]
+            .map(finiteNumber)
+            .filter(function (n) {
+                return n != null && n > 0;
+            });
+    }
+
+    function tradeWindowBars(bars, markers) {
+        var entry = finiteNumber(markers ? markers.entry_time : null);
+        var exit = finiteNumber(markers ? markers.exit_time : null);
+        if (entry == null && exit == null) return bars || [];
+        var start = entry != null ? entry : exit;
+        var end = exit != null ? exit : entry;
+        if (start > end) {
+            var swap = start;
+            start = end;
+            end = swap;
+        }
+        var pad = Math.max(1800, (end - start) * 0.12);
+        return (bars || []).filter(function (bar) {
+            var t = finiteNumber(bar.time);
+            return t != null && t >= start - pad && t <= end + pad;
+        });
+    }
+
+    function percentile(sorted, pct) {
+        if (!sorted.length) return null;
+        var index = (sorted.length - 1) * pct;
+        var low = Math.floor(index);
+        var high = Math.ceil(index);
+        if (low === high) return sorted[low];
+        return sorted[low] + (sorted[high] - sorted[low]) * (index - low);
+    }
+
+    function tradeFocusedPriceRange(bars, markers, scaleMultiplier) {
+        var markerVals = markerPrices(markers);
+        var windowBars = tradeWindowBars(bars, markers);
+        var windowVals = [];
+        windowBars.forEach(function (bar) {
+            windowVals = windowVals.concat(barValues(bar));
+        });
+
+        var rangeVals = markerVals.slice();
+        if (markerVals.length) {
+            var markerMin = Math.min.apply(null, markerVals);
+            var markerMax = Math.max.apply(null, markerVals);
+            var markerMid = (markerMin + markerMax) / 2;
+            var markerSpan = Math.max(markerMax - markerMin, Math.abs(markerMid) * 0.001, 1e-8);
+            var outlierBand = Math.max(markerSpan * 8, Math.abs(markerMid) * 0.012);
+            windowVals.forEach(function (value) {
+                if (value >= markerMin - outlierBand && value <= markerMax + outlierBand) {
+                    rangeVals.push(value);
+                }
+            });
+        } else {
+            rangeVals = windowVals;
+        }
+
+        if (!rangeVals.length) {
+            (bars || []).forEach(function (bar) {
+                rangeVals = rangeVals.concat(barValues(bar));
+            });
+        }
+        if (!rangeVals.length) return null;
+
+        rangeVals.sort(function (a, b) {
+            return a - b;
+        });
+        var low = rangeVals[0];
+        var high = rangeVals[rangeVals.length - 1];
+
+        if (!markerVals.length && rangeVals.length >= 10) {
+            low = percentile(rangeVals, 0.05);
+            high = percentile(rangeVals, 0.95);
+        }
+
+        if (!isFinite(low) || !isFinite(high)) return null;
+        var mid = (low + high) / 2;
+        var span = Math.max(high - low, Math.abs(mid) * 0.0025, 1e-8);
+        var multiplier = isFinite(scaleMultiplier) ? Math.max(0.35, Math.min(4, scaleMultiplier)) : 1;
+        var paddedSpan = span * 1.28 * multiplier;
+        return {
+            minValue: mid - paddedSpan / 2,
+            maxValue: mid + paddedSpan / 2,
+        };
+    }
+
+    function fullDataPriceRange(bars, markers) {
         var min = Infinity;
         var max = -Infinity;
         var values = [];
@@ -70,6 +172,52 @@
         var span = max - min;
         var pad = span > 0 ? span * 0.06 : Math.max(Math.abs(min) * 0.0005, 1e-8);
         return { minValue: min - pad, maxValue: max + pad };
+    }
+
+    function applyChartScale(series, bars, markers, scaleState) {
+        var range = scaleState.mode === "full"
+            ? fullDataPriceRange(bars, markers)
+            : tradeFocusedPriceRange(bars, markers, scaleState.multiplier);
+        series.applyOptions({
+            autoscaleInfoProvider: range
+                ? function () {
+                    return { priceRange: range };
+                }
+                : undefined,
+        });
+        series.setData(bars);
+    }
+
+    function wireScaleControls(root, series, bars, markers, scaleState) {
+        var buttons = root.querySelectorAll("[data-latest-trade-scale]");
+        if (!buttons.length) return;
+
+        function updateButtons() {
+            buttons.forEach(function (button) {
+                var action = button.getAttribute("data-latest-trade-scale");
+                button.disabled = action === "reset" && scaleState.mode === "focused" && scaleState.multiplier === 1;
+            });
+        }
+
+        buttons.forEach(function (button) {
+            button.addEventListener("click", function () {
+                var action = button.getAttribute("data-latest-trade-scale");
+                if (action === "in") {
+                    scaleState.mode = "focused";
+                    scaleState.multiplier = Math.max(0.45, scaleState.multiplier * 0.75);
+                } else if (action === "out") {
+                    scaleState.mode = "focused";
+                    scaleState.multiplier = Math.min(4, scaleState.multiplier * 1.35);
+                } else if (action === "reset") {
+                    scaleState.mode = "focused";
+                    scaleState.multiplier = 1;
+                }
+                applyChartScale(series, bars, markers, scaleState);
+                updateButtons();
+            });
+        });
+
+        updateButtons();
     }
 
     function draw(root, payload) {
@@ -118,7 +266,7 @@
             handleScale: {
                 mouseWheel: false,
                 pinch: true,
-                axisPressedMouseMove: false,
+                axisPressedMouseMove: { time: true, price: true },
                 axisDoubleClickReset: true,
             },
         });
@@ -128,7 +276,10 @@
         var accent = cssVar("--accent", "#818cf8");
         var muted = cssVar("--muted", "#94a3b8");
         var precision = pricePrecision(bars, markers);
-        var range = fixedPriceRange(bars, markers);
+        var scaleState = {
+            mode: "focused",
+            multiplier: 1,
+        };
         var seriesOptions = {
             upColor: good,
             downColor: bad,
@@ -139,11 +290,6 @@
             priceLineVisible: false,
             lastValueVisible: false,
         };
-        if (range) {
-            seriesOptions.autoscaleInfoProvider = function () {
-                return { priceRange: range };
-            };
-        }
 
         var series = chart.addCandlestickSeries(seriesOptions);
         series.applyOptions({
@@ -153,7 +299,7 @@
                 minMove: Math.pow(10, -precision),
             },
         });
-        series.setData(bars);
+        applyChartScale(series, bars, markers, scaleState);
 
         [
             ["entry_price", "Entry", good, LightweightCharts.LineStyle.Solid],
@@ -202,6 +348,7 @@
         if (tradeMarkers.length) series.setMarkers(tradeMarkers);
 
         chart.timeScale().fitContent();
+        wireScaleControls(root, series, bars, markers, scaleState);
         setReady(root);
 
         if (typeof ResizeObserver !== "undefined") {

@@ -2334,7 +2334,7 @@ def test_fetch_trade_bars_does_not_query_utc_fallback_when_broker_window_has_no_
     post_calls = []
 
     def _copy_rates_range(symbol, timeframe, date_from, date_to):
-        copy_calls.append((date_from, date_to))
+        copy_calls.append((symbol, date_from, date_to))
         return []
 
     fake_mt5 = SimpleNamespace(
@@ -2368,13 +2368,14 @@ def test_fetch_trade_bars_does_not_query_utc_fallback_when_broker_window_has_no_
     result = fetch_trade_bars.run(mt5_account.id, trade.id)
 
     assert result == {"saved": 0, "timeframe": "M5"}
-    assert len(copy_calls) == 1
+    assert len(copy_calls) >= 1
     expected_start = datetime(2026, 4, 10, 9, 0, 0, tzinfo=timezone.utc) - timedelta(hours=36)
     expected_end = datetime(2026, 4, 10, 10, 0, 0, tzinfo=timezone.utc) + timedelta(hours=12)
-    assert copy_calls[0] == (
-        expected_start + timedelta(minutes=broker_offset_minutes),
-        expected_end + timedelta(minutes=broker_offset_minutes),
-    )
+    for _symbol, date_from, date_to in copy_calls:
+        assert (date_from, date_to) == (
+            expected_start + timedelta(minutes=broker_offset_minutes),
+            expected_end + timedelta(minutes=broker_offset_minutes),
+        )
     assert post_calls == []
 
 
