@@ -126,75 +126,6 @@
                 </div>
             </section>
 
-            <section class="landing-proof landing-reveal" id="ai-demo" data-reveal-delay="1100" aria-labelledby="landing-proof-title">
-                <div class="landing-proof-heading">
-                    <div class="landing-proof-pills" aria-label="Weekly review attributes">
-                        <span>AI Coach</span>
-                        <span>Weekly Only</span>
-                    </div>
-                    <p class="landing-proof-kicker">Built from your real trade history</p>
-                    <h2 id="landing-proof-title">Weekly AI Review</h2>
-                    <p class="landing-proof-subtitle">Consistency, behavior patterns, and what to improve next.</p>
-                </div>
-
-                <div class="landing-proof-panel">
-                    <div class="landing-proof-grid">
-                        <article class="ai-demo-card typing-done landing-proof-review">
-                            <div class="ai-demo-card-head">
-                                <p class="ai-demo-label">Latest Weekly Review</p>
-                            </div>
-                            <div class="ai-demo-body">
-                                <section class="landing-proof-review-section" aria-labelledby="landing-proof-review-title">
-                                    <p class="landing-proof-section-label" id="landing-proof-review-title">🧠 What mattered this week</p>
-                                    <p class="ai-demo-title">This week's review</p>
-                                    <p class="ai-demo-text">
-                                        You made money - but size increased after losses.
-                                        That pattern explains most of the drawdown.
-                                    </p>
-                                    <p class="landing-proof-warning">⚠ Confidence is limited until the next week confirms it.</p>
-                                </section>
-                                <section class="landing-proof-suggests" aria-label="What this suggests">
-                                    <p class="landing-proof-section-label">What this suggests</p>
-                                    <p>Risk stayed calm while trades were working, then expanded after losses. The next fix is simple: keep size consistent after setbacks.</p>
-                                </section>
-                            </div>
-                        </article>
-
-                        <aside class="landing-proof-side" aria-label="Review side notes">
-                            <article class="landing-proof-side-card landing-proof-side-card-action">
-                                <p>🎯 Actionable Improvement</p>
-                                <strong>Fix next week: keep position size consistent after losses.</strong>
-                            </article>
-                            <article class="landing-proof-side-card">
-                                <p>✅ Strength to Reinforce</p>
-                                <strong>You still protected the week by cutting losers quickly.</strong>
-                            </article>
-                        </aside>
-
-                        <article class="landing-proof-experiment">
-                            <p>🧪 This week's experiment</p>
-                            <strong>For one week, use the same position size after every loss and write down whether the next trade still meets your setup rules.</strong>
-                        </article>
-                    </div>
-
-                    <section class="landing-proof-ask" aria-labelledby="landing-proof-ask-title">
-                        <div class="landing-proof-ask-head">
-                            <h3 id="landing-proof-ask-title">💬 Ask about this review</h3>
-                            <p>Follow-ups use only this review and its stored trade context.</p>
-                        </div>
-                        <div class="landing-proof-prompts" aria-label="Example follow-up questions">
-                            <button type="button">Explain this simply</button>
-                            <button type="button">Was this bad luck or my execution?</button>
-                            <button type="button">Which trade should I review first?</button>
-                        </div>
-                        <div class="landing-proof-ask-input" aria-label="Example review question input">
-                            <span>Ask what this means...</span>
-                            <button type="button">Ask</button>
-                        </div>
-                    </section>
-                </div>
-            </section>
-
             <div class="landing-actions landing-reveal" data-reveal-delay="1120">
                 {% if user_logged_in %}
                 <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>
@@ -244,6 +175,75 @@
                     </ul>
                 </article>
             </div>
+        </div>
+    </section>
+
+    <section class="landing-section landing-proof landing-reveal" id="ai-demo" data-reveal-delay="40" aria-labelledby="landing-proof-title" data-reveal-scope>
+        <div class="landing-proof-heading">
+            <div class="landing-proof-pills" aria-label="Weekly review attributes">
+                <span>AI Coach</span>
+                <span>Weekly Only</span>
+            </div>
+            <p class="landing-proof-kicker">Built from your real trade history</p>
+            <h2 id="landing-proof-title">Weekly AI Review</h2>
+            <p class="landing-proof-subtitle">Consistency, behavior patterns, and what to improve next.</p>
+        </div>
+
+        <div class="landing-proof-panel">
+            <div class="landing-proof-grid">
+                <article class="ai-demo-card typing-done landing-proof-review">
+                    <div class="ai-demo-card-head">
+                        <p class="ai-demo-label">Latest Weekly Review</p>
+                    </div>
+                    <div class="ai-demo-body">
+                        <section class="landing-proof-review-section" aria-labelledby="landing-proof-review-title">
+                            <p class="landing-proof-section-label" id="landing-proof-review-title">🧠 What mattered this week</p>
+                            <p class="ai-demo-title">This week's review</p>
+                            <p class="ai-demo-text">
+                                You made money - but size increased after losses.
+                                That pattern explains most of the drawdown.
+                            </p>
+                            <p class="landing-proof-warning">⚠ Confidence is limited until the next week confirms it.</p>
+                        </section>
+                        <section class="landing-proof-suggests" aria-label="What this suggests">
+                            <p class="landing-proof-section-label">What this suggests</p>
+                            <p>Risk stayed calm while trades were working, then expanded after losses. The next fix is simple: keep size consistent after setbacks.</p>
+                        </section>
+                    </div>
+                </article>
+
+                <aside class="landing-proof-side" aria-label="Review side notes">
+                    <article class="landing-proof-side-card landing-proof-side-card-action">
+                        <p>🎯 Actionable Improvement</p>
+                        <strong>Fix next week: keep position size consistent after losses.</strong>
+                    </article>
+                    <article class="landing-proof-side-card">
+                        <p>✅ Strength to Reinforce</p>
+                        <strong>You still protected the week by cutting losers quickly.</strong>
+                    </article>
+                </aside>
+
+                <article class="landing-proof-experiment">
+                    <p>🧪 This week's experiment</p>
+                    <strong>For one week, use the same position size after every loss and write down whether the next trade still meets your setup rules.</strong>
+                </article>
+            </div>
+
+            <section class="landing-proof-ask" aria-labelledby="landing-proof-ask-title">
+                <div class="landing-proof-ask-head">
+                    <h3 id="landing-proof-ask-title">💬 Ask about this review</h3>
+                    <p>Follow-ups use only this review and its stored trade context.</p>
+                </div>
+                <div class="landing-proof-prompts" aria-label="Example follow-up questions">
+                    <button type="button">Explain this simply</button>
+                    <button type="button">Was this bad luck or my execution?</button>
+                    <button type="button">Which trade should I review first?</button>
+                </div>
+                <div class="landing-proof-ask-input" aria-label="Example review question input">
+                    <span>Ask what this means...</span>
+                    <button type="button">Ask</button>
+                </div>
+            </section>
         </div>
     </section>
 
@@ -1003,13 +1003,13 @@
 
     .landing-hero {
         width: 100%;
-        min-height: clamp(540px, 76vh, 900px);
+        min-height: 0;
         margin: 0;
-        padding: clamp(0.25rem, 0.9vw, 0.7rem) clamp(0.8rem, 2vw, 1.3rem) clamp(0.8rem, 2vw, 1.3rem);
+        padding: clamp(0.25rem, 0.9vw, 0.7rem) clamp(0.8rem, 2vw, 1.3rem) clamp(1.1rem, 2.6vw, 2rem);
         display: grid;
         align-items: start;
         position: relative;
-        overflow: clip;
+        overflow: visible;
         min-width: 0;
     }
 
@@ -1017,14 +1017,14 @@
         content: "";
         position: absolute;
         pointer-events: none;
-        filter: blur(36px);
+        filter: blur(52px);
         z-index: 0;
         width: min(1380px, 96vw);
         height: min(700px, 64vw);
         left: 50%;
-        top: 2%;
+        top: 4%;
         transform: translateX(-50%);
-        background: radial-gradient(circle at 50% 40%, rgba(59, 98, 255, 0.22) 0%, rgba(59, 98, 255, 0.1) 32%, rgba(59, 98, 255, 0) 82%);
+        background: radial-gradient(circle at 50% 40%, rgba(59, 98, 255, 0.16) 0%, rgba(59, 98, 255, 0.07) 34%, rgba(59, 98, 255, 0) 82%);
         animation: hero-drift-main 12s ease-in-out infinite;
     }
 
@@ -1397,14 +1397,25 @@
     }
 
     .landing-proof#ai-demo {
-        width: min(1180px, 100%);
-        margin: 0.9rem auto 0;
-        padding: 0;
+        width: min(86vw, 1520px);
+        max-width: 100%;
+        margin: 0 auto;
+        padding: clamp(0.72rem, 1.55vw, 1.05rem) clamp(0.9rem, 2.8vw, 2.6rem);
         text-align: center;
-        border-radius: 0;
-        overflow: visible;
+        border-radius: 22px;
+        overflow: hidden;
         position: relative;
         isolation: isolate;
+        border-top: 1px solid color-mix(in srgb, var(--border) 56%, transparent);
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+        background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--card) 12%, transparent),
+            color-mix(in srgb, var(--card) 4%, transparent)
+        );
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.04);
     }
 
     .landing-proof#ai-demo::before {
@@ -1730,10 +1741,6 @@
         justify-content: center;
         gap: 0.65rem;
         flex-wrap: wrap;
-    }
-
-    .landing-proof + .landing-actions {
-        margin-top: clamp(0.85rem, 1.8vw, 1.35rem);
     }
 
     .hero-reassurance {

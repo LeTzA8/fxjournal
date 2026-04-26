@@ -2,6 +2,11 @@
 
 Last Updated: 2026-04-26
 
+## Landing section order pass (2026-04-26)
+
+- Follow-up fix: collapsed the old hero viewport-height reserve after moving the proof out of the hero, removing the large gap between the hero CTA row and the heavy-lifting panel. The Weekly AI Review proof section now uses the same liquid-glass outer section treatment as the other landing panels. (`templates/landing.html`)
+- Public landing order now follows the newer narrative: hero/relief/CTA first, then "The journal does the heavy lifting", then the Weekly AI Review proof, then the simplified Capture/Understand/Act features section. The AI proof block was moved out of the hero and placed after the heavy-lifting section; its content and static landing-only chat/experiment preview were kept. No backend logic, nav, CTA copy, or feature copy changed. (`templates/landing.html`)
+
 ## Landing features simplification pass (2026-04-26)
 
 - Public landing "What's Live Right Now" / features section now leads with "Built so you actually stick with it." and a commented alternative, then replaces the previous dashboard/analytics/import/MT5-sync card spread with three outcome groups: Capture, Understand, and Act. Copy is shortened to 2-3 line blocks, AI chat is positioned as part of the Act step, and the trade replay panel is simplified to "See your trades on the chart" with the existing replay screenshot kept. Hero, above-the-fold proof, navigation, CTAs, SEO structure, and backend logic were not changed. (`templates/landing.html`)
