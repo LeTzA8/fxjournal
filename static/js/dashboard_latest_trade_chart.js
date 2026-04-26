@@ -22,6 +22,47 @@
         root.classList.add("is-ready");
     }
 
+    function setLoading(root) {
+        root.classList.remove("is-ready");
+    }
+
+    function destroyChart(root) {
+        if (root.__latestTradeResizeObserver) {
+            root.__latestTradeResizeObserver.disconnect();
+            root.__latestTradeResizeObserver = null;
+        }
+        if (root.__latestTradeChart) {
+            root.__latestTradeChart.remove();
+            root.__latestTradeChart = null;
+        }
+    }
+
+    function setTimeframeButtons(root, activeTimeframe, availableTimeframes) {
+        var buttons = root.querySelectorAll("[data-latest-trade-timeframe]");
+        if (!buttons.length) return;
+        var available = Array.isArray(availableTimeframes) ? availableTimeframes : [];
+        buttons.forEach(function (button) {
+            var tf = button.getAttribute("data-latest-trade-timeframe");
+            var enabled = !available.length || available.indexOf(tf) >= 0;
+            button.classList.toggle("is-active", tf === activeTimeframe);
+            button.disabled = !enabled;
+            button.setAttribute("aria-pressed", tf === activeTimeframe ? "true" : "false");
+        });
+    }
+
+    function wireWheelZoomCapture(chart) {
+        if (!chart || typeof chart.chartElement !== "function") return;
+        var el = chart.chartElement();
+        if (!el) return;
+        el.addEventListener(
+            "wheel",
+            function (event) {
+                event.preventDefault();
+            },
+            { passive: false }
+        );
+    }
+
     function barOpenContainingTime(unix, bars) {
         if (unix == null || !bars || !bars.length) return null;
         var target = Number(unix);
@@ -223,7 +264,7 @@
         }
 
         buttons.forEach(function (button) {
-            button.addEventListener("click", function () {
+            button.onclick = function () {
                 var action = button.getAttribute("data-latest-trade-scale");
                 if (action === "in") {
                     scaleState.mode = "focused";
@@ -237,7 +278,7 @@
                 }
                 applyChartScale(series, bars, markers, scaleState);
                 updateButtons();
-            });
+            };
         });
 
         updateButtons();
@@ -249,6 +290,8 @@
             setStatus(root, "Chart library failed to load.");
             return;
         }
+
+        destroyChart(root);
 
         var bars = payload.bars || [];
         if (!bars.length) {
@@ -287,12 +330,14 @@
                 vertTouchDrag: false,
             },
             handleScale: {
-                mouseWheel: false,
+                mouseWheel: true,
                 pinch: true,
                 axisPressedMouseMove: { time: true, price: true },
                 axisDoubleClickReset: true,
             },
         });
+        root.__latestTradeChart = chart;
+        wireWheelZoomCapture(chart);
 
         var good = cssVar("--good", "#22c55e");
         var bad = cssVar("--bad", "#ef4444");
@@ -372,6 +417,7 @@
 
         chart.timeScale().fitContent();
         wireScaleControls(root, series, bars, markers, scaleState);
+        setTimeframeButtons(root, payload.timeframe || "M5", payload.available_timeframes || []);
         setReady(root);
 
         if (typeof ResizeObserver !== "undefined") {
@@ -382,6 +428,7 @@
                 });
             });
             ro.observe(canvas);
+            root.__latestTradeResizeObserver = ro;
         } else {
             window.addEventListener("resize", function () {
                 chart.applyOptions({
@@ -399,7 +446,13 @@
             setStatus(root, "Chart library failed to load.");
             return;
         }
-        fetch(appendTimeframe(url, "M5"), { credentials: "same-origin", cache: "no-store" })
+
+        function loadTimeframe(timeframe, fallbackTried) {
+            setLoading(root);
+            destroyChart(root);
+            setStatus(root, "Loading chart data...");
+            setTimeframeButtons(root, timeframe, null);
+            fetch(appendTimeframe(url, timeframe), { credentials: "same-origin", cache: "no-store" })
             .then(function (response) {
                 return response.json();
             })
@@ -416,10 +469,29 @@
                     setStatus(root, "Could not load this trade chart.");
                     return;
                 }
+                var available = payload.available_timeframes || [];
+                if ((!payload.bars || !payload.bars.length) && available.length && !fallbackTried) {
+                    var fallback = available.indexOf(timeframe) >= 0 ? available[0] : available[0];
+                    if (fallback && fallback !== timeframe) {
+                        loadTimeframe(fallback, true);
+                        return;
+                    }
+                }
                 draw(root, payload);
             })
             .catch(function () {
                 setStatus(root, "Could not load this trade chart.");
             });
+        }
+
+        root.addEventListener("click", function (event) {
+            var button = event.target.closest("[data-latest-trade-timeframe]");
+            if (!button || button.disabled) return;
+            var timeframe = button.getAttribute("data-latest-trade-timeframe");
+            if (!timeframe || button.classList.contains("is-active")) return;
+            loadTimeframe(timeframe, false);
+        });
+
+        loadTimeframe("M5", false);
     });
 }());
