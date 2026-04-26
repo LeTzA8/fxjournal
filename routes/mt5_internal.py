@@ -1,11 +1,18 @@
 import os
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, request
+from sqlalchemy import func
 
 from celery_workers.cache import CacheUnavailableError, invalidate
-from helpers.core import build_normalized_trade_insert_batch, queue_bundle_review_if_split_candidates
+from helpers.app_settings import MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, get_bool_app_setting
+from helpers.celery_dispatch import dispatch_celery_task
+from helpers.core import (
+    build_normalized_trade_insert_batch,
+    queue_bundle_review_if_split_candidates,
+    sanitize_error_message,
+)
 from helpers.weekly_ai_queue import queue_weekly_ai_review_after_ingest
 from helpers.utils import utcnow_naive
 from models import MT5Account, Trade, TradeBars, db
@@ -49,6 +56,102 @@ def _append_skip_debug_row(skip_debug_rows, skip_debug_limit, skip_debug_mode, r
     if len(skip_debug_rows) >= skip_debug_limit:
         return
     skip_debug_rows.append(row_dict)
+
+
+def _trade_has_complete_m5_coverage(trade, coverage_by_trade_id):
+    coverage = coverage_by_trade_id.get(trade.id)
+    if not coverage or coverage["bar_count"] <= 0:
+        return False
+    if trade.opened_at is None or trade.closed_at is None:
+        return False
+    opened_at_epoch = int(trade.opened_at.replace(tzinfo=timezone.utc).timestamp())
+    closed_at_epoch = int(trade.closed_at.replace(tzinfo=timezone.utc).timestamp())
+    min_bar_time = coverage["min_bar_time"]
+    max_bar_time = coverage["max_bar_time"]
+    if min_bar_time is None or max_bar_time is None:
+        return False
+    bar_tolerance_seconds = 15 * 60
+    if int(min_bar_time) > opened_at_epoch + bar_tolerance_seconds:
+        return False
+    if int(max_bar_time) < closed_at_epoch - bar_tolerance_seconds:
+        return False
+    return True
+
+
+def _filter_trades_missing_complete_m5_bars(trades):
+    closed_trades = [
+        trade
+        for trade in trades
+        if trade.id is not None and trade.closed_at is not None and trade.mt5_position is not None
+    ]
+    if not closed_trades:
+        return []
+    trade_ids = [trade.id for trade in closed_trades]
+    bar_coverage_rows = (
+        db.session.query(
+            TradeBars.trade_id,
+            func.count(TradeBars.id).label("bar_count"),
+            func.min(TradeBars.bar_time).label("min_bar_time"),
+            func.max(TradeBars.bar_time).label("max_bar_time"),
+        )
+        .filter(TradeBars.trade_id.in_(trade_ids), TradeBars.timeframe == "M5")
+        .group_by(TradeBars.trade_id)
+        .all()
+    )
+    coverage_by_trade_id = {
+        trade_id: {
+            "bar_count": int(bar_count or 0),
+            "min_bar_time": min_bar_time,
+            "max_bar_time": max_bar_time,
+        }
+        for trade_id, bar_count, min_bar_time, max_bar_time in bar_coverage_rows
+    }
+    return [
+        trade
+        for trade in closed_trades
+        if not _trade_has_complete_m5_coverage(trade, coverage_by_trade_id)
+    ]
+
+
+def _queue_auto_trade_bar_sync(account, candidate_trade_ids):
+    if not candidate_trade_ids:
+        return 0
+    if not get_bool_app_setting(MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, False):
+        return 0
+
+    trades = (
+        Trade.query.filter(
+            Trade.id.in_(sorted(candidate_trade_ids)),
+            Trade.user_id == account.user_id,
+            Trade.trade_account_id == account.trade_account_id,
+            Trade.closed_at.isnot(None),
+            Trade.mt5_position.isnot(None),
+        )
+        .order_by(Trade.closed_at.desc(), Trade.id.desc())
+        .all()
+    )
+    trades_to_queue = _filter_trades_missing_complete_m5_bars(trades)
+    if not trades_to_queue:
+        return 0
+
+    from celery_workers.mt5_sync_tasks import fetch_trade_bars
+
+    queued = 0
+    for trade in trades_to_queue:
+        dispatch_celery_task(
+            fetch_trade_bars,
+            args=[account.id, trade.id],
+            log=current_app.logger,
+            label="mt5_auto_bar_sync_after_ingest",
+            extra={
+                "mt5_account_id": account.id,
+                "trade_id": trade.id,
+                "user_id": account.user_id,
+                "trade_account_id": account.trade_account_id,
+            },
+        )
+        queued += 1
+    return queued
 
 
 def _prefer_existing_mt5_trade(existing_trade, candidate_trade):
@@ -226,6 +329,7 @@ def sync_mt5_trades():
         skipped_count = 0
         error_count = invalid_rows
         timestamp_refresh_count = 0
+        auto_bar_sync_candidate_trade_ids = set()
 
         for row in normalized_rows:
             mt5_position = _normalize_mt5_position_key(row.get("mt5_position"))
@@ -275,6 +379,7 @@ def sync_mt5_trades():
                             existing_trade.opened_at = row_opened
                             existing_trade.closed_at = row_closed
                             timestamp_refresh_count += 1
+                            auto_bar_sync_candidate_trade_ids.add(existing_trade.id)
                     elif (
                         row_opened is None
                         and row_closed is not None
@@ -287,6 +392,7 @@ def sync_mt5_trades():
                         # closed_at during explicit recalibration.
                         existing_trade.closed_at = row_closed
                         timestamp_refresh_count += 1
+                        auto_bar_sync_candidate_trade_ids.add(existing_trade.id)
                     # Recalibration pass: never treat already-closed rows as generic skips.
                     continue
                 if row_opened is not None:
@@ -355,6 +461,7 @@ def sync_mt5_trades():
                     if row.get("system_trade_note"):
                         existing_trade.system_trade_note = row.get("system_trade_note")
                     updated_count += 1
+                    auto_bar_sync_candidate_trade_ids.add(existing_trade.id)
                     continue
 
             if existing_trade.closed_at is None and row.get("closed_at") is None:
@@ -442,7 +549,11 @@ def sync_mt5_trades():
                 if row.get("system_trade_note"):
                     existing_trade.system_trade_note = row.get("system_trade_note")
                 updated_count += 1
+                auto_bar_sync_candidate_trade_ids.add(existing_trade.id)
                 continue
+
+            if existing_trade.closed_at is not None and row.get("closed_at") is not None:
+                auto_bar_sync_candidate_trade_ids.add(existing_trade.id)
 
             skip_reason_counts["existing_already_closed_or_no_state_change"] += 1
             _append_skip_debug_row(
@@ -530,6 +641,23 @@ def sync_mt5_trades():
         if broker_account_size is not None:
             account.trade_account.account_size = broker_account_size
         db.session.commit()
+        for inserted_trade in insert_batch:
+            if inserted_trade.closed_at is not None and inserted_trade.mt5_position is not None:
+                auto_bar_sync_candidate_trade_ids.add(inserted_trade.id)
+        auto_bar_sync_queued = 0
+        if auto_bar_sync_candidate_trade_ids:
+            try:
+                auto_bar_sync_queued = _queue_auto_trade_bar_sync(
+                    account,
+                    auto_bar_sync_candidate_trade_ids,
+                )
+            except Exception as exc:
+                current_app.logger.warning(
+                    "MT5 automatic bar sync queue failed mt5_account_id=%s candidates=%s: %s",
+                    mt5_account_id,
+                    len(auto_bar_sync_candidate_trade_ids),
+                    sanitize_error_message(exc),
+                )
         current_app.logger.info(
             (
                 "MT5 internal sync summary mt5_account_id=%s user_id=%s trade_account_id=%s "
@@ -592,6 +720,8 @@ def sync_mt5_trades():
             "skipped": skipped_count,
             "errors": error_count,
         }
+        if auto_bar_sync_queued:
+            response_payload["auto_bar_sync_queued"] = auto_bar_sync_queued
         if timestamp_refresh_count:
             response_payload["timestamp_refreshes"] = timestamp_refresh_count
         if include_skip_reasons:

@@ -19,6 +19,7 @@ models_module = importlib.import_module("models")
 app = app_module.app
 db = models_module.db
 CFDSymbol = models_module.CFDSymbol
+AppSetting = models_module.AppSetting
 
 
 @pytest.fixture(scope="session")
@@ -66,3 +67,12 @@ def _reset_cfd_catalog_cache(test_app):
         CFDSymbol.query.delete()
         db.session.commit()
     trading.clear_cfd_symbol_cache()
+
+
+@pytest.fixture(autouse=True)
+def _reset_app_settings(test_app):
+    """Avoid feature-switch state leaking between tests."""
+    yield
+    with test_app.app_context():
+        AppSetting.query.delete()
+        db.session.commit()

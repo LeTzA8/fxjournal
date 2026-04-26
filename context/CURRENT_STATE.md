@@ -2,6 +2,11 @@
 
 Last Updated: 2026-04-26
 
+## Admin-gated public automatic MT5 chart bars (2026-04-26)
+
+- Added a root-admin MT5 panel switch for automatic chart-bar sync for public users. The setting is persisted in `app_settings` (`20260426_0054`) and defaults off.
+- When enabled, internal MT5 trade ingest queues `fetch_trade_bars` for closed MT5 trades touched by sync that are missing complete M5 coverage, including normal non-admin/public users. Manual Backfill Bars remains available and uses the priority queue; automatic dispatch follows the normal MT5 sync route. (`auth_account.py`, `routes/mt5_internal.py`, `templates/admin_signup_access.html`, `helpers/app_settings.py`, tests)
+
 ## Landing section order pass (2026-04-26)
 
 - Follow-up fix: collapsed the old hero viewport-height reserve after moving the proof out of the hero, removing the large gap between the hero CTA row and the heavy-lifting panel. The Weekly AI Review proof section now uses the same liquid-glass outer section treatment as the other landing panels. (`templates/landing.html`)

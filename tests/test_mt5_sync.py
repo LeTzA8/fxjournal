@@ -17,6 +17,7 @@ from celery_workers.mt5_sync_tasks import (
     sync_mt5_account,
 )
 from celery_app import celery
+from helpers.app_settings import MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, set_bool_app_setting
 from helpers.core import delete_users_with_related_data
 from helpers.utils import decrypt_password, encrypt_password
 from models import MT5Account, MT5BrokerServerOffset, Trade, TradeAccount, TradeBars, User, db
@@ -2523,6 +2524,89 @@ def test_internal_mt5_sync_updates_existing_open_trade_when_close_arrives(app_ct
     assert trade.closed_at is not None
     assert trade.trade_note is None
     assert trade.system_trade_note == "closed"
+
+
+def test_internal_mt5_sync_auto_queues_bars_for_public_user_when_enabled(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-auto-bars-public-user",
+        email="mt5-auto-bars-public@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="34343434",
+    )
+    set_bool_app_setting(MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, True)
+    db.session.commit()
+
+    queued = []
+
+    def _fake_dispatch(task, *, args=None, kwargs=None, queue=None, log=None, label=None, extra=None):
+        queued.append(
+            {
+                "task": getattr(task, "name", ""),
+                "args": args,
+                "queue": queue,
+                "label": label,
+                "extra": extra,
+            }
+        )
+        return SimpleNamespace(id=f"queued-{len(queued)}")
+
+    monkeypatch.setattr("routes.mt5_internal.dispatch_celery_task", _fake_dispatch)
+
+    response = client.post(
+        "/api/internal/mt5/sync",
+        json={
+            "mt5_account_id": mt5_account.id,
+            "trades": [
+                {
+                    "symbol": "EURUSD",
+                    "side": "buy",
+                    "entry_price": 1.085,
+                    "exit_price": 1.09,
+                    "lot_size": 0.01,
+                    "pnl": 48.5,
+                    "commission": -0.5,
+                    "swap": -0.1,
+                    "stop_loss": None,
+                    "take_profit": None,
+                    "opened_at": "2026-03-22T08:00:00+00:00",
+                    "closed_at": "2026-03-22T10:00:00+00:00",
+                    "mt5_position": 34343434,
+                    "trade_note": "closed",
+                    "is_open": False,
+                }
+            ],
+        },
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    trade = Trade.query.filter_by(
+        trade_account_id=trade_account.id,
+        mt5_position="34343434",
+    ).one()
+
+    assert response.status_code == 200
+    assert response.get_json()["auto_bar_sync_queued"] == 1
+    assert queued == [
+        {
+            "task": "celery_workers.mt5_sync_tasks.fetch_trade_bars",
+            "args": [mt5_account.id, trade.id],
+            "queue": None,
+            "label": "mt5_auto_bar_sync_after_ingest",
+            "extra": {
+                "mt5_account_id": mt5_account.id,
+                "trade_id": trade.id,
+                "user_id": user.id,
+                "trade_account_id": trade_account.id,
+            },
+        }
+    ]
 
 
 def test_internal_mt5_sync_invalidates_dashboard_caches_when_trade_changes(app_ctx, client, monkeypatch):

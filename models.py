@@ -31,6 +31,20 @@ def mask_mt5_account_number_for_cleanup(account_number):
     return f"cleanup-{suffix}"[:50]
 
 
+class AppSetting(db.Model):
+    __tablename__ = "app_settings"
+
+    key = db.Column(db.String(120), primary_key=True)
+    value = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
+    updated_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+
 class User(db.Model):
     __tablename__ = "users"
 

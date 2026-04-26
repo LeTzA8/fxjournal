@@ -42,6 +42,11 @@ from helpers.core import (
     sanitize_error_message,
 )
 from helpers.celery_dispatch import describe_celery_broker, dispatch_celery_task
+from helpers.app_settings import (
+    MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY,
+    get_bool_app_setting,
+    set_bool_app_setting,
+)
 from trading import (
     clear_cfd_symbol_cache,
     collect_active_cfd_alias_key_conflicts,
@@ -1566,6 +1571,10 @@ def register_public_auth_routes(
             "signup_code_mode": get_signup_code_mode(),
             "signup_code_query_param": get_signup_code_query_param(),
             "public_register_url": build_external_url(url_for("register")),
+            "mt5_auto_bar_sync_public_users": get_bool_app_setting(
+                MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY,
+                False,
+            ),
         }
 
     def render_admin_page(*, admin_user, section, **extra_context):
@@ -3261,6 +3270,48 @@ def register_public_auth_routes(
             mt5_batches=mt5_batches,
             mt5_batches_history=mt5_batches_history,
             active_mt5_batch=active_mt5_batch,
+        )
+
+    @app.route("/dashboard/admin/access/mt5/auto-bar-sync", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_auto_bar_sync():
+        admin_user = get_current_root_admin_user()
+        enabled = str(request.form.get("enabled") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        try:
+            set_bool_app_setting(
+                MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY,
+                enabled,
+                updated_by_user_id=admin_user.id if admin_user else None,
+            )
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            current_app.logger.warning(
+                "Admin MT5 auto bar sync setting update failed: %s",
+                sanitize_error_message(exc),
+            )
+            return build_admin_redirect(
+                "mt5",
+                "Could not update automatic chart-bar sync right now.",
+                "error",
+            )
+        current_app.logger.info(
+            "Admin set MT5 automatic bar sync for public users enabled=%s admin_user_id=%s",
+            enabled,
+            session.get("user_id"),
+        )
+        return build_admin_redirect(
+            "mt5",
+            (
+                "Automatic chart-bar sync for public users is now "
+                f"{'enabled' if enabled else 'disabled'}."
+            ),
+            "success",
         )
 
     @app.route("/dashboard/admin/users/<int:target_user_id>/view-dashboard")

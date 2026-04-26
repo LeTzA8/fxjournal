@@ -3,6 +3,7 @@ from itertools import count
 import pytest
 
 from models import User, db
+from helpers.app_settings import MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, get_bool_app_setting
 
 
 ALL_ADMIN_ROUTES = [
@@ -32,6 +33,7 @@ ALL_ADMIN_ROUTES = [
     ("post", "/dashboard/admin/access/mt5/1/sync"),
     ("post", "/dashboard/admin/access/mt5/recalibrate-trade-times"),
     ("post", "/dashboard/admin/access/mt5/clear-all-trade-bars"),
+    ("post", "/dashboard/admin/access/mt5/auto-bar-sync"),
     ("post", "/dashboard/admin/access/mt5/1/recalibrate-trade-times"),
     ("post", "/dashboard/admin/access/mt5/requests/1/approve"),
     ("post", "/dashboard/admin/access/mt5/requests/1/reject"),
@@ -64,6 +66,7 @@ ROOT_ONLY_ADMIN_ROUTES = [
     ("post", "/dashboard/admin/access/mt5/1/sync"),
     ("post", "/dashboard/admin/access/mt5/recalibrate-trade-times"),
     ("post", "/dashboard/admin/access/mt5/clear-all-trade-bars"),
+    ("post", "/dashboard/admin/access/mt5/auto-bar-sync"),
     ("post", "/dashboard/admin/access/mt5/1/recalibrate-trade-times"),
     ("post", "/dashboard/admin/access/mt5/requests/1/approve"),
     ("post", "/dashboard/admin/access/mt5/requests/1/reject"),
@@ -176,3 +179,23 @@ def test_admin_mt5_list_accepts_sort_query(app_ctx, client, monkeypatch):
     response = client.get("/dashboard/admin/access/mt5?sort=sync_asc")
     assert response.status_code == 200
     assert b"Sort accounts" in response.data
+
+
+def test_root_admin_can_toggle_mt5_auto_bar_sync(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "root-auto-bars@example.com")
+    root = _create_user(
+        username="root-auto-bars",
+        email="root-auto-bars@example.com",
+        is_admin=True,
+    )
+    db.session.commit()
+    _login_as(client, root)
+
+    response = client.post(
+        "/dashboard/admin/access/mt5/auto-bar-sync",
+        data={"enabled": "1"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert get_bool_app_setting(MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, False) is True

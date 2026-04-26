@@ -458,7 +458,7 @@
                         {{ mt5_accounts|length }} total{% if orphaned_mt5_count %}, {{ orphaned_mt5_count }} cleanup-only{% endif %}
                     </span>
                 </div>
-                <p class="helper-note">Users now submit the full MT5 sync setup form from the dashboard. Use this table to monitor queued accounts, trigger syncs, or clean up old records. Trade sync does not fetch chart bars — use <strong>Backfill Bars</strong> per account when you want OHLC data for user trade charts.</p>
+                <p class="helper-note">Users now submit the full MT5 sync setup form from the dashboard. Use this table to monitor queued accounts, trigger syncs, or clean up old records. Automatic chart-bar sync is root-admin gated; when disabled, use <strong>Backfill Bars</strong> per account when you want OHLC data for user trade charts.</p>
                 <form action="{{ url_for('admin_mt5_accounts') }}" method="get" class="admin-sort-form">
                     <label class="admin-sort-label soft" for="adminMt5Sort">Sort accounts</label>
                     <select id="adminMt5Sort" name="sort" class="admin-sort-select" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
@@ -475,6 +475,17 @@
                     </select>
                 </form>
                 <div class="mt5-global-actions">
+                    <form
+                        action="{{ url_for('admin_mt5_auto_bar_sync') }}"
+                        method="post"
+                        class="mt5-auto-bar-sync-form"
+                        onsubmit="return confirm('Update automatic chart-bar sync for public users? When enabled, MT5 ingest queues bar fetches for closed trades missing chart data.');"
+                    >
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="enabled" value="{{ '0' if mt5_auto_bar_sync_public_users else '1' }}">
+                        <span class="soft">Auto chart bars: <strong>{{ "On" if mt5_auto_bar_sync_public_users else "Off" }}</strong></span>
+                        <button type="submit" class="ghost-btn">{{ "Disable" if mt5_auto_bar_sync_public_users else "Enable" }} public auto-sync</button>
+                    </form>
                     <form
                         action="{{ url_for('admin_mt5_recalibrate_all_trade_times') }}"
                         method="post"
