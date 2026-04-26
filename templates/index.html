@@ -300,6 +300,166 @@
         color: var(--muted);
         line-height: 1.4;
     }
+
+    .latest-trade-panel {
+        display: grid;
+        gap: 0.72rem;
+        padding: 0.82rem;
+    }
+
+    .latest-trade-head {
+        margin-bottom: 0;
+        align-items: flex-start;
+    }
+
+    .latest-trade-primary {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+
+    .latest-trade-symbol {
+        display: grid;
+        gap: 0.12rem;
+        min-width: 0;
+    }
+
+    .latest-trade-symbol strong {
+        color: var(--ink);
+        font-size: 1.02rem;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
+    }
+
+    .latest-trade-kicker {
+        color: color-mix(in srgb, var(--accent) 56%, var(--ink));
+        font-size: 0.66rem;
+        font-weight: 900;
+        letter-spacing: 0.11em;
+        line-height: 1.1;
+        text-transform: uppercase;
+    }
+
+    .latest-trade-pnl {
+        flex: 0 0 auto;
+        font-size: 1rem;
+        font-weight: 900;
+        line-height: 1.15;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .latest-trade-pnl--good {
+        color: color-mix(in srgb, var(--good) 86%, var(--ink));
+    }
+
+    .latest-trade-pnl--bad {
+        color: color-mix(in srgb, var(--bad) 86%, var(--ink));
+    }
+
+    .latest-trade-pnl--flat {
+        color: color-mix(in srgb, var(--muted) 92%, var(--ink));
+    }
+
+    .latest-trade-meta {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.5rem;
+        margin: 0;
+        padding: 0;
+    }
+
+    .latest-trade-meta div {
+        min-width: 0;
+        padding-top: 0.48rem;
+        border-top: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+    }
+
+    .latest-trade-meta dt,
+    .latest-trade-meta dd {
+        margin: 0;
+    }
+
+    .latest-trade-meta dt {
+        color: color-mix(in srgb, var(--muted) 88%, var(--ink));
+        font-size: 0.62rem;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        line-height: 1.15;
+        text-transform: uppercase;
+    }
+
+    .latest-trade-meta dd {
+        margin-top: 0.18rem;
+        color: var(--ink);
+        font-size: 0.74rem;
+        font-weight: 700;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+    }
+
+    .latest-trade-chart-shell {
+        position: relative;
+        min-height: 214px;
+        height: clamp(214px, 20vw, 260px);
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        background:
+            linear-gradient(180deg, color-mix(in srgb, var(--surface) 98%, transparent), color-mix(in srgb, var(--surface) 94%, transparent));
+        overflow: hidden;
+    }
+
+    .latest-trade-chart-canvas {
+        width: 100%;
+        height: 100%;
+    }
+
+    .latest-trade-chart-status {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        margin: 0;
+        padding: 1rem;
+        text-align: center;
+        line-height: 1.45;
+    }
+
+    .latest-trade-chart-shell.is-ready .latest-trade-chart-status {
+        display: none;
+    }
+
+    .latest-trade-chart-shell--empty {
+        min-height: 150px;
+        height: 150px;
+        background:
+            repeating-linear-gradient(
+                135deg,
+                color-mix(in srgb, var(--surface) 96%, transparent) 0 10px,
+                color-mix(in srgb, var(--card) 96%, transparent) 10px 20px
+            );
+    }
+
+    .latest-trade-empty {
+        display: grid;
+        gap: 0.38rem;
+        align-content: center;
+        min-height: 190px;
+    }
+
+    .latest-trade-empty-title {
+        margin: 0;
+        color: var(--ink);
+        font-weight: 800;
+    }
+
+    .latest-trade-empty-copy {
+        margin: 0;
+        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
+        font-size: 0.82rem;
+        line-height: 1.45;
+    }
 </style>
 {% endblock %}
 
@@ -992,6 +1152,68 @@
                     {% endif %}
                 </article>
                 {% endif %}
+                {% endif %}
+                {% if not is_state_one %}
+                <article class="panel latest-trade-panel" aria-label="Latest closed trade snapshot">
+                    <div class="panel-head latest-trade-head">
+                        <div class="panel-title-wrap">
+                            <h2>Latest closed trade</h2>
+                            <p class="panel-title-hint soft">A quick price-and-result snapshot from this account.</p>
+                        </div>
+                        {% if latest_trade_snapshot and latest_trade_snapshot.detail_url %}
+                        <a href="{{ latest_trade_snapshot.detail_url }}" class="ghost-btn">Review</a>
+                        {% endif %}
+                    </div>
+                    {% if latest_trade_snapshot %}
+                    <div class="latest-trade-primary">
+                        <div class="latest-trade-symbol">
+                            <span class="latest-trade-kicker">{{ latest_trade_snapshot.side }}</span>
+                            <strong>{{ latest_trade_snapshot.symbol }}</strong>
+                        </div>
+                        <div class="latest-trade-pnl latest-trade-pnl--{{ latest_trade_snapshot.pnl_tone }}">
+                            {% if latest_trade_snapshot.pnl is not none %}
+                                {% if latest_trade_snapshot.pnl > 0 %}+{% endif %}${{ '%.2f'|format(latest_trade_snapshot.pnl) }}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </div>
+                    </div>
+                    <dl class="latest-trade-meta">
+                        <div>
+                            <dt>Closed</dt>
+                            <dd>{{ latest_trade_snapshot.closed_label }}</dd>
+                        </div>
+                        <div>
+                            <dt>Session</dt>
+                            <dd>{{ latest_trade_snapshot.session_label }}</dd>
+                        </div>
+                        <div>
+                            <dt>Duration</dt>
+                            <dd>{{ latest_trade_snapshot.duration_label }}</dd>
+                        </div>
+                    </dl>
+                    {% if latest_trade_snapshot.chart_data_url %}
+                    <div
+                        class="latest-trade-chart-shell"
+                        data-latest-trade-chart
+                        data-chart-url="{{ latest_trade_snapshot.chart_data_url }}"
+                    >
+                        <div class="latest-trade-chart-canvas" data-latest-trade-chart-canvas></div>
+                        <p class="latest-trade-chart-status soft" data-latest-trade-chart-status>Loading chart data&hellip;</p>
+                    </div>
+                    {% else %}
+                    <div class="latest-trade-chart-shell latest-trade-chart-shell--empty">
+                        <p class="latest-trade-chart-status soft">Price chart appears here for closed MT5 trades once bars are synced.</p>
+                    </div>
+                    {% endif %}
+                    {% else %}
+                    <div class="latest-trade-empty">
+                        <p class="latest-trade-empty-title">No closed trades yet.</p>
+                        <p class="latest-trade-empty-copy">Close or import a completed trade and this space will show the latest setup with its review link.</p>
+                        <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
+                    </div>
+                    {% endif %}
+                </article>
                 {% endif %}
             </div>
 
@@ -4217,6 +4439,19 @@
             max-width: 100%;
         }
 
+        .latest-trade-primary {
+            align-items: flex-start;
+            flex-direction: column;
+        }
+
+        .latest-trade-pnl {
+            text-align: left;
+        }
+
+        .latest-trade-meta {
+            grid-template-columns: 1fr;
+        }
+
         .journey-steps {
             grid-template-columns: 1fr;
         }
@@ -4248,6 +4483,10 @@
 <script src="{{ url_for('static', filename='js/trade_filters_shared.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard_page.js') }}"></script>
 <script src="{{ url_for('static', filename='js/mt5_request_form.js') }}"></script>
+{% if latest_trade_snapshot and latest_trade_snapshot.chart_data_url %}
+<script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<script src="{{ url_for('static', filename='js/dashboard_latest_trade_chart.js') }}"></script>
+{% endif %}
 {% if weekly_ai_review and weekly_ai_review.id is defined %}
 <script src="{{ url_for('static', filename='js/weekly_review_chat.js') }}"></script>
 {% endif %}

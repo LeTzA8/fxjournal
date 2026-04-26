@@ -2597,7 +2597,7 @@ def test_internal_mt5_sync_auto_queues_bars_for_public_user_when_enabled(app_ctx
         {
             "task": "celery_workers.mt5_sync_tasks.fetch_trade_bars",
             "args": [mt5_account.id, trade.id],
-            "queue": None,
+            "queue": "mt5_sync",
             "label": "mt5_auto_bar_sync_after_ingest",
             "extra": {
                 "mt5_account_id": mt5_account.id,
@@ -2605,6 +2605,63 @@ def test_internal_mt5_sync_auto_queues_bars_for_public_user_when_enabled(app_ctx
                 "user_id": user.id,
                 "trade_account_id": trade_account.id,
             },
+        }
+    ]
+
+
+def test_internal_mt5_sync_auto_queues_bars_for_existing_closed_trade_on_empty_beat(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-auto-bars-sweep-user",
+        email="mt5-auto-bars-sweep@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="56565656",
+    )
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.085,
+        exit_price=1.09,
+        lot_size=0.01,
+        pnl=48.5,
+        opened_at=datetime(2026, 3, 20, 8, 0, 0),
+        closed_at=datetime(2026, 3, 20, 10, 0, 0),
+        mt5_position="56565656",
+    )
+    db.session.add(trade)
+    set_bool_app_setting(MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, True)
+    db.session.commit()
+
+    queued = []
+
+    def _fake_dispatch(task, *, args=None, kwargs=None, queue=None, log=None, label=None, extra=None):
+        queued.append({"args": args, "queue": queue, "label": label})
+        return SimpleNamespace(id=f"queued-{len(queued)}")
+
+    monkeypatch.setattr("routes.mt5_internal.dispatch_celery_task", _fake_dispatch)
+    monkeypatch.setattr("routes.mt5_internal.claim_lock", lambda *args, **kwargs: True)
+
+    response = client.post(
+        "/api/internal/mt5/sync",
+        json={"mt5_account_id": mt5_account.id, "trades": []},
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["auto_bar_sync_queued"] == 1
+    assert queued == [
+        {
+            "args": [mt5_account.id, trade.id],
+            "queue": "mt5_sync",
+            "label": "mt5_auto_bar_sync_after_ingest",
         }
     ]
 

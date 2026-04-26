@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import func
 
-from celery_workers.cache import CacheUnavailableError, invalidate
+from celery_workers.cache import CacheUnavailableError, claim_lock, invalidate
 from helpers.app_settings import MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, get_bool_app_setting
 from helpers.celery_dispatch import dispatch_celery_task
 from helpers.core import (
@@ -113,15 +113,28 @@ def _filter_trades_missing_complete_m5_bars(trades):
     ]
 
 
-def _queue_auto_trade_bar_sync(account, candidate_trade_ids):
-    if not candidate_trade_ids:
-        return 0
+def _auto_bar_sync_lock_key(trade_id):
+    return f"mt5_auto_bar_sync_trade:{trade_id}"
+
+
+def _claim_auto_bar_sync_dispatch(trade_id):
+    try:
+        return claim_lock(_auto_bar_sync_lock_key(trade_id), secrets.token_hex(12), ttl=30 * 60)
+    except CacheUnavailableError as exc:
+        current_app.logger.warning(
+            "MT5 automatic bar sync dispatch lock unavailable trade_id=%s: %s",
+            trade_id,
+            exc,
+        )
+        return True
+
+
+def _queue_auto_trade_bar_sync(account):
     if not get_bool_app_setting(MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, False):
         return 0
 
     trades = (
         Trade.query.filter(
-            Trade.id.in_(sorted(candidate_trade_ids)),
             Trade.user_id == account.user_id,
             Trade.trade_account_id == account.trade_account_id,
             Trade.closed_at.isnot(None),
@@ -138,9 +151,12 @@ def _queue_auto_trade_bar_sync(account, candidate_trade_ids):
 
     queued = 0
     for trade in trades_to_queue:
+        if not _claim_auto_bar_sync_dispatch(trade.id):
+            continue
         dispatch_celery_task(
             fetch_trade_bars,
             args=[account.id, trade.id],
+            queue="mt5_sync",
             log=current_app.logger,
             label="mt5_auto_bar_sync_after_ingest",
             extra={
@@ -645,19 +661,15 @@ def sync_mt5_trades():
             if inserted_trade.closed_at is not None and inserted_trade.mt5_position is not None:
                 auto_bar_sync_candidate_trade_ids.add(inserted_trade.id)
         auto_bar_sync_queued = 0
-        if auto_bar_sync_candidate_trade_ids:
-            try:
-                auto_bar_sync_queued = _queue_auto_trade_bar_sync(
-                    account,
-                    auto_bar_sync_candidate_trade_ids,
-                )
-            except Exception as exc:
-                current_app.logger.warning(
-                    "MT5 automatic bar sync queue failed mt5_account_id=%s candidates=%s: %s",
-                    mt5_account_id,
-                    len(auto_bar_sync_candidate_trade_ids),
-                    sanitize_error_message(exc),
-                )
+        try:
+            auto_bar_sync_queued = _queue_auto_trade_bar_sync(account)
+        except Exception as exc:
+            current_app.logger.warning(
+                "MT5 automatic bar sync queue failed mt5_account_id=%s touched_candidates=%s: %s",
+                mt5_account_id,
+                len(auto_bar_sync_candidate_trade_ids),
+                sanitize_error_message(exc),
+            )
         current_app.logger.info(
             (
                 "MT5 internal sync summary mt5_account_id=%s user_id=%s trade_account_id=%s "
@@ -712,8 +724,6 @@ def sync_mt5_trades():
                         exc,
                     )
 
-        # Chart OHLC bars are intentionally not queued from MT5 trade sync — admins
-        # use "Backfill Bars" on the MT5 admin row to dispatch fetch_trade_bars tasks.
         response_payload = {
             "saved": saved_count,
             "updated": updated_count,

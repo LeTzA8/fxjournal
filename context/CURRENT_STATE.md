@@ -2,10 +2,15 @@
 
 Last Updated: 2026-04-26
 
+## Dashboard latest closed trade snapshot (2026-04-26)
+
+- Dashboard left rail now fills the post-MT5/trends space with a "Latest closed trade" snapshot for the active account. It shows symbol/side, realized PnL, closed time, session, duration, and a Review link, with an empty state until the account has a closed trade.
+- Closed MT5 trades with synced bars render a compact Lightweight Charts candlestick view using the existing `/api/trades/<pubkey>/chart-data` endpoint and entry/exit/SL/TP markers; manual trades or MT5 trades without bars fall back to a status message. (`routes/dashboard.py`, `templates/index.html`, `static/js/dashboard_latest_trade_chart.js`)
+
 ## Admin-gated public automatic MT5 chart bars (2026-04-26)
 
 - Added a root-admin MT5 panel switch for automatic chart-bar sync for public users. The setting is persisted in `app_settings` (`20260426_0054`) and defaults off.
-- When enabled, internal MT5 trade ingest queues `fetch_trade_bars` for closed MT5 trades touched by sync that are missing complete M5 coverage, including normal non-admin/public users. Manual Backfill Bars remains available and uses the priority queue; automatic dispatch follows the normal MT5 sync route. (`auth_account.py`, `routes/mt5_internal.py`, `templates/admin_signup_access.html`, `helpers/app_settings.py`, tests)
+- When enabled, every successful internal MT5 trade ingest scans that MT5 account's closed MT5 trades for missing complete M5 coverage and queues `fetch_trade_bars`, including normal non-admin/public users and older closed trades not present in the current rolling broker payload. Automatic dispatch is explicitly routed to `mt5_sync` and guarded by a short Redis dispatch lock per trade to avoid requeue spam. The VM sync result table now shows `Auto Bar Tasks`; manual Backfill Bars remains available and uses the priority queue. (`auth_account.py`, `routes/mt5_internal.py`, `celery_workers/mt5_sync_tasks.py`, `templates/admin_signup_access.html`, `helpers/app_settings.py`, tests)
 
 ## Landing section order pass (2026-04-26)
 

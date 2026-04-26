@@ -1048,6 +1048,53 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
     }
 
 
+def _build_latest_trade_snapshot(user_trades, timezone_name):
+    latest_trade = None
+    for trade in user_trades or []:
+        if getattr(trade, "closed_at", None) is None:
+            continue
+        if latest_trade is None or trade.closed_at > latest_trade.closed_at:
+            latest_trade = trade
+
+    if latest_trade is None:
+        return None
+
+    opened_local = to_display_timezone(latest_trade.opened_at, timezone_name)
+    closed_local = to_display_timezone(latest_trade.closed_at, timezone_name)
+    pnl_value = resolve_net_pnl(latest_trade)
+    duration_label = "-"
+    if latest_trade.opened_at is not None and latest_trade.closed_at is not None:
+        duration_label = format_duration_minutes(
+            (latest_trade.closed_at - latest_trade.opened_at).total_seconds() / 60.0
+        )
+
+    pnl_tone = "flat"
+    if pnl_value is not None:
+        if pnl_value > 0:
+            pnl_tone = "good"
+        elif pnl_value < 0:
+            pnl_tone = "bad"
+
+    trade_pubkey = getattr(latest_trade, "pubkey", None) or ""
+    chart_data_url = ""
+    if trade_pubkey and getattr(latest_trade, "mt5_position", None) and latest_trade.closed_at is not None:
+        chart_data_url = url_for("trades.trade_chart_data", trade_pubkey=trade_pubkey)
+
+    return {
+        "trade_pubkey": trade_pubkey,
+        "detail_url": url_for("trades.trade_detail", trade_pubkey=trade_pubkey) if trade_pubkey else "",
+        "chart_data_url": chart_data_url,
+        "symbol": format_trade_symbol(latest_trade),
+        "side": (latest_trade.side or "-").upper(),
+        "pnl": pnl_value,
+        "pnl_tone": pnl_tone,
+        "opened_label": opened_local.strftime("%d %b %Y %H:%M") if opened_local else "-",
+        "closed_label": closed_local.strftime("%d %b %Y %H:%M") if closed_local else "-",
+        "session_label": classify_trading_session(latest_trade.opened_at) if latest_trade.opened_at else "-",
+        "duration_label": duration_label,
+    }
+
+
 def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_access_state):
     mt5_cfd_accounts = [
         account
@@ -1326,6 +1373,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
 
     performance_trends = _build_performance_trends(closed_records, now_local)
     ei_trend_data = _build_ei_trend(user_id, active_trade_account_id)
+    latest_trade_snapshot = _build_latest_trade_snapshot(user_trades, timezone_name)
 
     return render_template(
         "index.html",
@@ -1347,6 +1395,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         week_on_week_insight=week_on_week_insight,
         performance_trends=performance_trends,
         ei_trend=ei_trend_data,
+        latest_trade_snapshot=latest_trade_snapshot,
         chart_points=chart_points,
         weekly_ai_review=weekly_ai_state["weekly_ai_review"],
         weekly_ai_review_text=weekly_ai_review_text,
