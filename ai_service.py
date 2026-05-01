@@ -114,11 +114,12 @@ Rules for refs:
 - Use only review_ref values present in the TRADES section.
 - Prefer 1-2 refs per item, maximum 3.
 - Use bundle refs like B1 for bundled trade ideas and trade refs like T1 for solo trade ideas.
-- If an item is aggregate and not tied to one clear trade idea, refs may be an empty list.
-- improvement.refs and strength.refs must always be an empty list because they are generalized guidance, not cited trade callouts.
-- If summary.text or a takeaway mentions a specific symbol or bundled trade idea, include the matching review_ref in that item's refs.
-- Do not mention a specific trade idea in summary.text or a takeaway and then leave its refs empty.
+- improvement.refs and strength.refs must always be an empty list.
 - experiment.refs is optional and may be empty when the experiment is generalized.
+- The UI appends ref labels directly after the text. A ref that does not match a symbol explicitly named in the text will appear as an orphaned label. Only add a ref when the text contains the exact symbol name or bundle description that the ref represents.
+- If summary.text or a takeaway names a specific symbol (e.g. "GBPJPY") or bundle, include that trade's review_ref. Do not leave the refs empty in that case.
+- If summary.text or a takeaway makes an aggregate or pattern observation ("trades that followed losses", "two London entries", "the session pattern") without naming a specific symbol, refs must be empty — not filled with implied trades.
+- Never add a ref for a trade the text does not explicitly name. One named trade = one ref. Two named trades = two refs. Pattern observation = zero refs.
 
 Rules for text fields:
 - summary.text must stay as the single opening paragraph.
