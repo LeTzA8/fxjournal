@@ -927,56 +927,52 @@ def test_build_dashboard_advice_messages_appends_profile_adjustments(app_ctx):
 
 
 def test_dashboard_prompt_uses_exit_price_language():
-    """Pin the structural contract of the dashboard prompt.
+    """Pin the behavioral contract of the dashboard prompt.
 
-    The prompt was rewritten to offload deterministic logic to code and to
-    enforce a strict risk-priority rule plus an insight mandate. This test
-    locks in the spine (steps + output format + forbidden legacy framings)
-    plus the new precomputed-signal references the prompt now consumes.
+    The prompt was rewritten in 2026-05 for better flow, baking the rules
+    into structure rather than a numbered list. This test locks in the key
+    behavioral guarantees: evidence hierarchy, risk-priority rule, insight
+    mandate, output format, strategy-label gate, small-sample compression,
+    and hard prohibitions.
     """
     prompt_text = load_prompt_text("dashboard_advice.txt")["prompt_text"]
 
-    # Trade fields surfaced for the model
+    # Trade fields — must all be present and none renamed
     assert "close_price" not in prompt_text
-    assert "entry_price, exit_price, stop_loss, take_profit" in prompt_text
-    assert "strategy_name, strategy_version, strategy_description" in prompt_text
-    assert "entry_session, exit_session, session, duration_minutes" in prompt_text
-    assert "planned_risk_dollars, trade_risk_pct" in prompt_text
-    assert "same_trade_idea_reentry" in prompt_text
-    assert "is_potential_revenge" in prompt_text
-    assert "is_potential_reactive" in prompt_text
-    assert "is_revenge" in prompt_text
-    assert "planned_rr" in prompt_text
-    assert "realized_rr" in prompt_text
-    assert "tp_capture_pct" in prompt_text
-    assert "closed_before_tp" in prompt_text
-    assert "market_context" in prompt_text
-    assert "stop_management" in prompt_text
-    assert "split_group_size" in prompt_text
-    assert "review_ref" in prompt_text
+    for field in [
+        "entry_price", "exit_price", "stop_loss", "take_profit",
+        "strategy_name", "strategy_version", "strategy_description",
+        "entry_session", "exit_session", "session", "duration_minutes",
+        "planned_risk_dollars", "trade_risk_pct",
+        "same_trade_idea_reentry", "is_potential_revenge",
+        "is_potential_reactive", "is_revenge", "planned_rr", "realized_rr",
+        "tp_capture_pct", "closed_before_tp", "market_context",
+        "stop_management", "split_group_size", "review_ref",
+    ]:
+        assert field in prompt_text, f"Missing trade field: {field}"
 
-    # Step spine preserved
-    assert "INTERNAL WORKFLOW" in prompt_text
-    assert "STEP 1 - INTERPRET THE DATA CORRECTLY" in prompt_text
-    assert "STEP 2 - JUDGE DATA CONFIDENCE" in prompt_text
-    assert "STEP 3 - JUDGE PERFORMANCE SHAPE" in prompt_text
-    assert "STEP 4 - JUDGE BEHAVIOUR PRESSURE" in prompt_text
-    assert "STEP 5 - CHOOSE TONE MODE" in prompt_text
-    assert "STEP 6 - CHOOSE REVIEW MODE" in prompt_text
-    assert "STEP 7 - SELECT THE BEST 1-4 INSIGHTS" in prompt_text
-    assert "STEP 8 - WRITE THE RESPONSE" in prompt_text
-    assert "affirm_and_refine" in prompt_text
-    assert "balanced_review" in prompt_text
-    assert "corrective_but_encouraging" in prompt_text
-    assert "encouraging_with_limited_evidence" in prompt_text
+    # Structural sections — new architecture
+    assert "EVIDENCE HIERARCHY" in prompt_text
+    assert "READING THE DATA" in prompt_text
+    assert "HOW TO THINK" in prompt_text
+    assert "HOW TO WRITE" in prompt_text
+    assert "OUTPUT FORMAT" in prompt_text
+    assert "HARD PROHIBITIONS" in prompt_text
+    assert "SELF-CHECK BEFORE EMITTING" in prompt_text
+
+    # Tone modes
+    assert "stressed:" in prompt_text
+    assert "calm_sharp:" in prompt_text
+    assert "neutral_no_checkin:" in prompt_text
 
     # Output format spine
-    assert "OUTPUT FORMAT" in prompt_text
     assert "Key Takeaways" in prompt_text
-    assert 'One line prefixed exactly with "Improve this week:"' in prompt_text
-    assert 'One line prefixed exactly with "You\'re already strong at:"' in prompt_text
+    assert "Improve this week:" in prompt_text
+    assert "You're already strong at:" in prompt_text
+    assert "1-3 bullets by default" in prompt_text
+    assert "ceiling" in prompt_text.lower()
 
-    # New precomputed-signal references
+    # Precomputed signal references
     assert "risk_authority" in prompt_text
     assert "post_loss_response" in prompt_text
     assert "single_trade_dominance" in prompt_text
@@ -984,75 +980,47 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "session_concentration" in prompt_text
     assert "revenge_evidence" in prompt_text
     assert "SURFACE_FACTS" in prompt_text
-    assert "CONFIDENCE_ENVELOPE" in prompt_text or "confidence_envelope" in prompt_text
+    assert "confidence_envelope" in prompt_text.lower()
 
-    # Risk priority rule (the headline behavioural change)
-    assert "Risk authority order" in prompt_text
-    assert "Lot size is descriptive" in prompt_text
+    # Risk priority rule — non-obvious domain rule, must be explicit
     assert "risk_authority.stable" in prompt_text
-
-    # HARD RULES block — the new top-of-prompt enforcement layer
-    assert "HARD RULES" in prompt_text
-    assert "R1. LOT SIZE IS NOT RISK." in prompt_text
-    assert "R2. NO RECAP TAKEAWAYS." in prompt_text
-    assert "R3. NO TEMPLATES IN OUTPUT." in prompt_text
-    assert "R9. DIAGNOSIS BEFORE ADVICE." in prompt_text
-    assert "R4. STRENGTH OVER COUNT." in prompt_text
     assert "risk_judgment_allowed" in prompt_text
-    assert (
-        '"Risk cannot be determined reliably from available data."'
-        in prompt_text
-    )
+    assert "Risk cannot be determined reliably" in prompt_text
+    assert "Lot size is not risk" in prompt_text
 
-    # SELF-CHECK gate exists and references the rules by id
-    assert "SELF-CHECK BEFORE EMITTING" in prompt_text
+    # Strategy label hierarchy — must explicitly gate on coverage
+    assert "strategy_coverage_pct" in prompt_text
+    assert "TIER" in prompt_text  # evidence tiers
 
-    # Insight mandate is now "every", not "at least one"
-    assert "EVERY Key Takeaway" in prompt_text or "every Key Takeaway" in prompt_text
+    # Small-sample compression — must be explicit
+    assert "closed_trades < 5" in prompt_text
+
+    # Bar-derived market context fields — new additions
+    assert "large_candle_before_entry" in prompt_text
+    assert "post_exit_direction" in prompt_text
+    assert "entry_in_session_overlap" in prompt_text
+    assert "stop_loss_protects_profit" in prompt_text
+
+    # Hard prohibitions present (listed as forbidden phrases)
+    assert "increase lot size after losses" in prompt_text
+    assert "lot size escalation" in prompt_text
+
+    # Plain language anchor
+    assert "jumped back in" in prompt_text
+
+    # Insight mandate
+    assert "Each Key Takeaway" in prompt_text or "every Key Takeaway" in prompt_text.lower()
     assert "at least one Key Takeaway" not in prompt_text
 
-    # Bullet ceiling reframing
-    assert "1-3 bullets by default" in prompt_text
-    assert "CEILING, not a quota" in prompt_text or "ceiling, not a quota" in prompt_text
+    # Format examples preserved
+    assert "GOOD" in prompt_text
+    assert "BAD" in prompt_text
 
-    # Voice / interpretation tension (replaces the long tone+plain-english blocks)
-    assert "VOICE" in prompt_text
-    assert "INTERPRETATION TENSION" in prompt_text
-    assert "DIAGNOSIS LENS" in prompt_text
-    assert "likely misunderstanding" in prompt_text
-    assert "STRATEGY / PLAYBOOK" in prompt_text
-    assert "MARKET CONTEXT" in prompt_text
-    assert "post_exit_tp_reached means stored bars show price reached the take-profit" in prompt_text
-    assert "stop_management.stop_loss_protects_profit" in prompt_text
-    assert "jumped back in" in prompt_text  # keep at least one plain-english anchor
-
-    # Privacy and exact numbers (kept; section was renamed)
-    assert "Use exact user numbers when they materially support a point." in prompt_text
-
-    # Tone modes still present
-    assert "stressed:" in prompt_text
-    assert "calm_sharp:" in prompt_text
-    assert "neutral_no_checkin:" in prompt_text
-
-    # Examples kept
-    assert "GOOD FORMAT EXAMPLE" in prompt_text
-    assert "BAD FORMAT EXAMPLES" in prompt_text
-    assert "One split-entry cluster should be treated as one setup, not several" in prompt_text
-
-    # Removed verbose legacy framings (signal: rewrite actually compressed)
+    # Removed verbose legacy framings
     assert "Do not use paragraph prose anywhere in the response." not in prompt_text
     assert "Keep the response between 100 and 150 words." not in prompt_text
-    assert "Use only these optional plain-text section labels in the response:" not in prompt_text
-    # The 3x outlier_size threshold prose was moved to code
     assert "more than 3x the cohort median" not in prompt_text
-
-    # Conflicting permissions that previously undercut R1 are gone
     assert "lot size when it helps" not in prompt_text
-    assert "before lot size" not in prompt_text
-    # The DRAWDOWN bucket no longer contains the broken template phrasing
-    # that produced "risked less and loss." Curly-brace tokens may still
-    # appear inside R3 (where they are forbidden by name), so check the
-    # specific broken template phrasing instead.
     assert "risked {risk_change} and" not in prompt_text
     assert "{next_outcome}." not in prompt_text
 
