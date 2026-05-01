@@ -25,7 +25,6 @@ from celery.signals import (
     worker_ready,
     worker_shutdown,
 )
-from dotenv import load_dotenv
 
 from celery_workers.worker_monitor import (
     install_celery_connection_logging,
@@ -36,26 +35,7 @@ from celery_workers.worker_monitor import (
     record_worker_ready,
     record_worker_shutdown,
 )
-
-
-def _load_runtime_env():
-    configured_env_file = os.getenv("FXJ_ENV_FILE", "").strip()
-    env_candidates = []
-    if configured_env_file:
-        env_candidates.append(configured_env_file)
-    env_candidates.extend([
-        ".env",
-        "FXJournal Main.env",
-        "fxjournal.env",
-    ])
-
-    seen = set()
-    for candidate in env_candidates:
-        candidate = str(candidate or "").strip()
-        if not candidate or candidate in seen:
-            continue
-        seen.add(candidate)
-        load_dotenv(candidate, override=False)
+from helpers.runtime_env import load_runtime_env as _load_runtime_env
 
 
 _load_runtime_env()

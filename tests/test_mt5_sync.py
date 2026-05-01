@@ -2527,6 +2527,15 @@ def test_fetch_trade_bars_batch_posts_one_bulk_payload_and_skips_existing(app_ct
                 low=0.650,
                 close=0.652,
             ),
+            TradeBars(
+                trade_id=skipped_trade.id,
+                timeframe="M5",
+                bar_time=int(datetime(2026, 4, 11, 2, 0, 0, tzinfo=timezone.utc).timestamp()),
+                open=0.652,
+                high=0.653,
+                low=0.650,
+                close=0.651,
+            ),
         ]
     )
     db.session.commit()
@@ -2853,6 +2862,29 @@ def test_internal_mt5_sync_auto_queues_bars_for_existing_closed_trade_on_empty_b
     )
     db.session.add(trade)
     set_bool_app_setting(MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, True)
+    db.session.commit()
+    db.session.add_all(
+        [
+            TradeBars(
+                trade_id=trade.id,
+                timeframe="M5",
+                bar_time=int(datetime(2026, 3, 20, 8, 0, 0, tzinfo=timezone.utc).timestamp()),
+                open=1.085,
+                high=1.09,
+                low=1.08,
+                close=1.087,
+            ),
+            TradeBars(
+                trade_id=trade.id,
+                timeframe="M5",
+                bar_time=int(datetime(2026, 3, 20, 11, 0, 0, tzinfo=timezone.utc).timestamp()),
+                open=1.087,
+                high=1.091,
+                low=1.086,
+                close=1.09,
+            ),
+        ]
+    )
     db.session.commit()
 
     queued = []
@@ -3369,6 +3401,18 @@ def test_admin_mt5_backfill_bars_queues_only_missing_m5_timeframes(app_ctx, clie
             tick_volume=12,
         )
     )
+    db.session.add(
+        TradeBars(
+            trade_id=first_trade.id,
+            timeframe="M5",
+            bar_time=int(datetime(2026, 4, 10, 22, 0, 0, tzinfo=timezone.utc).timestamp()),
+            open=1.101,
+            high=1.11,
+            low=1.1,
+            close=1.102,
+            tick_volume=12,
+        )
+    )
     db.session.commit()
 
     queued = []
@@ -3449,6 +3493,16 @@ def test_admin_mt5_backfill_bars_requeues_trade_with_incomplete_recent_m5_covera
                 high=1.11,
                 low=1.1,
                 close=1.101,
+                tick_volume=12,
+            ),
+            TradeBars(
+                trade_id=older_trade.id,
+                timeframe="M5",
+                bar_time=int(datetime(2026, 4, 1, 22, 0, 0, tzinfo=timezone.utc).timestamp()),
+                open=1.101,
+                high=1.11,
+                low=1.1,
+                close=1.102,
                 tick_volume=12,
             ),
             TradeBars(

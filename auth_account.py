@@ -42,6 +42,7 @@ from helpers.core import (
     sanitize_error_message,
 )
 from helpers.celery_dispatch import describe_celery_broker, dispatch_celery_task
+from helpers.trade_bars import has_complete_m5_chart_coverage
 from helpers.app_settings import (
     MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY,
     get_bool_app_setting,
@@ -4161,25 +4162,18 @@ def register_public_auth_routes(
                 }
                 for trade_id, bar_count, min_bar_time, max_bar_time in bar_coverage_rows
             }
-            bar_tolerance_seconds = 15 * 60
 
             def _trade_has_complete_m5_coverage(trade):
                 coverage = bar_coverage_by_trade_id.get(trade.id)
-                if not coverage or coverage["bar_count"] <= 0:
+                if not coverage:
                     return False
-                if trade.opened_at is None or trade.closed_at is None:
-                    return False
-                opened_at_epoch = int(trade.opened_at.replace(tzinfo=timezone.utc).timestamp())
-                closed_at_epoch = int(trade.closed_at.replace(tzinfo=timezone.utc).timestamp())
-                min_bar_time = coverage["min_bar_time"]
-                max_bar_time = coverage["max_bar_time"]
-                if min_bar_time is None or max_bar_time is None:
-                    return False
-                if int(min_bar_time) > opened_at_epoch + bar_tolerance_seconds:
-                    return False
-                if int(max_bar_time) < closed_at_epoch - bar_tolerance_seconds:
-                    return False
-                return True
+                return has_complete_m5_chart_coverage(
+                    opened_at=trade.opened_at,
+                    closed_at=trade.closed_at,
+                    bar_count=coverage["bar_count"],
+                    min_bar_time=coverage["min_bar_time"],
+                    max_bar_time=coverage["max_bar_time"],
+                )
 
             already_backfilled_trade_ids = {
                 trade.id for trade in closed_trades if _trade_has_complete_m5_coverage(trade)

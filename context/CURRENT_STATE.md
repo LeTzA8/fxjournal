@@ -1,6 +1,39 @@
 # CURRENT_STATE
 
-Last Updated: 2026-04-27
+Last Updated: 2026-05-02
+
+## Extended bar-derived trade context (2026-05-02)
+
+- Weekly AI payloads now include 9 additional bar-derived context fields per trade (no external dependencies): `entry_active_sessions` (list of sessions active at entry — DST-aware via pytz; London/NY overlap shifts ~1 hour between winter/summer), `entry_in_session_overlap` (true when 2+ sessions active), `large_candle_before_entry` (true if any of the 3 M5 bars before entry had range >2x prior median — flags possible chase entries), `entry_bar_body_ratio` (body/range ratio of entry candle, 0–1), `entry_bar_closes_in_trade_direction` (entry candle closed with or against trade direction), `pre_entry_bars_in_trade_direction` (consecutive same-direction M5 bars before entry — momentum signal), `entry_tick_volume_vs_median` (entry bar tick volume relative to prior median), `post_exit_price_move` (raw price change from exit in first 12 post-exit bars), `post_exit_direction` ("continued"/"reversed"/"flat" — whether price moved favorably or against trade direction after exit). `_bar_dict` now includes `tick_volume` from stored rows. Aggregate breakdown in weekly payload adds `large_candle_entry_count`, `entry_bar_against_direction_count`, `post_exit_continued_count`, `post_exit_reversed_count`. Prompt updated with interpretation guardrails for each new field. (`helpers/ai_market_context.py`, `ai_service.py`, `prompts/dashboard_advice.txt`, tests)
+
+## Weekly AI bar-derived market context and stop-management clues (2026-05-02)
+
+- Weekly AI payloads now enrich each reviewed trade with stored M5 bar context when available: in-trade/post-exit bar counts, MFE/MAE price movement, optional MFE/MAE in R when the recorded SL is still on the initial-risk side, entry candle range vs recent prior bars, entry location within the prior range, and whether stored post-exit bars reached TP/SL after the recorded exit.
+- Weekly AI payloads also include cautious stop-management clues from the stored SL and system/import note text. A final SL beyond breakeven/profit is marked as a protective stored stop, and system notes such as breakeven/trailing/moved-stop language raise confidence; the prompt forbids claiming the user moved/trailing-stopped unless evidence supports it. Current-week breakdowns summarize bar coverage, post-exit TP reaches, protective stops, and trailing/breakeven-stop clues. (`helpers/ai_market_context.py`, `ai_service.py`, `prompts/dashboard_advice.txt`, tests)
+
+## MT5 chart-bar post-close completion check (2026-05-01)
+
+- MT5 trade-bar coverage checks now treat stored M5 bars as incomplete until they cover the intended chart tail: from around entry through `min(closed_at + 144 M5 bars, now)`, with the existing 15-minute tolerance. This means automatic MT5 sync, worker-side skip logic, and admin backfill continue refetching recently closed/partially backfilled trades until the 12-hour post-close context is present instead of stopping as soon as bars reach the close time. Shared constants/helper live in `helpers/trade_bars.py`; bar fetch still stores M5 only and derives M15 in the chart API. (`helpers/trade_bars.py`, `routes/mt5_internal.py`, `celery_workers/mt5_sync_tasks.py`, `auth_account.py`, tests)
+
+## Weekly AI diagnosis pass and strategy context (2026-05-01)
+
+- Weekly dashboard AI pass 1 is now framed as a coaching diagnosis rather than a report: the prompt tells the model to connect evidence to a decision habit, compare possible diagnoses internally, identify likely user misunderstanding, and produce a next behavior rather than category advice. Strategy/playbook context has explicit guardrails: use it as intent context, not proof of plan-following or setup quality.
+- Weekly AI payloads now include attached strategy/playbook context per trade (`strategy_name`, `strategy_version`, `strategy_description`) and a current-week strategy breakdown/coverage summary. Trade payload queries eager-load strategy relationships to avoid N+1 access during review generation. (`ai_service.py`, `prompts/dashboard_advice.txt`, tests)
+
+## Weekly AI plain-English rewrite guardrails (2026-05-01)
+
+- Weekly dashboard AI pass 2 is now framed as a plain-English readability pass rather than a shortening/compression pass. The rewrite prompt explicitly says simpler does not mean shorter, asks for complete natural sentences, bans awkward compressed labels such as "London/New York idea", and forbids removing/renaming/reordering trade refs or existing trade labels.
+- The pass-1 dashboard advice prompt now also nudges toward globally understandable English and avoids compressed trade/session/date labels before the rewrite pass runs.
+- Dashboard rendering now carries original structured summary/takeaway citations onto pass-2 text, preserving trade hyperlinks even when the rewrite omits visible `T1`/`B1` refs or uses more generic wording. If pass 2 changes the takeaway count, the display falls back to the original structured review to avoid misattached evidence. (`prompts/dashboard_advice.txt`, `prompts/dashboard_advice_rewrite.txt`, `routes/dashboard.py`, tests)
+
+## Landing comparison simplification (2026-05-01)
+
+- Public landing comparison/positioning section now uses a shorter "lesson, not another platform" message, a tighter trial card, and simplified competitor cards with one positioning sentence plus two tags instead of repeated multi-row feature labels. Follow-up copy sharpens the moat around "All the review. None of the overhead." while positioning competitor options as heavier, higher-friction workflows without changing pricing claims. Existing pricing/date caveat remains, but the explanatory footnote was shortened. No backend behavior or CTA routes changed. (`templates/landing.html`)
+
+## Runtime env loading and AI model normalization (2026-05-01)
+
+- Flask web startup now uses the same runtime env-file loading path as Celery: `FXJ_ENV_FILE` first, then `.env`, `FXJournal Main.env`, and `fxjournal.env`, without overriding already-set environment variables. This keeps AI routes in the web process aligned with worker-side config.
+- `AI_MODEL` values are normalized before OpenAI requests: surrounding matching quotes are stripped and internal whitespace is converted to hyphens, so accidental values like `gpt-5.4 mini` resolve to `gpt-5.4-mini`. Explicit model IDs are otherwise left unvalidated to avoid stale allowlists. OpenAI request start/failure logs now include the resolved model string so deployment-service logs can confirm what the app actually sent. (`helpers/runtime_env.py`, `app.py`, `celery_app.py`, `ai_service.py`, tests)
 
 ## Dashboard latest closed trade snapshot (2026-04-26)
 
@@ -48,6 +81,8 @@ Last Updated: 2026-04-27
 
 ## Weekly AI review follow-up chat (2026-04-26)
 
+- Follow-up: the weekly-review follow-up chat system prompt now lives in `prompts/weekly_review_followup.txt` and is loaded through the shared prompt-file loader instead of being embedded inline in `ai_service.py`. A focused dashboard weekly-AI test asserts the chat builder uses that prompt file. (`ai_service.py`, `prompts/weekly_review_followup.txt`, `tests/test_dashboard_weekly_ai.py`)
+- Follow-up prompt tone pass: `prompts/weekly_review_followup.txt` now steers replies toward short conversational coaching, explicitly avoids repeating the weekly review, and gives special handling for "explain simply" requests: lead with the plain point, explain the behavior behind it, then give one concrete next step.
 - Dashboard Weekly AI Review now includes a compact "💬 Ask about this review" follow-up chat rendered inside the existing review panel only when a persisted weekly review is shown. The UI uses Jinja + vanilla `fetch()` via `static/js/weekly_review_chat.js`, appends user/assistant bubbles without refreshing, includes quick prompts, loading/error states, and posts with the existing CSRF header.
 - New `POST /dashboard/weekly-review/<review_id>/chat` route requires login, resolves the active trade account, verifies the review belongs to the current user and active account, validates message length (max 800) and usage limits on stored `WeeklyReviewChatMessage` rows (`role=user` only), calls the existing OpenAI Responses infrastructure with only the stored weekly review/pass-1/payload/meta context plus optional recent chat history, and does not mutate the review row itself.
 - New `WeeklyReviewChatMessage` model/table stores successful user and assistant chat turns with user/account/review scope, model used, prompt version, and timestamps. Migration `20260426_0052` creates `weekly_review_chat_messages`.

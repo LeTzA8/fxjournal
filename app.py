@@ -3,7 +3,6 @@ import re
 import sqlite3
 from datetime import timedelta
 from urllib.parse import urlparse
-from dotenv import load_dotenv
 from flask import Flask, current_app, flash, g, jsonify, redirect, render_template, request, session, url_for
 from flask_migrate import Migrate
 from flask_wtf.csrf import CSRFProtect
@@ -36,13 +35,14 @@ from helpers.core import (
     sanitize_error_message,
 )
 from helpers.legal import LEGAL_LAST_UPDATED
+from helpers.runtime_env import load_runtime_env
 
 from extensions import limiter, oauth
 from routes import all_blueprints, mt5_internal_bp
 from helpers.utils import env_bool, env_int, utcnow_naive
 from trading import format_trade_price, format_trade_size, trim_decimal_string
 
-load_dotenv()
+load_runtime_env()
 
 SUPPORT_VIEW_ROUTE_ENDPOINTS = {
     "account.account",

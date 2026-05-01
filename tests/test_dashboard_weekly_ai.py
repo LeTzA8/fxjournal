@@ -5,7 +5,12 @@ import json
 import pytest
 from sqlalchemy import inspect as sa_inspect
 
-from ai_service import WEEKLY_DASHBOARD_KIND, build_weekly_review_chat_messages
+from ai_service import (
+    DEFAULT_WEEKLY_REVIEW_CHAT_PROMPT_FILE,
+    WEEKLY_DASHBOARD_KIND,
+    build_weekly_review_chat_messages,
+    load_prompt_text,
+)
 from models import AIGeneratedResponse, AIPromptHistory, MT5Account, WeeklyReviewChatMessage
 
 import routes.dashboard as dashboard_routes
@@ -133,6 +138,23 @@ def test_weekly_review_chat_prompt_scrubs_internal_refs_from_review_meta_and_pay
     assert "review_ref" not in user_blob
     assert "EURUSD" in user_blob
     assert "GBPUSD" in user_blob
+
+
+def test_weekly_review_chat_prompt_uses_prompt_file(app_ctx):
+    review = type(
+        "Review",
+        (),
+        {
+            "response_text": "This week was driven by one oversized XAUUSD loss.",
+            "pass_1_output": "",
+            "response_meta_json": "",
+            "payload_json": "",
+        },
+    )()
+    messages = build_weekly_review_chat_messages(review, "Explain this simply")
+    system_prompt = messages[0]["content"][0]["text"]
+
+    assert system_prompt == load_prompt_text(DEFAULT_WEEKLY_REVIEW_CHAT_PROMPT_FILE)["prompt_text"]
 
 
 def test_weekly_review_chat_route_stores_user_and_assistant_messages(app_ctx, client, monkeypatch):
@@ -1273,6 +1295,66 @@ def test_weekly_ai_review_display_keeps_experiment_from_meta_with_rewrite():
     assert display["experiment"]["segments"] == [
         {"type": "text", "text": display["experiment"]["text"]},
     ]
+
+
+def test_weekly_ai_review_display_carries_original_citations_when_rewrite_omits_refs():
+    review = type(
+        "Review",
+        (),
+        {
+            "response_text": "Unused fallback text",
+            "pass_1_output": (
+                "Original story.\n\n"
+                "Key Takeaways\n"
+                "- Original takeaway.\n"
+                "Improve this week: Keep the plan simple."
+            ),
+            "pass_2_output": (
+                "This was easier to understand, but it no longer names the trade directly.\n\n"
+                "Key Takeaways\n"
+                "- The strongest idea mattered because the rest of the week was weaker.\n"
+                "Improve this week: Keep the plan simple."
+            ),
+            "prompt_version_pass_2": "rewrite-sha",
+            "response_meta_json": json.dumps(
+                {
+                    "summary": {"text": "Original story.", "refs": ["T1"]},
+                    "takeaways": [{"text": "Original takeaway.", "refs": ["T1"]}],
+                    "improvement": {"text": "Improve this week: Keep the plan simple.", "refs": []},
+                }
+            ),
+            "payload_json": json.dumps(
+                {
+                    "trades": [
+                        {
+                            "review_ref": "T1",
+                            "trade_id": 101,
+                            "symbol": "GBPJPY",
+                            "opened_at": "2026-04-20T09:00:00Z",
+                            "pnl": 125.0,
+                            "is_bundle": False,
+                            "bundle_pubkey": None,
+                        }
+                    ]
+                }
+            ),
+        },
+    )()
+
+    display = dashboard_routes._build_weekly_ai_review_display(review, "UTC")
+
+    assert display["summary"]["citations"][0]["trade_id"] == 101
+    assert display["takeaways"][0]["citations"][0]["trade_id"] == 101
+    assert any(
+        segment.get("type") == "citation"
+        and segment.get("label") == "GBPJPY | 20 Apr 2026 (Mon)"
+        for segment in display["summary"]["segments"]
+    )
+    assert any(
+        segment.get("type") == "citation"
+        and segment.get("label") == "GBPJPY | 20 Apr 2026 (Mon)"
+        for segment in display["takeaways"][0]["segments"]
+    )
 
 
 def test_rewrite_review_text_refs_drops_stray_clitic_after_brackets_and_labels():

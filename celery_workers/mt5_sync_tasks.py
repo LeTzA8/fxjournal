@@ -14,6 +14,12 @@ from sqlalchemy import func
 from celery_app import celery
 from celery_workers.logging_utils import duration_label, log_ascii_table
 from celery_workers.mt5_market_watch import MT5_MARKET_WATCH_CRYPTO_SEED_SYMBOLS
+from helpers.trade_bars import (
+    TRADE_CHART_M5_SECONDS,
+    TRADE_CHART_POST_EXIT_M5_BARS,
+    TRADE_CHART_PRE_ENTRY_M5_BARS,
+    has_complete_m5_chart_coverage,
+)
 from trading import MT5_DEFAULT_SOURCE_TIMEZONE_NAME
 
 logger = logging.getLogger(__name__)
@@ -536,16 +542,13 @@ def _trade_has_complete_m5_bars_for_worker(trade, *, db, TradeBars):
     bar_count = int(coverage[0] or 0)
     min_bar_time = coverage[1]
     max_bar_time = coverage[2]
-    if bar_count <= 0 or min_bar_time is None or max_bar_time is None:
-        return False
-    bar_tolerance_seconds = 15 * 60
-    opened_at_epoch = int(trade.opened_at.replace(tzinfo=timezone.utc).timestamp())
-    closed_at_epoch = int(trade.closed_at.replace(tzinfo=timezone.utc).timestamp())
-    if int(min_bar_time) > opened_at_epoch + bar_tolerance_seconds:
-        return False
-    if int(max_bar_time) < closed_at_epoch - bar_tolerance_seconds:
-        return False
-    return True
+    return has_complete_m5_chart_coverage(
+        opened_at=trade.opened_at,
+        closed_at=trade.closed_at,
+        bar_count=bar_count,
+        min_bar_time=min_bar_time,
+        max_bar_time=max_bar_time,
+    )
 
 
 @celery.task(
@@ -902,7 +905,7 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
 
     from helpers.utils import decrypt_password
     from models import MT5Account, Trade, TradeBars, db
-    from trading import cfd_mt5_symbol_name_candidates, chart_timeframe_bar_seconds, mt5_timeframe_constant
+    from trading import cfd_mt5_symbol_name_candidates, mt5_timeframe_constant
 
     fetch_started_at = datetime.now(timezone.utc)
 
@@ -956,10 +959,9 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
     # Always fetch M5; the window must be expressed in M5 bars. Using
     # select_chart_timeframe bar size here capped short trades at ~20×5m (~100m)
     # before entry — not enough context to see a typical setup.
-    m5_seconds = chart_timeframe_bar_seconds("M5")
     # Wider window for chart context (esp. structure before entry). ~3× prior pre-window, 2× post.
-    pre_entry_m5_bars = 432  # 36h of M5 before open (was 144 / 12h)
-    post_exit_m5_bars = 144  # 12h of M5 after close (was 72 / 6h)
+    pre_entry_m5_bars = TRADE_CHART_PRE_ENTRY_M5_BARS  # 36h of M5 before open (was 144 / 12h)
+    post_exit_m5_bars = TRADE_CHART_POST_EXIT_M5_BARS  # 12h of M5 after close (was 72 / 6h)
     now_utc = datetime.now(timezone.utc)
 
     investor_password = decrypt_password(account.investor_password_encrypted)
@@ -973,8 +975,8 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
     # Store M5 only; M15 (and other higher TFs) are derived in the API via OHLC aggregation.
     # copy_rates_range: naive datetimes are interpreted as *local VM time*, not UTC — use aware UTC
     # so the requested window matches trade.opened_at / closed_at (naive UTC in DB).
-    start_dt = opened_at_utc - timedelta(seconds=pre_entry_m5_bars * m5_seconds)
-    end_dt = closed_at_utc + timedelta(seconds=post_exit_m5_bars * m5_seconds)
+    start_dt = opened_at_utc - timedelta(seconds=pre_entry_m5_bars * TRADE_CHART_M5_SECONDS)
+    end_dt = closed_at_utc + timedelta(seconds=post_exit_m5_bars * TRADE_CHART_M5_SECONDS)
     if end_dt > now_utc:
         end_dt = now_utc
 
@@ -1118,7 +1120,7 @@ def fetch_trade_bars_batch(self, mt5_account_id, trade_ids):
 
     from helpers.utils import decrypt_password
     from models import MT5Account, Trade, TradeBars, db
-    from trading import cfd_mt5_symbol_name_candidates, chart_timeframe_bar_seconds, mt5_timeframe_constant
+    from trading import cfd_mt5_symbol_name_candidates, mt5_timeframe_constant
 
     account = db.session.get(MT5Account, mt5_account_id)
     if account is None or not account.is_active or account.is_orphaned:
@@ -1188,9 +1190,8 @@ def fetch_trade_bars_batch(self, mt5_account_id, trade_ids):
     if account.terminal_path:
         init_kwargs["path"] = account.terminal_path
 
-    m5_seconds = chart_timeframe_bar_seconds("M5")
-    pre_entry_m5_bars = 432
-    post_exit_m5_bars = 144
+    pre_entry_m5_bars = TRADE_CHART_PRE_ENTRY_M5_BARS
+    post_exit_m5_bars = TRADE_CHART_POST_EXIT_M5_BARS
     now_utc = datetime.now(timezone.utc)
     fetched_items = []
     no_rate_count = 0
@@ -1213,8 +1214,8 @@ def fetch_trade_bars_batch(self, mt5_account_id, trade_ids):
             for trade in trades_to_fetch:
                 opened_at_utc = _naive_utc_to_aware(trade.opened_at)
                 closed_at_utc = _naive_utc_to_aware(trade.closed_at)
-                start_dt = opened_at_utc - timedelta(seconds=pre_entry_m5_bars * m5_seconds)
-                end_dt = closed_at_utc + timedelta(seconds=post_exit_m5_bars * m5_seconds)
+                start_dt = opened_at_utc - timedelta(seconds=pre_entry_m5_bars * TRADE_CHART_M5_SECONDS)
+                end_dt = closed_at_utc + timedelta(seconds=post_exit_m5_bars * TRADE_CHART_M5_SECONDS)
                 if end_dt > now_utc:
                     end_dt = now_utc
                 start_dt_shifted = _shift_datetime_by_minutes(start_dt, minutes=mt5_server_delta_minutes)

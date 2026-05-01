@@ -16,6 +16,7 @@ from ai_service import (
     get_weekly_dashboard_period,
     load_prompt_text,
     maybe_generate_weekly_dashboard_advice,
+    normalize_ai_model_name,
     normalize_dashboard_advice_text,
 )
 from helpers.scoring import compute_emotional_index
@@ -28,6 +29,9 @@ from models import (
     FuturesSymbol,
     Trade,
     TradeAccount,
+    TradeBars,
+    TradeProfile,
+    TradeProfileVersion,
     User,
     WeeklyCheckin,
     db,
@@ -52,6 +56,16 @@ def _create_user_and_account(*, username, email, account_name="Primary Account",
     db.session.add(trade_account)
     db.session.flush()
     return user, trade_account
+
+
+def test_get_ai_model_normalizes_env_value(monkeypatch):
+    monkeypatch.setenv("AI_MODEL", " gpt-5.4 mini ")
+
+    assert ai_service.get_ai_model() == "gpt-5.4-mini"
+
+
+def test_normalize_ai_model_name_strips_matching_quotes():
+    assert normalize_ai_model_name('"gpt-5.4-mini"') == "gpt-5.4-mini"
 
 
 def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
@@ -152,6 +166,15 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
             "sessions": [{"name": "London", "count": 1, "win_rate": 100.0, "net_pnl": 140.0}],
             "symbols": [{"symbol": "MES (MESM26)", "count": 1, "win_rate": 100.0, "net_pnl": 140.0}],
             "weekdays": [{"name": "Monday", "count": 1, "win_rate": 100.0, "net_pnl": 140.0}],
+            "strategies": [{"strategy_name": "NY Open Sweep v1", "count": 1, "win_rate": 100.0, "net_pnl": 140.0}],
+            "strategy_coverage": {"trades_with_strategy": 1, "strategy_coverage_pct": 100.0},
+            "market_context": {
+                "trades_with_bars": 1,
+                "bar_coverage_pct": 100.0,
+                "post_exit_tp_reached_count": 1,
+                "protective_stop_count": 1,
+                "trailing_or_breakeven_stop_count": 1,
+            },
             "sizing": {
                 "median_lot_size": 1.0,
                 "median_planned_risk_dollars": 250.0,
@@ -189,6 +212,9 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
                 "trade_id": 42,
                 "symbol": "MES (MESM26)",
                 "contract_code": "MESM26",
+                "strategy_name": "NY Open Sweep v1",
+                "strategy_version": 1,
+                "strategy_description": "First pullback after the New York open.",
                 "side": "BUY",
                 "entry_price": 5000.0,
                 "exit_price": 5001.4,
@@ -226,6 +252,35 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
                 "tp_capture_pct": 35.0,
                 "closed_before_tp": True,
                 "closed_before_sl": None,
+                "market_context": {
+                    "bars_status": "ready",
+                    "timeframe": "M5",
+                    "bars_used": 18,
+                    "in_trade_bars": 6,
+                    "post_exit_bars": 3,
+                    "mfe_price_move": 4.0,
+                    "mae_price_move": 0.5,
+                    "mfe_r": 3.2,
+                    "mae_r": 0.4,
+                    "entry_range_vs_prior_median": 1.8,
+                    "entry_location_in_prior_range_pct": 88.0,
+                    "entry_near_prior_high": True,
+                    "entry_near_prior_low": False,
+                    "post_exit_tp_reached": True,
+                    "minutes_after_exit_to_tp": 10.0,
+                    "post_exit_sl_reached": False,
+                    "minutes_after_exit_to_sl": None,
+                    "stop_management": {
+                        "stop_loss_breakeven_or_better": True,
+                        "stop_loss_protects_profit": True,
+                        "possible_trailing_or_breakeven_stop": True,
+                        "confidence": "high",
+                        "evidence": [
+                            "system_note_mentions_trailing_or_moved_stop",
+                            "stored_stop_loss_protects_profit",
+                        ],
+                    },
+                },
                 "outlier_size": False,
                 "outlier_lot_spike": False,
                 "possible_split_order": False,
@@ -287,6 +342,14 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- sizing.median_planned_risk_dollars: 250.00" in prompt_text
     assert "- sizing.median_risk_pct_of_account: 2.50%" in prompt_text
     assert "session London: count=1, win_rate=100.00%, net_pnl=+140.00" in prompt_text
+    assert "strategy NY Open Sweep v1: count=1, win_rate=100.00%, net_pnl=+140.00" in prompt_text
+    assert "strategy_coverage.trades_with_strategy: 1" in prompt_text
+    assert "strategy_coverage.strategy_coverage_pct: 100.00%" in prompt_text
+    assert "market_context.trades_with_bars: 1" in prompt_text
+    assert "market_context.bar_coverage_pct: 100.00%" in prompt_text
+    assert "market_context.post_exit_tp_reached_count: 1" in prompt_text
+    assert "market_context.protective_stop_count: 1" in prompt_text
+    assert "market_context.trailing_or_breakeven_stop_count: 1" in prompt_text
     assert "FOUR_WEEK_PATTERNS" in prompt_text
     assert "behaviour_patterns.avg_post_loss_reentry_count: 1.00" in prompt_text
     assert "EXPERIMENT_CONTEXT" in prompt_text
@@ -300,6 +363,9 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- largest_trade_abs_pnl_share_pct: 100.00%" in prompt_text
     assert "review_ref: T1" in prompt_text
     assert "contract_code: MESM26" in prompt_text
+    assert "strategy_name: NY Open Sweep v1" in prompt_text
+    assert "strategy_version: 1" in prompt_text
+    assert "strategy_description: First pullback after the New York open." in prompt_text
     assert "stop_loss: 4998.75000" in prompt_text
     assert "take_profit: 5004.00000" in prompt_text
     assert "entry_session: New York" in prompt_text
@@ -323,6 +389,14 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "realized_rr: 1.12" in prompt_text
     assert "tp_capture_pct: 35.00%" in prompt_text
     assert "closed_before_tp: true" in prompt_text
+    assert "market_context.bars_status: ready" in prompt_text
+    assert "market_context.mfe_price_move: 4.00000" in prompt_text
+    assert "market_context.mae_price_move: 0.50000" in prompt_text
+    assert "market_context.post_exit_tp_reached: true" in prompt_text
+    assert "market_context.minutes_after_exit_to_tp: 10.00" in prompt_text
+    assert "stop_management.stop_loss_protects_profit: true" in prompt_text
+    assert "stop_management.confidence: high" in prompt_text
+    assert "system_note_mentions_trailing_or_moved_stop" in prompt_text
     assert "outlier_size: false" in prompt_text
     assert "outlier_lot_spike: false" in prompt_text
     assert "possible_split_order: false" in prompt_text
@@ -399,6 +473,158 @@ def test_build_trade_payload_serializes_trade_risk_fields_and_session(app_ctx):
     sizing = payload["current_week_breakdowns"]["sizing"]
     assert sizing["median_planned_risk_dollars"] == 10.0
     assert sizing["median_risk_pct_of_account"] == 0.01
+
+
+def test_build_trade_payload_serializes_strategy_context(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-strategy-context-user",
+        email="ai-strategy-context@example.com",
+    )
+    profile = TradeProfile(
+        user_id=user.id,
+        name="NY Open Sweep",
+        current_version_number=1,
+    )
+    db.session.add(profile)
+    db.session.flush()
+    version = TradeProfileVersion(
+        trade_profile_id=profile.id,
+        version_number=1,
+        name="NY Open Sweep v1",
+        short_description="Only trade the first pullback after the New York open.",
+    )
+    db.session.add(version)
+    db.session.flush()
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            trade_profile_id=profile.id,
+            trade_profile_version_id=version.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1000,
+            exit_price=1.1010,
+            lot_size=1.0,
+            pnl=100.0,
+            opened_at=datetime(2026, 3, 10, 14, 0, 0),
+            closed_at=datetime(2026, 3, 10, 14, 30, 0),
+            trade_note="Waited for the planned pullback.",
+        )
+    )
+    db.session.commit()
+
+    payload = build_trade_payload(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        period_start_utc=datetime(2026, 3, 10, 0, 0, 0),
+        period_end_utc=datetime(2026, 3, 11, 0, 0, 0),
+        closed_trades_only=True,
+    )
+
+    trade = payload["trades"][0]
+    assert trade["strategy_name"] == "NY Open Sweep v1"
+    assert trade["strategy_version"] == 1
+    assert trade["strategy_description"] == "Only trade the first pullback after the New York open."
+    strategy_breakdown = payload["current_week_breakdowns"]["strategies"]
+    assert strategy_breakdown == [
+        {
+            "strategy_name": "NY Open Sweep v1",
+            "count": 1,
+            "win_rate": 100.0,
+            "net_pnl": 100.0,
+        }
+    ]
+    assert payload["current_week_breakdowns"]["strategy_coverage"] == {
+        "trades_with_strategy": 1,
+        "strategy_coverage_pct": 100.0,
+    }
+
+    prompt_text = format_payload_for_prompt(payload)
+    assert "strategy NY Open Sweep v1: count=1, win_rate=100.00%, net_pnl=+100.00" in prompt_text
+    assert "strategy_name: NY Open Sweep v1" in prompt_text
+    assert "strategy_description: Only trade the first pullback after the New York open." in prompt_text
+
+
+def test_build_trade_payload_adds_market_context_and_trailing_stop_detection(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-market-context-user",
+        email="ai-market-context@example.com",
+    )
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="XAUUSD",
+        side="BUY",
+        entry_price=100.0,
+        exit_price=106.0,
+        stop_loss=102.0,
+        take_profit=110.0,
+        lot_size=1.0,
+        pnl=600.0,
+        opened_at=datetime(2026, 3, 10, 14, 0, 0),
+        closed_at=datetime(2026, 3, 10, 14, 30, 0),
+        system_trade_note="SL moved to BE, then trailing stop locked profit.",
+    )
+    db.session.add(trade)
+    db.session.flush()
+
+    def epoch(hour, minute):
+        return int(datetime(2026, 3, 10, hour, minute, tzinfo=timezone.utc).timestamp())
+
+    bar_rows = [
+        TradeBars(trade_id=trade.id, timeframe="M5", bar_time=epoch(13, 50), open=98.0, high=99.0, low=97.0, close=98.5),
+        TradeBars(trade_id=trade.id, timeframe="M5", bar_time=epoch(13, 55), open=98.5, high=99.5, low=98.0, close=99.0),
+        TradeBars(trade_id=trade.id, timeframe="M5", bar_time=epoch(14, 0), open=100.0, high=103.0, low=99.0, close=102.0),
+        TradeBars(trade_id=trade.id, timeframe="M5", bar_time=epoch(14, 5), open=102.0, high=105.0, low=101.0, close=104.0),
+        TradeBars(trade_id=trade.id, timeframe="M5", bar_time=epoch(14, 10), open=104.0, high=108.0, low=103.0, close=107.0),
+        TradeBars(trade_id=trade.id, timeframe="M5", bar_time=epoch(14, 30), open=106.0, high=107.0, low=105.0, close=106.5),
+        TradeBars(trade_id=trade.id, timeframe="M5", bar_time=epoch(14, 35), open=106.5, high=111.0, low=106.0, close=110.5),
+    ]
+    db.session.add_all(bar_rows)
+    db.session.commit()
+
+    payload = build_trade_payload(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        period_start_utc=datetime(2026, 3, 10, 0, 0, 0),
+        period_end_utc=datetime(2026, 3, 11, 0, 0, 0),
+        closed_trades_only=True,
+    )
+
+    context = payload["trades"][0]["market_context"]
+    assert context["bars_status"] == "ready"
+    assert context["in_trade_bars"] == 4
+    assert context["post_exit_bars"] == 1
+    assert context["mfe_price_move"] == 8.0
+    assert context["mae_price_move"] == 1.0
+    assert context["mfe_r"] is None
+    assert context["post_exit_tp_reached"] is True
+    assert context["minutes_after_exit_to_tp"] == 5.0
+
+    stop_context = context["stop_management"]
+    assert stop_context["stop_loss_breakeven_or_better"] is True
+    assert stop_context["stop_loss_protects_profit"] is True
+    assert stop_context["confidence"] == "high"
+    assert "stored_stop_loss_protects_profit" in stop_context["evidence"]
+    assert "system_note_mentions_breakeven_stop" in stop_context["evidence"]
+    assert "system_note_mentions_trailing_or_moved_stop" in stop_context["evidence"]
+
+    weekly_market = payload["current_week_breakdowns"]["market_context"]
+    assert weekly_market["trades_with_bars"] == 1
+    assert weekly_market["bar_coverage_pct"] == 100.0
+    assert weekly_market["post_exit_tp_reached_count"] == 1
+    assert weekly_market["protective_stop_count"] == 1
+    assert weekly_market["trailing_or_breakeven_stop_count"] == 1
+    assert "large_candle_entry_count" in weekly_market
+    assert "entry_bar_against_direction_count" in weekly_market
+    assert "post_exit_continued_count" in weekly_market
+    assert "post_exit_reversed_count" in weekly_market
+
+    prompt_text = format_payload_for_prompt(payload)
+    assert "market_context.post_exit_tp_reached: true" in prompt_text
+    assert "stop_management.stop_loss_protects_profit: true" in prompt_text
+    assert "stop_management.confidence: high" in prompt_text
 
 
 def test_build_trade_payload_excludes_system_trade_notes_from_notes_coverage(app_ctx):
@@ -713,6 +939,7 @@ def test_dashboard_prompt_uses_exit_price_language():
     # Trade fields surfaced for the model
     assert "close_price" not in prompt_text
     assert "entry_price, exit_price, stop_loss, take_profit" in prompt_text
+    assert "strategy_name, strategy_version, strategy_description" in prompt_text
     assert "entry_session, exit_session, session, duration_minutes" in prompt_text
     assert "planned_risk_dollars, trade_risk_pct" in prompt_text
     assert "same_trade_idea_reentry" in prompt_text
@@ -723,6 +950,8 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "realized_rr" in prompt_text
     assert "tp_capture_pct" in prompt_text
     assert "closed_before_tp" in prompt_text
+    assert "market_context" in prompt_text
+    assert "stop_management" in prompt_text
     assert "split_group_size" in prompt_text
     assert "review_ref" in prompt_text
 
@@ -767,6 +996,7 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "R1. LOT SIZE IS NOT RISK." in prompt_text
     assert "R2. NO RECAP TAKEAWAYS." in prompt_text
     assert "R3. NO TEMPLATES IN OUTPUT." in prompt_text
+    assert "R9. DIAGNOSIS BEFORE ADVICE." in prompt_text
     assert "R4. STRENGTH OVER COUNT." in prompt_text
     assert "risk_judgment_allowed" in prompt_text
     assert (
@@ -788,6 +1018,12 @@ def test_dashboard_prompt_uses_exit_price_language():
     # Voice / interpretation tension (replaces the long tone+plain-english blocks)
     assert "VOICE" in prompt_text
     assert "INTERPRETATION TENSION" in prompt_text
+    assert "DIAGNOSIS LENS" in prompt_text
+    assert "likely misunderstanding" in prompt_text
+    assert "STRATEGY / PLAYBOOK" in prompt_text
+    assert "MARKET CONTEXT" in prompt_text
+    assert "post_exit_tp_reached means stored bars show price reached the take-profit" in prompt_text
+    assert "stop_management.stop_loss_protects_profit" in prompt_text
     assert "jumped back in" in prompt_text  # keep at least one plain-english anchor
 
     # Privacy and exact numbers (kept; section was renamed)
@@ -2162,6 +2398,9 @@ def test_weekly_dashboard_advice_runs_rewrite_pass_without_trade_payload(app_ctx
     assert len(calls) == 2
     assert "TRADE PAYLOAD" not in rewrite_prompt
     assert "Pass one review with repeated wording." in rewrite_prompt
+    assert "simpler does not mean shorter" in rewrite_prompt
+    assert "never explain, rename, reorder, or drop references" in rewrite_prompt
+    assert "London/New York idea" in rewrite_prompt
     assert result["record"].pass_1_output.startswith("Pass one review with repeated wording.")
     assert result["record"].pass_2_output.startswith("Pass one review, clearer.")
     assert result["record"].response_text.startswith("Pass one review, clearer.")

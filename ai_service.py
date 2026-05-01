@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import and_, func
 from sqlalchemy.orm import load_only, selectinload
 
+from helpers.ai_market_context import build_trade_market_context
 from helpers.scoring import compute_emotional_index, prepare_closed_trade_signal_inputs
 from helpers.trade_analysis import (
     build_trade_annotations as _build_trade_annotations,
@@ -31,6 +32,7 @@ from models import (
     AIGeneratedResponse,
     AIPromptHistory,
     Trade,
+    TradeBars,
     User,
     UserProfile,
     WeeklyCheckin,
@@ -61,22 +63,8 @@ DEFAULT_HISTORICAL_CONTEXT_DAYS = 90
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 WEEKLY_DASHBOARD_KIND = "weekly_dashboard_advice"
 DEFAULT_REWRITE_PROMPT_FILE = "dashboard_advice_rewrite.txt"
+DEFAULT_WEEKLY_REVIEW_CHAT_PROMPT_FILE = "weekly_review_followup.txt"
 WEEKLY_REVIEW_CHAT_PROMPT_VERSION = "weekly_review_followup_v1"
-WEEKLY_REVIEW_CHAT_SYSTEM_PROMPT = """
-You are answering a follow-up question about this specific weekly trading review.
-Use only the provided weekly review, available trade context, and the user's question.
-Your job is to explain the review clearly in plain trader language.
-Do NOT:
-- give market predictions
-- suggest new trades
-- invent strategy details
-- make claims not supported by the review or trade data
-- give financial advice
-If the answer is uncertain, say so clearly.
-If the question is unrelated to this review, safely redirect the user back to reviewing past trades.
-Do not use internal review codes like T1 or B1; describe trades in plain language using symbol and timing from the context when needed.
-Keep the answer short, practical, and easy to understand.
-""".strip()
 WEEKLY_MARKET_TIMEZONE = ZoneInfo("America/New_York")
 WEEKLY_CUTOFF_WEEKDAY = 4
 WEEKLY_CUTOFF_HOUR = 17
@@ -134,7 +122,9 @@ Rules for refs:
 
 Rules for text fields:
 - summary.text must stay as the single opening paragraph.
-- takeaways must contain 2-4 items, each exactly one sentence.
+- takeaways should contain 1-3 items by default. Use 4 only when the fourth item is genuinely distinct and useful.
+- summary.text must identify the dominant diagnosis for the week, not merely restate performance.
+- Every takeaway must connect evidence to a decision or behavior the trader can change.
 - improvement.text must include the "Improve this week:" prefix exactly once.
 - improvement.text must generalize one level up from the evidence and should not mention a specific trade, bundle, exact date, or weekday.
 - strength.text must include the "You're already strong at:" prefix exactly once.
@@ -170,8 +160,16 @@ def get_openai_api_key():
     return api_key
 
 
+def normalize_ai_model_name(value):
+    model = str(value or "").strip()
+    if len(model) >= 2 and model[0] == model[-1] and model[0] in {"'", '"'}:
+        model = model[1:-1].strip()
+    model = re.sub(r"\s+", "-", model)
+    return model
+
+
 def get_ai_model():
-    return os.getenv("AI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    return normalize_ai_model_name(os.getenv("AI_MODEL", DEFAULT_MODEL)) or DEFAULT_MODEL
 
 
 def get_ai_timeout_seconds():
@@ -217,6 +215,10 @@ def load_prompt_text(prompt_filename=None):
         "prompt_text": prompt_text,
         "source_path": str(path.relative_to(Path(__file__).resolve().parent)),
     }
+
+
+def load_weekly_review_chat_prompt_text():
+    return load_prompt_text(DEFAULT_WEEKLY_REVIEW_CHAT_PROMPT_FILE)["prompt_text"]
 
 
 def normalize_dashboard_advice_text(value):
@@ -739,6 +741,8 @@ def _query_trades_for_payload(
     trade_query = Trade.query.filter_by(user_id=user_id).options(
         selectinload(Trade.trade_account),
         selectinload(Trade.interpretation),
+        selectinload(Trade.trade_profile),
+        selectinload(Trade.trade_profile_version),
     )
     if trade_account_id is not None:
         trade_query = trade_query.filter_by(trade_account_id=trade_account_id)
@@ -774,6 +778,22 @@ def _serialize_weekly_checkin(weekly_checkin):
         "plan_adherence": _normalize_optional_text(_get_record_value(weekly_checkin, "plan_adherence")),
         "execution_quality": _normalize_optional_text(_get_record_value(weekly_checkin, "execution_quality")),
         "additional_context": _normalize_optional_text(_get_record_value(weekly_checkin, "additional_context")),
+    }
+
+
+def _serialize_trade_strategy(trade):
+    profile = getattr(trade, "trade_profile", None)
+    version = getattr(trade, "trade_profile_version", None)
+    version_number = _get_record_value(version, "version_number")
+    return {
+        "strategy_name": (
+            _normalize_optional_text(_get_record_value(version, "name"))
+            or _normalize_optional_text(_get_record_value(profile, "name"))
+        ),
+        "strategy_version": int(version_number) if version_number is not None else None,
+        "strategy_description": _normalize_optional_text(
+            _get_record_value(version, "short_description")
+        ),
     }
 
 
@@ -958,6 +978,141 @@ def _serialize_breakdown_rows(rows, *, key_name, top_n=5):
     return serialized
 
 
+def _build_strategy_breakdown(serialized_trades, *, top_n=5):
+    strategy_rows = {}
+    closed_trade_count = 0
+    trades_with_strategy = 0
+    for trade in serialized_trades or []:
+        if not trade.get("closed_at"):
+            continue
+        closed_trade_count += 1
+        strategy_name = _normalize_optional_text(trade.get("strategy_name"))
+        if strategy_name:
+            trades_with_strategy += 1
+        else:
+            strategy_name = "No strategy attached"
+        row = strategy_rows.setdefault(
+            strategy_name,
+            {"strategy_name": strategy_name, "count": 0, "wins": 0, "net_pnl": 0.0},
+        )
+        pnl = _coerce_float(trade.get("pnl"))
+        row["count"] += 1
+        if pnl is not None:
+            row["net_pnl"] += pnl
+            if pnl > 0:
+                row["wins"] += 1
+
+    rows = []
+    for row in strategy_rows.values():
+        count = int(row["count"] or 0)
+        rows.append(
+            {
+                "strategy_name": row["strategy_name"],
+                "count": count,
+                "win_rate": _round_metric((row["wins"] / count * 100.0) if count else None),
+                "net_pnl": _round_metric(row["net_pnl"]),
+            }
+        )
+    rows = sorted(
+        rows,
+        key=lambda item: (
+            -item["count"],
+            -abs(item["net_pnl"] or 0.0),
+            item["strategy_name"],
+        ),
+    )[:top_n]
+    return {
+        "strategies": rows,
+        "strategy_coverage": {
+            "trades_with_strategy": trades_with_strategy,
+            "strategy_coverage_pct": _round_metric(
+                (trades_with_strategy / closed_trade_count * 100.0)
+                if closed_trade_count
+                else None
+            ),
+        },
+    }
+
+
+def _build_market_context_lookup(trades):
+    trade_ids = [
+        getattr(trade, "id", None)
+        for trade in (trades or [])
+        if getattr(trade, "id", None) is not None
+    ]
+    bars_by_trade_id = {trade_id: [] for trade_id in trade_ids}
+    if trade_ids:
+        bar_rows = (
+            TradeBars.query.filter(
+                TradeBars.trade_id.in_(trade_ids),
+                TradeBars.timeframe == "M5",
+            )
+            .order_by(TradeBars.trade_id.asc(), TradeBars.bar_time.asc())
+            .all()
+        )
+        for row in bar_rows:
+            bars_by_trade_id.setdefault(row.trade_id, []).append(row)
+
+    return {
+        _get_trade_identity(trade): build_trade_market_context(
+            trade,
+            bars_by_trade_id.get(getattr(trade, "id", None), []),
+        )
+        for trade in (trades or [])
+    }
+
+
+def _build_market_context_breakdown(serialized_trades):
+    closed_trades = [trade for trade in serialized_trades or [] if trade.get("closed_at")]
+    market_contexts = [trade.get("market_context") or {} for trade in closed_trades]
+    stop_contexts = [
+        (context.get("stop_management") or {})
+        for context in market_contexts
+    ]
+    trades_with_bars = sum(
+        1 for context in market_contexts if context.get("bars_status") == "ready"
+    )
+    post_exit_tp_reached_count = sum(
+        1 for context in market_contexts if context.get("post_exit_tp_reached") is True
+    )
+    protective_stop_count = sum(
+        1 for context in stop_contexts if context.get("stop_loss_protects_profit") is True
+    )
+    trailing_or_breakeven_stop_count = sum(
+        1
+        for context in stop_contexts
+        if context.get("possible_trailing_or_breakeven_stop") is True
+    )
+    large_candle_entry_count = sum(
+        1 for context in market_contexts if context.get("large_candle_before_entry") is True
+    )
+    entry_bar_against_direction_count = sum(
+        1 for context in market_contexts
+        if context.get("entry_bar_closes_in_trade_direction") is False
+    )
+    post_exit_continued_count = sum(
+        1 for context in market_contexts if context.get("post_exit_direction") == "continued"
+    )
+    post_exit_reversed_count = sum(
+        1 for context in market_contexts if context.get("post_exit_direction") == "reversed"
+    )
+    return {
+        "trades_with_bars": trades_with_bars,
+        "bar_coverage_pct": _round_metric(
+            (trades_with_bars / len(closed_trades) * 100.0)
+            if closed_trades
+            else None
+        ),
+        "post_exit_tp_reached_count": post_exit_tp_reached_count,
+        "protective_stop_count": protective_stop_count,
+        "trailing_or_breakeven_stop_count": trailing_or_breakeven_stop_count,
+        "large_candle_entry_count": large_candle_entry_count,
+        "entry_bar_against_direction_count": entry_bar_against_direction_count,
+        "post_exit_continued_count": post_exit_continued_count,
+        "post_exit_reversed_count": post_exit_reversed_count,
+    }
+
+
 def _build_current_week_breakdowns(
     *,
     analytics,
@@ -986,6 +1141,8 @@ def _build_current_week_breakdowns(
         if active_day_count > 0
         else None
     )
+    strategy_breakdown = _build_strategy_breakdown(serialized_trades)
+    market_context_breakdown = _build_market_context_breakdown(serialized_trades)
     return {
         "sessions": _serialize_breakdown_rows(analytics.get("session_stats"), key_name="name"),
         "symbols": _serialize_breakdown_rows(analytics.get("pair_stats"), key_name="symbol"),
@@ -993,6 +1150,9 @@ def _build_current_week_breakdowns(
             [row for row in analytics.get("weekday_stats", []) if int(row.get("count", 0) or 0) > 0],
             key_name="name",
         ),
+        "strategies": strategy_breakdown["strategies"],
+        "strategy_coverage": strategy_breakdown["strategy_coverage"],
+        "market_context": market_context_breakdown,
         "sizing": {
             "median_lot_size": _round_metric(median_lot_size),
             "median_planned_risk_dollars": median_planned_risk_dollars,
@@ -1559,6 +1719,7 @@ def build_trade_payload(
         )
 
     account_size_for_risk = _first_positive_account_size_from_trades(trades)
+    market_context_lookup = _build_market_context_lookup(trades)
     serialized_trades = []
     next_trade_ref = 1
     next_bundle_ref = 1
@@ -1575,6 +1736,7 @@ def build_trade_payload(
         else:
             next_trade_ref += 1
         planned_risk_dollars = resolve_planned_risk_dollars(trade)
+        strategy_context = _serialize_trade_strategy(trade)
         trade_risk_pct = None
         if planned_risk_dollars is not None and account_size_for_risk:
             trade_risk_pct = _round_metric(
@@ -1586,6 +1748,9 @@ def build_trade_payload(
                 "trade_id": getattr(trade, "id", None),
                 "symbol": format_trade_symbol(trade),
                 "contract_code": (trade.contract_code or "").strip() or None,
+                "strategy_name": strategy_context["strategy_name"],
+                "strategy_version": strategy_context["strategy_version"],
+                "strategy_description": strategy_context["strategy_description"],
                 "side": trade.side,
                 "entry_price": trade.entry_price,
                 "exit_price": trade.exit_price,
@@ -1640,6 +1805,7 @@ def build_trade_payload(
                     and duration_minutes is not None
                     and duration_minutes < median_duration_minutes * 0.2
                 ),
+                "market_context": market_context_lookup.get(identity, {}),
             }
         )
 
@@ -2162,9 +2328,16 @@ def format_payload_for_prompt(payload):
                 f"- weekday {item.get('name') or '-'}: count={item.get('count', 0)}, "
                 f"win_rate={_format_percent(item.get('win_rate'))}, net_pnl={_format_signed_currency(item.get('net_pnl'))}"
             )
+        for item in current_week_breakdowns.get("strategies") or []:
+            lines.append(
+                f"- strategy {item.get('strategy_name') or '-'}: count={item.get('count', 0)}, "
+                f"win_rate={_format_percent(item.get('win_rate'))}, net_pnl={_format_signed_currency(item.get('net_pnl'))}"
+            )
         sizing = current_week_breakdowns.get("sizing") or {}
         frequency = current_week_breakdowns.get("frequency") or {}
         exit_quality = current_week_breakdowns.get("exit_quality") or {}
+        strategy_coverage = current_week_breakdowns.get("strategy_coverage") or {}
+        market_context = current_week_breakdowns.get("market_context") or {}
         lines.extend(
             [
                 f"- sizing.median_planned_risk_dollars: {_format_currency_magnitude(sizing.get('median_planned_risk_dollars'))}",
@@ -2176,6 +2349,13 @@ def format_payload_for_prompt(payload):
                 f"- frequency.active_day_count: {frequency.get('active_day_count', 0)}",
                 f"- frequency.trade_ideas_per_active_day: {_format_number(frequency.get('trade_ideas_per_active_day'))}",
                 f"- frequency.busiest_session: {frequency.get('busiest_session') or '-'}",
+                f"- strategy_coverage.trades_with_strategy: {strategy_coverage.get('trades_with_strategy', 0)}",
+                f"- strategy_coverage.strategy_coverage_pct: {_format_percent(strategy_coverage.get('strategy_coverage_pct'))}",
+                f"- market_context.trades_with_bars: {market_context.get('trades_with_bars', 0)}",
+                f"- market_context.bar_coverage_pct: {_format_percent(market_context.get('bar_coverage_pct'))}",
+                f"- market_context.post_exit_tp_reached_count: {market_context.get('post_exit_tp_reached_count', 0)}",
+                f"- market_context.protective_stop_count: {market_context.get('protective_stop_count', 0)}",
+                f"- market_context.trailing_or_breakeven_stop_count: {market_context.get('trailing_or_breakeven_stop_count', 0)}",
                 f"- exit_quality.closed_before_tp_count: {exit_quality.get('closed_before_tp_count', 0)}",
                 f"- exit_quality.closed_before_sl_count: {exit_quality.get('closed_before_sl_count', 0)}",
                 f"- exit_quality.avg_tp_capture_pct: {_format_percent(exit_quality.get('avg_tp_capture_pct'))}",
@@ -2398,11 +2578,16 @@ def format_payload_for_prompt(payload):
 
     for index, trade in enumerate(trades, start=1):
         note = trade.get("trade_note") or "-"
+        market_context = trade.get("market_context") or {}
+        stop_management = market_context.get("stop_management") or {}
         lines.extend(
             [
                 f"{index}. review_ref: {trade.get('review_ref') or '-'}",
                 f"   symbol: {trade.get('symbol') or '-'}",
                 f"   contract_code: {trade.get('contract_code') or '-'}",
+                f"   strategy_name: {trade.get('strategy_name') or '-'}",
+                f"   strategy_version: {trade.get('strategy_version') if trade.get('strategy_version') is not None else '-'}",
+                f"   strategy_description: {trade.get('strategy_description') or '-'}",
                 f"   side: {trade.get('side') or '-'}",
                 f"   entry_price: {_format_number(trade.get('entry_price'), digits=5)}",
                 f"   exit_price: {_format_number(trade.get('exit_price'), digits=5)}",
@@ -2443,6 +2628,27 @@ def format_payload_for_prompt(payload):
                 f"   tp_capture_pct: {_format_percent(trade.get('tp_capture_pct'))}",
                 f"   closed_before_tp: {_format_optional_bool(trade.get('closed_before_tp'))}",
                 f"   closed_before_sl: {_format_optional_bool(trade.get('closed_before_sl'))}",
+                f"   market_context.bars_status: {market_context.get('bars_status') or '-'}",
+                f"   market_context.timeframe: {market_context.get('timeframe') or '-'}",
+                f"   market_context.in_trade_bars: {market_context.get('in_trade_bars', 0)}",
+                f"   market_context.post_exit_bars: {market_context.get('post_exit_bars', 0)}",
+                f"   market_context.mfe_price_move: {_format_number(market_context.get('mfe_price_move'), digits=5)}",
+                f"   market_context.mae_price_move: {_format_number(market_context.get('mae_price_move'), digits=5)}",
+                f"   market_context.mfe_r: {_format_number(market_context.get('mfe_r'))}",
+                f"   market_context.mae_r: {_format_number(market_context.get('mae_r'))}",
+                f"   market_context.entry_range_vs_prior_median: {_format_number(market_context.get('entry_range_vs_prior_median'))}",
+                f"   market_context.entry_location_in_prior_range_pct: {_format_percent(market_context.get('entry_location_in_prior_range_pct'))}",
+                f"   market_context.entry_near_prior_high: {_format_optional_bool(market_context.get('entry_near_prior_high'))}",
+                f"   market_context.entry_near_prior_low: {_format_optional_bool(market_context.get('entry_near_prior_low'))}",
+                f"   market_context.post_exit_tp_reached: {_format_optional_bool(market_context.get('post_exit_tp_reached'))}",
+                f"   market_context.minutes_after_exit_to_tp: {_format_number(market_context.get('minutes_after_exit_to_tp'))}",
+                f"   market_context.post_exit_sl_reached: {_format_optional_bool(market_context.get('post_exit_sl_reached'))}",
+                f"   market_context.minutes_after_exit_to_sl: {_format_number(market_context.get('minutes_after_exit_to_sl'))}",
+                f"   stop_management.stop_loss_breakeven_or_better: {_format_bool(stop_management.get('stop_loss_breakeven_or_better'))}",
+                f"   stop_management.stop_loss_protects_profit: {_format_bool(stop_management.get('stop_loss_protects_profit'))}",
+                f"   stop_management.possible_trailing_or_breakeven_stop: {_format_bool(stop_management.get('possible_trailing_or_breakeven_stop'))}",
+                f"   stop_management.confidence: {stop_management.get('confidence') or '-'}",
+                f"   stop_management.evidence: {', '.join(stop_management.get('evidence') or []) or '-'}",
                 f"   outlier_size: {_format_bool(trade.get('outlier_size'))}",
                 f"   outlier_lot_spike: {_format_bool(trade.get('outlier_lot_spike'))}",
                 f"   possible_split_order: {_format_bool(trade.get('possible_split_order'))}",
@@ -2720,7 +2926,7 @@ def build_weekly_review_chat_messages(
     return [
         {
             "role": "system",
-            "content": [{"type": "input_text", "text": WEEKLY_REVIEW_CHAT_SYSTEM_PROMPT}],
+            "content": [{"type": "input_text", "text": load_weekly_review_chat_prompt_text()}],
         },
         {
             "role": "user",
@@ -2798,6 +3004,12 @@ def request_openai_response(messages, *, model=None, timeout_seconds=None):
         "reasoning": {"effort": "medium"},
         "text": {"verbosity": "low"},
     }
+    logger.info(
+        "OpenAI request starting. model=%s max_output_tokens=%s timeout_seconds=%s",
+        resolved_model,
+        resolved_max_output_tokens,
+        resolved_timeout_seconds,
+    )
     encoded_body = json.dumps(request_body).encode("utf-8")
     request = Request(
         OPENAI_RESPONSES_URL,
@@ -2826,7 +3038,9 @@ def request_openai_response(messages, *, model=None, timeout_seconds=None):
             return response_payload
     except HTTPError as exc:
         details = exc.read().decode("utf-8", errors="replace")
-        raise AIRequestError(f"OpenAI request failed with HTTP {exc.code}: {details}") from exc
+        raise AIRequestError(
+            f"OpenAI request failed for model {resolved_model} with HTTP {exc.code}: {details}"
+        ) from exc
     except URLError as exc:
         raise AIRequestError(f"OpenAI request failed: {exc.reason}") from exc
 

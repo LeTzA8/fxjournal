@@ -95,6 +95,146 @@
         title.appendChild(fragment);
     };
 
+    const initHeroSubheadlineRotator = () => {
+        const root = document.querySelector("[data-hero-subheadline-rotator]");
+        const textEl = root?.querySelector("[data-hero-subheadline-text]");
+        if (!root || !textEl || root.dataset.rotatorReady === "1") {
+            return;
+        }
+
+        let lines = [];
+        try {
+            const parsed = JSON.parse(root.dataset.heroSubheadlines || "[]");
+            if (Array.isArray(parsed)) {
+                lines = parsed
+                    .map((line) => String(line || "").trim())
+                    .filter(Boolean);
+            }
+        } catch (error) {
+            lines = [];
+        }
+
+        if (lines.length < 2) {
+            return;
+        }
+
+        root.dataset.rotatorReady = "1";
+
+        let currentIndex = 0;
+        let timerId = null;
+        let isPaused = false;
+        let swapTimeoutId = null;
+
+        const setStableHeight = () => {
+            const rootWidth = root.getBoundingClientRect().width;
+            if (!rootWidth) {
+                return;
+            }
+
+            const computed = window.getComputedStyle(root);
+            const px = (value) => Number.parseFloat(value) || 0;
+            const verticalExtras =
+                px(computed.paddingTop) +
+                px(computed.paddingBottom) +
+                px(computed.borderTopWidth) +
+                px(computed.borderBottomWidth);
+            const horizontalExtras =
+                px(computed.paddingLeft) +
+                px(computed.paddingRight) +
+                px(computed.borderLeftWidth) +
+                px(computed.borderRightWidth);
+
+            const sizer = textEl.cloneNode(false);
+            sizer.removeAttribute("data-hero-subheadline-text");
+            sizer.style.position = "absolute";
+            sizer.style.visibility = "hidden";
+            sizer.style.pointerEvents = "none";
+            sizer.style.inset = "auto";
+            sizer.style.width = `${Math.max(0, rootWidth - horizontalExtras)}px`;
+            root.appendChild(sizer);
+
+            const maxTextHeight = lines.reduce((height, line) => {
+                sizer.textContent = line;
+                return Math.max(height, sizer.getBoundingClientRect().height);
+            }, 0);
+
+            sizer.remove();
+            root.style.minHeight = `${Math.ceil(maxTextHeight + verticalExtras)}px`;
+        };
+
+        const swapLine = () => {
+            if (isPaused || prefersReducedMotion.matches || swapTimeoutId) {
+                return;
+            }
+
+            root.classList.add("is-swapping");
+            swapTimeoutId = window.setTimeout(() => {
+                swapTimeoutId = null;
+                if (prefersReducedMotion.matches) {
+                    root.classList.remove("is-swapping");
+                    return;
+                }
+                currentIndex = (currentIndex + 1) % lines.length;
+                textEl.textContent = lines[currentIndex];
+                root.classList.remove("is-swapping");
+            }, 240);
+        };
+
+        const stop = () => {
+            if (!timerId) {
+                return;
+            }
+            window.clearInterval(timerId);
+            timerId = null;
+            if (swapTimeoutId) {
+                window.clearTimeout(swapTimeoutId);
+                swapTimeoutId = null;
+                root.classList.remove("is-swapping");
+            }
+        };
+
+        const start = () => {
+            if (timerId || prefersReducedMotion.matches) {
+                return;
+            }
+            timerId = window.setInterval(swapLine, 4400);
+        };
+
+        const pause = () => {
+            isPaused = true;
+        };
+
+        const resume = () => {
+            isPaused = false;
+        };
+
+        root.addEventListener("pointerenter", pause);
+        root.addEventListener("pointerleave", resume);
+        root.addEventListener("focusin", pause);
+        root.addEventListener("focusout", resume);
+        window.addEventListener("resize", setStableHeight);
+
+        setStableHeight();
+        start();
+
+        const onMotionChange = () => {
+            root.classList.remove("is-swapping");
+            if (prefersReducedMotion.matches) {
+                stop();
+                textEl.textContent = lines[0];
+                currentIndex = 0;
+                return;
+            }
+            start();
+        };
+
+        if (typeof prefersReducedMotion.addEventListener === "function") {
+            prefersReducedMotion.addEventListener("change", onMotionChange);
+        } else if (typeof prefersReducedMotion.addListener === "function") {
+            prefersReducedMotion.addListener(onMotionChange);
+        }
+    };
+
     const buildReplayChart = () => {
         const chartRoot = document.getElementById("replayCandles");
         if (!chartRoot || chartRoot.dataset.ready === "1") {
@@ -353,6 +493,7 @@
     };
 
     splitHeroTitleWords();
+    initHeroSubheadlineRotator();
     buildReplayChart();
     initFeatureShotLightbox();
     initNavDropdowns();

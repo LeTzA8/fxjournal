@@ -58,7 +58,12 @@
        "Same mistakes. Different week."
        "Finally understand your trades."
     #}
-    {% set hero_subheadline = "Understand your trading without turning journaling into a second job." %}
+    {% set hero_subheadlines = [
+        "Understand your trading without turning journaling into a second job.",
+        "Find the mistakes that keep repeating before they cost another week.",
+        "Turn your trade history into one clear weekly review.",
+        "Know what to fix next, not just what went wrong."
+    ] %}
     {# Alternative hero subheadlines:
        "Turn your trades into clear insight — without spreadsheets or manual review."
        "See what’s actually happening in your trades — without the extra work."
@@ -72,8 +77,13 @@
                 data-reveal-delay="460"
                 data-hero-accent-words="2"
             >{{ hero_headline }}</h1>
-            <p class="muted lead landing-reveal" data-reveal-delay="760">
-                {{ hero_subheadline }}
+            <p
+                class="muted lead hero-subheadline-rotator landing-reveal"
+                data-reveal-delay="760"
+                data-hero-subheadline-rotator
+                data-hero-subheadlines='{{ hero_subheadlines|tojson }}'
+            >
+                <span data-hero-subheadline-text>{{ hero_subheadlines[0] }}</span>
             </p>
             {% if signup_code_mode == "required" %}
             <p class="hero-note landing-reveal" data-reveal-delay="920">
@@ -148,30 +158,27 @@
 
     <section class="landing-section workflow-automation-section" id="hands-off" aria-labelledby="workflow-automation-title" data-reveal-scope>
         <div class="landing-inner">
-            <p class="eyebrow landing-reveal" data-reveal-delay="40">Less admin, more actual trading</p>
-            <h2 id="workflow-automation-title" class="landing-reveal" data-reveal-delay="110">The journal does the heavy lifting. You do the trading.</h2>
+            <p class="eyebrow landing-reveal" data-reveal-delay="40">Less logging, sharper trading</p>
+            <h2 id="workflow-automation-title" class="landing-reveal" data-reveal-delay="110">Review faster. Trade clearer.</h2>
             <p class="muted landing-reveal" data-reveal-delay="180">
-                Most traders do not need more dashboards. They need a workflow that keeps the review habit alive
-                without turning journaling into a second job after the market closes.
+                MyFXJournal turns raw trades into the few signals worth acting on.
             </p>
 
             <div class="workflow-automation-grid">
                 <article class="workflow-automation-card landing-reveal" data-reveal-delay="260">
                     <p class="workflow-automation-kicker">MyFXJournal handles</p>
                     <ul class="workflow-automation-list">
-                        <li>Trade imports, account routing, and duplicate checks.</li>
-                        <li>Performance breakdowns by session, symbol, and execution behavior.</li>
-                        <li>Weekly AI review output built from your own trade history.</li>
-                        <li>Psychology and mistake cues that are easier to act on than a blank journal page.</li>
+                        <li>Importing and organizing your trades.</li>
+                        <li>Session, symbol, and execution breakdowns.</li>
+                        <li>Weekly AI review and mistake cues.</li>
                     </ul>
                 </article>
                 <article class="workflow-automation-card landing-reveal" data-reveal-delay="340">
                     <p class="workflow-automation-kicker">You stay focused on</p>
                     <ul class="workflow-automation-list">
-                        <li>Taking your setups and managing risk in real time.</li>
-                        <li>Checking the review instead of writing a full report from scratch.</li>
-                        <li>Adjusting one rule or habit at a time before the next week starts.</li>
-                        <li>Keeping journaling realistic enough to actually continue.</li>
+                        <li>Your setups.</li>
+                        <li>Risk in the moment.</li>
+                        <li>One adjustment for next week.</li>
                     </ul>
                 </article>
             </div>
@@ -185,59 +192,59 @@
                 <span>Weekly Only</span>
             </div>
             <p class="landing-proof-kicker">Built from your real trade history</p>
-            <h2 id="landing-proof-title">Weekly AI Review</h2>
-            <p class="landing-proof-subtitle">Consistency, behavior patterns, and what to improve next.</p>
+            <h2 id="landing-proof-title">The mistake you missed.</h2>
+            <p class="landing-proof-subtitle">One weekly review. One clear next move.</p>
         </div>
 
         <div class="landing-proof-panel">
             <div class="landing-proof-grid">
                 <article class="ai-demo-card typing-done landing-proof-review">
                     <div class="ai-demo-card-head">
-                        <p class="ai-demo-label">Latest Weekly Review</p>
+                        <p class="ai-demo-label">Pattern found</p>
                     </div>
                     <div class="ai-demo-body">
                         <section class="landing-proof-review-section" aria-labelledby="landing-proof-review-title">
                             <p class="landing-proof-section-label" id="landing-proof-review-title">🧠 What mattered this week</p>
-                            <p class="ai-demo-title">This week's review</p>
+                            <p class="ai-demo-title">You were profitable. Your risk still leaked.</p>
                             <p class="ai-demo-text">
-                                You made money - but size increased after losses.
-                                That pattern explains most of the drawdown.
+                                After losses, your next positions got bigger.
+                                That one habit created most of the drawdown.
                             </p>
-                            <p class="landing-proof-warning">⚠ Confidence is limited until the next week confirms it.</p>
+                            <p class="landing-proof-warning">⚠ The review waits for more data before calling it a rule.</p>
                         </section>
-                        <section class="landing-proof-suggests" aria-label="What this suggests">
-                            <p class="landing-proof-section-label">What this suggests</p>
-                            <p>Risk stayed calm while trades were working, then expanded after losses. The next fix is simple: keep size consistent after setbacks.</p>
+                        <section class="landing-proof-suggests" aria-label="Why it matters">
+                            <p class="landing-proof-section-label">Why it matters</p>
+                            <p>The issue was not the strategy. It was the reaction after a loss.</p>
                         </section>
                     </div>
                 </article>
 
                 <aside class="landing-proof-side" aria-label="Review side notes">
                     <article class="landing-proof-side-card landing-proof-side-card-action">
-                        <p>🎯 Actionable Improvement</p>
-                        <strong>Fix next week: keep position size consistent after losses.</strong>
+                        <p>🎯 Next fix</p>
+                        <strong>After a loss, trade normal size.</strong>
                     </article>
                     <article class="landing-proof-side-card">
-                        <p>✅ Strength to Reinforce</p>
-                        <strong>You still protected the week by cutting losers quickly.</strong>
+                        <p>✅ Keep this</p>
+                        <strong>You cut losers quickly. Do not change that.</strong>
                     </article>
                 </aside>
 
                 <article class="landing-proof-experiment">
-                    <p>🧪 This week's experiment</p>
-                    <strong>For one week, use the same position size after every loss and write down whether the next trade still meets your setup rules.</strong>
+                    <p>🧪 This week's rule</p>
+                    <strong>After a loss, take the next valid setup at normal size. No revenge sizing.</strong>
                 </article>
             </div>
 
             <section class="landing-proof-ask" aria-labelledby="landing-proof-ask-title">
                 <div class="landing-proof-ask-head">
-                    <h3 id="landing-proof-ask-title">💬 Ask about this review</h3>
-                    <p>Follow-ups use only this review and its stored trade context.</p>
+                    <h3 id="landing-proof-ask-title">💬 Ask what to fix</h3>
+                    <p>Follow-ups use this review and your stored trade context.</p>
                 </div>
                 <div class="landing-proof-prompts" aria-label="Example follow-up questions">
-                    <button type="button">Explain this simply</button>
-                    <button type="button">Was this bad luck or my execution?</button>
-                    <button type="button">Which trade should I review first?</button>
+                    <button type="button">Show the trades</button>
+                    <button type="button">Explain the risk leak</button>
+                    <button type="button">What should I test next?</button>
                 </div>
                 <div class="landing-proof-ask-input" aria-label="Example review question input">
                     <span>Ask what this means...</span>
@@ -312,27 +319,27 @@
                 <div class="feature-concept-grid" role="list" aria-label="MyFXJournal core workflow">
                     <article class="feature-showcase-card feature-concept-card landing-reveal" data-reveal-delay="260" role="listitem">
                         <div class="feature-showcase-copy">
-                            <p class="feature-concept-step">Capture</p>
+                            <p class="feature-concept-step feature-concept-step-capture">Capture</p>
                             <h3>Import your trades in seconds.</h3>
                             <p>
-                                No cleanup. No rebuilding your week.<br>
-                                Just bring in your history and start.
+                                Unlimited Excel imports, or MT5 sync when you want.<br>
+                                No cleanup. No rebuilding your week.
                             </p>
                         </div>
                     </article>
                     <article class="feature-showcase-card feature-concept-card landing-reveal" data-reveal-delay="340" role="listitem">
                         <div class="feature-showcase-copy">
-                            <p class="feature-concept-step">Understand</p>
+                            <p class="feature-concept-step feature-concept-step-understand">Understand</p>
                             <h3>See where your trading actually breaks down.</h3>
                             <p>
-                                One clear insight - not a wall of stats.<br>
+                                We handle the calculations and interpret the stats.<br>
                                 Know what's costing you, not just what happened.
                             </p>
                         </div>
                     </article>
                     <article class="feature-showcase-card feature-concept-card landing-reveal" data-reveal-delay="420" role="listitem">
                         <div class="feature-showcase-copy">
-                            <p class="feature-concept-step">Act</p>
+                            <p class="feature-concept-step feature-concept-step-act">Act</p>
                             <h3>Ask questions. Get real answers.</h3>
                             <p>
                                 Didn't understand your review?<br>
@@ -377,24 +384,21 @@
             <div class="comparison-top">
                 <div class="comparison-copy">
                     <p class="eyebrow landing-reveal" data-reveal-delay="40">Who It's For</p>
-                    <h2 id="comparison-title" class="landing-reveal" data-reveal-delay="110">MyFXJournal fits traders who want a lighter review loop, not a bigger platform to manage.</h2>
+                    <h2 id="comparison-title" class="landing-reveal" data-reveal-delay="110">For traders who want the lesson, not another platform to manage.</h2>
                     <p class="muted landing-reveal" data-reveal-delay="180">
-                        If your goal is to stop rebuilding the week by hand and leave with one useful adjustment, this is the fit.
-                        If you want replay-heavy analysis or a broader toolkit, other journals lean harder there.
+                        MyFXJournal is built for a short weekly review: import the week, spot the pattern, leave with one useful adjustment.
                     </p>
                 </div>
 
                 <aside class="comparison-highlight-card landing-reveal" data-reveal-delay="260" aria-label="Why traders choose MyFXJournal">
                     <p class="comparison-highlight-kicker">MyFXJournal right now</p>
-                    <h3>Try the workflow before paying for another heavy platform</h3>
+                    <h3>Try the review loop before paying for more software.</h3>
                     <p>
-                        Import first, review the right account, and see whether the weekly AI review gives you a cleaner next step
-                        before you commit to another monthly subscription.
+                        Import your trades, get a weekly review, then decide if it actually helps you improve.
                     </p>
                     <ul class="comparison-highlight-list">
-                        <li>Fastest first win is file import. Read-only MT5 sync is optional later during beta.</li>
-                        <li>Your first weekly AI review appears after at least {{ weekly_ai_min_closed_trades }} closed trades in a finished trade week.</li>
-                        <li>Founder-led support means faster answers while the product is still taking shape.</li>
+                        <li>Unlimited Excel import first. MT5 sync is optional.</li>
+                        <li>Free during open beta.</li>
                     </ul>
                     <div class="comparison-highlight-actions">
                         {% if user_logged_in %}
@@ -411,66 +415,53 @@
                 <article class="comparison-card comparison-card-primary landing-reveal" data-reveal-delay="320">
                     <p class="comparison-card-brand">MyFXJournal</p>
                     <p class="comparison-card-price">Free during open beta</p>
-                    <ul class="comparison-feature-list">
-                        <li><span class="comparison-feature-label">Lightweight weekly reflection*</span><span class="comparison-feature-pill is-yes">Designed for it</span></li>
-                        <li><span class="comparison-feature-label">Review style</span><span class="comparison-feature-note">Recurring review flow</span></li>
-                        <li><span class="comparison-feature-label">Reflection layer</span><span class="comparison-feature-note">Behavior context built in</span></li>
-                        <li><span class="comparison-feature-label">Workflow feel</span><span class="comparison-feature-note">Lower overhead</span></li>
-                        <li><span class="comparison-feature-label">Best fit</span><span class="comparison-feature-note">Lighter weekly reflection</span></li>
-                    </ul>
+                    <p class="comparison-card-summary">All the review. None of the overhead.</p>
+                    <div class="comparison-card-tags" aria-label="MyFXJournal fit">
+                        <span class="comparison-feature-pill is-yes">Designed for it</span>
+                        <span class="comparison-feature-note">Lower overhead</span>
+                    </div>
                 </article>
                 <article class="comparison-card comparison-card-tradersync landing-reveal" data-reveal-delay="380">
                     <p class="comparison-card-brand">TraderSync</p>
                     <p class="comparison-card-price">$29.95 to $79.95 per month</p>
-                    <ul class="comparison-feature-list">
-                        <li><span class="comparison-feature-label">Lightweight weekly reflection*</span><span class="comparison-feature-pill is-ondemand">Toolkit-first</span></li>
-                        <li><span class="comparison-feature-label">Review style</span><span class="comparison-feature-note">AI assistant + toolkit</span></li>
-                        <li><span class="comparison-feature-label">Reflection layer</span><span class="comparison-feature-note">Broader toolset</span></li>
-                        <li><span class="comparison-feature-label">Workflow feel</span><span class="comparison-feature-note">More platform depth</span></li>
-                        <li><span class="comparison-feature-label">Best fit</span><span class="comparison-feature-note">Replay + active analysis</span></li>
-                    </ul>
+                    <p class="comparison-card-summary">Powerful if you want more tools, tabs, and replay work.</p>
+                    <div class="comparison-card-tags" aria-label="TraderSync fit">
+                        <span class="comparison-feature-pill is-ondemand">Toolkit-first</span>
+                        <span class="comparison-feature-note">More depth</span>
+                    </div>
                 </article>
                 <article class="comparison-card comparison-card-tradervue landing-reveal" data-reveal-delay="440">
                     <p class="comparison-card-brand">Tradervue</p>
                     <p class="comparison-card-price">Free plan, then $29.95 to $49.95 per month</p>
-                    <ul class="comparison-feature-list">
-                        <li><span class="comparison-feature-label">Lightweight weekly reflection*</span><span class="comparison-feature-pill is-no">Reporting-first</span></li>
-                        <li><span class="comparison-feature-label">Review style</span><span class="comparison-feature-note">Classic reporting</span></li>
-                        <li><span class="comparison-feature-label">Reflection layer</span><span class="comparison-feature-note">Minimal</span></li>
-                        <li><span class="comparison-feature-label">Workflow feel</span><span class="comparison-feature-note">Straightforward logging</span></li>
-                        <li><span class="comparison-feature-label">Best fit</span><span class="comparison-feature-note">Traditional journal users</span></li>
-                    </ul>
+                    <p class="comparison-card-summary">Classic reports for traders comfortable doing more of the review themselves.</p>
+                    <div class="comparison-card-tags" aria-label="Tradervue fit">
+                        <span class="comparison-feature-pill is-no">Reporting-first</span>
+                        <span class="comparison-feature-note">Straightforward</span>
+                    </div>
                 </article>
                 <article class="comparison-card comparison-card-trademetria landing-reveal" data-reveal-delay="500">
                     <p class="comparison-card-brand">Trademetria</p>
                     <p class="comparison-card-price">Free plan, then $19.95 to $29.95 per month</p>
-                    <ul class="comparison-feature-list">
-                        <li><span class="comparison-feature-label">Lightweight weekly reflection*</span><span class="comparison-feature-pill is-ondemand">Analytics-first</span></li>
-                        <li><span class="comparison-feature-label">Review style</span><span class="comparison-feature-note">AI insights + analytics</span></li>
-                        <li><span class="comparison-feature-label">Reflection layer</span><span class="comparison-feature-note">Analytics-led</span></li>
-                        <li><span class="comparison-feature-label">Workflow feel</span><span class="comparison-feature-note">Broader market coverage</span></li>
-                        <li><span class="comparison-feature-label">Best fit</span><span class="comparison-feature-note">Multi-market tracking</span></li>
-                    </ul>
+                    <p class="comparison-card-summary">Analytics-led tracking when you want more markets and more metrics to manage.</p>
+                    <div class="comparison-card-tags" aria-label="Trademetria fit">
+                        <span class="comparison-feature-pill is-ondemand">Analytics-first</span>
+                        <span class="comparison-feature-note">Multi-market</span>
+                    </div>
                 </article>
                 <article class="comparison-card comparison-card-edgewonk landing-reveal" data-reveal-delay="560">
                     <p class="comparison-card-brand">Edgewonk</p>
                     <p class="comparison-card-price">$197 per 12 months or $297 per 24 months</p>
-                    <ul class="comparison-feature-list">
-                        <li><span class="comparison-feature-label">Lightweight weekly reflection*</span><span class="comparison-feature-pill is-automated">Deeper review</span></li>
-                        <li><span class="comparison-feature-label">Review style</span><span class="comparison-feature-note">Deep review workflow</span></li>
-                        <li><span class="comparison-feature-label">Reflection layer</span><span class="comparison-feature-note">Psychology-heavy</span></li>
-                        <li><span class="comparison-feature-label">Workflow feel</span><span class="comparison-feature-note">More deliberate</span></li>
-                        <li><span class="comparison-feature-label">Best fit</span><span class="comparison-feature-note">Deep self-analysis</span></li>
-                    </ul>
+                    <p class="comparison-card-summary">A deeper process for traders who want a more involved review ritual.</p>
+                    <div class="comparison-card-tags" aria-label="Edgewonk fit">
+                        <span class="comparison-feature-pill is-automated">Deeper review</span>
+                        <span class="comparison-feature-note">Self-analysis</span>
+                    </div>
                 </article>
             </div>
 
             <p class="comparison-footnote landing-reveal" data-reveal-delay="560">
-                Pricing checked against official public pages on 4 Apr 2026. *Lightweight weekly reflection refers here
-                to a recurring review flow designed to stay short, structured, and easy to repeat from recent trade
-                history, rather than a broader toolkit, classic reporting flow, analytics-first workflow, or deeper
-                long-form review approach. Workflow descriptions summarize publicly marketed positioning and packaging,
-                which can change over time.
+                Pricing checked against official public pages on 4 Apr 2026. Positioning summaries are based on publicly
+                marketed packaging and may change over time.
             </p>
         </div>
     </section>
@@ -1155,6 +1146,7 @@
     .landing-hero .lead {
         margin: 0 auto 1.2rem;
         max-width: 56ch;
+        width: min(56ch, 100%);
         font-size: clamp(1rem, 1.7vw, 1.35rem);
         display: inline-block;
         padding: 0.72rem 0.95rem;
@@ -1166,6 +1158,24 @@
         color: var(--landing-lead-ink);
         text-shadow: 0 1px 2px rgba(2, 6, 23, 0.24);
         box-shadow: 0 10px 24px rgba(2, 6, 23, 0.2);
+    }
+
+    .hero-subheadline-rotator {
+        position: relative;
+        box-sizing: border-box;
+    }
+
+    .hero-subheadline-rotator [data-hero-subheadline-text] {
+        display: inline-block;
+        width: 100%;
+        transition:
+            opacity 240ms ease,
+            transform 240ms ease;
+    }
+
+    .hero-subheadline-rotator.is-swapping [data-hero-subheadline-text] {
+        opacity: 0;
+        transform: translateY(0.22rem);
     }
 
     .hero-note {
@@ -2531,24 +2541,107 @@
         align-content: start;
         gap: 0.72rem;
         min-height: 220px;
+        position: relative;
+        isolation: isolate;
+        transition:
+            border-color 220ms ease,
+            box-shadow 220ms ease,
+            transform 220ms ease;
+    }
+
+    .feature-concept-card::before {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        z-index: 0;
+        opacity: 0.58;
+        background:
+            radial-gradient(circle at 18% 0%, rgba(129, 140, 248, 0.24), transparent 32%),
+            radial-gradient(circle at 86% 18%, rgba(45, 212, 191, 0.13), transparent 34%);
+        pointer-events: none;
+    }
+
+    .feature-concept-card:hover {
+        transform: translateY(-2px);
+        border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
+        box-shadow:
+            0 18px 34px rgba(2, 6, 23, 0.22),
+            0 0 34px color-mix(in srgb, var(--accent) 18%, transparent);
     }
 
     .feature-concept-step {
+        position: relative;
+        isolation: isolate;
         width: fit-content;
         margin: 0;
-        padding: 0.22rem 0.58rem;
+        padding: 0.24rem 0.62rem;
         border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
-        background: color-mix(in srgb, var(--accent) 9%, var(--surface));
-        color: color-mix(in srgb, var(--accent) 76%, var(--ink));
-        font-family: var(--landing-font-mono);
-        font-size: 0.68rem;
+        border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+        background:
+            linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--surface)), rgba(15, 23, 42, 0.58));
+        color: color-mix(in srgb, var(--accent) 42%, var(--ink));
+        font-family: var(--landing-font);
+        font-size: 0.72rem;
         font-weight: 800;
-        letter-spacing: 0.07em;
+        letter-spacing: 0.04em;
         text-transform: uppercase;
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            0 0 18px color-mix(in srgb, var(--accent) 16%, transparent);
+        overflow: hidden;
+    }
+
+    .feature-concept-step::after {
+        content: "";
+        position: absolute;
+        inset: -45% auto -45% -40%;
+        z-index: 0;
+        width: 42%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.34), transparent);
+        transform: skewX(-18deg);
+        animation: feature-step-sheen 4.2s ease-in-out infinite;
+    }
+
+    .feature-concept-step-understand {
+        border-color: color-mix(in srgb, #2dd4bf 40%, var(--border));
+        background:
+            linear-gradient(135deg, rgba(45, 212, 191, 0.14), rgba(15, 23, 42, 0.58));
+        color: color-mix(in srgb, #7dd3fc 45%, var(--ink));
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            0 0 18px rgba(45, 212, 191, 0.14);
+    }
+
+    .feature-concept-step-act {
+        border-color: color-mix(in srgb, #fbbf24 36%, var(--border));
+        background:
+            linear-gradient(135deg, rgba(251, 191, 36, 0.13), rgba(15, 23, 42, 0.58));
+        color: color-mix(in srgb, #fde68a 42%, var(--ink));
+        box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.08),
+            0 0 18px rgba(251, 191, 36, 0.13);
+    }
+
+    @keyframes feature-step-sheen {
+        0%,
+        52% {
+            transform: translateX(0) skewX(-18deg);
+            opacity: 0;
+        }
+
+        64% {
+            opacity: 1;
+        }
+
+        100% {
+            transform: translateX(420%) skewX(-18deg);
+            opacity: 0;
+        }
     }
 
     .feature-showcase-copy {
+        position: relative;
+        z-index: 1;
         display: grid;
         gap: 0.52rem;
         align-content: start;
@@ -3126,8 +3219,8 @@
         overflow: hidden;
         isolation: isolate;
         display: grid;
-        grid-template-rows: auto minmax(3.45rem, auto) 1fr;
-        gap: 0.8rem;
+        grid-template-rows: auto minmax(2.75rem, auto) minmax(3.6rem, 1fr) auto;
+        gap: 0.68rem;
         align-content: start;
         border-color: color-mix(in srgb, var(--comparison-card-accent) 24%, var(--border));
         background:
@@ -3275,7 +3368,21 @@
         font-size: 1.02rem;
         font-weight: 800;
         line-height: 1.24;
-        min-height: 3.45rem;
+        min-height: 2.75rem;
+    }
+
+    .comparison-card-summary {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.93rem;
+        line-height: 1.45;
+    }
+
+    .comparison-card-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.42rem;
+        align-items: center;
     }
 
     .comparison-feature-list {
@@ -3795,6 +3902,12 @@
             transition: none !important;
         }
 
+        .hero-subheadline-rotator [data-hero-subheadline-text] {
+            opacity: 1 !important;
+            transform: none !important;
+            transition: none !important;
+        }
+
         .hook-glow,
         .candle,
         .hook-trend path,
@@ -3809,6 +3922,7 @@
         .comparison-card-primary,
         .comparison-card-primary::before,
         .comparison-card-primary::after,
+        .feature-concept-step::after,
         .feature-shot-trigger img,
         .feature-shot-lightbox-close {
             animation: none !important;

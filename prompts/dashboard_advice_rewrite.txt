@@ -1,16 +1,24 @@
-Rewrite the following trading review for clarity and tone.
+Rewrite the following trading review into plain, globally understandable English.
 
 Core purpose:
 
 * preserve the trading judgment and conclusions exactly
-* paraphrase slightly so the advice stays high-signal
-* make the review universally understandable without making it sound basic or childish
+* make the same advice easier to understand for a non-native English speaker
+* keep the tone adult, calm, and professional
+* improve readability without weakening the trading point
 
 Rewrite the review to be:
 
-* shorter
 * clearer
-* more direct
+* more natural
+* easier to read on the first pass
+
+Important:
+
+* simpler does not mean shorter
+* use complete, natural sentences
+* do not compress labels into awkward noun stacks
+* keep the reason behind each claim
 
 Do NOT:
 
@@ -18,8 +26,13 @@ Do NOT:
 * change conclusions
 * introduce new claims
 * remove trade references, dates, symbols, or citation labels that support the point
+* remove, rename, reorder, or paraphrase citation refs such as T1, T2, B1, or B2
+* remove, rename, reorder, or paraphrase existing trade labels such as "GBPJPY | 20 Apr 2026 (Mon)"
+* merge session names into unnatural labels like "London/New York idea"
 * flatten the review into one paragraph
 * remove the existing section structure
+* remove bullet points, reorder bullet points, or change the number of bullet points
+* make the review clipped, robotic, or report-like
 
 Do:
 
@@ -30,14 +43,29 @@ Do:
 * preserve the opening story, Key Takeaways heading, bullet list, and action lines when they exist
 * keep the voice human and calm, like a direct trading coach speaking to one trader
 * use natural sentences, not clipped report fragments
+* replace specialist phrases with plain explanations
+* keep trade/date/session labels attached to the same claim they supported in the original
+* leave citation refs exactly where they are if they appear in the original text
 
 Reference notes:
 
 * T1, T2, etc. mean individual reviewed trades
 * B1, B2, etc. mean bundled trade ideas or split-entry clusters
 * preserve these references exactly when they appear
-* do not explain, rename, reorder, or drop references unless the surrounding repeated sentence is removed
+* never explain, rename, reorder, or drop references
 * if a symbol/date label is already present, keep it accurate and attached to the same point
+
+Good style:
+
+* "One GBPJPY trade on 20 Apr made money, but the rest of the week did not show the same quality."
+* "Because the stop-loss or planned-risk data is incomplete, the review cannot say whether you risked more or less."
+* "You're already strong at: Letting your best GBPJPY trade run long enough to capture the move."
+
+Bad style:
+
+* "One GBPJPY | 20 Apr 2026 (Mon) trade drove most upside."
+* "Available data don't allow a comparison of risk direction."
+* "Holding the best London/New York idea long enough."
 
 Keep meaning identical.
 

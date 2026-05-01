@@ -18,6 +18,17 @@ def test_load_runtime_env_reads_dotenv_when_present(tmp_path, monkeypatch):
     assert os.getenv("REDIS_URL") == "redis://example.test:6379/0"
 
 
+def test_load_runtime_env_reads_configured_env_file(tmp_path, monkeypatch):
+    env_file = tmp_path / "custom.env"
+    env_file.write_text("AI_MODEL=gpt-5.4-mini\n", encoding="utf-8")
+    monkeypatch.delenv("AI_MODEL", raising=False)
+    monkeypatch.setenv("FXJ_ENV_FILE", str(env_file))
+
+    celery_app_module._load_runtime_env()
+
+    assert os.getenv("AI_MODEL") == "gpt-5.4-mini"
+
+
 def test_celery_routes_and_mt5_task_reliability_flags():
     assert celery_app_module.celery.conf.worker_prefetch_multiplier == 1
     assert celery_app_module.celery.conf.broker_connection_retry is True

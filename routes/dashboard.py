@@ -315,6 +315,30 @@ def _resolve_weekly_review_citations(refs, citation_lookup):
     return resolved
 
 
+def _carry_rewrite_refs_from_original(display, original_display):
+    if not isinstance(display, dict) or not isinstance(original_display, dict):
+        return display
+
+    summary = display.get("summary")
+    original_summary = original_display.get("summary") or {}
+    if isinstance(summary, dict) and not summary.get("refs"):
+        summary["refs"] = list(original_summary.get("refs") or [])
+
+    takeaways = display.get("takeaways") if isinstance(display.get("takeaways"), list) else []
+    original_takeaways = (
+        original_display.get("takeaways")
+        if isinstance(original_display.get("takeaways"), list)
+        else []
+    )
+    for index, takeaway in enumerate(takeaways):
+        if not isinstance(takeaway, dict) or takeaway.get("refs"):
+            continue
+        if index >= len(original_takeaways) or not isinstance(original_takeaways[index], dict):
+            continue
+        takeaway["refs"] = list(original_takeaways[index].get("refs") or [])
+    return display
+
+
 def _build_weekly_ai_review_display(review_record, timezone_name):
     if review_record is None:
         return None
@@ -337,6 +361,12 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
             getattr(review_record, "pass_1_output", None) or review_record.response_text or "",
             getattr(review_record, "response_meta_json", None),
         )
+        original_takeaways = original_display.get("takeaways") or []
+        rewritten_takeaways = display.get("takeaways") or []
+        if len(rewritten_takeaways) != len(original_takeaways):
+            display = original_display
+        else:
+            display = _carry_rewrite_refs_from_original(display, original_display)
         if not (display.get("experiment") or {}).get("text"):
             display["experiment"] = (original_display.get("experiment") or {})
         if not (display.get("strength") or {}).get("text"):

@@ -1,6 +1,6 @@
 import os
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime
 
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import func
@@ -13,6 +13,7 @@ from helpers.core import (
     queue_bundle_review_if_split_candidates,
     sanitize_error_message,
 )
+from helpers.trade_bars import has_complete_m5_chart_coverage
 from helpers.weekly_ai_queue import queue_weekly_ai_review_after_ingest
 from helpers.utils import utcnow_naive
 from models import MT5Account, Trade, TradeBars, db
@@ -60,22 +61,15 @@ def _append_skip_debug_row(skip_debug_rows, skip_debug_limit, skip_debug_mode, r
 
 def _trade_has_complete_m5_coverage(trade, coverage_by_trade_id):
     coverage = coverage_by_trade_id.get(trade.id)
-    if not coverage or coverage["bar_count"] <= 0:
+    if not coverage:
         return False
-    if trade.opened_at is None or trade.closed_at is None:
-        return False
-    opened_at_epoch = int(trade.opened_at.replace(tzinfo=timezone.utc).timestamp())
-    closed_at_epoch = int(trade.closed_at.replace(tzinfo=timezone.utc).timestamp())
-    min_bar_time = coverage["min_bar_time"]
-    max_bar_time = coverage["max_bar_time"]
-    if min_bar_time is None or max_bar_time is None:
-        return False
-    bar_tolerance_seconds = 15 * 60
-    if int(min_bar_time) > opened_at_epoch + bar_tolerance_seconds:
-        return False
-    if int(max_bar_time) < closed_at_epoch - bar_tolerance_seconds:
-        return False
-    return True
+    return has_complete_m5_chart_coverage(
+        opened_at=trade.opened_at,
+        closed_at=trade.closed_at,
+        bar_count=coverage["bar_count"],
+        min_bar_time=coverage["min_bar_time"],
+        max_bar_time=coverage["max_bar_time"],
+    )
 
 
 def _filter_trades_missing_complete_m5_bars(trades):
