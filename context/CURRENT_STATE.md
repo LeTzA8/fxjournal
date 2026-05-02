@@ -2,6 +2,26 @@
 
 Last Updated: 2026-05-02
 
+## Weekly review follow-up scope and dynamic questions (2026-05-02)
+
+- `prompts/weekly_review_followup.txt` now scopes every chat turn to the active weekly review and its trades, anchors answers to the review's main insight, requires concise evidence-backed explanations, redirects off-topic questions back to the review, and requires fresh 4-5 follow-up questions generated from the actual insight/evidence on every response.
+- Follow-up chat can now cite the same weekly-review trade refs internally: the prompt receives a trade-link ref map, the model may emit refs like `[T1]` after natural trade phrases, the route returns clean reply text plus citation segments, and dynamically added chat citation pills reuse the dashboard trade/bundle highlight behavior. (`ai_service.py`, `routes/dashboard.py`, `static/js/weekly_review_chat.js`, `static/js/dashboard_page.js`, tests)
+
+## Weekly AI prompt synthesis-flow tightening (2026-05-02)
+
+- `prompts/dashboard_advice.txt` now pushes the model to choose the likely week-level diagnosis before selecting metrics, with context signals (timing, range location, session/volatility, post-exit behavior, sequence, exit handling, risk authority) weighted above candle microstructure.
+- Risk interpretation now avoids lot-size inference and treats unavailable/ambiguous risk as a reason to use stronger available evidence rather than output filler caveats. The former end-of-prompt hard-prohibition/self-check blocks were folded into the core evidence, thinking, writing, and output flow, and the AI service prompt contract test was updated to pin the new structure. (`prompts/dashboard_advice.txt`, `tests/test_ai_service.py`)
+
+## Dashboard fine-print tooltip cleanup (2026-05-02)
+
+- Dashboard left-rail fine print is now tucked into accessible question-mark help bubbles instead of always-visible paragraphs. The MT5 sync card keeps the progress rail, account, and main action visible while moving status detail, batch availability, linked-account explanation, and disconnect consequences into tooltips. Rolling trends and latest closed trade also use the shared tooltip pattern for their explanatory subtitles. (`templates/index.html`, `static/js/mt5_request_form.js`)
+
+## Weekly AI evidence-first insight prompt rewrite (2026-05-02)
+
+- Weekly dashboard AI prompt now forces one main coaching insight instead of scattered recap points: the opening "What mattered this week" read starts with a human conclusion, anchors it to a count or concrete trade example, and combines at least two signal families when available.
+- Entry candle and other candle-level fields are now framed as supporting evidence only; timing, range location, session/volatility context, post-loss/re-entry sequence, exit handling, and risk authority drive the diagnosis. The JSON output instruction in `ai_service.py` mirrors the same evidence and structure requirements so pass-1 generation cannot drift back to metric summaries.
+- The prompt's output mapping now explicitly aligns `summary`, `takeaways`, `improvement`, `strength`, and `experiment` with the dashboard sections: "🧠 What mattered this week", "What this suggests", "🎯 Actionable Improvement", "✅ Strength to Reinforce", and "🧪 This Week's Experiment". (`prompts/dashboard_advice.txt`, `ai_service.py`)
+
 ## Extended bar-derived trade context (2026-05-02)
 
 - Weekly AI payloads now include 9 additional bar-derived context fields per trade (no external dependencies): `entry_active_sessions` (list of sessions active at entry — DST-aware via pytz; London/NY overlap shifts ~1 hour between winter/summer), `entry_in_session_overlap` (true when 2+ sessions active), `large_candle_before_entry` (true if any of the 3 M5 bars before entry had range >2x prior median — flags possible chase entries), `entry_bar_body_ratio` (body/range ratio of entry candle, 0–1), `entry_bar_closes_in_trade_direction` (entry candle closed with or against trade direction), `pre_entry_bars_in_trade_direction` (consecutive same-direction M5 bars before entry — momentum signal), `entry_tick_volume_vs_median` (entry bar tick volume relative to prior median), `post_exit_price_move` (raw price change from exit in first 12 post-exit bars), `post_exit_direction` ("continued"/"reversed"/"flat" — whether price moved favorably or against trade direction after exit). `_bar_dict` now includes `tick_volume` from stored rows. Aggregate breakdown in weekly payload adds `large_candle_entry_count`, `entry_bar_against_direction_count`, `post_exit_continued_count`, `post_exit_reversed_count`. Prompt updated with interpretation guardrails for each new field. (`helpers/ai_market_context.py`, `ai_service.py`, `prompts/dashboard_advice.txt`, tests)

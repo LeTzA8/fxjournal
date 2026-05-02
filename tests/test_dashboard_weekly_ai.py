@@ -76,7 +76,20 @@ def _create_weekly_review(user, trade_account, prompt_id="weekly-chat"):
         model="gpt-5-mini",
         response_text="This week was driven by one oversized XAUUSD loss.",
         pass_1_output="Pass one: sizing was the main issue.",
-        payload_json=json.dumps({"trades": [{"symbol": "XAUUSD", "pnl": -120.0}]}),
+        payload_json=json.dumps(
+            {
+                "trades": [
+                    {
+                        "review_ref": "T1",
+                        "trade_id": 101,
+                        "symbol": "XAUUSD",
+                        "opened_at": "2026-04-08T14:30:00Z",
+                        "pnl": -120.0,
+                        "is_bundle": False,
+                    }
+                ]
+            }
+        ),
         payload_hash="weekly-chat-hash",
         trade_count_used=3,
         period_start_utc=datetime(2026, 4, 6, 21, 30, 0),
@@ -88,7 +101,7 @@ def _create_weekly_review(user, trade_account, prompt_id="weekly-chat"):
     return review
 
 
-def test_weekly_review_chat_prompt_scrubs_internal_refs_from_review_meta_and_payload(app_ctx):
+def test_weekly_review_chat_prompt_exposes_trade_link_refs_without_raw_codes_in_review_text(app_ctx):
     review = type(
         "Review",
         (),
@@ -132,10 +145,12 @@ def test_weekly_review_chat_prompt_scrubs_internal_refs_from_review_meta_and_pay
         timezone_name="UTC",
     )
     user_blob = messages[1]["content"][0]["text"]
-    assert "T1" not in user_blob
-    assert "B1" not in user_blob
+    assert "TRADE_LINK_REFS_AVAILABLE_FOR_OUTPUT" in user_blob
+    assert "T1: EURUSD | 01 Apr 2026 (Wed) (trade)" in user_blob
+    assert "B1: GBPUSD bundle | 02 Apr 2026 (Thu) (bundle)" in user_blob
     assert '"refs"' not in user_blob
-    assert "review_ref" not in user_blob
+    assert '"review_ref":"T1"' in user_blob
+    assert '"review_ref":"B1"' in user_blob
     assert "EURUSD" in user_blob
     assert "GBPUSD" in user_blob
 
@@ -181,7 +196,7 @@ def test_weekly_review_chat_route_stores_user_and_assistant_messages(app_ctx, cl
         calls["review_id"] = review_record.id
         calls["message"] = user_message
         calls["history"] = [message.content for message in chat_history or []]
-        return "Start with the XAUUSD loss because it drove most of the damage.", {}, "gpt-test"
+        return "Start with the XAUUSD loss [T1] because it drove most of the damage.", {}, "gpt-test"
 
     monkeypatch.setattr(
         dashboard_routes,
@@ -195,7 +210,20 @@ def test_weekly_review_chat_route_stores_user_and_assistant_messages(app_ctx, cl
     )
 
     assert response.status_code == 200
-    assert response.get_json()["reply"] == "Start with the XAUUSD loss because it drove most of the damage."
+    payload = response.get_json()
+    assert payload["reply"] == "Start with the XAUUSD loss because it drove most of the damage."
+    assert payload["segments"] == [
+        {"text": "Start with the ", "type": "text"},
+        {
+            "bundle_key": None,
+            "citation_type": "trade",
+            "label": "XAUUSD | 08 Apr 2026 (Wed)",
+            "tone": "bad",
+            "trade_id": 101,
+            "type": "citation",
+        },
+        {"text": " loss because it drove most of the damage.", "type": "text"},
+    ]
     assert calls == {
         "review_id": review.id,
         "message": "Which trade should I review first?",

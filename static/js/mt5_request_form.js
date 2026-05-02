@@ -12,7 +12,7 @@
     const formShell = document.querySelector("[data-mt5-form-shell]");
     const progressTrack = document.querySelector("[data-mt5-progress]");
     const summaryPill = document.querySelector("[data-mt5-status-pill]");
-    const summaryCopy = document.querySelector("[data-mt5-panel-copy]");
+    const summaryCopy = document.querySelector("[data-mt5-panel-copy-text]") || document.querySelector("[data-mt5-panel-copy]");
     const softLabel = document.querySelector("#mt5-access .soft");
     const defaultSubmitText = submitButton ? submitButton.textContent.trim() : "Start MT5 Sync";
     const serverInput = form.querySelector("[data-mt5-server-input]");

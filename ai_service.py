@@ -87,21 +87,21 @@ Return valid JSON only. Do not use markdown fences.
 Use this exact shape:
 {
   "summary": {
-    "text": "2-3 sentence unlabeled summary paragraph.",
+    "text": "2-3 sentence main insight. First sentence starts with a human conclusion and includes a count or concrete trade example.",
     "refs": ["T1", "B1"]
   },
   "takeaways": [
     {
-      "text": "One sentence takeaway.",
+      "text": "One sentence explaining what the main insight suggests, anchored to evidence.",
       "refs": ["T2"]
     }
   ],
   "improvement": {
-    "text": "Improve this week: One actionable improvement line.",
+    "text": "Improve this week: One specific testable action tied to the main insight.",
     "refs": []
   },
   "strength": {
-    "text": "You're already strong at: One specific strength line.",
+    "text": "You're already strong at: One evidence-backed behavior to keep.",
     "refs": []
   },
   "experiment": {
@@ -124,10 +124,13 @@ Rules for refs:
 Rules for text fields:
 - summary.text must stay as the single opening paragraph.
 - takeaways should contain 1-3 items by default. Use 4 only when the fourth item is genuinely distinct and useful.
-- summary.text must identify the dominant diagnosis for the week, not merely restate performance.
-- Every takeaway must connect evidence to a decision or behavior the trader can change.
+- summary.text must identify one dominant diagnosis for the week, not merely restate performance.
+- summary.text must start with the human conclusion, then support it with data.
+- summary.text must include a count or concrete trade example and, when available, combine at least two signals such as timing, range location, session, volatility, sequence, exit handling, or risk authority.
+- Entry candle fields are supporting evidence only; never make them the whole diagnosis.
+- Every takeaway must deepen the same main insight by connecting evidence to a decision or behavior the trader can change.
 - improvement.text must include the "Improve this week:" prefix exactly once.
-- improvement.text must generalize one level up from the evidence and should not mention a specific trade, bundle, exact date, or weekday.
+- improvement.text must directly address the main insight, be specific and testable, and generalize one level up from the evidence without mentioning a specific trade, bundle, exact date, or weekday.
 - strength.text must include the "You're already strong at:" prefix exactly once.
 - strength.text must be grounded in observed data or consistent execution from this week, not generic praise.
 - Prefer behavior, execution, session, sizing, or process language in improvement.text over symbol-specific wording.
@@ -2874,13 +2877,27 @@ def _sanitize_payload_json_for_chat(payload_json_text):
     if not isinstance(parsed, dict):
         return _compact_json_for_prompt(payload_json_text)
     stripped = copy.deepcopy(parsed)
-    trades = stripped.get("trades")
-    if isinstance(trades, list):
-        for trade in trades:
-            if isinstance(trade, dict):
-                trade.pop("review_ref", None)
     spacified = _spacify_iso_datetime_t_separator(stripped)
     return json.dumps(spacified, ensure_ascii=False, separators=(",", ":"))
+
+
+def _format_weekly_review_chat_ref_map(citation_lookup):
+    if not citation_lookup:
+        return ""
+
+    lines = [
+        "Use these refs only in square brackets after a plain-language trade phrase; the UI hides the ref and links the phrase."
+    ]
+    for ref, citation in citation_lookup.items():
+        if not ref or not isinstance(citation, dict):
+            continue
+        label = str(citation.get("label") or citation.get("inline_label") or "").strip()
+        citation_type = str(citation.get("type") or "").strip()
+        if not label:
+            continue
+        type_label = "bundle" if citation_type == "bundle" else "trade"
+        lines.append(f"{ref}: {label} ({type_label})")
+    return "\n".join(lines)
 
 
 def build_weekly_review_chat_messages(
@@ -2911,6 +2928,7 @@ def build_weekly_review_chat_messages(
         getattr(review_record, "response_meta_json", None),
         citation_lookup,
     )
+    chat_ref_map = _format_weekly_review_chat_ref_map(citation_lookup)
 
     history_lines = []
     for message in chat_history or []:
@@ -2931,6 +2949,7 @@ def build_weekly_review_chat_messages(
             "FINAL_WEEKLY_REVIEW_SHOWN_TO_USER\n" + (final_review_text or "-"),
             "RAW_PASS_1_REVIEW_IF_AVAILABLE\n" + (raw_review_text or "-"),
             "STRUCTURED_REVIEW_META_IF_AVAILABLE\n" + (response_meta_json or "-"),
+            "TRADE_LINK_REFS_AVAILABLE_FOR_OUTPUT\n" + (chat_ref_map or "-"),
             "ORIGINAL_WEEKLY_REVIEW_PAYLOAD_AND_TRADE_CONTEXT_IF_AVAILABLE\n" + (payload_json or "-"),
             "RECENT_CHAT_HISTORY_FOR_THIS_REVIEW\n" + ("\n".join(history_lines) if history_lines else "-"),
             "USER_QUESTION\n" + _chat_context_rewrite_review_text(user_message, citation_lookup),
@@ -2968,7 +2987,6 @@ def generate_weekly_review_chat_reply(
     reply = extract_response_text(response_payload)
     if not reply:
         raise AIRequestError(describe_empty_response(response_payload))
-    reply = _strip_residual_weekly_review_ref_codes(reply)
     return reply, response_payload, resolved_model
 
 

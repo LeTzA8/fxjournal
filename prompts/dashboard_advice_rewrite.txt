@@ -55,18 +55,6 @@ Reference notes:
 * never explain, rename, reorder, or drop references
 * if a symbol/date label is already present, keep it accurate and attached to the same point
 
-Good style:
-
-* "One GBPJPY trade on 20 Apr made money, but the rest of the week did not show the same quality."
-* "Because the stop-loss or planned-risk data is incomplete, the review cannot say whether you risked more or less."
-* "You're already strong at: Letting your best GBPJPY trade run long enough to capture the move."
-
-Bad style:
-
-* "One GBPJPY | 20 Apr 2026 (Mon) trade drove most upside."
-* "Available data don't allow a comparison of risk direction."
-* "Holding the best London/New York idea long enough."
-
 Keep meaning identical.
 
 Text:

@@ -213,6 +213,11 @@
         color: var(--ink);
     }
 
+    .trend-panel__title .help-tooltip {
+        letter-spacing: 0;
+        text-transform: none;
+    }
+
     .trend-panel__kicker {
         margin: -0.25rem 0 0.55rem;
         font-size: 0.78rem;
@@ -271,6 +276,42 @@
         transform: translateX(0) rotate(45deg);
     }
 
+    .trend-panel__title .help-tooltip-bubble--trend-tight {
+        left: 0;
+        right: auto;
+        width: max-content;
+        max-width: min(17.5rem, calc(100vw - 2rem));
+        transform: translate(0, -0.22rem);
+    }
+
+    .trend-panel__title .help-tooltip:hover .help-tooltip-bubble--trend-tight,
+    .trend-panel__title .help-tooltip:focus-within .help-tooltip-bubble--trend-tight {
+        transform: translate(0, 0);
+    }
+
+    .trend-panel__title .help-tooltip-bubble--trend-tight::before {
+        left: 0.55rem;
+        transform: translateX(0) rotate(45deg);
+    }
+
+    .latest-trade-head .help-tooltip-bubble--trend-tight {
+        left: 0;
+        right: auto;
+        width: max-content;
+        max-width: min(17.5rem, calc(100vw - 2rem));
+        transform: translate(0, -0.22rem);
+    }
+
+    .latest-trade-head .help-tooltip:hover .help-tooltip-bubble--trend-tight,
+    .latest-trade-head .help-tooltip:focus-within .help-tooltip-bubble--trend-tight {
+        transform: translate(0, 0);
+    }
+
+    .latest-trade-head .help-tooltip-bubble--trend-tight::before {
+        left: 0.55rem;
+        transform: translateX(0) rotate(45deg);
+    }
+
     .trend-panel__arrow {
         font-size: 1.05rem;
         font-weight: 800;
@@ -310,6 +351,12 @@
     .latest-trade-head {
         margin-bottom: 0;
         align-items: flex-start;
+    }
+
+    .latest-trade-head h2 {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.38rem;
     }
 
     .latest-trade-primary {
@@ -762,7 +809,17 @@
                             {% endfor %}
                         </ol>
                         <span class="sr-only" data-mt5-status-pill>{{ mt5_selected_row.status_label }}</span>
-                        <p class="mt5-panel-copy" data-mt5-panel-copy>{{ mt5_selected_row.note }}</p>
+                        <div class="mt5-workflow-summary-head" data-mt5-panel-copy>
+                            <span class="help-tooltip">
+                                <button
+                                    type="button"
+                                    class="help-tooltip-button"
+                                    aria-label="MT5 sync status details"
+                                    aria-describedby="mt5-status-detail-tooltip"
+                                >?</button>
+                                <span id="mt5-status-detail-tooltip" class="help-tooltip-bubble help-tooltip-bubble--mt5-server" role="tooltip" data-mt5-panel-copy-text>{{ mt5_selected_row.note }}</span>
+                            </span>
+                        </div>
                     </div>
                     {% endif %}
 
@@ -804,7 +861,18 @@
                         {% endif %}
                     </div>
                     {% elif mt5_batch_state.batches_enabled and mt5_batch_state.public_badge %}
-                    <p class="mt5-panel-copy">{{ mt5_batch_state.public_badge }}{% if mt5_batch_state.active_batch %} in {{ mt5_batch_state.active_batch.name }}{% endif %}.</p>
+                    <p class="mt5-panel-copy mt5-panel-copy--compact">
+                        Batch info
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="MT5 sync batch availability"
+                                aria-describedby="mt5-batch-detail-tooltip"
+                            >?</button>
+                            <span id="mt5-batch-detail-tooltip" class="help-tooltip-bubble help-tooltip-bubble--mt5-server" role="tooltip">{{ mt5_batch_state.public_badge }}{% if mt5_batch_state.active_batch %} in {{ mt5_batch_state.active_batch.name }}{% endif %}.</span>
+                        </span>
+                    </p>
                     {% endif %}
 
                     {% if mt5_selected_account and mt5_selected_row and not mt5_selected_row.is_linked and mt5_selected_status in ("requestable", "pending") %}
@@ -926,10 +994,9 @@
                     <p class="mt5-card-footnote">Stored encrypted; used only to pull your trade history.</p>
                     {% elif mt5_selected_status == "queued" and mt5_selected_account %}
                     <p class="mt5-card-empty">MT5 details are saved and setup started right away. We will email you when MT5 sync is ready.</p>
-                    <div class="mt5-selected-account-card">
+                    <div class="mt5-selected-account-card mt5-selected-account-card--compact">
                         <span class="mt5-selected-account-label">Setup Queued</span>
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                        <span class="mt5-selected-account-meta">MyFXJournal has already queued terminal setup for this MT5 account.</span>
                     </div>
                     <form
                         method="post"
@@ -941,13 +1008,23 @@
                         <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
                         <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
                     </form>
-                    <p class="mt5-card-footnote">Cancel setup and remove saved MT5 credentials for this account. Your trades stay in the journal.</p>
+                    <p class="mt5-card-footnote mt5-card-footnote--help">
+                        Setup details
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="What disconnect does while setup is queued"
+                                aria-describedby="mt5-queued-disconnect-tooltip"
+                            >?</button>
+                            <span id="mt5-queued-disconnect-tooltip" class="help-tooltip-bubble" role="tooltip">Disconnect cancels setup and removes saved MT5 credentials for this account. Your trades stay in the journal.</span>
+                        </span>
+                    </p>
                     {% elif mt5_selected_status == "setting_up" and mt5_selected_account %}
                     <p class="mt5-card-empty">MT5 terminal setup is in progress now. You do not need to resubmit credentials.</p>
-                    <div class="mt5-selected-account-card">
+                    <div class="mt5-selected-account-card mt5-selected-account-card--compact">
                         <span class="mt5-selected-account-label">Setting Up</span>
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                        <span class="mt5-selected-account-meta">We will email you when sync goes live for this account.</span>
                     </div>
                     <form
                         method="post"
@@ -959,7 +1036,18 @@
                         <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
                         <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
                     </form>
-                    <p class="mt5-card-footnote">Stops setup and removes MT5 credentials for this account. Trades already in the journal are kept.</p>
+                    <p class="mt5-card-footnote mt5-card-footnote--help">
+                        Setup details
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="What disconnect does during setup"
+                                aria-describedby="mt5-setting-up-disconnect-tooltip"
+                            >?</button>
+                            <span id="mt5-setting-up-disconnect-tooltip" class="help-tooltip-bubble" role="tooltip">Disconnect stops setup and removes MT5 credentials for this account. Trades already in the journal are kept.</span>
+                        </span>
+                    </p>
                     {% elif mt5_selected_status == "failed" and mt5_selected_account %}
                     {% set _failed_mt5 = mt5_selected_row.mt5_account if mt5_selected_row else none %}
                     <div class="mt5-connection-error" role="alert">
@@ -1114,11 +1202,22 @@
                     </form>
                     <p class="mt5-card-footnote">Reactivation keeps your saved read-only credentials. Disconnect if you want to remove them completely.</p>
                     {% elif mt5_selected_status == "linked" and mt5_selected_account %}
-                    <p class="mt5-card-empty">This account is already linked for MT5 sync. Switch your active dashboard account if you want to check MT5 onboarding on a different account.</p>
-                    <div class="mt5-selected-account-card">
-                        <span class="mt5-selected-account-label">Connected Account</span>
+                    <div class="mt5-selected-account-card mt5-selected-account-card--compact">
+                        <span class="mt5-selected-account-label">
+                            <span class="help-label">
+                                <span class="help-label-text">Connected Account</span>
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Connected MT5 account details"
+                                        aria-describedby="mt5-linked-account-tooltip"
+                                    >?</button>
+                                    <span id="mt5-linked-account-tooltip" class="help-tooltip-bubble help-tooltip-bubble--mt5-server" role="tooltip">This account is already linked for MT5 sync. Switch your active dashboard account to manage MT5 onboarding for a different account.</span>
+                                </span>
+                            </span>
+                        </span>
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                        <span class="mt5-selected-account-meta">MT5 details are already on file for this account.</span>
                     </div>
                     <form
                         method="post"
@@ -1130,7 +1229,18 @@
                         <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
                         <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
                     </form>
-                    <p class="mt5-card-footnote">Stops automated sync and removes stored MT5 credentials. Your trades stay in the journal; you can reconnect later.</p>
+                    <p class="mt5-card-footnote mt5-card-footnote--help">
+                        Disconnect details
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="What disconnecting MT5 sync does"
+                                aria-describedby="mt5-linked-disconnect-tooltip"
+                            >?</button>
+                            <span id="mt5-linked-disconnect-tooltip" class="help-tooltip-bubble" role="tooltip">Stops automated sync and removes stored MT5 credentials. Your trades stay in the journal; you can reconnect later.</span>
+                        </span>
+                    </p>
                     {% elif mt5_cfd_accounts and not mt5_selected_account %}
                     <p class="mt5-card-empty">Switch your active dashboard account to a CFD trade account to view or manage its MT5 sync status here.</p>
                     <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
@@ -1169,8 +1279,19 @@
                 ) %}
                 {% if has_any_trend %}
                 <article class="panel trend-panel-hero trend-panel-hero--left" aria-label="Rolling performance trends">
-                    <h4 class="trend-panel__title"><span aria-hidden="true">📈</span> Rolling trends</h4>
-                    <p class="trend-panel__kicker soft">Last four completed weeks · closed trades and weekly reviews</p>
+                    <h4 class="trend-panel__title">
+                        <span aria-hidden="true">📈</span>
+                        Rolling trends
+                        <span class="help-tooltip">
+                            <button
+                                type="button"
+                                class="help-tooltip-button"
+                                aria-label="How rolling trends are calculated"
+                                aria-describedby="dashboard-rolling-trends-tooltip"
+                            >?</button>
+                            <span id="dashboard-rolling-trends-tooltip" class="help-tooltip-bubble help-tooltip-bubble--trend-tight" role="tooltip">Uses the last four completed weeks from closed trades and saved weekly reviews.</span>
+                        </span>
+                    </h4>
                     <ul class="trend-panel__list">
                         {% if performance_trends.win_rate_trend %}
                         <li class="trend-panel__item">
@@ -1231,8 +1352,18 @@
                 <article class="panel latest-trade-panel" aria-label="Latest closed trade snapshot">
                     <div class="panel-head latest-trade-head">
                         <div class="panel-title-wrap">
-                            <h2>Latest closed trade</h2>
-                            <p class="panel-title-hint soft">A quick price-and-result snapshot from this account.</p>
+                            <h2>
+                                Latest closed trade
+                                <span class="help-tooltip">
+                                    <button
+                                        type="button"
+                                        class="help-tooltip-button"
+                                        aria-label="Latest closed trade snapshot details"
+                                        aria-describedby="dashboard-latest-trade-tooltip"
+                                    >?</button>
+                                    <span id="dashboard-latest-trade-tooltip" class="help-tooltip-bubble help-tooltip-bubble--trend-tight" role="tooltip">A quick price-and-result snapshot from the active account.</span>
+                                </span>
+                            </h2>
                         </div>
                         {% if latest_trade_snapshot and latest_trade_snapshot.detail_url %}
                         <a href="{{ latest_trade_snapshot.detail_url }}" class="ghost-btn">Review</a>
@@ -2952,6 +3083,13 @@
         gap: 0.45rem;
     }
 
+    .mt5-workflow-summary-head {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        margin-top: -0.12rem;
+    }
+
     .sr-only {
         position: absolute;
         width: 1px;
@@ -2970,6 +3108,39 @@
         line-height: 1.45;
         color: color-mix(in srgb, var(--muted) 88%, var(--ink));
         overflow-wrap: anywhere;
+    }
+
+    .mt5-panel-copy--compact {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.32rem;
+        width: fit-content;
+        margin-left: auto;
+        font-size: 0.72rem;
+        font-weight: 700;
+    }
+
+    .mt5-workflow-summary-head .help-tooltip-bubble--mt5-server,
+    .mt5-panel-copy--compact .help-tooltip-bubble--mt5-server {
+        left: auto;
+        right: 0;
+        width: max-content;
+        max-width: min(17.5rem, calc(100vw - 2rem));
+        transform: translate(0, -0.22rem);
+    }
+
+    .mt5-workflow-summary-head .help-tooltip:hover .help-tooltip-bubble--mt5-server,
+    .mt5-workflow-summary-head .help-tooltip:focus-within .help-tooltip-bubble--mt5-server,
+    .mt5-panel-copy--compact .help-tooltip:hover .help-tooltip-bubble--mt5-server,
+    .mt5-panel-copy--compact .help-tooltip:focus-within .help-tooltip-bubble--mt5-server {
+        transform: translate(0, 0);
+    }
+
+    .mt5-workflow-summary-head .help-tooltip-bubble--mt5-server::before,
+    .mt5-panel-copy--compact .help-tooltip-bubble--mt5-server::before {
+        left: auto;
+        right: 0.55rem;
+        transform: translateX(0) rotate(45deg);
     }
 
     .mt5-slots-urgency {
@@ -3184,6 +3355,11 @@
         border-radius: 12px;
         border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
         background: color-mix(in srgb, var(--surface) 95%, transparent);
+    }
+
+    .mt5-selected-account-card--compact {
+        gap: 0.08rem;
+        padding: 0.62rem 0.72rem;
     }
 
     .mt5-selected-account-label {
@@ -3548,6 +3724,30 @@
         line-height: 1.42;
         color: color-mix(in srgb, var(--muted) 90%, var(--ink));
         overflow-wrap: anywhere;
+    }
+
+    .mt5-card-footnote--help {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.38rem;
+        width: fit-content;
+        margin-top: -0.18rem;
+        font-weight: 700;
+    }
+
+    .mt5-card-footnote--help .help-tooltip-bubble {
+        left: 0;
+        transform: translate(0, -0.22rem);
+    }
+
+    .mt5-card-footnote--help .help-tooltip:hover .help-tooltip-bubble,
+    .mt5-card-footnote--help .help-tooltip:focus-within .help-tooltip-bubble {
+        transform: translate(0, 0);
+    }
+
+    .mt5-card-footnote--help .help-tooltip-bubble::before {
+        left: 0.55rem;
+        transform: translateX(0) rotate(45deg);
     }
 
     .mt5-card-warning {

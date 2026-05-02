@@ -933,7 +933,7 @@ def test_dashboard_prompt_uses_exit_price_language():
     into structure rather than a numbered list. This test locks in the key
     behavioral guarantees: evidence hierarchy, risk-priority rule, insight
     mandate, output format, strategy-label gate, small-sample compression,
-    and hard prohibitions.
+    and integrated evidence boundaries.
     """
     prompt_text = load_prompt_text("dashboard_advice.txt")["prompt_text"]
 
@@ -957,8 +957,8 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "HOW TO THINK" in prompt_text
     assert "HOW TO WRITE" in prompt_text
     assert "OUTPUT FORMAT" in prompt_text
-    assert "HARD PROHIBITIONS" in prompt_text
-    assert "SELF-CHECK BEFORE EMITTING" in prompt_text
+    assert "HARD PROHIBITIONS" not in prompt_text
+    assert "SELF-CHECK BEFORE EMITTING" not in prompt_text
 
     # Tone modes
     assert "stressed:" in prompt_text
@@ -985,8 +985,9 @@ def test_dashboard_prompt_uses_exit_price_language():
     # Risk priority rule — non-obvious domain rule, must be explicit
     assert "risk_authority.stable" in prompt_text
     assert "risk_judgment_allowed" in prompt_text
-    assert "Risk cannot be determined reliably" in prompt_text
+    assert "shift to stronger" in prompt_text
     assert "Lot size is not risk" in prompt_text
+    assert "larger or smaller lot is not evidence" in prompt_text
 
     # Strategy label hierarchy — must explicitly gate on coverage
     assert "strategy_coverage_pct" in prompt_text
@@ -1001,20 +1002,17 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "entry_in_session_overlap" in prompt_text
     assert "stop_loss_protects_profit" in prompt_text
 
-    # Hard prohibitions present (listed as forbidden phrases)
-    assert "increase lot size after losses" in prompt_text
-    assert "lot size escalation" in prompt_text
+    # Boundaries are integrated into the main prompt flow, not appended
+    assert "Evidence boundaries" in prompt_text
+    assert "context beats microstructure" in prompt_text
+    assert "Synthesis before metrics" in prompt_text
 
     # Plain language anchor
     assert "jumped back in" in prompt_text
 
     # Insight mandate
-    assert "Each Key Takeaway" in prompt_text or "every Key Takeaway" in prompt_text.lower()
+    assert "Each bullet" in prompt_text or "every takeaway" in prompt_text.lower()
     assert "at least one Key Takeaway" not in prompt_text
-
-    # Format examples preserved
-    assert "GOOD" in prompt_text
-    assert "BAD" in prompt_text
 
     # Removed verbose legacy framings
     assert "Do not use paragraph prose anywhere in the response." not in prompt_text

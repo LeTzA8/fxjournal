@@ -4,13 +4,61 @@
         return;
     }
 
-    const createBubble = (role, text, extraClass) => {
+    const bindCitationButton = (button) => {
+        if (window.FXJBindWeeklyReviewCitationButton) {
+            window.FXJBindWeeklyReviewCitationButton(button);
+            return;
+        }
+        button.addEventListener("click", () => {
+            if (window.FXJActivateWeeklyReviewCitation) {
+                window.FXJActivateWeeklyReviewCitation(button);
+            }
+        });
+        button.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ") {
+                return;
+            }
+            event.preventDefault();
+            if (window.FXJActivateWeeklyReviewCitation) {
+                window.FXJActivateWeeklyReviewCitation(button);
+            }
+        });
+    };
+
+    const createCitationSegment = (segment) => {
+        const button = document.createElement("span");
+        button.className = "ai-citation-btn";
+        button.setAttribute("role", "button");
+        button.setAttribute("tabindex", "0");
+        button.dataset.citationTone = segment.tone || "neutral";
+        button.dataset.citationType = segment.citation_type || "";
+        if (segment.citation_type === "trade" && segment.trade_id !== undefined && segment.trade_id !== null) {
+            button.dataset.citationTradeId = String(segment.trade_id);
+        } else if (segment.citation_type === "bundle" && segment.bundle_key) {
+            button.dataset.citationBundle = String(segment.bundle_key);
+        }
+        button.textContent = segment.label || "";
+        bindCitationButton(button);
+        return button;
+    };
+
+    const createBubble = (role, text, extraClass, segments) => {
         const bubble = document.createElement("div");
         bubble.className = `weekly-review-chat-bubble weekly-review-chat-bubble--${role}`;
         if (extraClass) {
             bubble.classList.add(extraClass);
         }
-        bubble.textContent = text;
+        if (Array.isArray(segments) && segments.length) {
+            segments.forEach((segment) => {
+                if (segment && segment.type === "citation" && segment.label) {
+                    bubble.appendChild(createCitationSegment(segment));
+                    return;
+                }
+                bubble.appendChild(document.createTextNode((segment && segment.text) || ""));
+            });
+        } else {
+            bubble.textContent = text;
+        }
         return bubble;
     };
 
@@ -115,7 +163,14 @@
                     throw new Error(friendly);
                 }
                 loadingBubble.remove();
-                log.appendChild(createBubble("assistant", payload.reply || "I could not produce a reply."));
+                log.appendChild(
+                    createBubble(
+                        "assistant",
+                        payload.reply || "I could not produce a reply.",
+                        null,
+                        payload.segments,
+                    ),
+                );
             } catch (err) {
                 loadingBubble.remove();
                 showError(err.message || "Could not answer that right now. Please try again.");

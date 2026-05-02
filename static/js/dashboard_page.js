@@ -673,20 +673,31 @@
         clearFiltersBtn.addEventListener("click", clearAllFilters);
     }
 
-    citationButtons.forEach((button) => {
-        const activateCitation = () => {
-            const citationType = (button.dataset.citationType || "").trim();
-            if (citationType === "bundle") {
-                const bundleKey = (button.dataset.citationBundle || "").trim();
-                focusCitationRows(bundleRowsByKey.get(bundleKey) || []);
-                return;
-            }
+    const activateCitationButton = (button) => {
+        if (!button) {
+            return;
+        }
+        const citationType = (button.dataset.citationType || "").trim();
+        if (citationType === "bundle") {
+            const bundleKey = (button.dataset.citationBundle || "").trim();
+            focusCitationRows(bundleRowsByKey.get(bundleKey) || []);
+            return;
+        }
 
-            if (citationType === "trade") {
-                const tradeId = (button.dataset.citationTradeId || "").trim();
-                const row = rowsByTradeId.get(tradeId);
-                focusCitationRows(row ? [row] : []);
-            }
+        if (citationType === "trade") {
+            const tradeId = (button.dataset.citationTradeId || "").trim();
+            const row = rowsByTradeId.get(tradeId);
+            focusCitationRows(row ? [row] : []);
+        }
+    };
+
+    const bindCitationButton = (button) => {
+        if (!button || button.dataset.citationBound === "1") {
+            return;
+        }
+        button.dataset.citationBound = "1";
+        const activateCitation = () => {
+            activateCitationButton(button);
         };
 
         button.addEventListener("click", activateCitation);
@@ -696,7 +707,11 @@
                 activateCitation();
             }
         });
-    });
+    };
+
+    window.FXJActivateWeeklyReviewCitation = activateCitationButton;
+    window.FXJBindWeeklyReviewCitationButton = bindCitationButton;
+    citationButtons.forEach(bindCitationButton);
 
     if (sortSelect) {
         sortSelect.addEventListener("change", applyAll);

@@ -113,6 +113,11 @@ WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_REVIEW = 5
 WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_DAY = 15
 WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_MINUTE = 3
 WEEKLY_REVIEW_CHAT_RATE_WINDOW_SECONDS = 60
+_WEEKLY_REVIEW_CHAT_REF_CODE_RE = re.compile(r"\b[BT]\d+\b", re.IGNORECASE)
+_WEEKLY_REVIEW_CHAT_BRACKETED_REFS_RE = re.compile(
+    r"\s*[\(\[\{]\s*[BT]\d+(?:\s*,\s*[BT]\d+)*\s*[\)\]\}]",
+    re.IGNORECASE,
+)
 
 
 def _serialize_datetime(value):
@@ -313,6 +318,51 @@ def _resolve_weekly_review_citations(refs, citation_lookup):
         resolved.append(citation)
         seen.add(ref)
     return resolved
+
+
+def _extract_weekly_review_chat_refs(text, citation_lookup):
+    if not text or not citation_lookup:
+        return []
+
+    refs = []
+    seen = set()
+    for match in _WEEKLY_REVIEW_CHAT_REF_CODE_RE.finditer(str(text)):
+        ref = str(match.group(0) or "").strip().upper()
+        if not ref or ref not in citation_lookup or ref in seen:
+            continue
+        refs.append(ref)
+        seen.add(ref)
+    return refs
+
+
+def _strip_weekly_review_chat_ref_codes(text):
+    normalized = str(text or "").strip()
+    if not normalized:
+        return ""
+    normalized = _WEEKLY_REVIEW_CHAT_BRACKETED_REFS_RE.sub("", normalized)
+    normalized = _WEEKLY_REVIEW_CHAT_REF_CODE_RE.sub("", normalized)
+    normalized = re.sub(r"\s{2,}", " ", normalized)
+    normalized = re.sub(r"\s+([,.;:!?])", r"\1", normalized)
+    return normalized.strip()
+
+
+def _build_weekly_review_chat_reply_display(review_record, reply_text, timezone_name):
+    citation_lookup = _build_weekly_review_citation_lookup(
+        getattr(review_record, "payload_json", None),
+        timezone_name,
+    )
+    explicit_refs = _extract_weekly_review_chat_refs(reply_text, citation_lookup)
+    display_text = _rewrite_review_text_refs(reply_text, citation_lookup)
+    display_text = _strip_weekly_review_chat_ref_codes(display_text)
+    citations = _augment_citations_from_mentions(
+        display_text,
+        _resolve_weekly_review_citations(explicit_refs, citation_lookup),
+        citation_lookup,
+    )
+    return {
+        "text": display_text,
+        "segments": _build_review_text_segments(display_text, citations),
+    }
 
 
 def _carry_rewrite_refs_from_original(display, original_display):
@@ -1608,6 +1658,12 @@ def weekly_review_chat(review_id):
         )
         return jsonify({"error": "Could not answer that right now. Please try again shortly."}), 500
 
+    reply_display = _build_weekly_review_chat_reply_display(
+        review,
+        reply,
+        get_display_timezone_name(),
+    )
+
     db.session.add_all(
         [
             WeeklyReviewChatMessage(
@@ -1630,7 +1686,12 @@ def weekly_review_chat(review_id):
         ]
     )
     db.session.commit()
-    return jsonify({"reply": reply})
+    return jsonify(
+        {
+            "reply": reply_display["text"],
+            "segments": reply_display["segments"],
+        }
+    )
 
 
 @bp.route("/dashboard/analytics")
