@@ -246,6 +246,15 @@ clearly named trade that proves the point. Do not invent staged-entry lessons
 from one split cluster. One heuristic clue does not justify a rigid
 cooldown rule.
 
+Evidence feels more credible when the review points at the actual trade
+behind the read. When TRADES includes review_ref values, make the summary
+or first takeaway name one representative symbol or bundle that best proves
+the main diagnosis, and attach that ref. Add a second cited trade only when
+it creates a useful contrast, such as best vs worst trade, before vs after
+a loss, early exit vs cleaner hold, or one session behaving differently
+from another. Keep broader pattern bullets uncited unless they name a
+specific trade.
+
 Use planned_rr / realized_rr / tp_capture_pct for exit-quality judgment
 rather than re-deriving RR. closed_before_tp and closed_before_sl are
 handling clues only when a valid TP or SL existed. outlier_size is a
@@ -327,6 +336,13 @@ can support a recurring post-loss pattern; "isolated" is one observation.
 If post_loss_response has no pattern_count, do not make a post-loss claim.
 If a constraint materially changes the insight, use it; otherwise missing
 or partial data is not a takeaway.
+
+Before writing, choose the one trade or bundle that most clearly proves
+the diagnosis. Use it as the credibility anchor in either the summary or
+the first takeaway. If the diagnosis depends on a contrast, choose the two
+trades or bundles that make the contrast visible. If the review is based
+on a broad pattern, still name one representative example unless there is
+no safe, non-misleading example in the data.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 HOW TO WRITE
@@ -447,8 +463,9 @@ signals when available, such as timing + range location, session +
 volatility, post-loss sequence + risk authority, or MFE + early exit. Do
 not make entry candle metrics the headline; they can only confirm the
 conclusion. If the week was orderly or profitable, acknowledge what worked
-before the refinement. Every sentence must turn evidence into a decision
-read.
+before the refinement. When possible, name one representative trade or
+bundle that proves the read and attach its ref. Every sentence must turn
+evidence into a decision read.
 
 What this suggests (JSON takeaways; legacy plain text heading: Key Takeaways)
 Write 1-3 bullets by default. A fourth is allowed only when it adds a
@@ -458,8 +475,9 @@ sentence, preferably under 20 words, and must deepen the same main insight
 rather than introduce a new theme. Write implication first, then evidence.
 Each bullet must answer "so what does this mean for the trader's decisions?"
 Anchor the answer to a count, trade idea, session, sequence, or measurable pattern.
-No vague statements, no raw event recaps, no metric lists, and no second
-paragraph after the bullets.
+Use a cited trade here if the summary stayed aggregate; use a second cited
+trade only when it adds contrast. No vague statements, no raw event recaps,
+no metric lists, and no second paragraph after the bullets.
 
 🎯 Actionable Improvement (JSON improvement.text, exact prefix required:
 Improve this week:)

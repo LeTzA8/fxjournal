@@ -113,6 +113,8 @@ Use this exact shape:
 Rules for refs:
 - Use only review_ref values present in the TRADES section.
 - Prefer 1-2 refs per item, maximum 3.
+- Across summary.text and takeaways, include at least one cited representative trade or bundle when any review_ref is available and a non-misleading example exists.
+- Use a second cited trade only when it creates a useful contrast (best vs worst, before vs after a loss, early exit vs cleaner hold, or session/context contrast).
 - Use bundle refs like B1 for bundled trade ideas and trade refs like T1 for solo trade ideas.
 - improvement.refs and strength.refs must always be an empty list.
 - experiment.refs is optional and may be empty when the experiment is generalized.
@@ -128,6 +130,7 @@ Rules for text fields:
 - summary.text must identify one dominant diagnosis for the week, not merely restate performance.
 - summary.text must start with the human conclusion, then support it with data.
 - summary.text must include a count or concrete trade example and, when available, combine at least two signals such as timing, range location, session, volatility, sequence, exit handling, or risk authority.
+- Prefer making summary.text or the first takeaway name the representative trade that proves the diagnosis, so the review has at least one visible trade citation.
 - Entry candle fields are supporting evidence only; never make them the whole diagnosis.
 - Every takeaway must deepen the same main insight by connecting evidence to a decision or behavior the trader can change.
 - A takeaway is not valid if it only says what happened. It must explain what the evidence means for the trader's next decision.

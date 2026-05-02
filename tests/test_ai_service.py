@@ -923,6 +923,8 @@ def test_build_dashboard_advice_messages_appends_profile_adjustments(app_ctx):
 
     assert prompt_history.prompt_id == "dashboard_advice"
     assert messages[1]["content"][0]["text"] == ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "at least one cited representative trade or bundle" in messages[1]["content"][0]["text"]
+    assert "Use a second cited trade only when it creates a useful contrast" in messages[1]["content"][0]["text"]
     assert messages[2]["content"][0]["text"].endswith("- Use plain language.")
 
 
@@ -1015,6 +1017,9 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "so what does this mean for the trader's decisions?" in prompt_text
     assert "When two refs would render as the same" in prompt_text
     assert "visible label because they share symbol/date" in prompt_text
+    assert "one representative symbol or bundle" in prompt_text
+    assert "credibility anchor" in prompt_text
+    assert "Use a cited trade here if the summary stayed aggregate" in prompt_text
 
     # Insight mandate
     assert "Each bullet" in prompt_text or "every takeaway" in prompt_text.lower()
