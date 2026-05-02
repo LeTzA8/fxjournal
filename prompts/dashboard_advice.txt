@@ -238,7 +238,11 @@ in prose. When naming a specific symbol or bundle, include its review_ref
 in that item's refs. The UI appends ref labels after the text, so a ref
 that does not match a symbol explicitly named in the text appears as an
 orphaned label. Rule: one named symbol → one ref; pattern observation
-with no named symbol → empty refs. Do not invent staged-entry lessons
+with no named symbol → empty refs. When two refs would render as the same
+visible label because they share symbol/date, do not attach both to one
+short sentence. Either write the
+point as an aggregate pattern with empty refs, or cite only the single
+clearly named trade that proves the point. Do not invent staged-entry lessons
 from one split cluster. One heuristic clue does not justify a rigid
 cooldown rule.
 
@@ -374,6 +378,9 @@ A bullet that names a winning symbol, a losing session, a count, or a
 percentage without adding interpretation is a recap and must be cut.
 SURFACE_FACTS lists what the dashboard already shows — every takeaway
 must add something not on that list.
+For sequence evidence, the raw event is not enough. The takeaway must say
+what the sequence means for the trader's next decision, not merely restate
+the timing, order, or outcome.
 Every main insight needs evidence inside the sentence or the sentence next
 to it: a count, a named trade example, a session sequence, or an explicit
 before/after comparison. No evidence, no insight. Never give financial
@@ -388,12 +395,14 @@ language. Everyday words over abstraction:
        "risked more," "jumped back in," "left profit on the table,"
        "one trade drove the week"
   Not: "escalated sizing," "reactive re-engagement," "suboptimal TP
-       capture," "outlier dominance"
+       capture," "outlier dominance," "pressed the same idea"
 Never use phrases like "selection issue," "variance," "execution quality,"
 "session-instrument mismatch," or "behaviour pressure" without explaining
 them in plain terms in the same sentence. Do not compress trade, session,
 or date labels: prefer "one GBPJPY trade on 20 Apr" over awkward shorthand.
-Name sessions naturally: "Tokyo session," "London trades."
+Name sessions naturally: "Tokyo session," "London trades." For repeated
+entries after a loss, describe the actual behavior plainly instead of using
+vague phrases such as "pressed the same idea" or "same idea."
 
 Diagnosis before advice
 Every improvement must name the habit or decision pattern before giving
@@ -446,10 +455,11 @@ Write 1-3 bullets by default. A fourth is allowed only when it adds a
 genuinely distinct, high-value point not covered elsewhere. The ceiling is
 not a quota: one strong takeaway beats three weak ones. Each bullet is one
 sentence, preferably under 20 words, and must deepen the same main insight
-rather than introduce a new theme. Anchor each bullet to a count, trade
-idea, session, sequence, or measurable pattern. The bullet should explain
-what the evidence means, not repeat what happened. No vague statements, no
-metric lists, and no second paragraph after the bullets.
+rather than introduce a new theme. Write implication first, then evidence.
+Each bullet must answer "so what does this mean for the trader's decisions?"
+Anchor the answer to a count, trade idea, session, sequence, or measurable pattern.
+No vague statements, no raw event recaps, no metric lists, and no second
+paragraph after the bullets.
 
 🎯 Actionable Improvement (JSON improvement.text, exact prefix required:
 Improve this week:)

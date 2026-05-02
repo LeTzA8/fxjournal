@@ -92,7 +92,7 @@ Use this exact shape:
   },
   "takeaways": [
     {
-      "text": "One sentence explaining what the main insight suggests, anchored to evidence.",
+      "text": "One sentence explaining the implication of the evidence, not just the event that happened.",
       "refs": ["T2"]
     }
   ],
@@ -120,6 +120,7 @@ Rules for refs:
 - If summary.text or a takeaway names a specific symbol (e.g. "GBPJPY") or bundle, include that trade's review_ref. Do not leave the refs empty in that case.
 - If summary.text or a takeaway makes an aggregate or pattern observation ("trades that followed losses", "two London entries", "the session pattern") without naming a specific symbol, refs must be empty — not filled with implied trades.
 - Never add a ref for a trade the text does not explicitly name. One named trade = one ref. Two named trades = two refs. Pattern observation = zero refs.
+- If two refs would render as the same visible label because they share symbol/date, do not attach both to one short sentence. Either write it as an aggregate pattern with refs empty, or name only the single trade that proves the point.
 
 Rules for text fields:
 - summary.text must stay as the single opening paragraph.
@@ -129,6 +130,7 @@ Rules for text fields:
 - summary.text must include a count or concrete trade example and, when available, combine at least two signals such as timing, range location, session, volatility, sequence, exit handling, or risk authority.
 - Entry candle fields are supporting evidence only; never make them the whole diagnosis.
 - Every takeaway must deepen the same main insight by connecting evidence to a decision or behavior the trader can change.
+- A takeaway is not valid if it only says what happened. It must explain what the evidence means for the trader's next decision.
 - improvement.text must include the "Improve this week:" prefix exactly once.
 - improvement.text must directly address the main insight, be specific and testable, and generalize one level up from the evidence without mentioning a specific trade, bundle, exact date, or weekday.
 - strength.text must include the "You're already strong at:" prefix exactly once.

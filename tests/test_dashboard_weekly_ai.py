@@ -452,7 +452,57 @@ def test_dashboard_home_renders_weekly_review_chat_inside_review_panel(app_ctx, 
     assert response.status_code == 200
     assert "💬 Ask about this review" in response_text
     assert f"/dashboard/weekly-review/{review.id}/chat" in response_text
+    assert "Why did risk drive this review?" in response_text
+    assert "Was this bad luck or my execution?" not in response_text
     assert "weekly_review_chat.js" in response_text
+
+
+def test_dashboard_home_keeps_legacy_weekly_review_chat_prompts_without_dynamic_context(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-legacy-user",
+        email="dashboard-review-chat-legacy@example.com",
+    )
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-legacy")
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": review,
+            "weekly_ai_review_display": {},
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    response = client.get("/dashboard")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Explain this simply" in response_text
+    assert "Was this bad luck or my execution?" in response_text
+    assert "Which trade should I review first?" in response_text
+
+
+def test_weekly_review_chat_prompts_use_review_insight_and_evidence_label():
+    prompts = dashboard_routes._build_weekly_review_chat_prompts(
+        {
+            "summary": {
+                "text": "One oversized XAUUSD loss made risk the main issue this week.",
+                "citations": [{"inline_label": "XAUUSD", "label": "XAUUSD | 08 Apr 2026 (Wed)"}],
+            },
+            "takeaways": [],
+            "improvement": {"text": "Improve this week: Keep risk fixed before entry."},
+            "strength": {},
+            "experiment": {},
+        }
+    )
+
+    assert prompts[0] == "Why did XAUUSD carry so much weight?"
+    assert "Was this bad luck or my execution?" not in prompts
+    assert len(prompts) >= 4
 
 
 def test_dashboard_home_shows_no_trades_weekly_ai_message(app_ctx, client, monkeypatch):

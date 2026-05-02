@@ -1541,9 +1541,9 @@
                         <p>Follow-ups use only this review and its stored trade context.</p>
                     </div>
                     <div class="weekly-review-chat-prompts" aria-label="Quick prompts">
-                        <button type="button" data-review-chat-prompt="Explain this simply">Explain this simply</button>
-                        <button type="button" data-review-chat-prompt="Was this bad luck or my execution?">Was this bad luck or my execution?</button>
-                        <button type="button" data-review-chat-prompt="Which trade should I review first?">Which trade should I review first?</button>
+                        {% for prompt in weekly_review_chat_prompts %}
+                        <button type="button" data-review-chat-prompt="{{ prompt }}">{{ prompt }}</button>
+                        {% endfor %}
                     </div>
                     <div class="weekly-review-chat-log" data-review-chat-log aria-live="polite"></div>
                     <p class="weekly-review-chat-error" data-review-chat-error role="alert" hidden></p>

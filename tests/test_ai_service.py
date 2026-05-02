@@ -1009,6 +1009,12 @@ def test_dashboard_prompt_uses_exit_price_language():
 
     # Plain language anchor
     assert "jumped back in" in prompt_text
+    assert "pressed the same idea" in prompt_text
+    assert "raw event is not enough" in prompt_text
+    assert "what the sequence means for the trader's next decision" in prompt_text
+    assert "so what does this mean for the trader's decisions?" in prompt_text
+    assert "When two refs would render as the same" in prompt_text
+    assert "visible label because they share symbol/date" in prompt_text
 
     # Insight mandate
     assert "Each bullet" in prompt_text or "every takeaway" in prompt_text.lower()
@@ -2367,6 +2373,8 @@ def test_weekly_dashboard_advice_runs_rewrite_pass_without_trade_payload(app_ctx
     assert "simpler does not mean shorter" in rewrite_prompt
     assert "never explain, rename, reorder, or drop references" in rewrite_prompt
     assert "London/New York idea" in rewrite_prompt
+    assert "pressed the same idea" in rewrite_prompt
+    assert "vague slogan" in rewrite_prompt
     assert result["record"].pass_1_output.startswith("Pass one review with repeated wording.")
     assert result["record"].pass_2_output.startswith("Pass one review, clearer.")
     assert result["record"].response_text.startswith("Pass one review, clearer.")

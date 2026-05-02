@@ -19,6 +19,7 @@ Important:
 * use complete, natural sentences
 * do not compress labels into awkward noun stacks
 * keep the reason behind each claim
+* replace awkward phrases with normal trading language
 
 Do NOT:
 
@@ -29,6 +30,7 @@ Do NOT:
 * remove, rename, reorder, or paraphrase citation refs such as T1, T2, B1, or B2
 * remove, rename, reorder, or paraphrase existing trade labels such as "GBPJPY | 20 Apr 2026 (Mon)"
 * merge session names into unnatural labels like "London/New York idea"
+* introduce vague phrases like "pressed the same idea" or "same idea" when the behavior is really a same-symbol re-entry after a loss
 * flatten the review into one paragraph
 * remove the existing section structure
 * remove bullet points, reorder bullet points, or change the number of bullet points
@@ -44,6 +46,7 @@ Do:
 * keep the voice human and calm, like a direct trading coach speaking to one trader
 * use natural sentences, not clipped report fragments
 * replace specialist phrases with plain explanations
+* write repeated-entry behavior plainly without turning it into a vague slogan
 * keep trade/date/session labels attached to the same claim they supported in the original
 * leave citation refs exactly where they are if they appear in the original text
 

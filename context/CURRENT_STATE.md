@@ -6,11 +6,14 @@ Last Updated: 2026-05-02
 
 - `prompts/weekly_review_followup.txt` now scopes every chat turn to the active weekly review and its trades, anchors answers to the review's main insight, requires concise evidence-backed explanations, redirects off-topic questions back to the review, and requires fresh 4-5 follow-up questions generated from the actual insight/evidence on every response.
 - Follow-up chat can now cite the same weekly-review trade refs internally: the prompt receives a trade-link ref map, the model may emit refs like `[T1]` after natural trade phrases, the route returns clean reply text plus citation segments, and dynamically added chat citation pills reuse the dashboard trade/bundle highlight behavior. (`ai_service.py`, `routes/dashboard.py`, `static/js/weekly_review_chat.js`, `static/js/dashboard_page.js`, tests)
+- Follow-up prompt tone was softened so answers stay chat-like while keeping the same scope and evidence guardrails: plain truth first, natural "you" language, and a compact "You could ask:" set for dynamic next questions. (`prompts/weekly_review_followup.txt`)
+- The dashboard's visible "Ask about this review" preset bubbles are now generated from the displayed weekly review insight/evidence (issue type plus cited trade/bundle label when available). Legacy/static prompts remain as fallback when an older review lacks usable dynamic display context. (`routes/dashboard.py`, `templates/index.html`, `tests/test_dashboard_weekly_ai.py`)
 
 ## Weekly AI prompt synthesis-flow tightening (2026-05-02)
 
 - `prompts/dashboard_advice.txt` now pushes the model to choose the likely week-level diagnosis before selecting metrics, with context signals (timing, range location, session/volatility, post-exit behavior, sequence, exit handling, risk authority) weighted above candle microstructure.
 - Risk interpretation now avoids lot-size inference and treats unavailable/ambiguous risk as a reason to use stronger available evidence rather than output filler caveats. The former end-of-prompt hard-prohibition/self-check blocks were folded into the core evidence, thinking, writing, and output flow, and the AI service prompt contract test was updated to pin the new structure. (`prompts/dashboard_advice.txt`, `tests/test_ai_service.py`)
+- Follow-up prompt pass: pass 1 now makes "What this suggests" bullets implication-first instead of raw event recaps, and citation rules caution against attaching multiple same-looking refs to one short same-symbol sequence sentence. Pass 2 now explicitly cleans vague wording such as "pressed the same idea" without using scenario-specific examples that could bias the model. (`prompts/dashboard_advice.txt`, `prompts/dashboard_advice_rewrite.txt`, `ai_service.py`, `tests/test_ai_service.py`)
 
 ## Dashboard fine-print tooltip cleanup (2026-05-02)
 

@@ -113,6 +113,11 @@ WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_REVIEW = 5
 WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_DAY = 15
 WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_MINUTE = 3
 WEEKLY_REVIEW_CHAT_RATE_WINDOW_SECONDS = 60
+LEGACY_WEEKLY_REVIEW_CHAT_PROMPTS = [
+    "Explain this simply",
+    "Was this bad luck or my execution?",
+    "Which trade should I review first?",
+]
 _WEEKLY_REVIEW_CHAT_REF_CODE_RE = re.compile(r"\b[BT]\d+\b", re.IGNORECASE)
 _WEEKLY_REVIEW_CHAT_BRACKETED_REFS_RE = re.compile(
     r"\s*[\(\[\{]\s*[BT]\d+(?:\s*,\s*[BT]\d+)*\s*[\)\]\}]",
@@ -363,6 +368,152 @@ def _build_weekly_review_chat_reply_display(review_record, reply_text, timezone_
         "text": display_text,
         "segments": _build_review_text_segments(display_text, citations),
     }
+
+
+def _weekly_review_display_text(display, key):
+    section = display.get(key) if isinstance(display, dict) else None
+    if not isinstance(section, dict):
+        return ""
+    return str(section.get("text") or "").strip()
+
+
+def _weekly_review_prompt_label(display):
+    if not isinstance(display, dict):
+        return ""
+
+    for section_key in ("summary", "takeaways"):
+        section = display.get(section_key)
+        items = section if isinstance(section, list) else [section]
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            citations = item.get("citations") if isinstance(item.get("citations"), list) else []
+            for citation in citations:
+                if not isinstance(citation, dict):
+                    continue
+                label = str(citation.get("inline_label") or citation.get("label") or "").strip()
+                if not label:
+                    continue
+                return label.split("|", 1)[0].strip()
+    return ""
+
+
+def _weekly_review_prompt_issue_type(display):
+    text_parts = [
+        _weekly_review_display_text(display, "summary"),
+        _weekly_review_display_text(display, "improvement"),
+        _weekly_review_display_text(display, "experiment"),
+    ]
+    for takeaway in (display.get("takeaways") if isinstance(display, dict) else []) or []:
+        if isinstance(takeaway, dict):
+            text_parts.append(str(takeaway.get("text") or ""))
+    normalized = " ".join(text_parts).lower()
+
+    issue_terms = [
+        ("risk", ("risk", "sizing", "oversized", "size", "lot", "too much weight", "heavy loss")),
+        ("behavior", ("after a loss", "revenge", "re-entry", "reentry", "sequence", "post-loss", "impulsive")),
+        ("exit", ("exit", "closed early", "closed before", "post-exit", "continued after", "took profit", "cut")),
+        ("momentum", ("chase", "chasing", "momentum", "large candle", "after the move", "strong candle")),
+        ("timing", ("early", "late", "timing", "entry", "entered", "wait", "confirmation")),
+        ("context", ("range", "session", "volatility", "london", "new york", "ny", "asia", "overlap", "context")),
+    ]
+    best_issue = "generic"
+    best_score = 0
+    for issue, terms in issue_terms:
+        score = sum(1 for term in terms if term in normalized)
+        if score > best_score:
+            best_issue = issue
+            best_score = score
+    return best_issue
+
+
+def _dedupe_chat_prompts(prompts, limit=5):
+    deduped = []
+    seen = set()
+    for prompt in prompts:
+        text = re.sub(r"\s+", " ", str(prompt or "")).strip()
+        if not text:
+            continue
+        if not text.endswith("?"):
+            text = f"{text}?"
+        key = text.lower()
+        if key in seen:
+            continue
+        deduped.append(text)
+        seen.add(key)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+def _build_weekly_review_chat_prompts(display):
+    has_review_text = bool(
+        _weekly_review_display_text(display, "summary")
+        or _weekly_review_display_text(display, "improvement")
+        or _weekly_review_display_text(display, "experiment")
+        or any(
+            str(item.get("text") or "").strip()
+            for item in ((display.get("takeaways") if isinstance(display, dict) else []) or [])
+            if isinstance(item, dict)
+        )
+    )
+    if not has_review_text:
+        return []
+
+    label = _weekly_review_prompt_label(display)
+    issue = _weekly_review_prompt_issue_type(display)
+
+    if issue == "risk":
+        prompts = [
+            f"Why did {label} carry so much weight?" if label else "Why did risk drive this review?",
+            "Was this mostly sizing or execution?",
+            "What would fixed risk have changed this week?",
+            "Where did one trade distort the review?",
+        ]
+    elif issue == "behavior":
+        prompts = [
+            "What happened after the loss?",
+            f"How did {label} fit the behavior pattern?" if label else "Which trade shows the behavior pattern?",
+            "Was this revenge trading or poor selection?",
+            "What should I pause after next time?",
+        ]
+    elif issue == "exit":
+        prompts = [
+            "What was wrong with my exits?",
+            f"What happened after {label} closed?" if label else "Which trade best shows the exit issue?",
+            "Did I close too early or too late?",
+            "What exit rule would have changed this week?",
+        ]
+    elif issue == "momentum":
+        prompts = [
+            "Where did I chase the move?",
+            f"What made {label} look tempting?" if label else "Which entry best shows the chase?",
+            "What should I wait for after a strong candle?",
+            "How much of the week came from chasing?",
+        ]
+    elif issue == "timing":
+        prompts = [
+            "Where was my timing off?",
+            f"What does {label} show about my entry?" if label else "Which trade best shows the timing issue?",
+            "Was I too early or too late?",
+            "What should I wait for next time?",
+        ]
+    elif issue == "context":
+        prompts = [
+            "What context did I miss?",
+            f"Why did the context matter on {label}?" if label else "Which trade best shows the context problem?",
+            "Was session or range the bigger issue?",
+            "What should I check before taking this setup again?",
+        ]
+    else:
+        prompts = [
+            "What is the main thing this review is saying?",
+            f"Why does {label} matter here?" if label else "Which trade should I review first?",
+            "What evidence supports the main insight?",
+            "What should I inspect before next week?",
+        ]
+
+    return _dedupe_chat_prompts(prompts, limit=5)
 
 
 def _carry_rewrite_refs_from_original(display, original_display):
@@ -1454,6 +1605,9 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
     performance_trends = _build_performance_trends(closed_records, now_local)
     ei_trend_data = _build_ei_trend(user_id, active_trade_account_id)
     latest_trade_snapshot = _build_latest_trade_snapshot(user_trades, timezone_name)
+    weekly_review_chat_prompts = _build_weekly_review_chat_prompts(
+        weekly_ai_state.get("weekly_ai_review_display"),
+    ) or list(LEGACY_WEEKLY_REVIEW_CHAT_PROMPTS)
 
     return render_template(
         "index.html",
@@ -1480,6 +1634,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         weekly_ai_review=weekly_ai_state["weekly_ai_review"],
         weekly_ai_review_text=weekly_ai_review_text,
         weekly_ai_review_display=weekly_ai_state.get("weekly_ai_review_display"),
+        weekly_review_chat_prompts=weekly_review_chat_prompts,
         weekly_ai_generated_at_label=weekly_ai_state["weekly_ai_generated_at_label"],
         weekly_ai_period_label=weekly_ai_state["weekly_ai_period_label"],
         weekly_ai_empty_message=weekly_ai_state["weekly_ai_empty_message"],
