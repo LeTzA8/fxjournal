@@ -1,5 +1,6 @@
 from helpers.weekly_signals import (
     build_confidence_envelope,
+    build_execution_outcome_archetype,
     build_post_loss_response,
     build_revenge_evidence,
     build_risk_authority,
@@ -276,7 +277,7 @@ def test_session_concentration_flags_single_session_and_mixed_outcome():
     assert out["mixed_outcome"] is True
 
 
-def test_revenge_evidence_repeated_when_strong_sequences_or_confirmed():
+def test_revenge_evidence_repeated_only_when_multiple_strong_or_confirmed_sequences():
     isolated = [
         _trade(
             ref="T1",
@@ -304,7 +305,10 @@ def test_revenge_evidence_repeated_when_strong_sequences_or_confirmed():
     assert build_revenge_evidence(repeated)["pattern_class"] == "repeated"
 
     confirmed = [_trade(ref="T1", seq=1, pnl=-10.0, is_revenge=True)]
-    assert build_revenge_evidence(confirmed)["pattern_class"] == "repeated"
+    assert build_revenge_evidence(confirmed)["pattern_class"] == "isolated"
+
+    repeated_confirmed = confirmed + [_trade(ref="T2", seq=2, pnl=-15.0, is_revenge=True)]
+    assert build_revenge_evidence(repeated_confirmed)["pattern_class"] == "repeated"
 
 
 def test_surface_facts_includes_dashboard_visible_strings():
@@ -339,6 +343,233 @@ def test_confidence_envelope_levels():
     )["level"] == "limited"
 
 
+def _archetype(
+    trades,
+    *,
+    net_pnl,
+    risk_authority=None,
+    post_loss_response=None,
+    single_trade_dominance=None,
+    tp_capture_shortfalls=None,
+    revenge_evidence=None,
+):
+    return build_execution_outcome_archetype(
+        trades,
+        summary={"net_pnl": net_pnl},
+        risk_authority=risk_authority or {"risk_judgment_allowed": True, "stable": True},
+        post_loss_response=post_loss_response or {"repeated_increased_risk": False},
+        single_trade_dominance=single_trade_dominance,
+        tp_capture_shortfalls=tp_capture_shortfalls or {"recurring": False},
+        revenge_evidence=revenge_evidence or {"pattern_class": "none"},
+    )
+
+
+def test_execution_outcome_full_praise_when_process_and_result_are_clean():
+    out = _archetype(
+        [_trade(ref="T1", seq=1, pnl=120.0), _trade(ref="T2", seq=2, pnl=80.0)],
+        net_pnl=200.0,
+    )
+
+    assert out["outcome_class"] == "good"
+    assert out["execution_class"] == "good"
+    assert out["week_archetype"] == "good_execution_good_outcome"
+    assert out["coaching_stance"] == "full_praise"
+
+
+def test_execution_outcome_protects_confidence_when_clean_process_loses():
+    out = _archetype(
+        [_trade(ref="T1", seq=1, pnl=-60.0), _trade(ref="T2", seq=2, pnl=-40.0)],
+        net_pnl=-100.0,
+    )
+
+    assert out["execution_class"] == "good"
+    assert out["week_archetype"] == "good_execution_bad_outcome"
+    assert out["coaching_stance"] == "protect_confidence"
+
+
+def test_execution_outcome_treats_clean_flat_week_as_neutral():
+    out = _archetype(
+        [_trade(ref="T1", seq=1, pnl=60.0), _trade(ref="T2", seq=2, pnl=-60.0)],
+        net_pnl=0.0,
+    )
+
+    assert out["outcome_class"] == "flat"
+    assert out["execution_class"] == "good"
+    assert out["week_archetype"] == "good_execution_flat_outcome"
+    assert out["coaching_stance"] == "steady_neutral"
+    assert out["issue_evidence_level"] == "none"
+
+
+def test_execution_outcome_warns_when_profitable_week_has_leaks():
+    out = _archetype(
+        [
+            _trade(ref="T1", seq=1, pnl=-40.0),
+            _trade(ref="T2", seq=2, pnl=180.0, prev_trade_pnl=-40.0),
+        ],
+        net_pnl=140.0,
+        revenge_evidence={"pattern_class": "isolated"},
+    )
+
+    assert out["outcome_class"] == "good"
+    assert out["execution_class"] == "leaky"
+    assert out["week_archetype"] == "leaky_execution_good_outcome"
+    assert out["coaching_stance"] == "good_week_but_habits_are_leaking"
+    assert out["issue_evidence_level"] == "isolated"
+
+
+def test_execution_outcome_keeps_isolated_revenge_as_light_correction():
+    out = _archetype(
+        [
+            _trade(ref="T1", seq=1, pnl=-40.0),
+            _trade(ref="T2", seq=2, pnl=-50.0, prev_trade_pnl=-40.0),
+        ],
+        net_pnl=-90.0,
+        revenge_evidence={"pattern_class": "isolated"},
+    )
+
+    assert out["execution_class"] == "leaky"
+    assert out["week_archetype"] == "leaky_execution_bad_outcome"
+    assert out["coaching_stance"] == "light_correction"
+    assert out["issue_evidence_level"] == "isolated"
+    assert out["primary_issue"] == "isolated_revenge_evidence"
+
+
+def test_execution_outcome_corrects_leaky_flat_week_without_calling_it_a_loss():
+    out = _archetype(
+        [
+            _trade(ref="T1", seq=1, pnl=-60.0),
+            _trade(ref="T2", seq=2, pnl=60.0, prev_trade_pnl=-60.0),
+        ],
+        net_pnl=0.0,
+        revenge_evidence={"pattern_class": "isolated"},
+    )
+
+    assert out["outcome_class"] == "flat"
+    assert out["execution_class"] == "leaky"
+    assert out["week_archetype"] == "leaky_execution_flat_outcome"
+    assert out["coaching_stance"] == "light_correction"
+    assert out["issue_evidence_level"] == "isolated"
+
+
+def test_execution_outcome_counts_same_symbol_and_same_idea_reentries_when_present():
+    out = _archetype(
+        [
+            _trade(ref="T1", seq=1, pnl=-40.0),
+            {
+                **_trade(ref="T2", seq=2, pnl=-20.0),
+                "is_post_loss_same_symbol_trade": True,
+                "same_trade_idea_reentry": True,
+            },
+            {
+                **_trade(ref="T3", seq=3, pnl=25.0),
+                "is_post_loss_same_symbol_trade": True,
+            },
+        ],
+        net_pnl=-35.0,
+    )
+
+    assert out["same_symbol_after_loss_count"] == 2
+    assert out["same_trade_idea_reentry_count"] == 1
+    assert out["primary_issue"] == "repeated_same_symbol_after_loss"
+    assert out["ranked_issues"][0]["reason"] == "repeated_same_symbol_after_loss"
+    assert "repeated_same_symbol_after_loss" in out["issue_reasons"]
+    assert "single_same_trade_idea_reentry" in out["issue_reasons"]
+
+
+def test_execution_outcome_direct_correction_when_bad_process_loses():
+    out = _archetype(
+        [
+            _trade(ref="T1", seq=1, pnl=-40.0),
+            _trade(ref="T2", seq=2, pnl=-70.0, prev_trade_pnl=-40.0),
+        ],
+        net_pnl=-110.0,
+        revenge_evidence={"pattern_class": "repeated"},
+    )
+
+    assert out["execution_class"] == "bad"
+    assert out["week_archetype"] == "bad_execution_bad_outcome"
+    assert out["coaching_stance"] == "direct_correction"
+    assert out["issue_evidence_level"] == "strong"
+    assert out["primary_issue"] == "repeated_revenge_evidence"
+
+
+def test_execution_outcome_ranks_primary_issue_above_secondary_leaks():
+    out = _archetype(
+        [
+            _trade(ref="T1", seq=1, pnl=-40.0),
+            {
+                **_trade(ref="T2", seq=2, pnl=-30.0),
+                "is_post_loss_same_symbol_trade": True,
+            },
+            {
+                **_trade(ref="T3", seq=3, pnl=-25.0),
+                "is_post_loss_same_symbol_trade": True,
+            },
+            _trade(ref="T4", seq=4, pnl=20.0),
+        ],
+        net_pnl=-75.0,
+        revenge_evidence={"pattern_class": "repeated"},
+        tp_capture_shortfalls={"recurring": True},
+    )
+
+    ranked_reasons = [issue["reason"] for issue in out["ranked_issues"]]
+
+    assert out["primary_issue"] == "repeated_revenge_evidence"
+    assert ranked_reasons[:3] == [
+        "repeated_revenge_evidence",
+        "repeated_same_symbol_after_loss",
+        "recurring_winner_exited_before_target",
+    ]
+    assert out["primary_issue_hint"].startswith("Lead with repeated revenge")
+
+
+def test_execution_outcome_treats_clean_outlier_concentration_as_unclear_not_bad():
+    out = _archetype(
+        [
+            _trade(ref="T1", seq=1, pnl=300.0),
+            _trade(ref="T2", seq=2, pnl=-20.0),
+            _trade(ref="T3", seq=3, pnl=10.0),
+        ],
+        net_pnl=290.0,
+        single_trade_dominance={
+            "dominant_symbol": "EURUSD",
+            "dominant_ref": "T1",
+            "abs_pnl_share_pct": 90.0,
+        },
+    )
+
+    assert out["execution_class"] == "unclear"
+    assert out["week_archetype"] == "random_or_unclear_execution"
+    assert out["coaching_stance"] == "measure_first"
+    assert out["primary_issue"] == "single_trade_dominance"
+    assert out["do_not_lead_with"] == []
+
+
+def test_execution_outcome_does_not_hide_process_leak_behind_outlier_concentration():
+    out = _archetype(
+        [
+            _trade(ref="T1", seq=1, pnl=300.0),
+            _trade(ref="T2", seq=2, pnl=-20.0),
+            _trade(ref="T3", seq=3, pnl=-80.0, is_revenge=True),
+            _trade(ref="T4", seq=4, pnl=-70.0, is_revenge=True),
+        ],
+        net_pnl=130.0,
+        single_trade_dominance={
+            "dominant_symbol": "EURUSD",
+            "dominant_ref": "T1",
+            "abs_pnl_share_pct": 63.8,
+        },
+        revenge_evidence={"pattern_class": "repeated"},
+    )
+
+    assert out["outcome_concentrated"] is True
+    assert out["execution_class"] == "bad"
+    assert out["week_archetype"] == "bad_execution_good_outcome"
+    assert out["coaching_stance"] == "good_week_but_habits_are_leaking"
+    assert out["primary_issue"] == "repeated_revenge_evidence"
+    assert out["do_not_lead_with"] == ["single_trade_dominance"]
+
+
 def test_build_weekly_signals_composes_all_outputs():
     trades = [
         _trade(ref="T1", seq=1, pnl=30.0),
@@ -371,6 +602,7 @@ def test_build_weekly_signals_composes_all_outputs():
         "tp_capture_shortfalls",
         "session_concentration",
         "revenge_evidence",
+        "execution_outcome",
         "surface_facts",
         "confidence_envelope",
     }

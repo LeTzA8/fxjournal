@@ -1,6 +1,19 @@
 # CURRENT_STATE
 
-Last Updated: 2026-05-02
+Last Updated: 2026-05-03
+
+## Weekly AI execution/outcome archetype rail (2026-05-03)
+
+- Weekly AI payloads now include a deterministic `execution_outcome` signal under `current_week_breakdowns`, classifying the week by realised outcome and observable execution quality before the model writes: good execution/good outcome, good execution/bad outcome, leaky or bad execution/good outcome, bad execution/bad outcome, or random/unclear execution.
+- The archetype gives pass 1 a coaching stance such as `full_praise`, `protect_confidence`, `good_week_but_habits_are_leaking`, `direct_correction`, or `measure_first`, while the prompt explicitly forbids showing those internal labels to the trader. Concentrated outlier results are treated as unclear rather than bad execution so valid "let winners run" weeks are not penalized automatically, and 2-3 trade weeks are not downgraded solely for sample size.
+- The pass-1 weekly review prompt now uses `execution_outcome` as a tone/structure rail before choosing the final diagnosis, so profitable weeks with leaks can warn without overcorrecting and losing weeks with clean process can protect confidence. (`helpers/weekly_signals.py`, `ai_service.py`, `prompts/dashboard_advice.txt`, tests)
+- Follow-up tightening: single confirmed revenge evidence now remains `isolated`; repeated revenge requires at least two confirmed or strong sequences, preventing one tagged mistake from forcing direct-correction tone. Concentrated outlier weeks only become `measure_first` when no process leak is present, and the prompt now documents `leaky_execution_bad_outcome` as light correction. Tests pin same-symbol/same-idea re-entry counts when those serialized fields are present. (`helpers/weekly_signals.py`, `prompts/dashboard_advice.txt`, tests)
+- Follow-up ranker: `execution_outcome` now includes `primary_issue`, `primary_issue_hint`, ranked issue metadata, and `do_not_lead_with` so the weekly review has a deterministic lead signal instead of letting the model pick from equal-looking surface stats. The prompt treats outlier concentration as context when a stronger process leak exists, while still leaving causal interpretation, citation choice, and final coaching copy to the model. (`helpers/weekly_signals.py`, `ai_service.py`, `prompts/dashboard_advice.txt`, tests)
+- Follow-up flat/isolated calibration: flat clean weeks now use a neutral hold-steady archetype instead of the losing-week confidence-protection lane; flat weeks with leaks get flat-specific correction labels. `execution_outcome.issue_evidence_level` now exposes `none` / `isolated` / `moderate` / `strong` so the prompt frames one revenge signal as a watch item while repeated evidence can stay direct. (`helpers/weekly_signals.py`, `ai_service.py`, `prompts/dashboard_advice.txt`, tests)
+
+## Project map synced with current state (2026-05-02)
+
+- `context/PROJECT_MAP.md` was refreshed from the accumulated `CURRENT_STATE.md` entries into the durable project map: product surface, Render/Hyonix architecture, 30s MT5 queue model, MT5 setup/sync/bar lifecycle, weekly AI + follow-up chat, running PnL/cash flows, admin/support/legal/growth surfaces, key file ownership, operational guardrails, known weak points, and current next priorities.
 
 ## Weekly review follow-up scope and dynamic questions (2026-05-02)
 

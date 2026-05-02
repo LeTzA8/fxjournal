@@ -128,6 +128,12 @@ Rules for text fields:
 - summary.text must stay as the single opening paragraph.
 - takeaways should contain 1-3 items by default. Use 4 only when the fourth item is genuinely distinct and useful.
 - summary.text must identify one dominant diagnosis for the week, not merely restate performance.
+- Use CURRENT_WEEK_BREAKDOWNS.execution_outcome as the coaching stance before writing. When execution_outcome.primary_issue is present, treat it as the default lead signal; ranked_issues gives fallback order and primary_issue_hint explains how to frame it.
+- Use execution_outcome.issue_evidence_level for intensity. If it is isolated, frame the issue as one watch item, not a repeated habit. If it is strong, be more direct.
+- A flat clean week is neutral, not a loss; hold the process steady and suggest only a small measurement or refinement.
+- If execution_outcome.do_not_lead_with includes single_trade_dominance, use the dominant trade only as context and do not make outlier concentration the main diagnosis.
+- Never mention internal labels such as week_archetype, execution_class, coaching_stance, primary_issue, ranked_issues, issue_evidence_level, or do_not_lead_with.
+- A profitable week with leaky or bad execution should acknowledge the good result without endorsing the leak; a losing week with good execution should protect confidence and avoid overhauling the process.
 - summary.text must start with the human conclusion, then support it with data.
 - summary.text must include a count or concrete trade example and, when available, combine at least two signals such as timing, range location, session, volatility, sequence, exit handling, or risk authority.
 - Prefer making summary.text or the first takeaway name the representative trade that proves the diagnosis, so the review has at least one visible trade citation.
@@ -1919,6 +1925,7 @@ def build_trade_payload(
     current_week_breakdowns["tp_capture_shortfalls"] = weekly_signals["tp_capture_shortfalls"]
     current_week_breakdowns["session_concentration"] = weekly_signals["session_concentration"]
     current_week_breakdowns["revenge_evidence"] = weekly_signals["revenge_evidence"]
+    current_week_breakdowns["execution_outcome"] = weekly_signals["execution_outcome"]
     tone_context = _build_tone_context(
         weekly_checkin=weekly_checkin,
         emotional_index=emotional_index,
@@ -2376,6 +2383,36 @@ def format_payload_for_prompt(payload):
         )
 
         risk_authority = current_week_breakdowns.get("risk_authority") or {}
+        execution_outcome = current_week_breakdowns.get("execution_outcome") or {}
+        if execution_outcome:
+            lines.extend(
+                [
+                    f"- execution_outcome.outcome_class: {execution_outcome.get('outcome_class') or '-'}",
+                    f"- execution_outcome.execution_class: {execution_outcome.get('execution_class') or '-'}",
+                    f"- execution_outcome.week_archetype: {execution_outcome.get('week_archetype') or '-'}",
+                    f"- execution_outcome.coaching_stance: {execution_outcome.get('coaching_stance') or '-'}",
+                    f"- execution_outcome.stance_hint: {execution_outcome.get('stance_hint') or '-'}",
+                    f"- execution_outcome.issue_points: {execution_outcome.get('issue_points', 0)}",
+                    f"- execution_outcome.issue_evidence_level: {execution_outcome.get('issue_evidence_level') or '-'}",
+                    f"- execution_outcome.issue_reasons: {', '.join(execution_outcome.get('issue_reasons') or []) or '-'}",
+                    f"- execution_outcome.primary_issue: {execution_outcome.get('primary_issue') or '-'}",
+                    f"- execution_outcome.primary_issue_hint: {execution_outcome.get('primary_issue_hint') or '-'}",
+                    f"- execution_outcome.do_not_lead_with: {', '.join(execution_outcome.get('do_not_lead_with') or []) or '-'}",
+                    f"- execution_outcome.same_symbol_after_loss_count: {execution_outcome.get('same_symbol_after_loss_count', 0)}",
+                    f"- execution_outcome.same_trade_idea_reentry_count: {execution_outcome.get('same_trade_idea_reentry_count', 0)}",
+                    f"- execution_outcome.losing_outlier_count: {execution_outcome.get('losing_outlier_count', 0)}",
+                    f"- execution_outcome.outcome_concentrated: {_format_bool(execution_outcome.get('outcome_concentrated'))}",
+                ]
+            )
+            for index, issue in enumerate(execution_outcome.get("ranked_issues") or [], start=1):
+                lines.append(
+                    f"- execution_outcome.ranked_issues[{index}]: "
+                    f"reason={issue.get('reason') or '-'}, "
+                    f"severity={issue.get('severity', '-')}, "
+                    f"points={issue.get('points', '-')}, "
+                    f"lead_hint={issue.get('lead_hint') or '-'}"
+                )
+
         if risk_authority:
             lines.extend(
                 [

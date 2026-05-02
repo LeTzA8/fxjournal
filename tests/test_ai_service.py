@@ -184,6 +184,31 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
             },
             "frequency": {"trade_idea_count": 1, "active_day_count": 1, "trade_ideas_per_active_day": 1.0, "busiest_session": "London"},
             "exit_quality": {"closed_before_tp_count": 1, "closed_before_sl_count": 0, "avg_tp_capture_pct": 35.0},
+            "execution_outcome": {
+                "outcome_class": "good",
+                "execution_class": "bad",
+                "week_archetype": "bad_execution_good_outcome",
+                "coaching_stance": "good_week_but_habits_are_leaking",
+                "stance_hint": "Acknowledge the good result, then show the process leak without overcorrecting.",
+                "issue_points": 3,
+                "issue_evidence_level": "strong",
+                "issue_reasons": ["repeated_revenge_evidence", "single_trade_dominance"],
+                "primary_issue": "repeated_revenge_evidence",
+                "primary_issue_hint": "Lead with repeated revenge or reactive post-loss behavior if the concrete trade sequence supports it.",
+                "ranked_issues": [
+                    {
+                        "reason": "repeated_revenge_evidence",
+                        "points": 3,
+                        "severity": 100,
+                        "lead_hint": "Lead with repeated revenge or reactive post-loss behavior if the concrete trade sequence supports it.",
+                    }
+                ],
+                "do_not_lead_with": ["single_trade_dominance"],
+                "same_symbol_after_loss_count": 1,
+                "same_trade_idea_reentry_count": 1,
+                "losing_outlier_count": 0,
+                "outcome_concentrated": True,
+            },
         },
         "four_week_patterns": {
             "weeks_considered": 4,
@@ -341,6 +366,11 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "CURRENT_WEEK_BREAKDOWNS" in prompt_text
     assert "- sizing.median_planned_risk_dollars: 250.00" in prompt_text
     assert "- sizing.median_risk_pct_of_account: 2.50%" in prompt_text
+    assert "- execution_outcome.issue_evidence_level: strong" in prompt_text
+    assert "- execution_outcome.primary_issue: repeated_revenge_evidence" in prompt_text
+    assert "- execution_outcome.primary_issue_hint: Lead with repeated revenge" in prompt_text
+    assert "- execution_outcome.do_not_lead_with: single_trade_dominance" in prompt_text
+    assert "execution_outcome.ranked_issues[1]: reason=repeated_revenge_evidence" in prompt_text
     assert "session London: count=1, win_rate=100.00%, net_pnl=+140.00" in prompt_text
     assert "strategy NY Open Sweep v1: count=1, win_rate=100.00%, net_pnl=+140.00" in prompt_text
     assert "strategy_coverage.trades_with_strategy: 1" in prompt_text
@@ -981,8 +1011,24 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "tp_capture_shortfalls" in prompt_text
     assert "session_concentration" in prompt_text
     assert "revenge_evidence" in prompt_text
+    assert "execution_outcome" in prompt_text
+    assert "habits are leaking" in prompt_text
+    assert "leaky_execution_bad_outcome" in prompt_text
+    assert "good_execution_flat_outcome" in prompt_text
+    assert "leaky_execution_flat_outcome" in prompt_text
+    assert "light correction" in prompt_text
+    assert "execution_outcome.primary_issue" in prompt_text
+    assert "issue_evidence_level" in prompt_text
+    assert "one watch item" in prompt_text
+    assert "deterministic lead signal" in prompt_text
+    assert "do_not_lead_with" in prompt_text
+    assert "not the headline" in prompt_text
     assert "SURFACE_FACTS" in prompt_text
     assert "confidence_envelope" in prompt_text.lower()
+    assert "execution_outcome.primary_issue" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "issue_evidence_level" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "flat clean week is neutral" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "outlier concentration the main diagnosis" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
 
     # Risk priority rule — non-obvious domain rule, must be explicit
     assert "risk_authority.stable" in prompt_text
@@ -1131,6 +1177,10 @@ def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, mon
     assert payload["summary"]["top_symbol_abs_pnl_share_pct"] == 51.52
     assert payload["summary"]["largest_trade_symbol"] == "GBPUSD"
     assert payload["summary"]["largest_trade_abs_pnl_share_pct"] == 48.48
+    assert payload["current_week_breakdowns"]["execution_outcome"]["week_archetype"]
+    prompt_text = format_payload_for_prompt(payload)
+    assert "execution_outcome.week_archetype" in prompt_text
+    assert "execution_outcome.coaching_stance" in prompt_text
 
     eur_trades = [trade for trade in payload["trades"] if trade["symbol"] == "EURUSD"]
     gbp_trade = next(trade for trade in payload["trades"] if trade["symbol"] == "GBPUSD")

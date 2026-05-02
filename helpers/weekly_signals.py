@@ -13,6 +13,57 @@ _RISK_STABLE_TOLERANCE = 0.15
 _DOMINANCE_SHARE_PCT = 40.0
 _TP_SHORTFALL_PCT = 80.0
 
+_ISSUE_RANKING = {
+    "repeated_revenge_evidence": {
+        "severity": 100,
+        "lead_hint": "Lead with repeated revenge or reactive post-loss behavior if the concrete trade sequence supports it.",
+    },
+    "repeated_increased_risk_after_loss": {
+        "severity": 95,
+        "lead_hint": "Lead with risk increasing after losses when risk authority allows that claim.",
+    },
+    "repeated_same_symbol_after_loss": {
+        "severity": 90,
+        "lead_hint": "Lead with same-symbol re-entry after losses; frame it as the next trade not being a fresh decision.",
+    },
+    "repeated_same_trade_idea_reentry": {
+        "severity": 85,
+        "lead_hint": "Lead with repeated re-entry into the same trade idea when the sequence, timing, and outcome support it.",
+    },
+    "unstable_planned_risk": {
+        "severity": 70,
+        "lead_hint": "Lead with inconsistent planned risk only when risk_authority permits risk judgment.",
+    },
+    "losing_outlier_risk": {
+        "severity": 65,
+        "lead_hint": "Lead with one unusually large losing trade only when it explains the week better than behavior sequence.",
+    },
+    "recurring_winner_exited_before_target": {
+        "severity": 60,
+        "lead_hint": "Lead with repeated early winner exits when it is the clearest process leak.",
+    },
+    "multiple_confirmed_reactive_or_corrective_trades": {
+        "severity": 55,
+        "lead_hint": "Lead with confirmed reactive or corrective behavior when no stronger process leak exists.",
+    },
+    "single_same_symbol_after_loss": {
+        "severity": 45,
+        "lead_hint": "Use one same-symbol post-loss re-entry as a representative example, not a repeated pattern.",
+    },
+    "single_same_trade_idea_reentry": {
+        "severity": 42,
+        "lead_hint": "Use one same-idea re-entry as a representative example, not a repeated pattern.",
+    },
+    "isolated_revenge_evidence": {
+        "severity": 40,
+        "lead_hint": "Treat one revenge signal as isolated unless another signal confirms the same leak.",
+    },
+    "single_trade_dominance": {
+        "severity": 20,
+        "lead_hint": "Lead with result concentration only when there is no stronger process issue; do not call it bad execution by itself.",
+    },
+}
+
 
 def _safe_float(value):
     if value in (None, ""):
@@ -27,6 +78,16 @@ def _round(value, digits=2):
     if value is None:
         return None
     return round(float(value), digits)
+
+
+def _issue_metadata(reason):
+    return _ISSUE_RANKING.get(
+        reason,
+        {
+            "severity": 10,
+            "lead_hint": "Use only if it explains the week better than stronger process signals.",
+        },
+    )
 
 
 def _classify_change(current, baseline, *, tolerance=_RISK_STABLE_TOLERANCE):
@@ -394,7 +455,7 @@ def build_revenge_evidence(serialized_trades):
 
     if confirmed_count == 0 and heuristic_count == 0:
         pattern_class = "none"
-    elif confirmed_count >= 1 or len(strong_sequences) >= 2:
+    elif confirmed_count >= 2 or len(strong_sequences) >= 2:
         pattern_class = "repeated"
     else:
         pattern_class = "isolated"
@@ -464,6 +525,202 @@ def build_confidence_envelope(*, account_age_days, closed_trade_count, notes_con
     return {"level": level, "reasons": reasons}
 
 
+def build_execution_outcome_archetype(
+    serialized_trades,
+    *,
+    summary,
+    risk_authority,
+    post_loss_response,
+    single_trade_dominance,
+    tp_capture_shortfalls,
+    revenge_evidence,
+):
+    """Classify the week before the LLM chooses tone and advice.
+
+    This is not a verdict on strategy quality. It separates the realised
+    outcome from observable process leaks so a profitable week can still get a
+    warning, and a losing clean week does not get over-corrected.
+    """
+    closed = _closed_trades(serialized_trades)
+    closed_trade_count = len(closed)
+    net_pnl = _safe_float((summary or {}).get("net_pnl"))
+    if closed_trade_count == 0 or net_pnl is None:
+        outcome_class = "unknown"
+    elif net_pnl > 0:
+        outcome_class = "good"
+    elif net_pnl < 0:
+        outcome_class = "bad"
+    else:
+        outcome_class = "flat"
+
+    issue_points = 0
+    issue_reasons = []
+    issue_entries = []
+
+    def add_issue(reason, points):
+        nonlocal issue_points
+        if not reason or points <= 0:
+            return
+        issue_points += int(points)
+        issue_reasons.append(reason)
+        meta = _issue_metadata(reason)
+        issue_entries.append(
+            {
+                "reason": reason,
+                "points": int(points),
+                "severity": int(meta.get("severity", 10) or 10),
+                "lead_hint": meta.get("lead_hint") or "",
+            }
+        )
+
+    revenge_class = (revenge_evidence or {}).get("pattern_class")
+    if revenge_class == "repeated":
+        add_issue("repeated_revenge_evidence", 3)
+    elif revenge_class == "isolated":
+        add_issue("isolated_revenge_evidence", 1)
+
+    same_symbol_after_loss_count = sum(
+        1 for trade in closed if bool(trade.get("is_post_loss_same_symbol_trade"))
+    )
+    if same_symbol_after_loss_count >= 2:
+        add_issue("repeated_same_symbol_after_loss", 2)
+    elif same_symbol_after_loss_count == 1:
+        add_issue("single_same_symbol_after_loss", 1)
+
+    same_idea_reentry_count = sum(
+        1 for trade in closed if bool(trade.get("same_trade_idea_reentry"))
+    )
+    if same_idea_reentry_count >= 2:
+        add_issue("repeated_same_trade_idea_reentry", 2)
+    elif same_idea_reentry_count == 1:
+        add_issue("single_same_trade_idea_reentry", 1)
+
+    if bool((post_loss_response or {}).get("repeated_increased_risk")):
+        add_issue("repeated_increased_risk_after_loss", 2)
+
+    if (
+        bool((risk_authority or {}).get("risk_judgment_allowed"))
+        and (risk_authority or {}).get("stable") is False
+    ):
+        add_issue("unstable_planned_risk", 1)
+
+    if bool((tp_capture_shortfalls or {}).get("recurring")):
+        add_issue("recurring_winner_exited_before_target", 1)
+
+    losing_outlier_count = sum(
+        1
+        for trade in closed
+        if bool(trade.get("outlier_size")) and (_safe_float(trade.get("pnl")) or 0) < 0
+    )
+    if losing_outlier_count >= 1:
+        add_issue("losing_outlier_risk", 1)
+
+    confirmed_non_revenge_behaviour_count = sum(
+        1
+        for trade in closed
+        if bool(trade.get("is_reactive")) or bool(trade.get("is_corrective"))
+    )
+    if confirmed_non_revenge_behaviour_count >= 2:
+        add_issue("multiple_confirmed_reactive_or_corrective_trades", 1)
+
+    outcome_concentrated = bool(single_trade_dominance)
+    if outcome_concentrated and not issue_entries:
+        meta = _issue_metadata("single_trade_dominance")
+        issue_entries.append(
+            {
+                "reason": "single_trade_dominance",
+                "points": 0,
+                "severity": int(meta.get("severity", 20) or 20),
+                "lead_hint": meta.get("lead_hint") or "",
+            }
+        )
+    ranked_issues = sorted(
+        issue_entries,
+        key=lambda item: (
+            -int(item.get("severity", 0) or 0),
+            -int(item.get("points", 0) or 0),
+            str(item.get("reason") or ""),
+        ),
+    )
+    primary_issue = ranked_issues[0] if ranked_issues else None
+    if issue_points == 0:
+        issue_evidence_level = "none"
+    elif issue_points == 1:
+        issue_evidence_level = "isolated"
+    elif issue_points == 2:
+        issue_evidence_level = "moderate"
+    else:
+        issue_evidence_level = "strong"
+    do_not_lead_with = (
+        ["single_trade_dominance"]
+        if outcome_concentrated
+        and primary_issue is not None
+        and primary_issue.get("reason") != "single_trade_dominance"
+        else []
+    )
+
+    if issue_points == 0:
+        execution_class = "unclear" if outcome_concentrated else "good"
+    elif issue_points >= 3:
+        execution_class = "bad"
+    else:
+        execution_class = "leaky"
+
+    if outcome_class == "unknown" or execution_class == "unclear":
+        week_archetype = "random_or_unclear_execution"
+        coaching_stance = "measure_first"
+        stance_hint = "Do not force a big process claim; explain what is known and what to measure next."
+    elif execution_class == "good" and outcome_class == "good":
+        week_archetype = "good_execution_good_outcome"
+        coaching_stance = "full_praise"
+        stance_hint = "Reinforce the process first; add only a small refinement if the evidence supports it."
+    elif execution_class == "good" and outcome_class == "flat":
+        week_archetype = "good_execution_flat_outcome"
+        coaching_stance = "steady_neutral"
+        stance_hint = "Treat breakeven as neutral; reinforce controlled process and suggest only a small measurement or refinement."
+    elif execution_class == "good" and outcome_class == "bad":
+        week_archetype = "good_execution_bad_outcome"
+        coaching_stance = "protect_confidence"
+        stance_hint = "Protect confidence; do not tell the trader to overhaul clean process because of one result."
+    elif execution_class in ("bad", "leaky") and outcome_class == "good":
+        week_archetype = f"{execution_class}_execution_good_outcome"
+        coaching_stance = "good_week_but_habits_are_leaking"
+        stance_hint = "Acknowledge the good result, then show the process leak without overcorrecting."
+    elif outcome_class == "flat":
+        week_archetype = f"{execution_class}_execution_flat_outcome"
+        coaching_stance = "direct_correction" if execution_class == "bad" else "light_correction"
+        stance_hint = "Treat breakeven as neutral on results, but still coach the process leak at the right evidence strength."
+    elif execution_class == "bad":
+        week_archetype = "bad_execution_bad_outcome"
+        coaching_stance = "direct_correction"
+        stance_hint = "Be direct: connect the process leak to the damage and give one clear corrective rule."
+    else:
+        week_archetype = "leaky_execution_bad_outcome"
+        coaching_stance = "light_correction"
+        stance_hint = "Name the leak clearly, but keep the correction proportional to the evidence."
+
+    return {
+        "outcome_class": outcome_class,
+        "execution_class": execution_class,
+        "week_archetype": week_archetype,
+        "coaching_stance": coaching_stance,
+        "stance_hint": stance_hint,
+        "issue_points": issue_points,
+        "issue_evidence_level": issue_evidence_level,
+        "issue_reasons": issue_reasons,
+        "primary_issue": primary_issue.get("reason") if primary_issue else None,
+        "primary_issue_hint": primary_issue.get("lead_hint") if primary_issue else None,
+        "ranked_issues": ranked_issues[:5],
+        "do_not_lead_with": do_not_lead_with,
+        "closed_trade_count": closed_trade_count,
+        "net_pnl": _round(net_pnl),
+        "same_symbol_after_loss_count": same_symbol_after_loss_count,
+        "same_trade_idea_reentry_count": same_idea_reentry_count,
+        "losing_outlier_count": losing_outlier_count,
+        "outcome_concentrated": outcome_concentrated,
+    }
+
+
 def build_weekly_signals(
     *,
     serialized_trades,
@@ -494,20 +751,33 @@ def build_weekly_signals(
             ):
                 largest_ref = trade.get("review_ref")
                 break
+    post_loss_response = build_post_loss_response(
+        serialized_trades, risk_authority=risk_authority
+    )
+    single_trade_dominance = build_single_trade_dominance(
+        largest_trade_symbol=largest_symbol,
+        largest_trade_review_ref=largest_ref,
+        largest_trade_abs_pnl_share_pct=(summary or {}).get("largest_trade_abs_pnl_share_pct"),
+        closed_trade_count=closed_trade_count,
+    )
+    tp_capture_shortfalls = build_tp_capture_shortfalls(serialized_trades)
+    revenge_evidence = build_revenge_evidence(serialized_trades)
     return {
         "risk_authority": risk_authority,
-        "post_loss_response": build_post_loss_response(
-            serialized_trades, risk_authority=risk_authority
-        ),
-        "single_trade_dominance": build_single_trade_dominance(
-            largest_trade_symbol=largest_symbol,
-            largest_trade_review_ref=largest_ref,
-            largest_trade_abs_pnl_share_pct=(summary or {}).get("largest_trade_abs_pnl_share_pct"),
-            closed_trade_count=closed_trade_count,
-        ),
-        "tp_capture_shortfalls": build_tp_capture_shortfalls(serialized_trades),
+        "post_loss_response": post_loss_response,
+        "single_trade_dominance": single_trade_dominance,
+        "tp_capture_shortfalls": tp_capture_shortfalls,
         "session_concentration": build_session_concentration(serialized_trades),
-        "revenge_evidence": build_revenge_evidence(serialized_trades),
+        "revenge_evidence": revenge_evidence,
+        "execution_outcome": build_execution_outcome_archetype(
+            serialized_trades,
+            summary=summary,
+            risk_authority=risk_authority,
+            post_loss_response=post_loss_response,
+            single_trade_dominance=single_trade_dominance,
+            tp_capture_shortfalls=tp_capture_shortfalls,
+            revenge_evidence=revenge_evidence,
+        ),
         "surface_facts": build_surface_facts(
             summary=summary, current_week_breakdowns=current_week_breakdowns
         ),

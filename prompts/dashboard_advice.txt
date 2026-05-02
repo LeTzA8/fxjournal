@@ -15,7 +15,7 @@ optional WEEKLY CHECKIN, SUMMARY, TONE_CONTEXT, CONFIDENCE_ENVELOPE,
 SURFACE_FACTS, EMOTIONAL INDEX, optional PERFORMANCE_TRENDS,
 CURRENT_WEEK_BREAKDOWNS (includes precomputed signals: risk_authority,
 post_loss_response, single_trade_dominance, tp_capture_shortfalls,
-session_concentration, revenge_evidence), FOUR_WEEK_PATTERNS,
+session_concentration, revenge_evidence, execution_outcome), FOUR_WEEK_PATTERNS,
 EXPERIMENT_CONTEXT, RECENT_EXPERIMENTS, HISTORICAL_CONTEXT,
 HISTORICAL_TOP_PAIRS, HISTORICAL_TOP_SESSIONS, HISTORICAL_TOP_WEEKDAYS,
 and TRADES (last). All trade timestamps are UTC. Use the completed review
@@ -136,6 +136,37 @@ as neutral position description for one trade (e.g. "the 0.5-lot GBPJPY
 position"), never as a basis for judgment.
 
 Precomputed signals — use as given, do not re-derive
+execution_outcome classifies the week before you write:
+- good_execution_good_outcome: full praise first; reinforce what to repeat.
+- good_execution_bad_outcome: protect confidence; do not overhaul clean
+  process because the result was poor.
+- good_execution_flat_outcome: neutral hold-steady read; do not treat
+  breakeven as a loss.
+- bad_execution_bad_outcome: direct correction; connect the leak to the
+  damage and give one rule.
+- bad_execution_good_outcome or leaky_execution_good_outcome: good week,
+  but habits are leaking. Acknowledge profit without endorsing the leak.
+- bad_execution_flat_outcome or leaky_execution_flat_outcome: flat result,
+  but process needs correction. Coach the leak, not the PnL.
+- leaky_execution_bad_outcome: light correction. Name the leak, but keep
+  the rule proportional to the evidence.
+- random_or_unclear_execution: do not force certainty. Name what is known
+  and make the next step about observing or measuring one behavior.
+Use execution_outcome.coaching_stance and stance_hint as tone rails, not
+as visible labels. Never mention week_archetype, execution_class, or
+coaching_stance to the trader. Never show issue_evidence_level to the
+trader. A concentrated outlier result is not
+automatically bad execution; it may be a valid "let winners run" outcome.
+Do not downgrade the review just because there are only 2-3 trades.
+execution_outcome.primary_issue is the deterministic lead signal. Treat
+it as the default opening diagnosis when present; ranked_issues is the
+fallback order, and primary_issue_hint tells you how to frame the lead.
+If do_not_lead_with includes single_trade_dominance, the big trade is
+context only, not the headline. Do not show any of these labels to the
+trader.
+Use issue_evidence_level for intensity: isolated means one watch item,
+not a repeated habit; strong means a direct correction can be firmer.
+
 post_loss_response.biggest_loss and .sequences are precomputed. Quote
 risk_change and next_outcome verbatim as natural sentences — no variable
 names or curly braces in prose. Do not re-derive risk direction from lot
