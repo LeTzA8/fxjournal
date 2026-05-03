@@ -1375,7 +1375,7 @@ def test_weekly_ai_review_display_keeps_experiment_from_meta_with_rewrite():
     ]
 
 
-def test_weekly_ai_review_display_carries_original_citations_when_rewrite_omits_refs():
+def test_weekly_ai_review_display_drops_original_citations_when_rewrite_omits_trade_name():
     review = type(
         "Review",
         (),
@@ -1421,18 +1421,80 @@ def test_weekly_ai_review_display_carries_original_citations_when_rewrite_omits_
 
     display = dashboard_routes._build_weekly_ai_review_display(review, "UTC")
 
-    assert display["summary"]["citations"][0]["trade_id"] == 101
-    assert display["takeaways"][0]["citations"][0]["trade_id"] == 101
-    assert any(
-        segment.get("type") == "citation"
-        and segment.get("label") == "GBPJPY | 20 Apr 2026 (Mon)"
+    assert display["summary"]["citations"] == []
+    assert display["takeaways"][0]["citations"] == []
+    assert all(segment.get("type") != "citation" for segment in display["summary"]["segments"])
+    assert all(segment.get("type") != "citation" for segment in display["takeaways"][0]["segments"])
+
+
+def test_weekly_ai_review_display_does_not_append_unmentioned_ref_as_trailing_pill():
+    review = type(
+        "Review",
+        (),
+        {
+            "response_text": "Unused fallback text",
+            "response_meta_json": json.dumps(
+                {
+                    "summary": {
+                        "text": "NAS100 rewarded the retry, while USDCAD exposed the cost.",
+                        "refs": ["T1", "T2"],
+                    },
+                    "takeaways": [
+                        {
+                            "text": "USDCAD showed the same post-loss move could still be costly.",
+                            "refs": ["T1", "T2"],
+                        }
+                    ],
+                    "improvement": {"text": "Improve this week: Treat the next idea as fresh.", "refs": []},
+                    "strength": {"text": "You're already strong at: Letting winners breathe.", "refs": []},
+                }
+            ),
+            "payload_json": json.dumps(
+                {
+                    "trades": [
+                        {
+                            "review_ref": "T1",
+                            "trade_id": 101,
+                            "symbol": "NAS100",
+                            "opened_at": "2026-04-27T09:00:00Z",
+                            "pnl": 125.0,
+                            "is_bundle": False,
+                            "bundle_pubkey": None,
+                        },
+                        {
+                            "review_ref": "T2",
+                            "trade_id": 202,
+                            "symbol": "USDCAD",
+                            "opened_at": "2026-04-28T09:00:00Z",
+                            "pnl": -75.0,
+                            "is_bundle": False,
+                            "bundle_pubkey": None,
+                        },
+                    ]
+                }
+            ),
+        },
+    )()
+
+    display = dashboard_routes._build_weekly_ai_review_display(review, "UTC")
+
+    summary_labels = [
+        segment["label"]
         for segment in display["summary"]["segments"]
-    )
-    assert any(
-        segment.get("type") == "citation"
-        and segment.get("label") == "GBPJPY | 20 Apr 2026 (Mon)"
+        if segment.get("type") == "citation"
+    ]
+    takeaway_labels = [
+        segment["label"]
         for segment in display["takeaways"][0]["segments"]
-    )
+        if segment.get("type") == "citation"
+    ]
+
+    assert summary_labels == [
+        "NAS100 | 27 Apr 2026 (Mon)",
+        "USDCAD | 28 Apr 2026 (Tue)",
+    ]
+    assert takeaway_labels == ["USDCAD | 28 Apr 2026 (Tue)"]
+    assert "NAS100 | 27 Apr 2026 (Mon)" not in takeaway_labels
 
 
 def test_rewrite_review_text_refs_drops_stray_clitic_after_brackets_and_labels():

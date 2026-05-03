@@ -148,9 +148,26 @@ def _dedupe_review_citations(citations, seen_keys):
     return deduped
 
 
+def _citation_matches_text(citation, text):
+    normalized = str(text or "")
+    if not normalized or not isinstance(citation, dict):
+        return False
+    for raw_label in (
+        str(citation.get("label") or "").strip(),
+        str(citation.get("inline_label") or "").strip(),
+    ):
+        if raw_label and re.search(re.escape(raw_label), normalized, flags=re.IGNORECASE):
+            return True
+    return False
+
+
 def _augment_citations_from_mentions(text, citations, citation_lookup):
     normalized = str(text or "").strip()
-    deduped = _dedupe_review_citations(citations, set())
+    deduped = [
+        citation
+        for citation in _dedupe_review_citations(citations, set())
+        if _citation_matches_text(citation, normalized)
+    ]
     if not normalized or not citation_lookup:
         return deduped
 
@@ -278,34 +295,6 @@ def _build_review_text_segments(text, citations):
 
     if cursor < len(normalized):
         segments.append({"type": "text", "text": normalized[cursor:]})
-
-    unmatched = []
-    for citation in deduped_citations:
-        citation_type = str(citation.get("type") or "").strip()
-        identity = (
-            f"bundle:{citation.get('bundle_key') or ''}"
-            if citation_type == "bundle"
-            else f"trade:{citation.get('trade_id') or ''}"
-        )
-        if identity and identity not in matched_keys:
-            unmatched.append(citation)
-
-    if unmatched:
-        if segments:
-            segments.append({"type": "text", "text": " "})
-        for index, citation in enumerate(unmatched):
-            segments.append(
-                {
-                    "type": "citation",
-                    "label": str(citation.get("label") or citation.get("inline_label") or "").strip(),
-                    "citation_type": citation.get("type"),
-                    "trade_id": citation.get("trade_id"),
-                    "bundle_key": citation.get("bundle_key"),
-                    "tone": citation.get("tone") or "neutral",
-                }
-            )
-            if index < len(unmatched) - 1:
-                segments.append({"type": "text", "text": " "})
 
     return segments
 

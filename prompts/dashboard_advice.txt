@@ -185,8 +185,12 @@ the review section names both the rewarded trade or symbol and the exposed
 trade or symbol, and explains the sequence mechanism.
 Use this writing shape across the summary/takeaways: Reward -> Cost ->
 Mislesson -> Better lesson. Do not flatten it into "the problem is the
-decision after the loss." Say how the winning retry taught the wrong
-lesson, then how the losing retry revealed it.
+decision after the loss." Name the rewarded trade, say what it reinforced,
+name the exposed trade, say how it contradicted that reinforcement, then
+state the corrected rule.
+Do not restate the same mechanism twice. If the core idea is already
+stated, deepen it with the contrast, mislesson, or corrected rule instead
+of repeating it.
 
 post_loss_response.biggest_loss and .sequences are precomputed. Quote
 risk_change and next_outcome verbatim as natural sentences — no variable
@@ -294,7 +298,9 @@ with no named symbol → empty refs. When two refs would render as the same
 visible label because they share symbol/date, do not attach both to one
 short sentence. Either write the
 point as an aggregate pattern with empty refs, or cite only the single
-clearly named trade that proves the point. Do not invent staged-entry lessons
+clearly named trade that proves the point. Trade references must appear
+inside sentences, not as trailing fragments; if a sentence cannot naturally
+name the trade or symbol, leave refs empty. Do not invent staged-entry lessons
 from one split cluster. One heuristic clue does not justify a rigid
 cooldown rule.
 

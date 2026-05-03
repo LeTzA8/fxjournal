@@ -119,6 +119,7 @@ Rules for refs:
 - improvement.refs and strength.refs must always be an empty list.
 - experiment.refs is optional and may be empty when the experiment is generalized.
 - The UI appends ref labels directly after the text. A ref that does not match a symbol explicitly named in the text will appear as an orphaned label. Only add a ref when the text contains the exact symbol name or bundle description that the ref represents.
+- Trade references must appear inside sentences, not as trailing fragments. If a sentence cannot naturally name the trade or symbol, leave refs empty.
 - If summary.text or a takeaway names a specific symbol (e.g. "GBPJPY") or bundle, include that trade's review_ref. Do not leave the refs empty in that case.
 - If summary.text or a takeaway makes an aggregate or pattern observation ("trades that followed losses", "two London entries", "the session pattern") without naming a specific symbol, refs must be empty — not filled with implied trades.
 - Never add a ref for a trade the text does not explicitly name. One named trade = one ref. Two named trades = two refs. Pattern observation = zero refs.
@@ -132,7 +133,8 @@ Rules for text fields:
 - Use execution_outcome.issue_evidence_level for intensity. If it is isolated, frame the issue as one watch item, not a repeated habit. If it is strong, be more direct.
 - If CURRENT_WEEK_BREAKDOWNS.coaching_hypotheses are present, choose at most one as the central review angle. Prefer the highest-ranked eligible hypothesis, but override it if the completed week has a clearer performance story. Do not invent traps, motives, danger windows, false lessons, or better lessons beyond the hypothesis facts/hints. Use it as framing, not as a script.
 - When using outcome_disguised_habit, explain the contrast pair: which trade rewarded the habit, which trade exposed it, and what the trader may have mislearned from the winner. Avoid generic lessons like "a winning retry does not make the habit safe" unless the review section names both the rewarded trade or symbol and the exposed trade or symbol, and explains the sequence mechanism.
-- For outcome_disguised_habit, use this writing shape across summary/takeaways: Reward -> Cost -> Mislesson -> Better lesson. Do not flatten it into "the problem is the decision after the loss." Say how the winning retry taught the wrong lesson, then how the losing retry revealed it.
+- For outcome_disguised_habit, use this writing shape across summary/takeaways: Reward -> Cost -> Mislesson -> Better lesson. Do not flatten it into "the problem is the decision after the loss." Name the rewarded trade, say what it reinforced, name the exposed trade, say how it contradicted that reinforcement, then state the corrected rule.
+- Do not restate the same mechanism twice. If the core idea is already stated, deepen it with the contrast, mislesson, or corrected rule instead of repeating it.
 - A flat clean week is neutral, not a loss; hold the process steady and suggest only a small measurement or refinement.
 - If execution_outcome.do_not_lead_with includes single_trade_dominance, use the dominant trade only as context and do not make outlier concentration the main diagnosis.
 - Never mention internal labels such as week_archetype, execution_class, coaching_stance, primary_issue, ranked_issues, issue_evidence_level, or do_not_lead_with.

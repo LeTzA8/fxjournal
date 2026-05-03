@@ -1068,6 +1068,9 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "names both the rewarded trade or symbol" in prompt_text
     assert "Reward -> Cost ->" in prompt_text
     assert "Mislesson -> Better lesson" in prompt_text
+    assert "Do not restate the same mechanism twice" in prompt_text
+    assert "Trade references must appear" in prompt_text
+    assert "inside sentences, not as trailing fragments" in prompt_text
     assert "same-symbol cap with logging added" in prompt_text
     assert "SURFACE_FACTS" in prompt_text
     assert "confidence_envelope" in prompt_text.lower()
@@ -1078,6 +1081,8 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "what the trader may have mislearned" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "names both the rewarded trade or symbol" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "Reward -> Cost -> Mislesson -> Better lesson" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "Do not restate the same mechanism twice" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "Trade references must appear inside sentences" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "same-symbol cap with logging added" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "flat clean week is neutral" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "outlier concentration the main diagnosis" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS

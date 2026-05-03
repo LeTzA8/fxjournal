@@ -895,6 +895,69 @@ def test_coaching_hypothesis_detects_session_edge_disguised_as_skill():
     assert hypothesis["evidence_refs"] == ["T1", "T3"]
 
 
+def test_coaching_hypotheses_generalize_without_forcing_mechanisms():
+    clean_trend_week = [
+        _trade(ref="T1", seq=1, pnl=80.0, symbol="EURUSD"),
+        _trade(ref="T2", seq=2, pnl=120.0, symbol="GBPUSD"),
+        _trade(ref="T3", seq=3, pnl=95.0, symbol="NAS100"),
+    ]
+    clean_out = build_coaching_hypotheses(
+        serialized_trades=clean_trend_week,
+        summary={"net_pnl": 295.0},
+        current_week_breakdowns={},
+        execution_outcome={"issue_reasons": []},
+        revenge_evidence={"pattern_class": "none"},
+        post_loss_response={"sequences": []},
+        risk_authority={"risk_judgment_allowed": True},
+        single_trade_dominance=None,
+        tp_capture_shortfalls={"recurring": False},
+    )
+
+    messy_chop_week = [
+        _trade(ref="T1", seq=1, pnl=30.0, symbol="EURUSD"),
+        _trade(ref="T2", seq=2, pnl=-25.0, symbol="GBPUSD"),
+        _trade(ref="T3", seq=3, pnl=20.0, symbol="NAS100"),
+        _trade(ref="T4", seq=4, pnl=-35.0, symbol="USDCAD"),
+    ]
+    messy_out = build_coaching_hypotheses(
+        serialized_trades=messy_chop_week,
+        summary={"net_pnl": -10.0},
+        current_week_breakdowns={},
+        execution_outcome={"issue_reasons": []},
+        revenge_evidence={"pattern_class": "none"},
+        post_loss_response={"sequences": []},
+        risk_authority={"risk_judgment_allowed": True},
+        single_trade_dominance=None,
+        tp_capture_shortfalls={"recurring": False},
+    )
+
+    single_big_winner_week = [
+        _trade(ref="T1", seq=1, pnl=500.0, symbol="GBPJPY"),
+        _trade(ref="T2", seq=2, pnl=-70.0, symbol="EURUSD"),
+        _trade(ref="T3", seq=3, pnl=-60.0, symbol="USDCAD"),
+        _trade(ref="T4", seq=4, pnl=-50.0, symbol="NAS100"),
+    ]
+    single_big_out = build_coaching_hypotheses(
+        serialized_trades=single_big_winner_week,
+        summary={"net_pnl": 320.0},
+        current_week_breakdowns={},
+        execution_outcome={"issue_reasons": [], "do_not_lead_with": []},
+        revenge_evidence={"pattern_class": "none"},
+        post_loss_response={"sequences": []},
+        risk_authority={"risk_judgment_allowed": True},
+        single_trade_dominance={
+            "dominant_ref": "T1",
+            "dominant_symbol": "GBPJPY",
+            "abs_pnl_share_pct": 73.5,
+        },
+        tp_capture_shortfalls={"recurring": False},
+    )
+
+    assert clean_out == []
+    assert messy_out == []
+    assert [item["type"] for item in single_big_out] == ["single_trade_masked_week"]
+
+
 def test_build_weekly_signals_composes_all_outputs():
     trades = [
         _trade(ref="T1", seq=1, pnl=30.0),
