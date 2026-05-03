@@ -177,6 +177,13 @@ or hints. Use the hypothesis as framing for the human read, not as wording
 to copy. If no hypothesis is clearly supported by its evidence_refs, ignore
 the hypotheses and use the rest of the measured facts.
 
+When using outcome_disguised_habit, do not simply say the habit was unsafe.
+Explain the contrast pair: which trade rewarded the habit, which trade
+exposed it, and what the trader may have mislearned from the winner. Avoid
+generic lessons like "a winning retry does not make the habit safe" unless
+the review section names both the rewarded trade or symbol and the exposed
+trade or symbol, and explains the sequence mechanism.
+
 post_loss_response.biggest_loss and .sequences are precomputed. Quote
 risk_change and next_outcome verbatim as natural sentences — no variable
 names or curly braces in prose. Do not re-derive risk direction from lot

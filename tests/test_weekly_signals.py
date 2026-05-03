@@ -1,3 +1,5 @@
+import pytest
+
 from helpers.weekly_signals import (
     build_confidence_envelope,
     build_execution_outcome_archetype,
@@ -10,7 +12,7 @@ from helpers.weekly_signals import (
     build_tp_capture_shortfalls,
     build_weekly_signals,
 )
-from helpers.weekly_coaching_hypotheses import build_coaching_hypotheses
+from helpers.weekly_coaching_hypotheses import _hypothesis, build_coaching_hypotheses
 
 
 def _trade(
@@ -623,7 +625,91 @@ def test_coaching_hypothesis_detects_outcome_disguised_habit():
     assert out[0]["facts"]["winning_retry_refs"] == ["T2"]
     assert out[0]["facts"]["failed_retry_refs"] == ["T3"]
     assert out[0]["facts"]["retry_timing_range_minutes"] == [13.33, 32.93]
+    assert out[0]["habit_rewarded_by_ref"] == "T2"
+    assert out[0]["habit_rewarded_by_symbol"] == "EURUSD"
+    assert out[0]["habit_exposed_by_ref"] == "T3"
+    assert out[0]["habit_exposed_by_symbol"] == "EURUSD"
+    assert "reinforced the same post-loss behavior" in out[0]["mechanism_hint"]
+    assert "may treat the retry habit as valid" in out[0]["what_the_trader_may_have_mislearned"]
+    assert "rewarded the habit" in out[0]["contrast_instruction"]
     assert "winning retry" in out[0]["false_lesson_hint"]
+
+
+def test_coaching_hypothesis_uses_biggest_retry_win_and_worst_retry_loss():
+    trades = [
+        _trade(ref="T1", seq=1, pnl=-80.0),
+        _trade(
+            ref="T2",
+            seq=2,
+            pnl=30.0,
+            minutes_since_prev_close=12.0,
+            is_revenge=True,
+            symbol="EURUSD",
+        ),
+        _trade(
+            ref="T3",
+            seq=3,
+            pnl=-45.0,
+            minutes_since_prev_close=18.0,
+            is_revenge=True,
+            symbol="GBPJPY",
+        ),
+        _trade(
+            ref="T4",
+            seq=4,
+            pnl=220.0,
+            minutes_since_prev_close=25.0,
+            is_revenge=True,
+            symbol="NAS100",
+        ),
+        _trade(
+            ref="T5",
+            seq=5,
+            pnl=-180.0,
+            minutes_since_prev_close=9.0,
+            is_revenge=True,
+            symbol="USDCAD",
+        ),
+    ]
+    out = build_coaching_hypotheses(
+        serialized_trades=trades,
+        summary={"net_pnl": -55.0},
+        current_week_breakdowns={},
+        execution_outcome={
+            "issue_reasons": ["repeated_revenge_evidence"],
+            "same_symbol_after_loss_count": 4,
+            "same_trade_idea_reentry_count": 0,
+        },
+        revenge_evidence={"pattern_class": "repeated"},
+        post_loss_response={"sequences": []},
+        risk_authority={"risk_judgment_allowed": False},
+        single_trade_dominance=None,
+        tp_capture_shortfalls={"recurring": False},
+    )
+
+    hypothesis = next(item for item in out if item["type"] == "outcome_disguised_habit")
+    assert hypothesis["evidence_refs"] == ["T4", "T5"]
+    assert hypothesis["habit_rewarded_by_ref"] == "T4"
+    assert hypothesis["habit_rewarded_by_symbol"] == "NAS100"
+    assert hypothesis["habit_exposed_by_ref"] == "T5"
+    assert hypothesis["habit_exposed_by_symbol"] == "USDCAD"
+    assert hypothesis["facts"]["winning_retry_refs"] == ["T2", "T4"]
+    assert hypothesis["facts"]["failed_retry_refs"] == ["T3", "T5"]
+
+
+def test_hypothesis_rejects_extra_field_core_key_conflicts():
+    with pytest.raises(ValueError, match="severity"):
+        _hypothesis(
+            hypothesis_type="outcome_disguised_habit",
+            severity=95,
+            confidence="high",
+            evidence_refs=["T1"],
+            facts={},
+            human_trap_hint="hint",
+            false_lesson_hint="false",
+            better_lesson_hint="better",
+            extra_fields={"severity": 10},
+        )
 
 
 def test_coaching_hypothesis_blocks_outcome_disguised_habit_without_support():

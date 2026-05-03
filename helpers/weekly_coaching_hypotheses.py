@@ -86,8 +86,9 @@ def _hypothesis(
     human_trap_hint,
     false_lesson_hint,
     better_lesson_hint,
+    extra_fields=None,
 ):
-    return {
+    out = {
         "type": hypothesis_type,
         "eligible": True,
         "rank": None,
@@ -100,6 +101,12 @@ def _hypothesis(
         "better_lesson_hint": better_lesson_hint,
         "prompt_instruction": "Use this only if supported by the named refs. Use it as framing, not as a script.",
     }
+    if extra_fields:
+        conflicts = set(extra_fields).intersection(out)
+        if conflicts:
+            raise ValueError(f"extra_fields conflict: {sorted(conflicts)}")
+        out.update(extra_fields)
+    return out
 
 
 def _reactionary_retry_trades(closed):
@@ -148,8 +155,18 @@ def _build_outcome_disguised_habit(
         and len(retry_trades) >= 2
         else "moderate"
     )
+    rewarded_trade = max(
+        winning_retries,
+        key=lambda trade: _safe_float(trade.get("pnl")) or 0.0,
+    )
+    exposed_trade = min(
+        losing_retries,
+        key=lambda trade: _safe_float(trade.get("pnl")) or 0.0,
+    )
+    rewarded_ref = _review_ref(rewarded_trade)
+    exposed_ref = _review_ref(exposed_trade)
     evidence_refs = _unique_refs(
-        [_review_ref(winning_retries[0]), _review_ref(losing_retries[-1])],
+        [rewarded_ref, exposed_ref],
         limit=3,
     )
     return _hypothesis(
@@ -172,6 +189,15 @@ def _build_outcome_disguised_habit(
         human_trap_hint="A winning retry can make the same post-loss habit feel justified.",
         false_lesson_hint="A winning retry may make the post-loss behavior look safe.",
         better_lesson_hint="Judge the post-loss decision separately from whether that one trade won.",
+        extra_fields={
+            "habit_rewarded_by_ref": rewarded_ref,
+            "habit_rewarded_by_symbol": rewarded_trade.get("symbol"),
+            "habit_exposed_by_ref": exposed_ref,
+            "habit_exposed_by_symbol": exposed_trade.get("symbol"),
+            "mechanism_hint": "The winning retry reinforced the same post-loss behavior that later caused damage.",
+            "what_the_trader_may_have_mislearned": "Because the retry won, the trader may treat the retry habit as valid.",
+            "contrast_instruction": "Contrast the trade that rewarded the habit with the trade that exposed it.",
+        },
     )
 
 

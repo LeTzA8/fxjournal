@@ -226,6 +226,13 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
                     "human_trap_hint": "A winning retry can make the same post-loss habit feel justified.",
                     "false_lesson_hint": "A winning retry may make the post-loss behavior look safe.",
                     "better_lesson_hint": "Judge the post-loss decision separately from whether that one trade won.",
+                    "habit_rewarded_by_ref": "T1",
+                    "habit_rewarded_by_symbol": "NAS100",
+                    "habit_exposed_by_ref": "T2",
+                    "habit_exposed_by_symbol": "USDCAD",
+                    "mechanism_hint": "The winning retry reinforced the same post-loss behavior that later caused damage.",
+                    "what_the_trader_may_have_mislearned": "Because the retry won, the trader may treat the retry habit as valid.",
+                    "contrast_instruction": "Contrast the trade that rewarded the habit with the trade that exposed it.",
                     "prompt_instruction": "Use this only if supported by the named refs. Use it as framing, not as a script.",
                 }
             ],
@@ -394,6 +401,10 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- coaching_hypotheses.count: 1" in prompt_text
     assert "coaching_hypotheses[1]: type=outcome_disguised_habit" in prompt_text
     assert "coaching_hypotheses[1].false_lesson_hint: A winning retry may make" in prompt_text
+    assert "coaching_hypotheses[1].habit_rewarded_by_symbol: NAS100" in prompt_text
+    assert "coaching_hypotheses[1].habit_exposed_by_symbol: USDCAD" in prompt_text
+    assert "coaching_hypotheses[1].mechanism_hint: The winning retry reinforced" in prompt_text
+    assert "coaching_hypotheses[1].contrast_instruction: Contrast the trade" in prompt_text
     assert "coaching_hypotheses[1].facts.retry_timing_range_minutes: 13.00, 33.00" in prompt_text
     assert "session London: count=1, win_rate=100.00%, net_pnl=+140.00" in prompt_text
     assert "strategy NY Open Sweep v1: count=1, win_rate=100.00%, net_pnl=+140.00" in prompt_text
@@ -1050,12 +1061,17 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "coaching_hypotheses" in prompt_text
     assert "trap candidates" in prompt_text
     assert "Use the hypothesis as framing" in prompt_text
+    assert "contrast pair" in prompt_text
+    assert "a winning retry does not make the habit safe" in prompt_text
+    assert "names both the rewarded trade or symbol" in prompt_text
     assert "SURFACE_FACTS" in prompt_text
     assert "confidence_envelope" in prompt_text.lower()
     assert "execution_outcome.primary_issue" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "issue_evidence_level" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "coaching_hypotheses" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "Do not invent traps" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "what the trader may have mislearned" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "names both the rewarded trade or symbol" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "flat clean week is neutral" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "outlier concentration the main diagnosis" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
 

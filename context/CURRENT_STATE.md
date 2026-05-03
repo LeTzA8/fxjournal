@@ -8,6 +8,8 @@ Last Updated: 2026-05-03
 - Weekly review payloads now include those hypotheses, and the dashboard advice prompt/JSON contract tells the model to use at most one as framing while not inventing traps, motives, danger windows, or false lessons beyond the computed facts/hints.
 - Focused tests cover hypothesis detection, weekly payload composition, prompt formatting, and prompt contract language. (`helpers/weekly_coaching_hypotheses.py`, `helpers/weekly_signals.py`, `ai_service.py`, `prompts/dashboard_advice.txt`, tests)
 - Follow-up audit fixes: `outcome_disguised_habit` now requires a supporting ranked issue or `revenge_evidence.pattern_class` of `isolated`/`repeated`, dominant-trade fallback keeps the replacement ref and symbol aligned, and timing facts are exposed as `retry_timing_range_minutes` rather than pre-labeling them as a danger window. Tests cover the guard and fallback cases.
+- Follow-up mechanism pass: `outcome_disguised_habit` now carries an explicit contrast pair (`habit_rewarded_by_*`, `habit_exposed_by_*`), `mechanism_hint`, `what_the_trader_may_have_mislearned`, and `contrast_instruction`. Prompt rules now require the model to explain which trade rewarded the habit, which trade exposed it, and to avoid generic-only "winning retry is unsafe" phrasing.
+- Follow-up mechanism audit: the contrast pair now selects the biggest winning retry as the habit reward and the worst losing retry as the habit exposure, instead of first/last chronological retries. `_hypothesis` rejects `extra_fields` that would overwrite core keys, and prompt rules require both sides of the contrast plus the sequence mechanism rather than allowing mechanism-only generic wording.
 
 ## Weekly AI execution/outcome archetype rail (2026-05-03)
 

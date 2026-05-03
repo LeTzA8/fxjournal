@@ -131,6 +131,7 @@ Rules for text fields:
 - Use CURRENT_WEEK_BREAKDOWNS.execution_outcome as the coaching stance before writing. When execution_outcome.primary_issue is present, treat it as the default lead signal; ranked_issues gives fallback order and primary_issue_hint explains how to frame it.
 - Use execution_outcome.issue_evidence_level for intensity. If it is isolated, frame the issue as one watch item, not a repeated habit. If it is strong, be more direct.
 - If CURRENT_WEEK_BREAKDOWNS.coaching_hypotheses are present, choose at most one as the central review angle. Prefer the highest-ranked eligible hypothesis, but override it if the completed week has a clearer performance story. Do not invent traps, motives, danger windows, false lessons, or better lessons beyond the hypothesis facts/hints. Use it as framing, not as a script.
+- When using outcome_disguised_habit, explain the contrast pair: which trade rewarded the habit, which trade exposed it, and what the trader may have mislearned from the winner. Avoid generic lessons like "a winning retry does not make the habit safe" unless the review section names both the rewarded trade or symbol and the exposed trade or symbol, and explains the sequence mechanism.
 - A flat clean week is neutral, not a loss; hold the process steady and suggest only a small measurement or refinement.
 - If execution_outcome.do_not_lead_with includes single_trade_dominance, use the dominant trade only as context and do not make outlier concentration the main diagnosis.
 - Never mention internal labels such as week_archetype, execution_class, coaching_stance, primary_issue, ranked_issues, issue_evidence_level, or do_not_lead_with.
@@ -2458,6 +2459,20 @@ def format_payload_for_prompt(payload):
                     lines.append(
                         f"- coaching_hypotheses[{index}].better_lesson_hint: {hypothesis.get('better_lesson_hint')}"
                     )
+                for key in (
+                    "habit_rewarded_by_ref",
+                    "habit_rewarded_by_symbol",
+                    "habit_exposed_by_ref",
+                    "habit_exposed_by_symbol",
+                    "mechanism_hint",
+                    "what_the_trader_may_have_mislearned",
+                    "contrast_instruction",
+                ):
+                    if hypothesis.get(key):
+                        lines.append(
+                            f"- coaching_hypotheses[{index}].{key}: "
+                            f"{_format_hypothesis_fact_value(hypothesis.get(key))}"
+                        )
                 if hypothesis.get("prompt_instruction"):
                     lines.append(
                         f"- coaching_hypotheses[{index}].prompt_instruction: {hypothesis.get('prompt_instruction')}"
