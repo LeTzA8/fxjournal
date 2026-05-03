@@ -632,6 +632,7 @@ def test_coaching_hypothesis_detects_outcome_disguised_habit():
     assert "reinforced the same post-loss behavior" in out[0]["mechanism_hint"]
     assert "may treat the retry habit as valid" in out[0]["what_the_trader_may_have_mislearned"]
     assert "rewarded the habit" in out[0]["contrast_instruction"]
+    assert out[0]["writing_shape"] == "reward -> cost -> mislesson -> better_lesson"
     assert "winning retry" in out[0]["false_lesson_hint"]
 
 

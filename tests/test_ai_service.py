@@ -233,6 +233,7 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
                     "mechanism_hint": "The winning retry reinforced the same post-loss behavior that later caused damage.",
                     "what_the_trader_may_have_mislearned": "Because the retry won, the trader may treat the retry habit as valid.",
                     "contrast_instruction": "Contrast the trade that rewarded the habit with the trade that exposed it.",
+                    "writing_shape": "reward -> cost -> mislesson -> better_lesson",
                     "prompt_instruction": "Use this only if supported by the named refs. Use it as framing, not as a script.",
                 }
             ],
@@ -405,6 +406,7 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "coaching_hypotheses[1].habit_exposed_by_symbol: USDCAD" in prompt_text
     assert "coaching_hypotheses[1].mechanism_hint: The winning retry reinforced" in prompt_text
     assert "coaching_hypotheses[1].contrast_instruction: Contrast the trade" in prompt_text
+    assert "coaching_hypotheses[1].writing_shape: reward -> cost -> mislesson -> better_lesson" in prompt_text
     assert "coaching_hypotheses[1].facts.retry_timing_range_minutes: 13.00, 33.00" in prompt_text
     assert "session London: count=1, win_rate=100.00%, net_pnl=+140.00" in prompt_text
     assert "strategy NY Open Sweep v1: count=1, win_rate=100.00%, net_pnl=+140.00" in prompt_text
@@ -1064,6 +1066,9 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "contrast pair" in prompt_text
     assert "a winning retry does not make the habit safe" in prompt_text
     assert "names both the rewarded trade or symbol" in prompt_text
+    assert "Reward -> Cost ->" in prompt_text
+    assert "Mislesson -> Better lesson" in prompt_text
+    assert "same-symbol cap with logging added" in prompt_text
     assert "SURFACE_FACTS" in prompt_text
     assert "confidence_envelope" in prompt_text.lower()
     assert "execution_outcome.primary_issue" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
@@ -1072,6 +1077,8 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Do not invent traps" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "what the trader may have mislearned" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "names both the rewarded trade or symbol" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "Reward -> Cost -> Mislesson -> Better lesson" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "same-symbol cap with logging added" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "flat clean week is neutral" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "outlier concentration the main diagnosis" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
 
@@ -1132,6 +1139,31 @@ def test_normalize_dashboard_advice_text_fixes_improvement_prefix_variants():
 
     assert "Improve this week: Keep risk fixed." in normalized
     assert "\u2192 Improve this week:" not in normalized
+
+
+def test_normalize_dashboard_advice_text_dedupes_strength_prefix_body():
+    text = "You're already strong at: You're already strong at letting the winner breathe."
+
+    normalized = normalize_dashboard_advice_text(text)
+
+    assert normalized == "You're already strong at: letting the winner breathe."
+
+
+def test_build_dashboard_review_display_dedupes_structured_strength_prefix_body():
+    meta = {
+        "summary": {"text": "The week had one clear habit.", "refs": []},
+        "takeaways": [],
+        "improvement": {"text": "Improve this week: wait after losses.", "refs": []},
+        "strength": {
+            "text": "You're already strong at: You're already strong at letting winners breathe.",
+            "refs": [],
+        },
+        "experiment": {"text": "Record the first post-loss decision.", "refs": []},
+    }
+
+    display = build_dashboard_review_display("", json.dumps(meta))
+
+    assert display["strength"]["text"] == "You're already strong at: letting winners breathe."
 
 
 def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, monkeypatch):

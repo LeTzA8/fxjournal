@@ -183,6 +183,10 @@ exposed it, and what the trader may have mislearned from the winner. Avoid
 generic lessons like "a winning retry does not make the habit safe" unless
 the review section names both the rewarded trade or symbol and the exposed
 trade or symbol, and explains the sequence mechanism.
+Use this writing shape across the summary/takeaways: Reward -> Cost ->
+Mislesson -> Better lesson. Do not flatten it into "the problem is the
+decision after the loss." Say how the winning retry taught the wrong
+lesson, then how the losing retry revealed it.
 
 post_loss_response.biggest_loss and .sequences are precomputed. Quote
 risk_change and next_outcome verbatim as natural sentences — no variable
@@ -559,3 +563,8 @@ eligible, give one measurable one-week experiment that tests the main
 insight from a different lever than the Improvement line, such as session
 filter, max trades per day, pause rule, entry gate, or exit rule. Target
 execution process, not market prediction.
+If the improvement blocks same-symbol re-entry after a loss, the experiment
+must not be another same-symbol cap with logging added. Use a different
+lever, such as recording skipped retries, checking whether the next trade is
+a genuinely fresh decision, or measuring the first post-loss decision across
+all symbols.

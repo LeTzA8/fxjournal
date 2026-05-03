@@ -132,6 +132,7 @@ Rules for text fields:
 - Use execution_outcome.issue_evidence_level for intensity. If it is isolated, frame the issue as one watch item, not a repeated habit. If it is strong, be more direct.
 - If CURRENT_WEEK_BREAKDOWNS.coaching_hypotheses are present, choose at most one as the central review angle. Prefer the highest-ranked eligible hypothesis, but override it if the completed week has a clearer performance story. Do not invent traps, motives, danger windows, false lessons, or better lessons beyond the hypothesis facts/hints. Use it as framing, not as a script.
 - When using outcome_disguised_habit, explain the contrast pair: which trade rewarded the habit, which trade exposed it, and what the trader may have mislearned from the winner. Avoid generic lessons like "a winning retry does not make the habit safe" unless the review section names both the rewarded trade or symbol and the exposed trade or symbol, and explains the sequence mechanism.
+- For outcome_disguised_habit, use this writing shape across summary/takeaways: Reward -> Cost -> Mislesson -> Better lesson. Do not flatten it into "the problem is the decision after the loss." Say how the winning retry taught the wrong lesson, then how the losing retry revealed it.
 - A flat clean week is neutral, not a loss; hold the process steady and suggest only a small measurement or refinement.
 - If execution_outcome.do_not_lead_with includes single_trade_dominance, use the dominant trade only as context and do not make outlier concentration the main diagnosis.
 - Never mention internal labels such as week_archetype, execution_class, coaching_stance, primary_issue, ranked_issues, issue_evidence_level, or do_not_lead_with.
@@ -149,6 +150,7 @@ Rules for text fields:
 - Prefer behavior, execution, session, sizing, or process language in improvement.text over symbol-specific wording.
 - experiment.text must be one clear experiment, specific, measurable, and not repetitive of recent experiments.
 - improvement.text and experiment.text must not restate the same main rule; experiment should propose a distinct one-week trial (a different lever than improvement, for example session filter, max trades per day, pause rule, or entry gate).
+- If improvement.text blocks same-symbol re-entry after a loss, experiment.text must not be another same-symbol cap with logging added. Use a different lever, such as recording skipped retries, checking whether the next trade is a genuinely fresh decision, or measuring the first post-loss decision across all symbols.
 - Use plain English in every text field (summary, takeaways, improvement, strength, experiment), not only for sizing: short sentences, everyday trading words, calm coach tone—never academic or consultant speak.
 - Examples: prefer "risked more" / "larger position" over "escalated sizing"; "jumped back in after a loss" over "reactive re-engagement"; "closed before your target" over "suboptimal TP capture"; "one trade drove the week" over "outlier dominance."
 - When CURRENT_WEEK_BREAKDOWNS.sizing includes median_risk_pct_of_account or median_planned_risk_dollars, prefer those anchors over median lot size in any numeric coaching guidance.
@@ -251,6 +253,12 @@ def normalize_dashboard_advice_text(value):
     normalized = re.sub(r"(?im)^[ \t]*Improve this week:\s*", "Improve this week: ", normalized)
     normalized = re.sub(r"(?im)^[ \t]*[-*]\s*You're already strong at:\s*", "You're already strong at: ", normalized)
     normalized = re.sub(r"(?im)^[ \t]*You're already strong at:\s*", "You're already strong at: ", normalized)
+    normalized = re.sub(r"(?im)^(Improve this week:\s*)(?:Improve this week:?\s*)+", r"\1", normalized)
+    normalized = re.sub(
+        r"(?im)^(You're already strong at:\s*)(?:You're already strong at:?\s*)+",
+        r"\1",
+        normalized,
+    )
     return normalized.strip()
 
 
@@ -2467,6 +2475,7 @@ def format_payload_for_prompt(payload):
                     "mechanism_hint",
                     "what_the_trader_may_have_mislearned",
                     "contrast_instruction",
+                    "writing_shape",
                 ):
                     if hypothesis.get(key):
                         lines.append(

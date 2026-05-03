@@ -197,6 +197,7 @@ def _build_outcome_disguised_habit(
             "mechanism_hint": "The winning retry reinforced the same post-loss behavior that later caused damage.",
             "what_the_trader_may_have_mislearned": "Because the retry won, the trader may treat the retry habit as valid.",
             "contrast_instruction": "Contrast the trade that rewarded the habit with the trade that exposed it.",
+            "writing_shape": "reward -> cost -> mislesson -> better_lesson",
         },
     )
 
