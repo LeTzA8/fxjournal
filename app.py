@@ -372,6 +372,25 @@ def set_security_headers(response):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' "
+            "https://www.googletagmanager.com "
+            "https://www.google-analytics.com "
+            "https://unpkg.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: https://www.google-analytics.com; "
+            "connect-src 'self' "
+            "https://www.google-analytics.com "
+            "https://www.googletagmanager.com; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'self';"
+        ),
+    )
     if session.get("user_id") or request.endpoint == "logout":
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0, private"
         response.headers["Pragma"] = "no-cache"

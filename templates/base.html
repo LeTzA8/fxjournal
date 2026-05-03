@@ -30,12 +30,24 @@
     <meta name="twitter:description" content="{{ meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
     <meta name="twitter:image" content="{{ url_for('static', filename='images/features/dashboard.png', v='1', _external=True) }}">
     {% if google_analytics_measurement_id %}
-    <script async src="https://www.googletagmanager.com/gtag/js?id={{ google_analytics_measurement_id }}"></script>
     <script>
-        window.dataLayer = window.dataLayer || [];
-        function gtag(){dataLayer.push(arguments);}
-        gtag("js", new Date());
-        gtag("config", {{ google_analytics_measurement_id|tojson }});
+        (() => {
+            const _GA_ID = {{ google_analytics_measurement_id|tojson }};
+            function _loadGA() {
+                if (window._gaLoaded) return;
+                window._gaLoaded = true;
+                const s = document.createElement("script");
+                s.async = true;
+                s.src = "https://www.googletagmanager.com/gtag/js?id=" + _GA_ID;
+                document.head.appendChild(s);
+                window.dataLayer = window.dataLayer || [];
+                window.gtag = function() { dataLayer.push(arguments); };
+                gtag("js", new Date());
+                gtag("config", _GA_ID);
+            }
+            window._loadGA = _loadGA;
+            if (localStorage.getItem("ga_consent") === "1") _loadGA();
+        })();
     </script>
     {% endif %}
     {% if google_site_verification %}
@@ -2771,5 +2783,84 @@
     </script>
     {% endif %}
     <script src="{{ url_for('static', filename='js/reveal_on_scroll.js') }}"></script>
+    {% if google_analytics_measurement_id %}
+    <div id="cookie-banner" hidden role="region" aria-label="Cookie preferences">
+        <p>
+            We use optional analytics cookies to understand how the site is used and improve it.
+            See our <a href="{{ url_for('privacy_policy') }}">Privacy Policy</a> for details.
+        </p>
+        <div class="cookie-banner-actions">
+            <button id="cookie-accept" type="button">Accept</button>
+            <button id="cookie-decline" type="button">Decline</button>
+        </div>
+    </div>
+    <style>
+        #cookie-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 9999;
+            background: color-mix(in srgb, var(--card) 97%, transparent);
+            border-top: 1px solid var(--border);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            padding: 0.7rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            box-shadow: 0 -4px 18px rgba(0,0,0,.08);
+        }
+        #cookie-banner p {
+            margin: 0;
+            font-size: 0.82rem;
+            color: var(--muted);
+            flex: 1 1 200px;
+        }
+        #cookie-banner a { color: var(--accent); }
+        .cookie-banner-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+        #cookie-accept {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            padding: 0.38rem 1rem;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        #cookie-accept:hover { background: var(--accent-hover); }
+        #cookie-decline {
+            background: transparent;
+            color: var(--muted);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.38rem 0.85rem;
+            font-size: 0.82rem;
+            font-weight: 500;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        #cookie-decline:hover { color: var(--ink); border-color: color-mix(in srgb, var(--ink) 40%, transparent); }
+    </style>
+    <script>
+        (() => {
+            const banner = document.getElementById("cookie-banner");
+            if (!banner) return;
+            if (localStorage.getItem("ga_consent") === null) banner.hidden = false;
+            document.getElementById("cookie-accept").addEventListener("click", () => {
+                localStorage.setItem("ga_consent", "1");
+                banner.hidden = true;
+                if (typeof window._loadGA === "function") window._loadGA();
+            });
+            document.getElementById("cookie-decline").addEventListener("click", () => {
+                localStorage.setItem("ga_consent", "0");
+                banner.hidden = true;
+            });
+        })();
+    </script>
+    {% endif %}
 </body>
 </html>
