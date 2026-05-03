@@ -2,6 +2,13 @@
 
 Last Updated: 2026-05-03
 
+## Weekly AI bounded coaching hypotheses (2026-05-03)
+
+- Added a computed coaching-hypothesis layer between weekly signals and AI review copy. `helpers/weekly_coaching_hypotheses.py` now emits ranked `current_week_breakdowns.coaching_hypotheses` objects for `outcome_disguised_habit`, `post_loss_decision_shift`, `single_trade_masked_week`, and `session_edge_disguised_as_skill`, with evidence refs, confidence, bounded facts, false/better lesson hints, and prompt instructions.
+- Weekly review payloads now include those hypotheses, and the dashboard advice prompt/JSON contract tells the model to use at most one as framing while not inventing traps, motives, danger windows, or false lessons beyond the computed facts/hints.
+- Focused tests cover hypothesis detection, weekly payload composition, prompt formatting, and prompt contract language. (`helpers/weekly_coaching_hypotheses.py`, `helpers/weekly_signals.py`, `ai_service.py`, `prompts/dashboard_advice.txt`, tests)
+- Follow-up audit fixes: `outcome_disguised_habit` now requires a supporting ranked issue or `revenge_evidence.pattern_class` of `isolated`/`repeated`, dominant-trade fallback keeps the replacement ref and symbol aligned, and timing facts are exposed as `retry_timing_range_minutes` rather than pre-labeling them as a danger window. Tests cover the guard and fallback cases.
+
 ## Weekly AI execution/outcome archetype rail (2026-05-03)
 
 - Weekly AI payloads now include a deterministic `execution_outcome` signal under `current_week_breakdowns`, classifying the week by realised outcome and observable execution quality before the model writes: good execution/good outcome, good execution/bad outcome, leaky or bad execution/good outcome, bad execution/bad outcome, or random/unclear execution.

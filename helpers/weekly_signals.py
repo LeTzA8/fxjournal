@@ -8,6 +8,8 @@ sequencing, and dominance flags are stable across runs.
 
 from __future__ import annotations
 
+from helpers.weekly_coaching_hypotheses import build_coaching_hypotheses
+
 
 _RISK_STABLE_TOLERANCE = 0.15
 _DOMINANCE_SHARE_PCT = 40.0
@@ -762,6 +764,26 @@ def build_weekly_signals(
     )
     tp_capture_shortfalls = build_tp_capture_shortfalls(serialized_trades)
     revenge_evidence = build_revenge_evidence(serialized_trades)
+    execution_outcome = build_execution_outcome_archetype(
+        serialized_trades,
+        summary=summary,
+        risk_authority=risk_authority,
+        post_loss_response=post_loss_response,
+        single_trade_dominance=single_trade_dominance,
+        tp_capture_shortfalls=tp_capture_shortfalls,
+        revenge_evidence=revenge_evidence,
+    )
+    coaching_hypotheses = build_coaching_hypotheses(
+        serialized_trades=serialized_trades,
+        summary=summary,
+        current_week_breakdowns=current_week_breakdowns,
+        execution_outcome=execution_outcome,
+        revenge_evidence=revenge_evidence,
+        post_loss_response=post_loss_response,
+        risk_authority=risk_authority,
+        single_trade_dominance=single_trade_dominance,
+        tp_capture_shortfalls=tp_capture_shortfalls,
+    )
     return {
         "risk_authority": risk_authority,
         "post_loss_response": post_loss_response,
@@ -769,15 +791,8 @@ def build_weekly_signals(
         "tp_capture_shortfalls": tp_capture_shortfalls,
         "session_concentration": build_session_concentration(serialized_trades),
         "revenge_evidence": revenge_evidence,
-        "execution_outcome": build_execution_outcome_archetype(
-            serialized_trades,
-            summary=summary,
-            risk_authority=risk_authority,
-            post_loss_response=post_loss_response,
-            single_trade_dominance=single_trade_dominance,
-            tp_capture_shortfalls=tp_capture_shortfalls,
-            revenge_evidence=revenge_evidence,
-        ),
+        "execution_outcome": execution_outcome,
+        "coaching_hypotheses": coaching_hypotheses,
         "surface_facts": build_surface_facts(
             summary=summary, current_week_breakdowns=current_week_breakdowns
         ),

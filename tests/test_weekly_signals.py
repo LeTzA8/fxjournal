@@ -10,6 +10,7 @@ from helpers.weekly_signals import (
     build_tp_capture_shortfalls,
     build_weekly_signals,
 )
+from helpers.weekly_coaching_hypotheses import build_coaching_hypotheses
 
 
 def _trade(
@@ -570,6 +571,243 @@ def test_execution_outcome_does_not_hide_process_leak_behind_outlier_concentrati
     assert out["do_not_lead_with"] == ["single_trade_dominance"]
 
 
+def test_coaching_hypothesis_detects_outcome_disguised_habit():
+    trades = [
+        _trade(ref="T1", seq=1, pnl=-80.0),
+        {
+            **_trade(
+                ref="T2",
+                seq=2,
+                pnl=120.0,
+                minutes_since_prev_close=32.93,
+                is_revenge=True,
+            ),
+            "is_post_loss_same_symbol_trade": True,
+            "same_trade_idea_reentry": True,
+        },
+        {
+            **_trade(
+                ref="T3",
+                seq=3,
+                pnl=-140.0,
+                minutes_since_prev_close=13.33,
+                is_revenge=True,
+            ),
+            "is_post_loss_same_symbol_trade": True,
+            "same_trade_idea_reentry": True,
+        },
+    ]
+    out = build_coaching_hypotheses(
+        serialized_trades=trades,
+        summary={"net_pnl": -100.0},
+        current_week_breakdowns={},
+        execution_outcome={
+            "issue_reasons": [
+                "repeated_revenge_evidence",
+                "repeated_same_symbol_after_loss",
+                "repeated_same_trade_idea_reentry",
+            ],
+            "same_symbol_after_loss_count": 2,
+            "same_trade_idea_reentry_count": 2,
+        },
+        revenge_evidence={"pattern_class": "repeated"},
+        post_loss_response={"sequences": []},
+        risk_authority={"risk_judgment_allowed": False},
+        single_trade_dominance=None,
+        tp_capture_shortfalls={"recurring": False},
+    )
+
+    assert out[0]["type"] == "outcome_disguised_habit"
+    assert out[0]["confidence"] == "high"
+    assert out[0]["evidence_refs"] == ["T2", "T3"]
+    assert out[0]["facts"]["winning_retry_refs"] == ["T2"]
+    assert out[0]["facts"]["failed_retry_refs"] == ["T3"]
+    assert out[0]["facts"]["retry_timing_range_minutes"] == [13.33, 32.93]
+    assert "winning retry" in out[0]["false_lesson_hint"]
+
+
+def test_coaching_hypothesis_blocks_outcome_disguised_habit_without_support():
+    trades = [
+        _trade(ref="T1", seq=1, pnl=-80.0),
+        _trade(
+            ref="T2",
+            seq=2,
+            pnl=120.0,
+            minutes_since_prev_close=32.93,
+            is_revenge=True,
+        ),
+        _trade(
+            ref="T3",
+            seq=3,
+            pnl=-140.0,
+            minutes_since_prev_close=13.33,
+            is_revenge=True,
+        ),
+    ]
+    out = build_coaching_hypotheses(
+        serialized_trades=trades,
+        summary={"net_pnl": -100.0},
+        current_week_breakdowns={},
+        execution_outcome={"issue_reasons": []},
+        revenge_evidence={},
+        post_loss_response={"sequences": []},
+        risk_authority={"risk_judgment_allowed": False},
+        single_trade_dominance=None,
+        tp_capture_shortfalls={"recurring": False},
+    )
+
+    assert not any(item["type"] == "outcome_disguised_habit" for item in out)
+
+
+def test_coaching_hypothesis_allows_outcome_disguised_habit_with_isolated_pattern():
+    trades = [
+        _trade(
+            ref="T1",
+            seq=1,
+            pnl=120.0,
+            minutes_since_prev_close=32.93,
+            is_revenge=True,
+        ),
+        _trade(
+            ref="T2",
+            seq=2,
+            pnl=-140.0,
+            minutes_since_prev_close=13.33,
+            is_revenge=True,
+        ),
+    ]
+    out = build_coaching_hypotheses(
+        serialized_trades=trades,
+        summary={"net_pnl": -20.0},
+        current_week_breakdowns={},
+        execution_outcome={"issue_reasons": []},
+        revenge_evidence={"pattern_class": "isolated"},
+        post_loss_response={"sequences": []},
+        risk_authority={"risk_judgment_allowed": False},
+        single_trade_dominance=None,
+        tp_capture_shortfalls={"recurring": False},
+    )
+
+    hypothesis = next(item for item in out if item["type"] == "outcome_disguised_habit")
+    assert hypothesis["confidence"] == "moderate"
+
+
+def test_coaching_hypothesis_detects_post_loss_decision_shift():
+    trades = [
+        _trade(ref="T1", seq=1, pnl=-40.0),
+        _trade(ref="T2", seq=2, pnl=-20.0, minutes_since_prev_close=10.0),
+        _trade(ref="T3", seq=3, pnl=-30.0, minutes_since_prev_close=18.0),
+    ]
+    out = build_coaching_hypotheses(
+        serialized_trades=trades,
+        summary={"net_pnl": -90.0},
+        current_week_breakdowns={},
+        execution_outcome={"issue_reasons": ["repeated_revenge_evidence"]},
+        revenge_evidence={"pattern_class": "repeated"},
+        post_loss_response={
+            "sequences": [
+                {"loss_ref": "T1", "next_ref": "T2", "next_outcome": "loss"},
+                {"loss_ref": "T2", "next_ref": "T3", "next_outcome": "loss"},
+            ],
+            "biggest_loss": {"loss_ref": "T1", "next_ref": "T2"},
+        },
+        risk_authority={"risk_judgment_allowed": False},
+        single_trade_dominance=None,
+        tp_capture_shortfalls={"recurring": False},
+    )
+
+    hypothesis = next(item for item in out if item["type"] == "post_loss_decision_shift")
+    assert hypothesis["facts"]["post_loss_sequence_count"] == 2
+    assert hypothesis["facts"]["next_trade_refs"] == ["T2", "T3"]
+    assert hypothesis["facts"]["retry_timing_range_minutes"] == [10.0, 18.0]
+
+
+def test_coaching_hypothesis_detects_single_trade_masked_week():
+    trades = [
+        _trade(ref="T1", seq=1, pnl=300.0, symbol="GBPJPY"),
+        _trade(ref="T2", seq=2, pnl=-80.0),
+        _trade(ref="T3", seq=3, pnl=-70.0),
+    ]
+    out = build_coaching_hypotheses(
+        serialized_trades=trades,
+        summary={"net_pnl": 150.0},
+        current_week_breakdowns={},
+        execution_outcome={"do_not_lead_with": []},
+        revenge_evidence={"pattern_class": "none"},
+        post_loss_response={"sequences": []},
+        risk_authority={"risk_judgment_allowed": True},
+        single_trade_dominance={
+            "dominant_ref": "T1",
+            "dominant_symbol": "GBPJPY",
+            "abs_pnl_share_pct": 66.7,
+        },
+        tp_capture_shortfalls={"recurring": False},
+    )
+
+    hypothesis = next(item for item in out if item["type"] == "single_trade_masked_week")
+    assert hypothesis["facts"]["dominant_ref"] == "T1"
+    assert hypothesis["facts"]["rest_of_week_pnl"] == -150.0
+    assert hypothesis["facts"]["rest_of_week_flips_result"] is True
+    assert hypothesis["confidence"] == "high"
+
+
+def test_coaching_hypothesis_single_trade_fallback_keeps_ref_symbol_consistent():
+    trades = [
+        _trade(ref="T1", seq=1, pnl=50.0, symbol="EURUSD"),
+        _trade(ref="T2", seq=2, pnl=-300.0, symbol="NAS100"),
+        _trade(ref="T3", seq=3, pnl=20.0, symbol="USDCAD"),
+    ]
+    out = build_coaching_hypotheses(
+        serialized_trades=trades,
+        summary={"net_pnl": -230.0},
+        current_week_breakdowns={},
+        execution_outcome={"do_not_lead_with": []},
+        revenge_evidence={"pattern_class": "none"},
+        post_loss_response={"sequences": []},
+        risk_authority={"risk_judgment_allowed": True},
+        single_trade_dominance={
+            "dominant_ref": "MISSING",
+            "dominant_symbol": "GBPJPY",
+            "abs_pnl_share_pct": 81.0,
+        },
+        tp_capture_shortfalls={"recurring": False},
+    )
+
+    hypothesis = next(item for item in out if item["type"] == "single_trade_masked_week")
+    assert hypothesis["facts"]["dominant_ref"] == "T2"
+    assert hypothesis["facts"]["dominant_symbol"] == "NAS100"
+
+
+def test_coaching_hypothesis_detects_session_edge_disguised_as_skill():
+    trades = [
+        _trade(ref="T1", seq=1, pnl=60.0, session="London / New York"),
+        _trade(ref="T2", seq=2, pnl=20.0, session="London / New York"),
+        _trade(ref="T3", seq=3, pnl=-35.0, session="London"),
+        _trade(ref="T4", seq=4, pnl=-25.0, session="London"),
+    ]
+    out = build_coaching_hypotheses(
+        serialized_trades=trades,
+        summary={"net_pnl": 20.0},
+        current_week_breakdowns={
+            "sessions": [
+                {"name": "London / New York", "count": 2, "win_rate": 100.0, "net_pnl": 80.0},
+                {"name": "London", "count": 2, "win_rate": 0.0, "net_pnl": -60.0},
+            ]
+        },
+        execution_outcome={"issue_reasons": []},
+        revenge_evidence={"pattern_class": "none"},
+        post_loss_response={"sequences": []},
+        risk_authority={"risk_judgment_allowed": True},
+        single_trade_dominance=None,
+        tp_capture_shortfalls={"recurring": False},
+    )
+
+    hypothesis = next(item for item in out if item["type"] == "session_edge_disguised_as_skill")
+    assert hypothesis["facts"]["best_session"] == "London / New York"
+    assert hypothesis["facts"]["weak_session"] == "London"
+    assert hypothesis["evidence_refs"] == ["T1", "T3"]
+
+
 def test_build_weekly_signals_composes_all_outputs():
     trades = [
         _trade(ref="T1", seq=1, pnl=30.0),
@@ -603,6 +841,7 @@ def test_build_weekly_signals_composes_all_outputs():
         "session_concentration",
         "revenge_evidence",
         "execution_outcome",
+        "coaching_hypotheses",
         "surface_facts",
         "confidence_envelope",
     }

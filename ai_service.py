@@ -130,6 +130,7 @@ Rules for text fields:
 - summary.text must identify one dominant diagnosis for the week, not merely restate performance.
 - Use CURRENT_WEEK_BREAKDOWNS.execution_outcome as the coaching stance before writing. When execution_outcome.primary_issue is present, treat it as the default lead signal; ranked_issues gives fallback order and primary_issue_hint explains how to frame it.
 - Use execution_outcome.issue_evidence_level for intensity. If it is isolated, frame the issue as one watch item, not a repeated habit. If it is strong, be more direct.
+- If CURRENT_WEEK_BREAKDOWNS.coaching_hypotheses are present, choose at most one as the central review angle. Prefer the highest-ranked eligible hypothesis, but override it if the completed week has a clearer performance story. Do not invent traps, motives, danger windows, false lessons, or better lessons beyond the hypothesis facts/hints. Use it as framing, not as a script.
 - A flat clean week is neutral, not a loss; hold the process steady and suggest only a small measurement or refinement.
 - If execution_outcome.do_not_lead_with includes single_trade_dominance, use the dominant trade only as context and do not make outlier concentration the main diagnosis.
 - Never mention internal labels such as week_archetype, execution_class, coaching_stance, primary_issue, ranked_issues, issue_evidence_level, or do_not_lead_with.
@@ -1926,6 +1927,7 @@ def build_trade_payload(
     current_week_breakdowns["session_concentration"] = weekly_signals["session_concentration"]
     current_week_breakdowns["revenge_evidence"] = weekly_signals["revenge_evidence"]
     current_week_breakdowns["execution_outcome"] = weekly_signals["execution_outcome"]
+    current_week_breakdowns["coaching_hypotheses"] = weekly_signals["coaching_hypotheses"]
     tone_context = _build_tone_context(
         weekly_checkin=weekly_checkin,
         emotional_index=emotional_index,
@@ -2094,6 +2096,24 @@ def _format_percent(value):
     if value is None:
         return "-"
     return f"{float(value):.2f}%"
+
+
+def _format_hypothesis_fact_value(value):
+    if value is None:
+        return "-"
+    if isinstance(value, bool):
+        return _format_bool(value)
+    if isinstance(value, (list, tuple)):
+        if not value:
+            return "-"
+        return ", ".join(_format_hypothesis_fact_value(item) for item in value)
+    if isinstance(value, dict):
+        if not value:
+            return "-"
+        return json.dumps(value, ensure_ascii=True, sort_keys=True)
+    if isinstance(value, (int, float)):
+        return _format_number(value)
+    return str(value)
 
 
 def _payload_section_has_values(section):
@@ -2412,6 +2432,42 @@ def format_payload_for_prompt(payload):
                     f"points={issue.get('points', '-')}, "
                     f"lead_hint={issue.get('lead_hint') or '-'}"
                 )
+
+        coaching_hypotheses = current_week_breakdowns.get("coaching_hypotheses") or []
+        if coaching_hypotheses:
+            lines.append(f"- coaching_hypotheses.count: {len(coaching_hypotheses)}")
+            for index, hypothesis in enumerate(coaching_hypotheses, start=1):
+                refs = ", ".join(hypothesis.get("evidence_refs") or []) or "-"
+                lines.append(
+                    f"- coaching_hypotheses[{index}]: "
+                    f"type={hypothesis.get('type') or '-'}, "
+                    f"rank={hypothesis.get('rank') or '-'}, "
+                    f"severity={hypothesis.get('severity') or '-'}, "
+                    f"confidence={hypothesis.get('confidence') or '-'}, "
+                    f"evidence_refs={refs}"
+                )
+                if hypothesis.get("human_trap_hint"):
+                    lines.append(
+                        f"- coaching_hypotheses[{index}].human_trap_hint: {hypothesis.get('human_trap_hint')}"
+                    )
+                if hypothesis.get("false_lesson_hint"):
+                    lines.append(
+                        f"- coaching_hypotheses[{index}].false_lesson_hint: {hypothesis.get('false_lesson_hint')}"
+                    )
+                if hypothesis.get("better_lesson_hint"):
+                    lines.append(
+                        f"- coaching_hypotheses[{index}].better_lesson_hint: {hypothesis.get('better_lesson_hint')}"
+                    )
+                if hypothesis.get("prompt_instruction"):
+                    lines.append(
+                        f"- coaching_hypotheses[{index}].prompt_instruction: {hypothesis.get('prompt_instruction')}"
+                    )
+                facts = hypothesis.get("facts") or {}
+                for key in sorted(facts):
+                    lines.append(
+                        f"- coaching_hypotheses[{index}].facts.{key}: "
+                        f"{_format_hypothesis_fact_value(facts.get(key))}"
+                    )
 
         if risk_authority:
             lines.extend(

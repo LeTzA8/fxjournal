@@ -209,6 +209,26 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
                 "losing_outlier_count": 0,
                 "outcome_concentrated": True,
             },
+            "coaching_hypotheses": [
+                {
+                    "type": "outcome_disguised_habit",
+                    "eligible": True,
+                    "rank": 1,
+                    "severity": 95,
+                    "confidence": "high",
+                    "evidence_refs": ["T1", "T2"],
+                    "facts": {
+                        "winning_retry_refs": ["T1"],
+                        "failed_retry_refs": ["T2"],
+                        "retry_timing_range_minutes": [13.0, 33.0],
+                        "same_symbol_after_loss_count": 2,
+                    },
+                    "human_trap_hint": "A winning retry can make the same post-loss habit feel justified.",
+                    "false_lesson_hint": "A winning retry may make the post-loss behavior look safe.",
+                    "better_lesson_hint": "Judge the post-loss decision separately from whether that one trade won.",
+                    "prompt_instruction": "Use this only if supported by the named refs. Use it as framing, not as a script.",
+                }
+            ],
         },
         "four_week_patterns": {
             "weeks_considered": 4,
@@ -371,6 +391,10 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- execution_outcome.primary_issue_hint: Lead with repeated revenge" in prompt_text
     assert "- execution_outcome.do_not_lead_with: single_trade_dominance" in prompt_text
     assert "execution_outcome.ranked_issues[1]: reason=repeated_revenge_evidence" in prompt_text
+    assert "- coaching_hypotheses.count: 1" in prompt_text
+    assert "coaching_hypotheses[1]: type=outcome_disguised_habit" in prompt_text
+    assert "coaching_hypotheses[1].false_lesson_hint: A winning retry may make" in prompt_text
+    assert "coaching_hypotheses[1].facts.retry_timing_range_minutes: 13.00, 33.00" in prompt_text
     assert "session London: count=1, win_rate=100.00%, net_pnl=+140.00" in prompt_text
     assert "strategy NY Open Sweep v1: count=1, win_rate=100.00%, net_pnl=+140.00" in prompt_text
     assert "strategy_coverage.trades_with_strategy: 1" in prompt_text
@@ -1023,10 +1047,15 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "deterministic lead signal" in prompt_text
     assert "do_not_lead_with" in prompt_text
     assert "not the headline" in prompt_text
+    assert "coaching_hypotheses" in prompt_text
+    assert "trap candidates" in prompt_text
+    assert "Use the hypothesis as framing" in prompt_text
     assert "SURFACE_FACTS" in prompt_text
     assert "confidence_envelope" in prompt_text.lower()
     assert "execution_outcome.primary_issue" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "issue_evidence_level" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "coaching_hypotheses" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "Do not invent traps" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "flat clean week is neutral" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "outlier concentration the main diagnosis" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
 

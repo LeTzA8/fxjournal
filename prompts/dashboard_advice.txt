@@ -15,7 +15,8 @@ optional WEEKLY CHECKIN, SUMMARY, TONE_CONTEXT, CONFIDENCE_ENVELOPE,
 SURFACE_FACTS, EMOTIONAL INDEX, optional PERFORMANCE_TRENDS,
 CURRENT_WEEK_BREAKDOWNS (includes precomputed signals: risk_authority,
 post_loss_response, single_trade_dominance, tp_capture_shortfalls,
-session_concentration, revenge_evidence, execution_outcome), FOUR_WEEK_PATTERNS,
+session_concentration, revenge_evidence, execution_outcome,
+coaching_hypotheses), FOUR_WEEK_PATTERNS,
 EXPERIMENT_CONTEXT, RECENT_EXPERIMENTS, HISTORICAL_CONTEXT,
 HISTORICAL_TOP_PAIRS, HISTORICAL_TOP_SESSIONS, HISTORICAL_TOP_WEEKDAYS,
 and TRADES (last). All trade timestamps are UTC. Use the completed review
@@ -166,6 +167,15 @@ context only, not the headline. Do not show any of these labels to the
 trader.
 Use issue_evidence_level for intensity: isolated means one watch item,
 not a repeated habit; strong means a direct correction can be firmer.
+
+coaching_hypotheses are computed trap candidates, not scripts. If present,
+choose at most one as the central review angle. Prefer the highest-ranked
+eligible hypothesis, but override it if the completed week has a clearer
+performance story. Do not invent traps, motives, danger windows, false
+lessons, or better lessons that are not present in the hypothesis facts
+or hints. Use the hypothesis as framing for the human read, not as wording
+to copy. If no hypothesis is clearly supported by its evidence_refs, ignore
+the hypotheses and use the rest of the measured facts.
 
 post_loss_response.biggest_loss and .sequences are precomputed. Quote
 risk_change and next_outcome verbatim as natural sentences — no variable
