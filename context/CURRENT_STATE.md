@@ -1,6 +1,14 @@
 # CURRENT_STATE
 
-Last Updated: 2026-05-03
+Last Updated: 2026-05-04
+
+## MT5 sync completion heartbeat stamp (2026-05-04)
+
+- MT5 sync workers now directly stamp `MT5Account.last_synced_at` after a full successful worker run: MT5 connected, history/open positions were read, and the internal sync API accepted the payload. This makes "Last synced" a completed-task heartbeat as well as an ingest success marker, so stale timestamps distinguish tasks that are not finishing from successful zero-change/skip-only sync runs. Full-history worker completions also stamp `last_full_history_sync_at`. (`celery_workers/mt5_sync_tasks.py`, `tests/test_mt5_sync.py`)
+
+## Cookie banner dismissal fix (2026-05-04)
+
+- Fixed the analytics cookie banner so `hidden` reliably removes it after Accept or Decline. The banner CSS now explicitly hides `#cookie-banner[hidden]`, and consent storage access is guarded so blocked browser storage does not keep the banner stuck on the current page. (`templates/base.html`)
 
 ## Weekly AI bounded coaching hypotheses (2026-05-03)
 

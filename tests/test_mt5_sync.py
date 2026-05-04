@@ -89,6 +89,7 @@ def _patch_terminal_ready(monkeypatch):
     monkeypatch.setattr(
         "celery_workers.mt5_setup_tasks._is_terminal_process_running",
         lambda path: (True, 9999),
+        raising=False,
     )
     _real_isfile = os.path.isfile
 
@@ -611,6 +612,125 @@ def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
     assert "Closed Rows" in caplog.text
     assert "Skip Reasons" in caplog.text
     assert "Duration" in caplog.text
+
+
+def test_sync_mt5_account_completion_stamps_last_synced_on_successful_worker_run(app_ctx, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-worker-stamp-user",
+        email="mt5-worker-stamp@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="46464646",
+    )
+    mt5_account.last_synced_at = datetime(2024, 6, 1, 12, 0, 0)
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+
+    fake_mt5 = SimpleNamespace(
+        DEAL_ENTRY_IN=0,
+        DEAL_ENTRY_OUT=1,
+        DEAL_ENTRY_INOUT=2,
+        DEAL_ENTRY_OUT_BY=3,
+        DEAL_TYPE_BUY=0,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
+        history_deals_get=lambda *args, **kwargs: [],
+        positions_get=lambda: [],
+        symbol_info_tick=lambda symbol: None,
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+    _patch_terminal_ready(monkeypatch)
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"saved": 0, "updated": 0, "skipped": 0, "errors": 0}
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", lambda *args, **kwargs: DummyResponse())
+
+    sync_mt5_account.run(mt5_account.id)
+
+    db.session.expire_all()
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert refreshed.last_synced_at is not None
+    assert refreshed.last_synced_at > datetime(2024, 6, 1, 12, 0, 0)
+    # last_full_history_sync_at starts None → full-history path → must also be stamped
+    assert refreshed.last_full_history_sync_at is not None
+    assert refreshed.last_full_history_sync_at >= refreshed.last_synced_at
+
+
+def test_sync_mt5_account_rolling_run_does_not_stamp_last_full_history_sync_at(app_ctx, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setenv("FLASK_API_URL", "https://example.com")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-rolling-stamp-user",
+        email="mt5-rolling-stamp@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="46464647",
+    )
+    prior_full = datetime(2025, 1, 1, 0, 0, 0)
+    mt5_account.last_synced_at = datetime(2024, 6, 1, 12, 0, 0)
+    mt5_account.last_full_history_sync_at = prior_full
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+
+    fake_mt5 = SimpleNamespace(
+        DEAL_ENTRY_IN=0,
+        DEAL_ENTRY_OUT=1,
+        DEAL_ENTRY_INOUT=2,
+        DEAL_ENTRY_OUT_BY=3,
+        DEAL_TYPE_BUY=0,
+        initialize=lambda **kwargs: True,
+        login=lambda *args, **kwargs: True,
+        account_info=lambda: SimpleNamespace(login=int(mt5_account.account_number)),
+        history_deals_get=lambda *args, **kwargs: [],
+        positions_get=lambda: [],
+        symbol_info_tick=lambda symbol: None,
+        shutdown=lambda: True,
+        last_error=lambda: (0, "ok"),
+    )
+    monkeypatch.setitem(sys.modules, "MetaTrader5", fake_mt5)
+    _patch_terminal_ready(monkeypatch)
+
+    class DummyResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"saved": 0, "updated": 0, "skipped": 0, "errors": 0}
+
+    monkeypatch.setattr("celery_workers.mt5_sync_tasks.requests.post", lambda *args, **kwargs: DummyResponse())
+
+    sync_mt5_account.run(mt5_account.id)
+
+    db.session.expire_all()
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert refreshed.last_synced_at > datetime(2024, 6, 1, 12, 0, 0)
+    assert refreshed.last_full_history_sync_at == prior_full
 
 
 def test_sync_mt5_account_logs_skip_debug_after_table_not_inside_ascii_cell(app_ctx, monkeypatch, caplog):

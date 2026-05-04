@@ -799,12 +799,29 @@ def sync_mt5_account(
         response.raise_for_status()
         result = response.json()
         sync_finished_at = datetime.now(timezone.utc)
+        worker_completion_stamp = sync_finished_at.astimezone(timezone.utc).replace(tzinfo=None)
+        worker_stamp_saved = False
+        try:
+            account.last_synced_at = worker_completion_stamp
+            if used_full_history_window:
+                account.last_full_history_sync_at = worker_completion_stamp
+            db.session.commit()
+            worker_stamp_saved = True
+        except Exception as stamp_exc:
+            db.session.rollback()
+            logger.warning(
+                "MT5 worker completion stamp failed mt5_account_id=%s trigger=%s: %s",
+                mt5_account_id,
+                trigger_label,
+                stamp_exc,
+            )
         log_ascii_table(
             logger,
             "MT5 Sync Result",
             [
                 ("Finished", sync_finished_at),
                 ("Duration", duration_label(sync_started_at, sync_finished_at)),
+                ("Worker Last Synced Stamp", worker_completion_stamp if worker_stamp_saved else "failed"),
                 ("Trigger", trigger_label),
                 ("Mode", sync_mode),
                 ("Raw Deals", raw_deal_count),

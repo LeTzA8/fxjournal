@@ -46,7 +46,11 @@
                 gtag("config", _GA_ID);
             }
             window._loadGA = _loadGA;
-            if (localStorage.getItem("ga_consent") === "1") _loadGA();
+            try {
+                if (localStorage.getItem("ga_consent") === "1") _loadGA();
+            } catch (error) {
+                // Storage may be blocked by browser privacy settings; keep analytics opt-in only.
+            }
         })();
     </script>
     {% endif %}
@@ -2812,6 +2816,9 @@
             flex-wrap: wrap;
             box-shadow: 0 -4px 18px rgba(0,0,0,.08);
         }
+        #cookie-banner[hidden] {
+            display: none;
+        }
         #cookie-banner p {
             margin: 0;
             font-size: 0.82rem;
@@ -2849,14 +2856,28 @@
         (() => {
             const banner = document.getElementById("cookie-banner");
             if (!banner) return;
-            if (localStorage.getItem("ga_consent") === null) banner.hidden = false;
+            const getStoredConsent = () => {
+                try {
+                    return localStorage.getItem("ga_consent");
+                } catch (error) {
+                    return null;
+                }
+            };
+            const setStoredConsent = (value) => {
+                try {
+                    localStorage.setItem("ga_consent", value);
+                } catch (error) {
+                    // Hide for the current page even if the browser refuses persistence.
+                }
+            };
+            if (getStoredConsent() === null) banner.hidden = false;
             document.getElementById("cookie-accept").addEventListener("click", () => {
-                localStorage.setItem("ga_consent", "1");
+                setStoredConsent("1");
                 banner.hidden = true;
                 if (typeof window._loadGA === "function") window._loadGA();
             });
             document.getElementById("cookie-decline").addEventListener("click", () => {
-                localStorage.setItem("ga_consent", "0");
+                setStoredConsent("0");
                 banner.hidden = true;
             });
         })();
