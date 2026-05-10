@@ -2,10 +2,23 @@
 
 Last Updated: 2026-05-11
 
+## Premium workflow trial gating (2026-05-11)
+
+- Broadened the 14-day trial semantics from MT5-only to a shared premium workflow trial in `helpers/entitlements.py`. `get_trial_state(user, account=None)` now exposes trial state from existing MT5 trial storage when present, falling back to user creation time for non-MT5 premium workflow access; `get_mt5_trial_state()` remains as a compatibility wrapper.
+- Weekly review generation/display remains core/free. Weekly review follow-up chat now uses entitlement helpers, allows 5 user-sent trial follow-up messages, blocks new sends after the cap or after trial expiry with waitlist CTA metadata, and keeps existing chat history visible in the dashboard. Assistant replies are not counted toward the cap. (`helpers/entitlements.py`, `routes/dashboard.py`, `templates/index.html`, `static/js/weekly_review_chat.js`, `tests/test_dashboard_weekly_ai.py`)
+- Advanced replay gating now follows the shared trial/premium gate: M5/M15 standard replay stays available, active-trial/Trader/Pro/grandfathered users can request advanced timeframes, and currently unimplemented M1 still returns `timeframe_not_available` instead of success. (`helpers/entitlements.py`, `routes/trades.py`, `tests/test_trades_routes.py`)
+- MT5 sync still uses the same trial window and pause behavior; on first successful sync, the MT5 account stores the broader trial start when available instead of extending the clock. Grandfathered/admin/paid-plan paths remain safe. (`celery_workers/mt5_sync_tasks.py`, `tests/test_entitlements.py`, `tests/test_mt5_access_requests.py`)
+- Landing, SEO, pricing, register, dashboard, and Trade Accounts copy now frame this as a 14-day premium workflow trial with no credit card required, while keeping the core journal/free weekly review language clear and avoiding checkout/billing enforcement claims. (`templates/base.html`, `templates/landing.html`, `templates/pricing.html`, `templates/register.html`, `templates/seo_page.html`, `templates/trade_accounts.html`)
+
+## Public SEO pricing endpoint fix (2026-05-11)
+
+- Fixed the shared SEO page pricing/waitlist CTA to use the registered `pricing_page` Flask endpoint instead of stale `pricing`, preventing BuildError 500s on public SEO routes such as `/revenge-trading-journal`. Added a regression check for the revenge-trading journal landing page and its `/pricing` link. (`templates/seo_page.html`, `tests/test_public_seo.py`)
+
 ## Free-trial expiry email (2026-05-11)
 
 - Added a general free-trial expiry email template that frames the message as an account-status notice first, explains that existing journal data remains available, and links to `/pricing` for paid access / waitlist options with restrained upsell copy. (`templates/emails/free-trial-expired.html`)
 - MT5 trial expiry now sends this email once when the sync worker first stamps `sync_paused_at` because entitlement reason is `expired`; existing paused accounts are not re-emailed by beat because paused accounts are excluded from scheduling. (`celery_workers/mt5_sync_tasks.py`, `tests/test_mt5_sync.py`, `tests/test_email_templates.py`)
+- Removed the `BILLING_LAUNCH_DATE` enforcement switch. MT5 sync trial expiry is enforced as soon as a non-grandfathered Free user's 14-day MT5 sync trial is expired; the reactivation path is the pricing/waitlist page even before paid billing is live. (`helpers/entitlements.py`, `templates/pricing.html`, `tests/test_entitlements.py`)
 - Current limitation: MT5 sync is still the only feature with a concrete trial-expiry transition. Other gated features use entitlement checks but do not yet have an account-level trial clock or expiry event to trigger this email.
 
 ## Pricing page polish (2026-05-11)
@@ -68,7 +81,7 @@ Last Updated: 2026-05-11
 Central entitlement system, MT5 14-day trial enforcement, replay timeframe gating, and VM pause-on-expiry.
 
 **New files:**
-- `helpers/entitlements.py` — all plan-gating decisions. Constants: `MT5_TRIAL_DAYS=14`, `BILLING_LAUNCH_DATE=None` (set to UTC datetime when Stripe goes live; while None trial expiry is not enforced, but explicit sync pauses are respected), `FREE_REPLAY_TIMEFRAMES={M5,M15}`, `TRADER_REPLAY_TIMEFRAMES={M1,M5,M15}`, `FREE_REPLAY_MAX_TRADE_AGE_DAYS=90`. Helpers: `get_user_plan_state`, `is_mt5_sync_paused`, `get_mt5_trial_state` (states: grandfathered/not_started/active/expired/paused), `can_use_mt5_sync`, `can_access_replay_timeframe`, `can_generate_replay_bars`, `get_replay_entitlement`. Admin bypass via `_is_admin → user_has_admin_access`. Grandfathered users get Trader entitlement throughout.
+- `helpers/entitlements.py` — all plan-gating decisions. Constants: `MT5_TRIAL_DAYS=14`, `FREE_REPLAY_TIMEFRAMES={M5,M15}`, `TRADER_REPLAY_TIMEFRAMES={M1,M5,M15}`, `FREE_REPLAY_MAX_TRADE_AGE_DAYS=90`. Helpers: `get_user_plan_state`, `is_mt5_sync_paused`, `get_mt5_trial_state` (states: grandfathered/not_started/active/expired/paused), `can_use_mt5_sync`, `can_access_replay_timeframe`, `can_generate_replay_bars`, `get_replay_entitlement`. Admin bypass via `_is_admin → user_has_admin_access`. Grandfathered users get Trader entitlement throughout.
 - `migrations/versions/20260510_0056_entitlement_fields.py` — adds `plan_tier`/`plan_grandfathered` to `users`; adds `mt5_trial_started_at`/`sync_paused_at`/`sync_pause_reason` to `mt5_account`. Data upgrade sets `plan_grandfathered=TRUE` for all users with `last_synced_at IS NOT NULL` (existing beta users grandfathered silently).
 - `tests/test_entitlements.py` — 37 tests, all passing. Uses `SimpleNamespace` mocks; no DB fixtures.
 
@@ -82,7 +95,7 @@ Central entitlement system, MT5 14-day trial enforcement, replay timeframe gatin
 - `templates/trade_accounts.html` — trial state badge: days-remaining (green/amber), expired soft CTA, not-started notice.
 
 **Critical invariants:**
-- `BILLING_LAUNCH_DATE = None` → trial expiry is not enforced (safe to deploy now); explicit `sync_paused_at` still blocks scheduling/sync until pause state is cleared
+- MT5 trial expiry is enforced now: a non-grandfathered Free user's MT5 sync pauses after `MT5_TRIAL_DAYS=14`; explicit `sync_paused_at` blocks scheduling/sync until pause state is cleared
 - Grandfathered path bypasses all trial logic; existing beta users are unaffected
 - Trial pause ≠ archive: `sync_paused_at`/`sync_pause_reason` are entirely separate from `archived_at`/`archive_reason`/`cleanup_mt5_terminal`
 - M5/M15 replay is never gated for any user; M1 gating is forward-compatible (M1 not yet stored)

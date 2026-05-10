@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from flask import Blueprint, current_app, g, jsonify, render_template, request, session, url_for
 from sqlalchemy import or_
-from sqlalchemy.exc import OperationalError, SQLAlchemyError
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import load_only, selectinload
 
 from ai_service import (
@@ -50,6 +50,10 @@ from helpers.core import (
     is_trade_running,
     normalize_timezone_name,
 )
+from helpers.entitlements import (
+    can_send_weekly_followup_message,
+    get_weekly_followup_message_usage,
+)
 from helpers.running_pnl import build_running_pnl_events, summarize_running_pnl
 from helpers.scoring import compute_emotional_index
 from helpers.trade_analysis import detect_outliers, get_trade_identity
@@ -60,7 +64,7 @@ from helpers.weekly_review_ref_rewrite import (
     parse_json_blob as _parse_json_blob,
     rewrite_review_text_refs as _rewrite_review_text_refs,
 )
-from auth_account import build_external_url, user_has_admin_access
+from auth_account import build_external_url
 from extensions import limiter
 from helpers.utils import login_required, utcnow_naive
 from models import (
@@ -110,10 +114,6 @@ ANALYTICS_CACHE_PREFIX = "analytics_v5"
 RR_SUMMARY_CACHE_PREFIX = "rr_summary_v5"
 WEEKLY_REVIEW_CHAT_MAX_CHARS = 800
 WEEKLY_REVIEW_CHAT_HISTORY_LIMIT = 6
-WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_REVIEW = 5
-WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_DAY = 15
-WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_MINUTE = 3
-WEEKLY_REVIEW_CHAT_RATE_WINDOW_SECONDS = 60
 LEGACY_WEEKLY_REVIEW_CHAT_PROMPTS = [
     "Explain this simply",
     "Was this bad luck or my execution?",
@@ -358,6 +358,45 @@ def _build_weekly_review_chat_reply_display(review_record, reply_text, timezone_
         "text": display_text,
         "segments": _build_review_text_segments(display_text, citations),
     }
+
+
+def _build_weekly_review_chat_message_display(review_record, message, timezone_name):
+    role = getattr(message, "role", "")
+    content = getattr(message, "content", "") or ""
+    if role == WeeklyReviewChatMessage.ROLE_ASSISTANT:
+        display = _build_weekly_review_chat_reply_display(
+            review_record,
+            content,
+            timezone_name,
+        )
+        return {
+            "role": role,
+            "text": display["text"],
+            "segments": display["segments"],
+        }
+    return {
+        "role": role,
+        "text": content,
+        "segments": [{"type": "text", "text": content}],
+    }
+
+
+def _load_weekly_review_chat_history_display(review_record, user_id, trade_account_id, timezone_name):
+    if review_record is None:
+        return []
+    messages = (
+        WeeklyReviewChatMessage.query.filter_by(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            ai_response_id=review_record.id,
+        )
+        .order_by(WeeklyReviewChatMessage.created_at.asc(), WeeklyReviewChatMessage.id.asc())
+        .all()
+    )
+    return [
+        _build_weekly_review_chat_message_display(review_record, message, timezone_name)
+        for message in messages
+    ]
 
 
 def _weekly_review_display_text(display, key):
@@ -1634,6 +1673,29 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
     weekly_review_chat_prompts = _build_weekly_review_chat_prompts(
         weekly_ai_state.get("weekly_ai_review_display"),
     ) or list(LEGACY_WEEKLY_REVIEW_CHAT_PROMPTS)
+    weekly_review = weekly_ai_state["weekly_ai_review"]
+    weekly_review_chat_send_state = None
+    weekly_review_chat_usage = None
+    weekly_review_chat_history = []
+    if (
+        weekly_review is not None
+        and getattr(weekly_review, "id", None) is not None
+        and active_trade_account_id is not None
+    ):
+        weekly_review_chat_send_state = can_send_weekly_followup_message(
+            target_user,
+            weekly_review,
+        )
+        weekly_review_chat_usage = (
+            weekly_review_chat_send_state.get("usage")
+            or get_weekly_followup_message_usage(target_user, weekly_review)
+        )
+        weekly_review_chat_history = _load_weekly_review_chat_history_display(
+            weekly_review,
+            user_id,
+            active_trade_account_id,
+            timezone_name,
+        )
 
     return render_template(
         "index.html",
@@ -1657,10 +1719,13 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         week_on_week_behavior=week_on_week_behavior_data,
         latest_trade_snapshot=latest_trade_snapshot,
         chart_points=chart_points,
-        weekly_ai_review=weekly_ai_state["weekly_ai_review"],
+        weekly_ai_review=weekly_review,
         weekly_ai_review_text=weekly_ai_review_text,
         weekly_ai_review_display=weekly_ai_state.get("weekly_ai_review_display"),
         weekly_review_chat_prompts=weekly_review_chat_prompts,
+        weekly_review_chat_send_state=weekly_review_chat_send_state,
+        weekly_review_chat_usage=weekly_review_chat_usage,
+        weekly_review_chat_history=weekly_review_chat_history,
         weekly_ai_generated_at_label=weekly_ai_state["weekly_ai_generated_at_label"],
         weekly_ai_period_label=weekly_ai_state["weekly_ai_period_label"],
         weekly_ai_empty_message=weekly_ai_state["weekly_ai_empty_message"],
@@ -1760,47 +1825,18 @@ def weekly_review_chat(review_id):
         return jsonify({"error": "Weekly review not found for this account."}), 404
 
     user_row = db.session.get(User, user_id)
-    if not user_has_admin_access(user_row):
-        user_messages_this_review = (
-            WeeklyReviewChatMessage.query.filter_by(
-                user_id=user_id,
-                ai_response_id=review.id,
-                role=WeeklyReviewChatMessage.ROLE_USER,
-            ).count()
-        )
-        if user_messages_this_review >= WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_REVIEW:
-            return jsonify({"error": "review_limit_reached"}), 429
-
-        now = utcnow_naive()
-        day_start = datetime(now.year, now.month, now.day)
-        daily_user_messages = (
-            WeeklyReviewChatMessage.query.filter(
-                WeeklyReviewChatMessage.user_id == user_id,
-                WeeklyReviewChatMessage.role == WeeklyReviewChatMessage.ROLE_USER,
-                WeeklyReviewChatMessage.created_at >= day_start,
-            ).count()
-        )
-        if daily_user_messages >= WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_DAY:
-            return jsonify({"error": "daily_limit_reached"}), 429
-
-        cutoff = now - timedelta(seconds=WEEKLY_REVIEW_CHAT_RATE_WINDOW_SECONDS)
-        try:
-            recent_user_messages = (
-                WeeklyReviewChatMessage.query.filter(
-                    WeeklyReviewChatMessage.user_id == user_id,
-                    WeeklyReviewChatMessage.role == WeeklyReviewChatMessage.ROLE_USER,
-                    WeeklyReviewChatMessage.created_at >= cutoff,
-                ).count()
-            )
-        except SQLAlchemyError as exc:
-            current_app.logger.warning(
-                "Weekly review chat per-minute limit check skipped (DB error). user_id=%s error=%s",
-                user_id,
-                exc,
-            )
-            recent_user_messages = 0
-        if recent_user_messages >= WEEKLY_REVIEW_CHAT_MAX_USER_MESSAGES_PER_MINUTE:
-            return jsonify({"error": "rate_limit_exceeded"}), 429
+    send_gate = can_send_weekly_followup_message(user_row, review)
+    if not send_gate["allowed"]:
+        status_code = 429 if send_gate.get("reason") in (
+            "trial_message_limit_reached",
+            "rate_limit_exceeded",
+        ) else 403
+        return jsonify({
+            "error": send_gate.get("error") or send_gate.get("reason") or "upgrade_required",
+            "message": send_gate.get("message"),
+            "cta": send_gate.get("cta"),
+            "usage": send_gate.get("usage"),
+        }), status_code
 
     chat_history = (
         WeeklyReviewChatMessage.query.filter_by(

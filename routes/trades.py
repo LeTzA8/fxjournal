@@ -1453,8 +1453,8 @@ def trade_chart_data(trade_pubkey):
     else:
         available_timeframes = sorted(stored_ui_tfs)
 
-    from helpers.entitlements import can_access_replay_timeframe, get_replay_entitlement
-    replay_entitlement = get_replay_entitlement(trade.user)
+    from helpers.entitlements import can_access_advanced_replay, get_replay_entitlement
+    replay_entitlement = get_replay_entitlement(trade.user, trade)
     available_timeframes = [
         tf for tf in available_timeframes
         if tf in replay_entitlement["allowed_timeframes"]
@@ -1469,7 +1469,7 @@ def trade_chart_data(trade_pubkey):
             "message": f"{requested_tf or 'That'} replay timeframe is not supported yet.",
         }), 400
 
-    tf_gate = can_access_replay_timeframe(trade.user, requested_tf)
+    tf_gate = can_access_advanced_replay(trade.user, requested_tf, trade)
     if not tf_gate["allowed"]:
         return jsonify({
             "error": "upgrade_required",
@@ -1478,7 +1478,10 @@ def trade_chart_data(trade_pubkey):
             "required_tier": tf_gate["required_tier"],
             "upgrade_url": tf_gate["upgrade_url"],
             "cta": _replay_waitlist_cta("advanced_replay"),
-            "message": f"{requested_tf} replay requires {(tf_gate['required_tier'] or 'Trader').title()} plan.",
+            "message": (
+                f"{requested_tf} replay is part of the Trader workflow. "
+                "Join the waitlist for early access."
+            ),
         }), 403
 
     if requested_tf in _REPLAY_NOT_IMPLEMENTED_TIMEFRAMES:

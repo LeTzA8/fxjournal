@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import json
 
@@ -453,7 +453,7 @@ def test_weekly_review_chat_admin_bypasses_usage_limits(app_ctx, client, monkeyp
         assert response.status_code == 200, f"unexpected at {i}"
 
 
-def test_weekly_review_chat_route_enforces_per_review_limit(app_ctx, client, monkeypatch):
+def test_weekly_review_chat_route_enforces_trial_message_limit(app_ctx, client, monkeypatch):
     user, trade_account = _create_logged_in_user(
         client,
         username="dashboard-review-chat-review-cap-user",
@@ -473,7 +473,7 @@ def test_weekly_review_chat_route_enforces_per_review_limit(app_ctx, client, mon
     db.session.commit()
 
     def fail_if_called(*_a, **_k):
-        raise AssertionError("AI should not run when per-review cap is reached")
+        raise AssertionError("AI should not run when trial message cap is reached")
 
     monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fail_if_called)
 
@@ -482,44 +482,89 @@ def test_weekly_review_chat_route_enforces_per_review_limit(app_ctx, client, mon
         json={"message": "sixth question"},
     )
     assert response.status_code == 429
-    assert response.get_json()["error"] == "review_limit_reached"
+    payload = response.get_json()
+    assert payload["error"] == "weekly_followup_trial_limit_reached"
+    assert payload["usage"]["used"] == 5
+    assert payload["cta"]["feature_interest"] == "weekly_followup_chat"
 
 
-def test_weekly_review_chat_route_enforces_daily_limit(app_ctx, client, monkeypatch):
+def test_weekly_review_chat_route_counts_only_user_messages_for_trial_limit(app_ctx, client, monkeypatch):
     user, trade_account = _create_logged_in_user(
         client,
         username="dashboard-review-chat-daily-cap-user",
         email="dashboard-review-chat-daily-cap@example.com",
     )
-    reviews = [
-        _create_weekly_review(user, trade_account, prompt_id=f"weekly-chat-daily-{i}")
-        for i in range(4)
-    ]
-    for review in reviews[:3]:
-        for j in range(5):
-            db.session.add(
-                WeeklyReviewChatMessage(
-                    user_id=user.id,
-                    trade_account_id=trade_account.id,
-                    ai_response_id=review.id,
-                    role=WeeklyReviewChatMessage.ROLE_USER,
-                    content=f"seed-{review.id}-{j}",
-                )
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-assistant-not-counted")
+    for j in range(5):
+        db.session.add(
+            WeeklyReviewChatMessage(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                ai_response_id=review.id,
+                role=WeeklyReviewChatMessage.ROLE_ASSISTANT,
+                content=f"assistant-seed-{j}",
             )
+        )
     db.session.commit()
-    fresh_review = reviews[3]
+
+    def fake_reply(*_a, **_k):
+        return "brief", {}, "gpt-test"
+
+    monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fake_reply)
+
+    response = client.post(
+        f"/dashboard/weekly-review/{review.id}/chat",
+        json={"message": "first user question"},
+    )
+    assert response.status_code == 200
+
+
+def test_weekly_review_chat_route_blocks_after_trial_expiry(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-expired-user",
+        email="dashboard-review-chat-expired@example.com",
+    )
+    user.created_at = datetime.utcnow() - timedelta(days=20)
+    db.session.commit()
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-expired")
 
     def fail_if_called(*_a, **_k):
-        raise AssertionError("AI should not run when daily cap is reached")
+        raise AssertionError("AI should not run after trial expiry")
 
     monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fail_if_called)
 
     response = client.post(
-        f"/dashboard/weekly-review/{fresh_review.id}/chat",
-        json={"message": "first question on fourth review"},
+        f"/dashboard/weekly-review/{review.id}/chat",
+        json={"message": "Can I ask one more?"},
     )
-    assert response.status_code == 429
-    assert response.get_json()["error"] == "daily_limit_reached"
+    payload = response.get_json()
+    assert response.status_code == 403
+    assert payload["error"] == "weekly_followup_trial_required"
+    assert payload["cta"]["feature_interest"] == "weekly_followup_chat"
+
+
+def test_weekly_review_chat_grandfathered_user_bypasses_trial_expiry(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-grandfathered-user",
+        email="dashboard-review-chat-grandfathered@example.com",
+    )
+    user.created_at = datetime.utcnow() - timedelta(days=200)
+    user.plan_grandfathered = True
+    db.session.commit()
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-grandfathered")
+
+    def fake_reply(*_a, **_k):
+        return "brief", {}, "gpt-test"
+
+    monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fake_reply)
+
+    response = client.post(
+        f"/dashboard/weekly-review/{review.id}/chat",
+        json={"message": "Still available?"},
+    )
+    assert response.status_code == 200
 
 
 def test_dashboard_home_renders_weekly_review_chat_inside_review_panel(app_ctx, client, monkeypatch):
@@ -558,6 +603,105 @@ def test_dashboard_home_renders_weekly_review_chat_inside_review_panel(app_ctx, 
     assert "Why did risk drive this review?" in response_text
     assert "Was this bad luck or my execution?" not in response_text
     assert "weekly_review_chat.js" in response_text
+
+
+def test_dashboard_home_keeps_existing_chat_history_visible_after_trial_expiry(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-history-expired-user",
+        email="dashboard-review-chat-history-expired@example.com",
+    )
+    user.created_at = datetime.utcnow() - timedelta(days=20)
+    db.session.commit()
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-history-expired")
+    db.session.add_all(
+        [
+            WeeklyReviewChatMessage(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                ai_response_id=review.id,
+                role=WeeklyReviewChatMessage.ROLE_USER,
+                content="Old user question",
+            ),
+            WeeklyReviewChatMessage(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                ai_response_id=review.id,
+                role=WeeklyReviewChatMessage.ROLE_ASSISTANT,
+                content="Old assistant answer [T1]",
+            ),
+        ]
+    )
+    db.session.commit()
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": review,
+            "weekly_ai_review_display": {
+                "summary": {"text": "Summary", "segments": [{"type": "text", "text": "Summary"}], "refs": [], "citations": []},
+                "takeaways": [],
+                "improvement": {"text": "Improve this week: Keep risk fixed.", "segments": [{"type": "text", "text": "Improve this week: Keep risk fixed."}], "refs": [], "citations": []},
+                "strength": {"text": "You're already strong at: Waiting.", "segments": [{"type": "text", "text": "You're already strong at: Waiting."}], "refs": [], "citations": []},
+                "experiment": {},
+                "has_citations": False,
+            },
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    response = client.get("/dashboard")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Summary" in response_text
+    assert "Old user question" in response_text
+    assert "Old assistant answer" in response_text
+    assert "data-can-send=\"false\"" in response_text
+    assert "Your free trial has ended" in response_text
+
+
+def test_dashboard_home_keeps_existing_chat_history_visible_after_trial_message_cap(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-review-chat-history-cap-user",
+        email="dashboard-review-chat-history-cap@example.com",
+    )
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-history-cap")
+    for i in range(5):
+        db.session.add(
+            WeeklyReviewChatMessage(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                ai_response_id=review.id,
+                role=WeeklyReviewChatMessage.ROLE_USER,
+                content=f"Prior cap question {i}",
+            )
+        )
+    db.session.commit()
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": review,
+            "weekly_ai_review_display": {},
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    response = client.get("/dashboard")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Prior cap question 4" in response_text
+    assert "data-can-send=\"false\"" in response_text
+    assert "Your free trial includes 5 follow-up messages" in response_text
 
 
 def test_dashboard_home_keeps_legacy_weekly_review_chat_prompts_without_dynamic_context(app_ctx, client, monkeypatch):

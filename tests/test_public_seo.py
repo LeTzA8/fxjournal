@@ -104,6 +104,16 @@ def test_trade_replay_chart_page_has_indexable_metadata(client):
     assert b'href="http://localhost:5000/trade-replay-chart"' in response.data
 
 
+def test_revenge_trading_journal_page_has_indexable_metadata_and_pricing_link(client):
+    response = client.get("/revenge-trading-journal")
+
+    assert response.status_code == 200
+    assert b"Revenge Trading Journal" in response.data
+    assert b'<meta name="robots" content="index, follow">' in response.data
+    assert b'href="http://localhost:5000/revenge-trading-journal"' in response.data
+    assert b'href="/pricing"' in response.data
+
+
 def test_free_mt5_sync_page_has_indexable_metadata(client):
     response = client.get("/free-mt5-sync")
 

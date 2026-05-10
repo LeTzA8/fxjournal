@@ -82,6 +82,10 @@
     const limitErrorMessages = {
         review_limit_reached: "You've reached the follow-up limit for this review.",
         daily_limit_reached: "You've reached today's AI chat limit.",
+        weekly_followup_trial_limit_reached:
+            "Your free trial includes 5 follow-up messages. Join the waitlist to unlock full review conversations.",
+        weekly_followup_trial_required:
+            "Follow-up chat is part of the Trader workflow. Join the waitlist for early access.",
         rate_limit_exceeded: "You're sending messages too quickly. Try again in a moment.",
     };
 
@@ -95,18 +99,19 @@
         const promptButtons = root.querySelectorAll("[data-review-chat-prompt]");
         const chatUrl = root.dataset.chatUrl || "";
         const csrfToken = root.dataset.csrfToken || "";
+        let canSend = root.dataset.canSend !== "false";
 
         if (!form || !input || !log || !chatUrl) {
             return;
         }
 
         const setBusy = (isBusy) => {
-            input.disabled = isBusy;
+            input.disabled = isBusy || !canSend;
             form.querySelectorAll("button").forEach((button) => {
-                button.disabled = isBusy;
+                button.disabled = isBusy || !canSend;
             });
             promptButtons.forEach((button) => {
-                button.disabled = isBusy;
+                button.disabled = isBusy || !canSend;
             });
         };
 
@@ -128,6 +133,10 @@
 
         const submitQuestion = async (rawMessage) => {
             const message = String(rawMessage || "").trim();
+            if (!canSend) {
+                showError("Follow-up chat is part of the Trader workflow. Join the waitlist for early access.");
+                return;
+            }
             if (!message) {
                 showError("Ask a question about this review first.");
                 input.focus();
@@ -136,7 +145,8 @@
 
             const sendStartedAt = Date.now();
             clearError();
-            log.appendChild(createBubble("user", message));
+            const userBubble = createBubble("user", message);
+            log.appendChild(userBubble);
             const loadingBubble = createLoadingBubble();
             log.appendChild(loadingBubble);
             input.value = "";
@@ -156,7 +166,14 @@
                 const payload = await response.json().catch(() => ({}));
                 if (!response.ok) {
                     const code = payload.error;
+                    if (
+                        code === "weekly_followup_trial_limit_reached" ||
+                        code === "weekly_followup_trial_required"
+                    ) {
+                        canSend = false;
+                    }
                     const friendly =
+                        payload.message ||
                         (code && limitErrorMessages[code]) ||
                         code ||
                         "Could not answer that right now.";
@@ -173,6 +190,7 @@
                 );
             } catch (err) {
                 loadingBubble.remove();
+                userBubble.remove();
                 showError(err.message || "Could not answer that right now. Please try again.");
             } finally {
                 const elapsed = Date.now() - sendStartedAt;

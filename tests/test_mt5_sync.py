@@ -3780,11 +3780,9 @@ def test_sync_mt5_account_sends_free_trial_expired_email_on_first_pause(app_ctx,
     mt5_account.mt5_trial_started_at = datetime.utcnow() - timedelta(days=20)
     db.session.commit()
 
-    import helpers.entitlements as entitlements
     import celery_workers.mt5_setup_tasks as mt5_setup_module
     import celery_workers.mt5_sync_tasks as mt5_sync_module
 
-    monkeypatch.setattr(entitlements, "BILLING_LAUNCH_DATE", datetime(2026, 1, 1))
     monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
     monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: None)
 

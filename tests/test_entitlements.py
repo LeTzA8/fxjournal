@@ -5,6 +5,7 @@ All helpers use plain SimpleNamespace mocks to avoid DB fixtures where
 possible, keeping tests fast and isolated.
 """
 from datetime import datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -15,8 +16,10 @@ import helpers.entitlements as ent
 # ── Fixtures / helpers ────────────────────────────────────────────────────────
 
 def _user(plan_tier="free", plan_grandfathered=False, is_admin=False,
-          email_verified=True, is_admin_field=False):
+          email_verified=True, is_admin_field=False, created_at=None, user_id=1):
     return SimpleNamespace(
+        id=user_id,
+        created_at=created_at,
         plan_tier=plan_tier,
         plan_grandfathered=plan_grandfathered,
         is_admin=is_admin_field or is_admin,
@@ -87,6 +90,15 @@ def test_mt5_trial_state_not_started():
     assert state["show_trial_ui"] is True
 
 
+def test_trial_state_uses_user_created_at_as_premium_trial_start():
+    started = datetime.utcnow() - timedelta(days=4)
+    user = _user(created_at=started)
+    state = ent.get_trial_state(user)
+    assert state["state"] == "active"
+    assert state["source"] == "user_created_at"
+    assert state["days_remaining"] == ent.PREMIUM_TRIAL_DAYS - 4
+
+
 def test_mt5_trial_state_active():
     user = _user()
     started = datetime.utcnow() - timedelta(days=5)
@@ -145,14 +157,12 @@ def test_can_use_mt5_sync_admin(monkeypatch):
     assert result["reason"] == "admin"
 
 
-def test_can_use_mt5_sync_billing_not_launched():
-    """All non-grandfathered free users are allowed while BILLING_LAUNCH_DATE is None."""
-    assert ent.BILLING_LAUNCH_DATE is None
+def test_can_use_mt5_sync_not_started_trial_allowed():
     user = _user()  # free, non-grandfathered
     account = _mt5_account()
     result = ent.can_use_mt5_sync(user, account)
     assert result["allowed"] is True
-    assert result["reason"] == "billing_not_launched"
+    assert result["reason"] == "trial_not_started"
 
 
 def test_can_use_mt5_sync_trader_plan():
@@ -163,9 +173,7 @@ def test_can_use_mt5_sync_trader_plan():
     assert result["reason"] == "plan_paid"
 
 
-def test_can_use_mt5_sync_expired_trial_blocked_when_billing_live(monkeypatch):
-    """Once BILLING_LAUNCH_DATE is set, expired trials are blocked."""
-    monkeypatch.setattr(ent, "BILLING_LAUNCH_DATE", datetime(2026, 6, 1))
+def test_can_use_mt5_sync_expired_trial_blocked():
     user = _user()
     started = datetime.utcnow() - timedelta(days=ent.MT5_TRIAL_DAYS + 2)
     account = _mt5_account(trial_started_at=started)
@@ -174,8 +182,7 @@ def test_can_use_mt5_sync_expired_trial_blocked_when_billing_live(monkeypatch):
     assert result["reason"] == "expired"
 
 
-def test_can_use_mt5_sync_paused_blocked_when_billing_live(monkeypatch):
-    monkeypatch.setattr(ent, "BILLING_LAUNCH_DATE", datetime(2026, 6, 1))
+def test_can_use_mt5_sync_paused_blocked():
     user = _user()
     account = _mt5_account(sync_paused_at=datetime.utcnow())
     result = ent.can_use_mt5_sync(user, account)
@@ -183,17 +190,7 @@ def test_can_use_mt5_sync_paused_blocked_when_billing_live(monkeypatch):
     assert result["reason"] == "paused"
 
 
-def test_can_use_mt5_sync_paused_blocked_before_billing_launch():
-    assert ent.BILLING_LAUNCH_DATE is None
-    user = _user()
-    account = _mt5_account(sync_paused_at=datetime.utcnow())
-    result = ent.can_use_mt5_sync(user, account)
-    assert result["allowed"] is False
-    assert result["reason"] == "paused"
-
-
-def test_can_use_mt5_sync_active_trial_allowed_when_billing_live(monkeypatch):
-    monkeypatch.setattr(ent, "BILLING_LAUNCH_DATE", datetime(2026, 6, 1))
+def test_can_use_mt5_sync_active_trial_allowed():
     user = _user()
     started = datetime.utcnow() - timedelta(days=3)
     account = _mt5_account(trial_started_at=started)
@@ -221,6 +218,21 @@ def test_replay_timeframe_free_m1_blocked():
     result = ent.can_access_replay_timeframe(user, "M1")
     assert result["allowed"] is False
     assert result["required_tier"] == "trader"
+    assert result["upgrade_url"] == "/pricing"
+
+
+def test_advanced_replay_allowed_during_active_trial():
+    user = _user(created_at=datetime.utcnow() - timedelta(days=2))
+    result = ent.can_access_advanced_replay(user, "M1")
+    assert result["allowed"] is True
+    assert result["reason"] == "trial_active"
+
+
+def test_advanced_replay_blocked_after_trial_expiry():
+    user = _user(created_at=datetime.utcnow() - timedelta(days=ent.PREMIUM_TRIAL_DAYS + 1))
+    result = ent.can_access_advanced_replay(user, "M1")
+    assert result["allowed"] is False
+    assert result["reason"] == "expired"
     assert result["upgrade_url"] == "/pricing"
 
 
@@ -316,6 +328,13 @@ def test_replay_entitlement_free():
     assert e["label"] == "Standard Replay"
 
 
+def test_replay_entitlement_active_trial_gets_advanced_replay():
+    user = _user(created_at=datetime.utcnow() - timedelta(days=1))
+    e = ent.get_replay_entitlement(user)
+    assert e["allowed_timeframes"] == ent.TRADER_REPLAY_TIMEFRAMES
+    assert e["label"] == "Advanced Replay Trial"
+
+
 def test_replay_entitlement_trader():
     user = _user(plan_tier="trader")
     e = ent.get_replay_entitlement(user)
@@ -341,11 +360,10 @@ def test_replay_entitlement_pro():
 
 def test_trial_expiry_does_not_trigger_cleanup(monkeypatch):
     """
-    When billing is live and trial is expired, can_use_mt5_sync returns
-    allowed=False. Verify that no cleanup/archive path is referenced from
-    the entitlement module itself.
+    When trial is expired, can_use_mt5_sync returns allowed=False. Verify
+    that no cleanup/archive path is referenced from the entitlement module
+    itself.
     """
-    monkeypatch.setattr(ent, "BILLING_LAUNCH_DATE", datetime(2026, 6, 1))
     user = _user()
     started = datetime.utcnow() - timedelta(days=ent.MT5_TRIAL_DAYS + 5)
     account = _mt5_account(trial_started_at=started)
@@ -363,9 +381,8 @@ def test_trial_expiry_does_not_trigger_cleanup(monkeypatch):
 
 # ── Grandfathered regression: existing sync users never blocked ───────────────
 
-def test_grandfathered_user_never_blocked_regardless_of_billing(monkeypatch):
-    """Grandfathered users pass the sync check even when billing is live."""
-    monkeypatch.setattr(ent, "BILLING_LAUNCH_DATE", datetime(2025, 1, 1))
+def test_grandfathered_user_never_blocked():
+    """Grandfathered users pass the sync check."""
     user = _user(plan_grandfathered=True)
     account = _mt5_account()
     result = ent.can_use_mt5_sync(user, account)
@@ -373,10 +390,21 @@ def test_grandfathered_user_never_blocked_regardless_of_billing(monkeypatch):
     assert result["reason"] == "grandfathered"
 
 
-def test_grandfathered_user_with_very_old_trial_still_unblocked(monkeypatch):
-    monkeypatch.setattr(ent, "BILLING_LAUNCH_DATE", datetime(2025, 1, 1))
+def test_grandfathered_user_with_very_old_trial_still_unblocked():
     user = _user(plan_grandfathered=True)
     very_old = datetime(2020, 1, 1)
     account = _mt5_account(trial_started_at=very_old)
     result = ent.can_use_mt5_sync(user, account)
     assert result["allowed"] is True
+
+
+def test_entitlement_change_does_not_introduce_stripe_or_checkout_code():
+    repo_root = Path(__file__).resolve().parents[1]
+    checked_paths = [
+        repo_root / "helpers" / "entitlements.py",
+        repo_root / "routes" / "dashboard.py",
+        repo_root / "routes" / "trades.py",
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in checked_paths).lower()
+    assert "stripe" not in combined
+    assert "checkout" not in combined

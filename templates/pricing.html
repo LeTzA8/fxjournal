@@ -10,10 +10,10 @@
     <div class="pricing-hero">
         <p class="eyebrow">Simple, transparent pricing</p>
         <h1>Everything you need to review your trading.</h1>
-        <p class="muted pricing-hero-sub">Try everything that is live today with a free trial. Paid tiers launch later — join the waitlist to hear first about early access pricing.</p>
+        <p class="muted pricing-hero-sub">Core journaling stays free. Try premium workflow features for 14 days, no credit card required; after that, join the waitlist for early access when upgrades open.</p>
         <p class="pricing-trial-note">
-            <span class="pricing-trial-badge">Free trial</span>
-            Full access while you evaluate. No credit card required.
+            <span class="pricing-trial-badge">14-day trial</span>
+            Premium workflow trial. Core journal remains free.
         </p>
     </div>
 
@@ -43,8 +43,8 @@
                 <section class="pricing-liquid-panel pricing-liquid-panel--secondary" aria-label="Not included in Free">
                     <p class="pricing-panel-kicker">Not in this tier</p>
                     <ul class="pricing-features" aria-label="Free tier limitations">
-                        <li class="pricing-feature pricing-feature--no">Conversational review (ask follow-ups)</li>
-                        <li class="pricing-feature pricing-feature--no"><span class="pricing-feature-copy"><span>MT5 sync after trial</span><span class="pricing-feature-detail">Upgrade or waitlist</span></span></li>
+                        <li class="pricing-feature pricing-feature--no"><span class="pricing-feature-copy"><span>Conversational review after trial</span><span class="pricing-feature-detail">Join waitlist for full access</span></span></li>
+                        <li class="pricing-feature pricing-feature--no"><span class="pricing-feature-copy"><span>MT5 sync after trial</span><span class="pricing-feature-detail">Waitlist/upgrade intent only</span></span></li>
                     </ul>
                 </section>
             </div>
@@ -61,8 +61,8 @@
                 </p>
                 <p class="pricing-price-annual">Annual option planned before billing opens</p>
                 <p class="pricing-tagline">The full review experience.</p>
-                <div class="pricing-trial-overlay" aria-label="Free trial">
-                    <span>Free trial</span>
+                <div class="pricing-trial-overlay" aria-label="14-day trial">
+                    <span>14-day trial</span>
                 </div>
             </div>
             <div class="pricing-card-cta">
@@ -82,6 +82,7 @@
                         <li class="pricing-feature pricing-feature--yes">Everything in Free</li>
                         <li class="pricing-feature pricing-feature--yes"><span class="pricing-feature-copy"><strong>Conversational review</strong><span class="pricing-feature-detail">Ask follow-ups about your weekly review</span></span></li>
                         <li class="pricing-feature pricing-feature--yes"><span class="pricing-feature-copy"><span>MT5 sync</span><span class="pricing-feature-detail">1 account</span></span></li>
+                        <li class="pricing-feature pricing-feature--yes"><span class="pricing-feature-copy"><span>Premium workflow trial</span><span class="pricing-feature-detail">14 days, no card required</span></span></li>
                         <li class="pricing-feature pricing-feature--yes">Behavior interpretation &amp; coaching hypotheses</li>
                     </ul>
                 </section>
@@ -105,8 +106,8 @@
                 </p>
                 <p class="pricing-price-annual">Annual option planned before billing opens</p>
                 <p class="pricing-tagline">For traders who treat it like a system.</p>
-                <div class="pricing-trial-overlay" aria-label="Free trial">
-                    <span>Free trial</span>
+                <div class="pricing-trial-overlay" aria-label="14-day trial">
+                    <span>14-day trial</span>
                 </div>
             </div>
             <div class="pricing-card-cta">
@@ -179,11 +180,11 @@
                 <div class="pricing-faq-grid">
                     <div class="pricing-faq-item">
                     <h3>How does the free trial work?</h3>
-                    <p>You get full access to what is live today while you evaluate — no credit card required. When paid tiers launch, existing users will hear first about early access pricing.</p>
+                    <p>Your core journal stays free. The 14-day trial covers premium workflow features such as MT5 sync, weekly-review follow-up chat, and advanced replay access where available. No credit card required.</p>
                 </div>
                     <div class="pricing-faq-item">
                     <h3>What happens when paid tiers launch?</h3>
-                    <p>Free tier stays free. Trader and Pro features will require a subscription. Everyone who signed up early will hear first and get a grandfathered discount as a thank-you.</p>
+                    <p>Free tier stays free. Advanced workflow features will move behind Trader or Pro access when billing opens. Until then, upgrade actions are waitlist and intent only.</p>
                 </div>
                     <div class="pricing-faq-item">
                     <h3>Why join the waitlist now?</h3>
@@ -191,11 +192,11 @@
                 </div>
                     <div class="pricing-faq-item">
                     <h3>What is Advanced Replay?</h3>
-                    <p>Standard Replay shows your trade on a 5m or 15m chart. Advanced Replay is the planned Trader rollout for lower timeframes such as 1m and extended replay history.</p>
+                    <p>Standard Replay shows your trade on a 5m or 15m chart. Advanced Replay covers lower timeframes such as 1m and extended replay history when those surfaces are available.</p>
                 </div>
                     <div class="pricing-faq-item">
                     <h3>What does MT5 sync cost?</h3>
-                    <p>MT5 sync is included while you are on a trial or paid Trader/Pro plan. When billing launches, it ships with Trader and Pro. Free accounts can try sync on a 14-day trial before upgrading.</p>
+                    <p>MT5 sync is part of the same 14-day premium workflow trial. After the trial, your journal and existing trade history remain available; sync reactivation is waitlist-first until billing opens.</p>
                 </div>
                     <div class="pricing-faq-item">
                     <h3>Can I cancel anytime?</h3>
@@ -210,7 +211,7 @@
         <div class="landing-inner pricing-bottom-cta-inner">
             <div class="pricing-liquid-panel pricing-bottom-cta-panel">
                 <h2>Start with the weekly review — free.</h2>
-                <p class="muted">Import your trades, get a review this week, and decide later if you want more.</p>
+                <p class="muted">Import your trades, get a review this week, and try the premium workflow without adding a card.</p>
                 <div class="pricing-bottom-cta-actions">
                     <a href="{{ url_for('register') }}" class="submit-btn">Get Started Free</a>
                     {% if not user_logged_in %}

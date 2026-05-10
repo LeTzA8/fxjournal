@@ -689,7 +689,7 @@ def test_dashboard_home_shows_grandfathered_mt5_beta_access(app_ctx, client, mon
 
     assert response.status_code == 200
     assert b"Connected Account" in response.data
-    assert b"Beta access: this account is grandfathered for MT5 sync during the beta." in response.data
+    assert b"Beta access: this account is grandfathered for premium workflow features during the beta." in response.data
 
 
 def test_dashboard_home_treats_legacy_approved_request_as_direct_submit_flow(app_ctx, client, monkeypatch):
@@ -984,7 +984,7 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
     assert b"MT5 Setup Queued" in response.data
     assert b"MT5 Sync Inactive" in response.data
     assert b"Beta access:" in response.data
-    assert b"grandfathered for MT5 sync" in response.data
+    assert b"grandfathered for premium workflow features" in response.data
     assert b"Manage MT5 sync from the dashboard card instead of per-account forms." in response.data
     assert b"Open Dashboard MT5 Access" in response.data
     assert b"Finish the full MT5 sync form from the dashboard card" not in response.data
