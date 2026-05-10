@@ -154,7 +154,7 @@
         }
     }
 
-    /* Rolling trends: shown below KPI metrics (hero column), above trades table */
+    /* Week-on-week trends: shown below KPI metrics (hero column), above trades table */
     .trend-panel-hero {
         margin-top: 0.65rem;
         padding: 0.78rem 0.95rem;
@@ -1273,49 +1273,49 @@
                 {% endif %}
                 {% if not is_state_one %}
                 {% set has_any_trend = (
-                    performance_trends.win_rate_trend or
-                    performance_trends.expectancy_trend or
-                    ei_trend.ei_trend
+                    week_on_week_trends.win_rate_trend or
+                    week_on_week_trends.expectancy_trend or
+                    week_on_week_behavior.behavior_trend
                 ) %}
                 {% if has_any_trend %}
-                <article class="panel trend-panel-hero trend-panel-hero--left" aria-label="Rolling performance trends">
+                <article class="panel trend-panel-hero trend-panel-hero--left" aria-label="Week-on-week performance trends">
                     <h4 class="trend-panel__title">
                         <span aria-hidden="true">📈</span>
-                        Rolling trends
+                        Week-on-week
                         <span class="help-tooltip">
                             <button
                                 type="button"
                                 class="help-tooltip-button"
-                                aria-label="How rolling trends are calculated"
-                                aria-describedby="dashboard-rolling-trends-tooltip"
+                                aria-label="How week-on-week trends are calculated"
+                                aria-describedby="dashboard-week-on-week-trends-tooltip"
                             >?</button>
-                            <span id="dashboard-rolling-trends-tooltip" class="help-tooltip-bubble help-tooltip-bubble--trend-tight" role="tooltip">Uses the last four completed weeks from closed trades and saved weekly reviews.</span>
+                            <span id="dashboard-week-on-week-trends-tooltip" class="help-tooltip-bubble help-tooltip-bubble--trend-tight" role="tooltip">Compares this dashboard week against the previous week. Expectancy is realized P&amp;L per closed trade.</span>
                         </span>
                     </h4>
                     <ul class="trend-panel__list">
-                        {% if performance_trends.win_rate_trend %}
+                        {% if week_on_week_trends.win_rate_trend %}
                         <li class="trend-panel__item">
                             <span class="trend-panel__label">Win rate</span>
-                            <span class="trend-panel__arrow trend-panel__arrow--{{ performance_trends.win_rate_trend }}">
-                                {% if performance_trends.win_rate_trend == "improving" %}↑
-                                {% elif performance_trends.win_rate_trend == "declining" %}↓
+                            <span class="trend-panel__arrow trend-panel__arrow--{{ week_on_week_trends.win_rate_trend }}">
+                                {% if week_on_week_trends.win_rate_trend == "improving" %}↑
+                                {% elif week_on_week_trends.win_rate_trend == "declining" %}↓
                                 {% else %}→{% endif %}
                             </span>
-                            <span class="trend-panel__direction">{{ performance_trends.win_rate_trend | capitalize }}</span>
+                            <span class="trend-panel__direction">{{ week_on_week_trends.win_rate_trend | capitalize }}</span>
                         </li>
                         {% endif %}
-                        {% if performance_trends.expectancy_trend %}
+                        {% if week_on_week_trends.expectancy_trend %}
                         <li class="trend-panel__item">
                             <span class="trend-panel__label">Expectancy</span>
-                            <span class="trend-panel__arrow trend-panel__arrow--{{ performance_trends.expectancy_trend }}">
-                                {% if performance_trends.expectancy_trend == "improving" %}↑
-                                {% elif performance_trends.expectancy_trend == "declining" %}↓
+                            <span class="trend-panel__arrow trend-panel__arrow--{{ week_on_week_trends.expectancy_trend }}">
+                                {% if week_on_week_trends.expectancy_trend == "improving" %}↑
+                                {% elif week_on_week_trends.expectancy_trend == "declining" %}↓
                                 {% else %}→{% endif %}
                             </span>
-                            <span class="trend-panel__direction">{{ performance_trends.expectancy_trend | capitalize }}</span>
+                            <span class="trend-panel__direction">{{ week_on_week_trends.expectancy_trend | capitalize }}</span>
                         </li>
                         {% endif %}
-                        {% if ei_trend.ei_trend %}
+                        {% if week_on_week_behavior.behavior_trend %}
                         <li class="trend-panel__item">
                             <span class="trend-panel__label trend-panel__label--help">
                                 <span class="help-label">
@@ -1324,26 +1324,26 @@
                                         <button
                                             type="button"
                                             class="help-tooltip-button"
-                                            aria-label="Explain rolling behaviour trend"
-                                            aria-describedby="dashboard-rolling-behaviour-trend-tooltip"
+                                            aria-label="Explain week-on-week behaviour trend"
+                                            aria-describedby="dashboard-week-on-week-behaviour-trend-tooltip"
                                         >?</button>
-                                        <span id="dashboard-rolling-behaviour-trend-tooltip" class="help-tooltip-bubble help-tooltip-bubble--trend-tight" role="tooltip">
-                                            From your recent weekly AI reviews (trades and check-in). We only show direction—calmer or more strained—not scores. Improving: steadier. Declining: more pressure.
+                                        <span id="dashboard-week-on-week-behaviour-trend-tooltip" class="help-tooltip-bubble help-tooltip-bubble--trend-tight" role="tooltip">
+                                            Compares objective trade-behaviour pressure this week against previous week from closed trades. Lower pressure is better.
                                         </span>
                                     </span>
                                 </span>
                             </span>
-                            <span class="trend-panel__arrow trend-panel__arrow--{{ ei_trend.ei_trend }}">
-                                {% if ei_trend.ei_trend == "improving" %}↑
-                                {% elif ei_trend.ei_trend == "declining" %}↓
+                            <span class="trend-panel__arrow trend-panel__arrow--{{ week_on_week_behavior.behavior_trend }}">
+                                {% if week_on_week_behavior.behavior_trend == "improving" %}↑
+                                {% elif week_on_week_behavior.behavior_trend == "declining" %}↓
                                 {% else %}→{% endif %}
                             </span>
-                            <span class="trend-panel__direction">{{ ei_trend.ei_trend | capitalize }}</span>
+                            <span class="trend-panel__direction">{{ week_on_week_behavior.behavior_trend | capitalize }}</span>
                         </li>
                         {% endif %}
                     </ul>
-                    {% if (performance_trends.win_rate_trend or performance_trends.expectancy_trend) and performance_trends.weeks_available < 2 %}
-                    <p class="trend-panel__note">More weeks needed for reliable trend data.</p>
+                    {% if (week_on_week_trends.win_rate_trend or week_on_week_trends.expectancy_trend) and week_on_week_trends.has_limited_sample %}
+                    <p class="trend-panel__note">One side has limited sample size, so treat this as directional.</p>
                     {% endif %}
                 </article>
                 {% endif %}

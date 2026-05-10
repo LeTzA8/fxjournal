@@ -2,9 +2,9 @@
 
 Last Updated: 2026-05-10
 
-## Rolling trends include finished trading week after market cutoff (2026-05-10)
+## Dashboard trends changed to week-on-week comparisons (2026-05-10)
 
-- Dashboard rolling win-rate/expectancy trends now use the same Friday 5:30 PM New York market-week cutoff as weekly AI eligibility to decide whether the current dashboard week can be included. Before the cutoff, rolling trends still look at the previous four completed local weeks; after the cutoff, the current week can become the newest trend week, so weekend dashboards do not show one-week-stale performance direction. Focused tests cover the cutoff and a Sunday case where this week's worse expectancy correctly trends declining. (`routes/dashboard.py`, `tests/test_dashboard_weekly_ai.py`)
+- The dashboard trend panel is now labeled "Week-on-week" and compares this dashboard week's win rate and expectancy directly against the previous week. Expectancy uses realized PnL per closed trade, and the panel shows a limited-sample note when either side has fewer than `SMALL_SAMPLE_MIN_TRADES` closed trades. Behaviour now compares objective trade-behaviour pressure from this week's closed trades against the previous week's closed trades, using the same scoring engine as weekly AI but without waiting for saved weekly review payloads. Focused tests cover the worse-current-week expectancy case and the current-week behaviour deterioration case. (`routes/dashboard.py`, `templates/index.html`, `tests/test_dashboard_weekly_ai.py`)
 
 ## MT5 sync completion heartbeat stamp (2026-05-04)
 

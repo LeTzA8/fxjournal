@@ -14,7 +14,6 @@ from ai_service import (
     WEEKLY_DASHBOARD_KIND,
     build_dashboard_review_display,
     count_closed_trade_ideas_in_period,
-    get_current_market_week_period,
     generate_weekly_review_chat_reply,
     get_latest_trade_week_period,
     get_latest_weekly_dashboard_advice,
@@ -52,6 +51,7 @@ from helpers.core import (
     normalize_timezone_name,
 )
 from helpers.running_pnl import build_running_pnl_events, summarize_running_pnl
+from helpers.scoring import compute_emotional_index
 from helpers.trade_analysis import detect_outliers, get_trade_identity
 from helpers.trends import trend_direction_ei_scores, trend_direction_expectancy_weeks, trend_direction_win_rate_weeks
 from helpers.weekly_review_ref_rewrite import (
@@ -957,106 +957,97 @@ def _summarize_week(records, start_local, end_local=None):
     }
 
 
-def _rolling_trends_include_current_week(now_utc=None):
-    period = get_weekly_dashboard_period(now_utc=now_utc)
-    current_period = get_current_market_week_period(now_utc=now_utc)
-    return period.get("period_start_utc") == current_period.get("period_start_utc")
+def _week_expectancy(week_stats):
+    trade_count = (week_stats or {}).get("trade_count") or 0
+    if trade_count <= 0:
+        return None
+    return ((week_stats or {}).get("net_pnl") or 0.0) / trade_count
 
 
-def _build_performance_trends(
-    closed_records,
-    now_local,
-    min_trades_per_week=3,
-    include_current_week=False,
-):
-    """
-    Win rate and expectancy trend over the last four completed weeks (Mon–Mon, local).
-    Direction is None when there is not enough non-null weekly data.
-    """
-    current_week_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
-        days=now_local.weekday()
+def _build_week_on_week_performance_trends(current_week_stats, previous_week_stats):
+    """Direct comparison of this dashboard week against the previous dashboard week."""
+    current_win_rate = (current_week_stats or {}).get("win_rate")
+    previous_win_rate = (previous_week_stats or {}).get("win_rate")
+    current_expectancy = _week_expectancy(current_week_stats)
+    previous_expectancy = _week_expectancy(previous_week_stats)
+
+    weeks_available = sum(
+        1
+        for stats in (current_week_stats, previous_week_stats)
+        if (stats or {}).get("trade_count")
     )
-    latest_week_start = (
-        current_week_start
-        if include_current_week
-        else current_week_start - timedelta(weeks=1)
+    has_limited_sample = any(
+        0 < ((stats or {}).get("trade_count") or 0) < SMALL_SAMPLE_MIN_TRADES
+        for stats in (current_week_stats, previous_week_stats)
     )
-
-    weeks = []
-    for i in range(4):
-        start = latest_week_start - timedelta(weeks=i)
-        end = start + timedelta(weeks=1)
-        week_records = [
-            r
-            for r in closed_records
-            if (r.get("realized_at_local") or r.get("opened_at_local")) is not None
-            and start <= (r.get("realized_at_local") or r.get("opened_at_local")) < end
-        ]
-        count = len(week_records)
-        if count < min_trades_per_week:
-            weeks.append(None)
-            continue
-        wins = sum(1 for r in week_records if (r.get("pnl") or 0) > 0)
-        net_pnl = sum((r.get("pnl") or 0) for r in week_records)
-        weeks.append(
-            {
-                "win_rate": wins / count * 100.0,
-                "expectancy": net_pnl / count,
-                "count": count,
-            }
-        )
-
-    win_rates = [w["win_rate"] if w else None for w in weeks]
-    expectancies = [w["expectancy"] if w else None for w in weeks]
-    usable_weeks = sum(1 for w in weeks if w is not None)
 
     return {
-        "win_rate_trend": trend_direction_win_rate_weeks(win_rates),
-        "expectancy_trend": trend_direction_expectancy_weeks(expectancies),
-        "weeks_available": usable_weeks,
-        "current_win_rate": weeks[0]["win_rate"] if weeks[0] else None,
-        "current_expectancy": weeks[0]["expectancy"] if weeks[0] else None,
+        "win_rate_trend": trend_direction_win_rate_weeks(
+            [current_win_rate, previous_win_rate]
+        ),
+        "expectancy_trend": trend_direction_expectancy_weeks(
+            [current_expectancy, previous_expectancy]
+        ),
+        "weeks_available": weeks_available,
+        "has_limited_sample": has_limited_sample,
+        "current_win_rate": current_win_rate,
+        "previous_win_rate": previous_win_rate,
+        "current_expectancy": current_expectancy,
+        "previous_expectancy": previous_expectancy,
     }
 
 
-def _build_ei_trend(user_id, trade_account_id):
-    """Trend from stored weekly dashboard AI payloads (emotional_index.score); lower is better."""
-    if user_id is None:
-        return {"ei_trend": None, "current_ei_score": None}
+def _closed_trades_in_local_window(trades, timezone_name, start_local, end_local=None):
+    result = []
+    for trade in trades or []:
+        if getattr(trade, "closed_at", None) is None:
+            continue
+        realized_local = to_display_timezone(
+            getattr(trade, "closed_at", None),
+            timezone_name,
+        ) or to_display_timezone(getattr(trade, "opened_at", None), timezone_name)
+        if realized_local is None or realized_local < start_local:
+            continue
+        if end_local is not None and realized_local >= end_local:
+            continue
+        result.append(trade)
+    return result
 
-    reviews = (
-        AIGeneratedResponse.query.filter_by(
-            user_id=user_id,
-            trade_account_id=trade_account_id,
-            kind=WEEKLY_DASHBOARD_KIND,
-        )
-        .options(load_only(AIGeneratedResponse.payload_json, AIGeneratedResponse.period_start_utc))
-        .order_by(AIGeneratedResponse.period_start_utc.desc())
-        .limit(4)
-        .all()
+
+def _objective_behavior_score(trades):
+    emotional_index = compute_emotional_index(trades=trades, weekly_checkin=None)
+    score = (emotional_index or {}).get("score")
+    return float(score) if score is not None else None
+
+
+def _build_week_on_week_behavior_trend(
+    user_trades,
+    timezone_name,
+    current_week_start,
+    previous_week_start,
+    previous_week_end,
+):
+    """Compare objective trade-behavior pressure this week vs the previous week."""
+    current_trades = _closed_trades_in_local_window(
+        user_trades,
+        timezone_name,
+        current_week_start,
     )
-
-    scores = []
-    for review in reviews:
-        try:
-            payload = json.loads(review.payload_json or "")
-            score = payload.get("emotional_index", {}).get("score")
-            if score is not None:
-                scores.append(float(score))
-            else:
-                scores.append(None)
-        except (TypeError, ValueError):
-            scores.append(None)
-
-    current_ei_score = None
-    for entry in scores:
-        if entry is not None:
-            current_ei_score = entry
-            break
+    previous_trades = _closed_trades_in_local_window(
+        user_trades,
+        timezone_name,
+        previous_week_start,
+        previous_week_end,
+    )
+    current_score = _objective_behavior_score(current_trades)
+    previous_score = _objective_behavior_score(previous_trades)
 
     return {
-        "ei_trend": trend_direction_ei_scores(scores),
-        "current_ei_score": current_ei_score,
+        "behavior_trend": trend_direction_ei_scores([current_score, previous_score]),
+        "current_behavior_score": current_score,
+        "previous_behavior_score": previous_score,
+        "current_trade_count": len(current_trades),
+        "previous_trade_count": len(previous_trades),
     }
 
 
@@ -1608,12 +1599,17 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
     has_ai_review = weekly_ai_state["weekly_ai_review"] is not None
     show_whats_next_banner = not (has_any_trades and has_ai_review)
 
-    performance_trends = _build_performance_trends(
-        closed_records,
-        now_local,
-        include_current_week=_rolling_trends_include_current_week(now_utc),
+    week_on_week_trends = _build_week_on_week_performance_trends(
+        current_week_stats,
+        previous_week_stats,
     )
-    ei_trend_data = _build_ei_trend(user_id, active_trade_account_id)
+    week_on_week_behavior_data = _build_week_on_week_behavior_trend(
+        user_trades,
+        timezone_name,
+        current_week_start,
+        previous_week_start,
+        previous_week_end,
+    )
     latest_trade_snapshot = _build_latest_trade_snapshot(user_trades, timezone_name)
     weekly_review_chat_prompts = _build_weekly_review_chat_prompts(
         weekly_ai_state.get("weekly_ai_review_display"),
@@ -1637,8 +1633,8 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         current_week_stats=current_week_stats,
         previous_week_stats=previous_week_stats,
         week_on_week_insight=week_on_week_insight,
-        performance_trends=performance_trends,
-        ei_trend=ei_trend_data,
+        week_on_week_trends=week_on_week_trends,
+        week_on_week_behavior=week_on_week_behavior_data,
         latest_trade_snapshot=latest_trade_snapshot,
         chart_points=chart_points,
         weekly_ai_review=weekly_ai_state["weekly_ai_review"],
