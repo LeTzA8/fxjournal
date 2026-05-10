@@ -10,6 +10,15 @@
             This Privacy Policy explains how MyFXJournal collects, uses, stores, shares, and deletes your information
             when you use our website and services.
         </p>
+        <p>
+            Nothing here changes the fact that trading is risky and discretionary: analytics, AI-assisted text, or
+            stored patterns are journaling aids. You—not MyFXJournal—decide whether and how you trade or follow any
+            idea you read elsewhere.
+        </p>
+        <p class="legal-crosslink">
+            Your use of the service is also governed by our
+            <a href="{{ url_for('terms_and_conditions') }}">Terms and Conditions</a>.
+        </p>
 
         <h2>1. Information We Collect</h2>
         <p>We may collect:</p>
@@ -17,42 +26,84 @@
             <li>Account details such as username, email address, hashed password, and account verification status, and
             if you use “Sign in with Google,” basic profile identifiers Google shares for authentication (as permitted by
             your Google settings).</li>
-            <li>Trading journal data you choose to upload or enter, including trade account names, trade notes, import metadata, symbols, timestamps, pricing, position size, and performance metrics.</li>
-            <li>MT5 sync workflow data if you use that feature, including MT5 sync batch status, linked trade account mapping, MT5 account number, MT5 server, and MT5 investor/read-only credentials submitted for sync. MT5 passwords are encrypted before storage.</li>
-            <li>Operational data such as IP address, browser or device metadata, display timezone, session activity, and logs needed for security, fraud prevention, troubleshooting, and performance.</li>
-            <li>Cookie, session, and similar technical data reasonably required to keep you signed in, protect the service, and remember basic product state.</li>
-            <li>Messages you send in optional weekly-review follow-up chat (Q&amp;A) tied to a stored review, and the
-            assistant replies we return, when you use that feature.</li>
+            <li>Optional onboarding or profile fields you provide (for example trading style, markets, or experience
+            level) when the product asks for them—used to tailor defaults and AI-related context, not as a verified
+            regulatory record.</li>
+            <li>Trading journal data you choose to upload or enter, including trade account names, trade notes, import
+            metadata, symbols, timestamps, pricing, position size, and performance metrics—whether entered manually,
+            imported from files (such as MT5 export spreadsheets or broker CSVs), or ingested through MT5 sync.</li>
+            <li>Derived analytics we compute from your trades (for example session or symbol breakdowns, behavioral-style
+            scores, win-rate or expectancy summaries, “coaching hypothesis” structures, and similar aggregates). These are
+            software outputs, not independent facts about you outside the journal.</li>
+            <li>Weekly check-in or similar reflection fields if you submit them (mood, execution self-ratings, free-text
+            context you type).</li>
+            <li>MT5 sync workflow data if you use that feature, including MT5 sync batch status, linked trade account
+            mapping, MT5 account number, MT5 server, and MT5 investor/read-only credentials submitted for sync. MT5
+            passwords are encrypted before storage.</li>
+            <li>Operational data such as IP address, browser or device metadata, display timezone, session activity, and
+            logs needed for security, fraud prevention, troubleshooting, and performance.</li>
+            <li>Cookie, session, and similar technical data reasonably required to keep you signed in, protect the
+            service, and remember basic product state.</li>
+            <li>Waitlist or early-access requests where we offer them, including email, stated plan or feature interest,
+            and optional context fields you submit on pricing or signup pages.</li>
+            <li>If paid billing is enabled: limited payment-related metadata from our processor (such as subscription
+            status or customer identifiers at the processor). Payment card numbers are handled by the processor, not
+            stored directly by us in routine flows.</li>
+            <li>Messages you send in optional weekly-review follow-up chat (conversational Q&amp;A), and assistant replies we
+            return, including threaded history stored with that weekly review so the conversation can resume coherently.</li>
+            <li>Persisted AI outputs (for example stored weekly AI review text plus structured payloads used to render or
+            debug them).</li>
+            <li>Email interactions we send or you trigger through the service (verification, onboarding, operational
+            notices about sync, product updates).</li>
             <li>Feedback, support, and communication content you submit to us.</li>
         </ul>
 
         <h2>2. How We Use Information</h2>
         <p>We use your information to:</p>
         <ul>
-            <li>Provide and improve the MyFXJournal service, including the dashboard, analytics, import tools, and trade account management.</li>
+            <li>Provide and improve the MyFXJournal service, including the dashboard, analytics, import tools, replay
+            features where enabled, entitlement or plan gates, and trade account management.</li>
             <li>Authenticate users, maintain account security, verify email ownership, and prevent abuse.</li>
-            <li>Process MT5 and Tradovate imports, normalize timestamps, and generate performance analytics, equity curves, and related summaries.</li>
-            <li>Manage and support MT5 sync onboarding, including securely storing submitted MT5 investor/read-only credentials and using them to connect linked accounts for trade-history sync.</li>
-            <li>Respond to support requests, feedback submissions, and communicate service-related updates. Authorized MyFXJournal staff may access account data, including dashboards, analytics, trade history, AI review history, MT5 sync status, and related account pages, on a read-only basis to diagnose technical issues, investigate abuse, and resolve support requests. Routine troubleshooting access does not include editing your trade data or placing trades.</li>
-            <li>Generate AI-assisted outputs, including weekly AI reviews, optional follow-up Q&amp;A tied to a stored weekly review, and other journal insights, using your trade history, notes, and derived performance metrics.</li>
+            <li>Process file imports and Tradovate CSV imports, ingest MT5-synchronized trades, normalize timestamps where
+            the product supports it, and generate performance analytics, equity views, and related summaries.</li>
+            <li>Compute behavioral-style analytics and coaching-oriented structures from your trade history (pattern and
+            statistics-based), then display them or pass them into AI-assisted features.</li>
+            <li>Incorporate earlier stored context where the product architecture uses it—for example prior weekly AI
+            reviews, summarized trade history windows, onboarding profile fields you saved, weekly check-ins, and prior turns
+            in the same weekly-review chat thread—to keep outputs coherent. This is continuity inside your journal, not a
+            stand-alone audited memory product.</li>
+            <li>Manage and support MT5 sync onboarding, including securely storing submitted MT5 investor/read-only
+            credentials and using them to connect linked accounts for trade-history sync.</li>
+            <li>Operate waitlists, phased rollouts, and (when live) subscriptions or tier changes.</li>
+            <li>Respond to support requests, feedback submissions, and communicate service-related updates. Authorized
+            MyFXJournal staff may access account data, including dashboards, analytics, trade history, AI review history,
+            stored chat transcripts tied to reviews, MT5 sync status, and related account pages, on a read-only basis to
+            diagnose technical issues, investigate abuse, and resolve support requests. Routine troubleshooting access does
+            not include editing your trade data or placing trades.</li>
+            <li>Generate AI-assisted outputs, including weekly AI reviews, optional conversational follow-up tied to a
+            stored weekly review, and reflections shown elsewhere in the app, including troubleshooting using stored
+            prompts and responses tied to failures or quality gaps.</li>
         </ul>
 
         <h2>3. AI Processing and Data Sharing</h2>
         <p>
             We do not sell personal information. We may share limited data with service providers that help us
-            operate the app subject to appropriate safeguards. Typical categories include: application and database
-            hosting (e.g. PostgreSQL), background task and cache infrastructure (e.g. Redis and related workers), email
-            delivery, sign-in with Google (OAuth) when you choose it, and AI model providers (e.g. OpenAI or equivalent)
-            for AI-assisted features—each only as needed to run the product you are using.
+            operate the app subject to appropriate safeguards. Typical categories include: cloud application and database
+            hosting, background task workers and cache/broker infrastructure, email delivery (for example Resend),
+            sign-in with Google (OAuth) when you choose it, and AI model providers (for example OpenAI or an equivalent
+            vendor) for AI-assisted features—each only as needed to run the product you are using. Some infrastructure or
+            MT5-related processing may run on virtual machines or regions separate from the main web app.
         </p>
         <p>
-            If AI-assisted features are enabled, relevant trade data, trade notes, and derived performance metrics
-            may be transmitted to third-party AI providers strictly to generate requested outputs for your account.
+            If AI-assisted features are enabled, relevant trade data, trade notes, weekly check-in text you provided,
+            profile fields we include in prompts, derived metrics and behavioral-style summaries, prior review or chat
+            context the feature is designed to send, and similar journal-bound material may be transmitted to
+            third-party AI providers strictly to generate requested outputs for your account.
         </p>
         <p>
-            We may retain prompt history, AI response history, usage metadata, and limited model request metadata so
-            we can display prior outputs, prevent duplicate generations, troubleshoot failures, and improve feature
-            quality over time.
+            We may retain prompt history, AI response history, weekly-review chat messages, usage metadata, and limited
+            model request metadata so we can display prior outputs, keep chat threads coherent, prevent duplicate
+            generations, troubleshoot failures, and improve feature quality over time.
         </p>
         <p>
             We do not use your journal data to provide services to other users. Any third-party processing described
@@ -92,6 +143,12 @@
             Where MT5 terminal cleanup is still pending, limited cleanup-only MT5 records may remain until that manual
             cleanup is completed, after which those records may also be removed.
         </p>
+        <p>
+            Stored weekly AI artifacts, review-scoped conversational messages, behavioral-style summaries derived in the
+            database, and waitlist or billing metadata follow the same broad rule: kept while your account is active and
+            the feature is in use, adjusted when you delete underlying trades or accounts, and pruned over time in logs or
+            backups as systems rotate.
+        </p>
 
         <h2>6. Security</h2>
         <p>
@@ -124,7 +181,8 @@
         <p>
             AI-assisted features and MT5 sync are optional. If you do not want new journal content used for
             AI-assisted outputs, stop using those features and contact us if you want to request deletion of stored
-            AI history where applicable. Avoid entering sensitive personal information in trade notes.
+            AI history (including weekly reviews and review-scoped chat) where applicable. Avoid entering sensitive
+            personal information in trade notes, check-ins, or chat—models may echo or process what you submit.
         </p>
         <p>
             MT5 sync is optional. If you choose to use it, submit only investor/read-only MT5 credentials for
@@ -198,6 +256,12 @@
     }
 
     .legal-updated {
+        margin: 0 0 1rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+    }
+
+    .legal-crosslink {
         margin: 0 0 1rem;
         color: var(--muted);
         font-size: 0.9rem;

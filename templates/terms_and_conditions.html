@@ -10,6 +10,10 @@
             These Terms and Conditions govern your access to and use of MyFXJournal. By creating an account or using
             the service, you agree to these terms.
         </p>
+        <p class="legal-crosslink">
+            For how we collect, use, and retain personal data, see the
+            <a href="{{ url_for('privacy_policy') }}">Privacy Policy</a>.
+        </p>
 
         <h2>1. Eligibility and Account Responsibility</h2>
         <p>
@@ -21,14 +25,26 @@
         <h2>2. Service Description</h2>
         <p>
             MyFXJournal provides tools for journaling, importing, organizing, and analyzing trading activity across
-            supported workflows such as manual trade entry, MT5 imports, Tradovate imports, trade account management,
-            dashboard metrics, and analytics views. Features may change, be improved, suspended, or discontinued at
-            any time.
+            supported workflows such as manual trade entry, file-based MT5 exports, Tradovate imports,
+            administrator-assisted MT5 account synchronization (“MT5 sync”), trade account management, dashboard metrics,
+            and analytics views. The product may also surface behavioral-style summaries—for example trends, repeatable
+            patterns suggested from your trade history, and machine-assisted “coaching hypotheses” layered on computed
+            statistics. These summaries are tooling for reflection, not an objective psychological or risk profile.
+            Features may change, be improved, suspended, or discontinued at any time.
         </p>
         <p>
-            Certain features may use automated or AI-assisted processing to generate summaries, analytics, or draft
-            journal content from the trade data and notes you submit, including an optional follow-up Q&amp;A (chat-style)
-            tied to a stored weekly review when you choose to use it.
+            Certain features use automated or AI-assisted processing on your data: for example persisted weekly AI
+            reviews, optional conversational follow-up tied to a stored weekly review (including message threads we
+            keep so the chat stays coherent later), reflections or insights surfaced in the UI, and other generated text
+            from trade history, journal notes, check-ins where you submit them, and stored profile preferences you choose
+            to provide. Outputs may also reuse prior-week context (such as saved reviews or summarized history) when the
+            product is designed that way—we do not claim a separate audited “behavioral science” pipeline; it is journal
+            and analytics tooling with model-generated language on top.
+        </p>
+        <p>
+            AI-assisted outputs are iterative and imperfect. Automated labels, pattern calls, hypotheses, tone, emphasis,
+            and suggested “next steps” can be wrong, overly generic, or blind to market conditions and non-journal facts.
+            They are not a substitute for your own judgment, record-keeping, or professional advice.
         </p>
         <p>
             Imports, syncs, and automated pulls depend on the source (files, your broker, or MT5 history). They may
@@ -40,8 +56,11 @@
             signal service, copy-trading product, or trade execution service.
         </p>
         <p>
-            MT5 sync may be offered in limited beta batches, and setup begins only after you submit read-only details
-            while a batch is open for a specific trade account.
+            MT5 sync, pricing or plan tier rollouts, and AI-driven journal features may be offered on a gradual,
+            waitlist-managed, beta, or “best effort” basis. Capability, eligibility, quotas, trials, or access windows can
+            change without notice aside from where we deliberately communicate them in product (for example onboarding or
+            plan screens). Setup for MT5 typically begins only after you submit investor/read-only credentials and any
+            batch or queue requirements are satisfied for that trade account.
         </p>
         <p>
             The service may be interrupted for maintenance, operational reasons, or third-party or infrastructure
@@ -80,24 +99,32 @@
         </p>
         <p>
             To troubleshoot support requests, sync failures, or security issues, authorized MyFXJournal staff may
-            access your dashboard, analytics, trade history, AI review history, MT5 sync status, and related account
-            pages on a read-only basis. That troubleshooting access does not authorize us to place trades, change
+            access your dashboard, analytics, trade history, stored weekly AI outputs and optional review-follow-up chat
+            threads, MT5 sync status, and related account pages on a read-only basis. That troubleshooting access does not authorize us to place trades, change
             broker settings, or edit your stored trade data unless you separately request a specific change and we
             clearly confirm it.
         </p>
 
-        <h2>4. No Investment Advice</h2>
+        <h2>4. No Investment Advice; Limits on Behavioral Interpretation</h2>
         <p>
-            MyFXJournal is an informational journaling tool only and does not provide financial, investment, tax, or
-            legal advice. You are solely responsible for your trading decisions and outcomes.
+            MyFXJournal is an informational journaling and analytics aid only and does not provide financial, investment,
+            tax, legal, or medical/psychological advice. You remain solely responsible for your trading decisions and
+            outcomes, including position sizing, risk, compliance with regulators and brokers, and any losses.
         </p>
         <p>
-            AI-generated outputs may be incomplete, inaccurate, or generic and must not be treated as professional
-            advice or as a substitute for your own review.
+            Narratives about discipline, habits, “revenge” trading, routines, timing, emotional pressure, confidence, or
+            similar language are illustrative coaching language derived from imperfect trade-history signals and chosen
+            model behavior. They are not clinical assessments, diagnoses, or verified facts about you; they can miss
+            context and should be treated as prompts for your own review.
         </p>
         <p>
-            NFA: Nothing in MyFXJournal, including AI-generated reviews, summaries, analytics, or prompts, constitutes
-            a recommendation, solicitation, or offer to buy, sell, or hold any financial instrument.
+            AI-generated outputs may be incomplete, inaccurate, or generic (including hallucinated linkage between trades
+            and causes) and must not be relied on without independent verification against your logs, broker statements,
+            and judgment.
+        </p>
+        <p>
+            NFA: Nothing in MyFXJournal, including AI-generated reviews, summaries, analytics, conversational replies, or
+            prompts, constitutes a recommendation, solicitation, or offer to buy, sell, or hold any financial instrument.
         </p>
 
         <h2>5. Acceptable Use</h2>
@@ -109,6 +136,10 @@
             <li>Trying to scrape, reverse engineer, or abuse automated features, rate limits, or security controls.</li>
             <li>Submitting unlawful, infringing, deceptive, or harmful content through notes, uploads, or contact forms.</li>
             <li>Submitting unauthorized or over-privileged credentials, including trading or master passwords where read-only MT5 credentials are required.</li>
+            <li>Attempting to extract other users’ data, bypass entitlements or fair-use limits, or misuse waitlist or
+            billing flows.</li>
+            <li>Using conversational or AI interfaces to solicit disallowed outputs (such as individualized trade picks or
+            claims we cannot verify) beyond what we design the product for.</li>
         </ul>
 
         <h2>6. Intellectual Property and License</h2>
@@ -148,8 +179,9 @@
             including merchantability, fitness for a particular purpose, and non-infringement.
         </p>
         <p>
-            We do not warrant that imports, analytics, timezone normalization, AI outputs, or performance metrics will
-            always be complete, accurate, uninterrupted, or error-free.
+            We do not warrant that imports, analytics, timezone normalization, AI outputs—including weekly reviews,
+            conversational replies, hypothesis-style summaries, or pattern language—or performance metrics will always be
+            complete, accurate, uninterrupted, or error-free.
         </p>
         <p>
             We do not warrant that MT5 sync, broker connectivity, or submitted account credentials will always work
@@ -164,18 +196,50 @@
         </p>
         <p>
             This limitation includes losses, missed opportunities, broker-side actions, sync delays, import errors,
-            platform outages, or other consequences arising from live or real-funded MT5 accounts you choose to link,
-            from the credentials or account details you submit, or from read-only troubleshooting access performed to
-            investigate your account or support request.
+            platform outages, mis-timed or erroneous AI narratives, misplaced confidence in hypothesis-style summaries, or
+            other consequences arising from live or real-funded MT5 accounts you choose to link, from the credentials or
+            account details you submit, or from read-only troubleshooting access performed to investigate your account or
+            support request.
         </p>
 
-        <h2>10. Termination</h2>
+        <h2>10. Subscription, Waitlist, and Payment</h2>
         <p>
-            We may suspend or terminate accounts that violate these terms or pose security or legal risk. You may
-            stop using the service at any time.
+            Portions of MyFXJournal are or may become free while other capabilities are gated by plan tier, trials,
+            feature flags, or capacity. Where we invite you to join a waitlist we collect limited information needed to
+            manage interest (for example email and stated preferences)—see the Privacy Policy for detail.
+        </p>
+        <p>
+            If paid subscriptions or upgrades are introduced, billing is expected to be handled by a third-party payment
+            processor (for example Stripe). Your card or payment details are processed by that provider under its terms;
+            we generally receive payment status and limited billing metadata needed to operate your account, not full card
+            numbers stored on our own servers. Taxes, currency, and invoice practices follow what we display at checkout
+            or in account settings when those flows exist.
+        </p>
+        <p>
+            Fees are for software access and related services, not trading performance. Unless required by applicable law
+            or stated otherwise at purchase, payments are non-refundable once a billing period has started. If you cancel,
+            you typically keep access through the end of the period you already paid for, subject to how the product
+            implements cancellation at that time.
+        </p>
+        <p>
+            Plan names, prices, entitlements, and trial rules can change. We are a small product and do not guarantee
+            grandfathering of every legacy price or feature; where we explicitly grant grandfathering (for example in
+            product copy or account flags), that exception controls for the accounts it applies to.
         </p>
 
-        <h2>11. Changes to Terms</h2>
+        <h2>11. Termination and Access</h2>
+        <p>
+            We may suspend, limit, or terminate access to the service (in whole or for specific features) if you breach
+            these terms, if we detect abuse or security risk, for operational or legal reasons, or if we wind down or
+            materially change the product. We may also pause MT5 or AI workloads when infrastructure, third-party APIs, or
+            capacity require it.
+        </p>
+        <p>
+            You may stop using the service at any time. Deletion of your account or data may be subject to the retention
+            and backup notes elsewhere in these terms and in the Privacy Policy.
+        </p>
+
+        <h2>12. Changes to Terms</h2>
         <p>
             We may update these Terms and Conditions periodically. Continued use after updates means you accept the
             revised terms.
@@ -185,12 +249,12 @@
             service communications where appropriate.
         </p>
 
-        <h2>12. Governing Law</h2>
+        <h2>13. Governing Law</h2>
         <p>
             These terms are governed by the laws of Singapore, unless otherwise required by applicable law.
         </p>
 
-        <h2>13. Contact</h2>
+        <h2>14. Contact</h2>
         <p>
             MyFXJournal is operated from Singapore under the MyFXJournal brand.
         </p>
@@ -233,6 +297,12 @@
     }
 
     .legal-updated {
+        margin: 0 0 1rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+    }
+
+    .legal-crosslink {
         margin: 0 0 1rem;
         color: var(--muted);
         font-size: 0.9rem;
