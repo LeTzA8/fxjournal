@@ -1,0 +1,78 @@
+{% set _user_logged_in = user_logged_in|default(false) %}
+{% set _current_page = public_header_current|default('landing') %}
+{% set _landing_url = url_for('landing') %}
+{% set _workflow_href = '#workflow' if _current_page == 'landing' else _landing_url ~ '#workflow' %}
+{% set _features_href = '#features' if _current_page == 'landing' else _landing_url ~ '#features' %}
+{% set _compare_href = '#compare' if _current_page == 'landing' else _landing_url ~ '#compare' %}
+<header class="landing-header{% if _user_logged_in %} is-user-logged-in{% endif %}">
+    <a href="{{ _landing_url }}" class="landing-brand" aria-label="MyFXJournal Home">
+        <img
+            src="{{ url_for('static', filename='site-logo.png') }}"
+            alt="MyFXJournal"
+            class="landing-brand-logo"
+        >
+        <span class="landing-brand-text">MyFXJournal</span>
+    </a>
+
+    <button
+        type="button"
+        class="landing-mobile-nav-toggle"
+        aria-expanded="false"
+        aria-controls="publicMobileNav"
+        data-mobile-nav-toggle
+    >Menu</button>
+
+    <nav class="landing-nav" aria-label="Landing">
+        <a href="{{ _workflow_href }}">Workflow</a>
+        <a href="{{ _features_href }}">Features</a>
+        <div class="landing-nav-dropdown site-nav-group" data-nav-dropdown>
+            <button type="button" class="landing-nav-summary" aria-haspopup="true" aria-expanded="false" data-nav-dropdown-toggle>Explore</button>
+            <div class="landing-nav-menu" aria-label="Explore workflows" data-nav-dropdown-menu hidden>
+                <a href="{{ url_for('trading_journal_page') }}" class="site-nav-link site-nav-sublink">Trading Journal</a>
+                <a href="{{ url_for('free_mt5_sync_page') }}" class="site-nav-link site-nav-sublink">Free MT5 Sync</a>
+                <a href="{{ url_for('weekly_trading_review_page') }}" class="site-nav-link site-nav-sublink">Weekly Trading Review</a>
+                <a href="{{ url_for('ai_weekly_trading_review_page') }}" class="site-nav-link site-nav-sublink">AI Weekly Review</a>
+                <a href="{{ url_for('trade_replay_chart_page') }}" class="site-nav-link site-nav-sublink">Trade Replay Chart</a>
+                <a href="{{ url_for('revenge_trading_journal_page') }}" class="site-nav-link site-nav-sublink">Revenge Trading Journal</a>
+                <a href="{{ url_for('why_not_improving_page') }}" class="site-nav-link site-nav-sublink">Why Am I Not Improving?</a>
+                <a href="{{ url_for('why_keep_losing_page') }}" class="site-nav-link site-nav-sublink">Why Do I Keep Losing?</a>
+            </div>
+        </div>
+        <a href="{{ url_for('pricing_page') }}"{% if _current_page == 'pricing' %} aria-current="page"{% endif %}>Pricing</a>
+        <a href="{{ _compare_href }}">Compare</a>
+        <a href="{{ url_for('contact.contact') }}">Contact</a>
+    </nav>
+
+    <div class="landing-auth-links{% if _user_logged_in %} is-user-logged-in{% endif %}">
+        {% if _user_logged_in %}
+        <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Dashboard</a>
+        <a href="{{ url_for('account.account') }}" class="submit-btn">Account</a>
+        <form action="{{ url_for('logout') }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="ghost-btn logout-btn">Log Out</button>
+        </form>
+        {% else %}
+        <a href="{{ url_for('login') }}" class="ghost-btn">Log In</a>
+        <a href="{{ url_for('register') }}" class="submit-btn">Start Free</a>
+        {% endif %}
+    </div>
+
+    <nav id="publicMobileNav" class="landing-mobile-nav" aria-label="Mobile navigation" hidden>
+        <a href="{{ _workflow_href }}">Workflow</a>
+        <a href="{{ _features_href }}">Features</a>
+        <a href="{{ url_for('trading_journal_page') }}">Trading Journal</a>
+        <a href="{{ url_for('free_mt5_sync_page') }}">Free MT5 Sync</a>
+        <a href="{{ url_for('weekly_trading_review_page') }}">Weekly Trading Review</a>
+        <a href="{{ url_for('trade_replay_chart_page') }}">Trade Replay Chart</a>
+        <a href="{{ url_for('pricing_page') }}">Pricing</a>
+        <a href="{{ _compare_href }}">Compare</a>
+        <a href="{{ url_for('contact.contact') }}">Contact</a>
+        {% if _user_logged_in %}
+        <a href="{{ url_for('dashboard.home') }}">Dashboard</a>
+        <a href="{{ url_for('account.account') }}">Account</a>
+        {% else %}
+        <a href="{{ url_for('login') }}">Log In</a>
+        <a href="{{ url_for('register') }}">Start Free</a>
+        {% endif %}
+    </nav>
+</header>

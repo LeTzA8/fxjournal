@@ -476,6 +476,7 @@ def test_positions_to_open_trades_maps_fields():
         volume=0.1,
         commission=-1.5,
         swap=-0.5,
+        profit=12.75,
         sl=2280.0,
         tp=2350.0,
         time=1_710_000_000,
@@ -493,6 +494,7 @@ def test_positions_to_open_trades_maps_fields():
     assert t["lot_size"] == pytest.approx(0.1)
     assert t["commission"] == pytest.approx(-1.5)
     assert t["swap"] == pytest.approx(-0.5)
+    assert t["pnl"] == pytest.approx(12.75)
     assert t["stop_loss"] == pytest.approx(2280.0)
     assert t["take_profit"] == pytest.approx(2350.0)
     assert t["exit_price"] is None
@@ -513,19 +515,15 @@ def test_sync_mt5_account_skips_when_same_account_is_already_locked(monkeypatch)
     assert result == {"skipped": "sync already running"}
 
 
-def test_sync_mt5_account_skips_when_global_mt5_lock_busy(monkeypatch):
-    monkeypatch.setattr(
-        "celery_workers.cache.acquire_mt5_global_lock",
-        lambda *args, **kwargs: False,
-    )
-    monkeypatch.setattr(
-        "celery_workers.cache.peek_mt5_global_lock_holder",
-        lambda: "setup:task-xyz:42",
-    )
+def test_sync_mt5_account_per_account_lock_skip_does_not_require_global_lock(monkeypatch):
+    def _unexpected_global_lock(*args, **kwargs):
+        raise AssertionError("sync worker should use the per-account lock path")
 
+    monkeypatch.setattr("celery_workers.cache.acquire_mt5_global_lock", _unexpected_global_lock)
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: False)
     result = sync_mt5_account.run(123)
 
-    assert result == {"skipped": "global MT5 lock busy"}
+    assert result == {"skipped": "sync already running"}
 
 
 def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
@@ -3696,6 +3694,66 @@ def test_sync_all_active_mt5_accounts_uses_sync_queue_with_short_expiry(app_ctx,
     assert captured == [
         {
             "args": [mt5_account.id],
+            "kwargs": {"trigger_source": "beat"},
+            "queue": "mt5_sync",
+            "expires": 28,
+        }
+    ]
+
+
+def test_sync_all_active_mt5_accounts_skips_paused_accounts(app_ctx, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    for existing_account in MT5Account.query.all():
+        existing_account.is_active = False
+    db.session.commit()
+
+    user, trade_account = _create_user_with_account(
+        username="beat-paused-user",
+        email="beat-paused-user@example.com",
+    )
+    active_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="85858586",
+    )
+    paused_trade_account = TradeAccount(
+        user_id=user.id,
+        name="Paused MT5",
+        account_type="CFD",
+    )
+    db.session.add(paused_trade_account)
+    db.session.commit()
+    paused_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=paused_trade_account.id,
+        account_number="85858587",
+    )
+    paused_account.sync_paused_at = datetime.utcnow()
+    paused_account.sync_pause_reason = "trial_expired"
+    db.session.commit()
+
+    captured = []
+
+    def _fake_apply_async(*, args, kwargs=None, queue, expires=None):
+        captured.append(
+            {
+                "args": args,
+                "kwargs": kwargs,
+                "queue": queue,
+                "expires": expires,
+            }
+        )
+
+    import celery_workers.mt5_sync_tasks as mt5_sync_module
+
+    monkeypatch.setattr("celery_workers.cache.get_queue_depth", lambda queue_name: 0)
+    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+
+    mt5_sync_module.sync_all_active_mt5_accounts.run()
+
+    assert captured == [
+        {
+            "args": [active_account.id],
             "kwargs": {"trigger_source": "beat"},
             "queue": "mt5_sync",
             "expires": 28,

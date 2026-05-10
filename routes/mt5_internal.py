@@ -135,6 +135,13 @@ def _queue_auto_trade_bar_sync(account):
     )
     status["closed_trades"] = len(trades)
     trades_to_queue = _filter_trades_missing_complete_m5_bars(trades)
+
+    from helpers.entitlements import can_generate_replay_bars
+    account_user = account.user
+    trades_to_queue = [
+        t for t in trades_to_queue
+        if can_generate_replay_bars(account_user, t)["allowed"]
+    ]
     status["missing_m5"] = len(trades_to_queue)
     if not trades_to_queue:
         return status

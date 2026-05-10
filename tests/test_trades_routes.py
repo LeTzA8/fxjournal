@@ -813,16 +813,7 @@ def test_trade_chart_data_returns_pending_when_mt5_trade_has_no_bars(app_ctx, cl
     assert response.get_json() == {"status": "pending"}
 
 
-def test_trade_chart_data_returns_ready_payload_when_bars_exist(app_ctx, client):
-    user, trade_account = _create_logged_in_user(
-        client,
-        username="trade-chart-ready-user",
-        email="trade-chart-ready@example.com",
-    )
-    user.is_admin = True
-    user.email_verified = True
-    db.session.commit()
-
+def _create_closed_mt5_trade_with_m5_bars(user, trade_account, position_id="7770002"):
     trade = Trade(
         user_id=user.id,
         trade_account_id=trade_account.id,
@@ -835,7 +826,7 @@ def test_trade_chart_data_returns_ready_payload_when_bars_exist(app_ctx, client)
         lot_size=1.0,
         opened_at=datetime(2026, 4, 10, 9, 0, 0),
         closed_at=datetime(2026, 4, 10, 10, 0, 0),
-        mt5_position="7770002",
+        mt5_position=position_id,
     )
     db.session.add(trade)
     db.session.flush()
@@ -864,6 +855,20 @@ def test_trade_chart_data_returns_ready_payload_when_bars_exist(app_ctx, client)
         ]
     )
     db.session.commit()
+    return trade
+
+
+def test_trade_chart_data_returns_ready_payload_when_bars_exist(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-chart-ready-user",
+        email="trade-chart-ready@example.com",
+    )
+    user.is_admin = True
+    user.email_verified = True
+    db.session.commit()
+
+    trade = _create_closed_mt5_trade_with_m5_bars(user, trade_account)
 
     response = client.get(f"/api/trades/{trade.pubkey}/chart-data")
     assert response.status_code == 200
@@ -894,3 +899,69 @@ def test_trade_chart_data_returns_ready_payload_when_bars_exist(app_ctx, client)
     assert m15_payload["bars"][0]["close"] == pytest.approx(1.1005)
     assert m15_payload["bars"][1]["open"] == pytest.approx(1.1005)
     assert m15_payload["bars"][1]["close"] == pytest.approx(1.1010)
+
+
+def test_trade_chart_data_denies_free_user_requesting_m1(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-chart-free-m1-user",
+        email="trade-chart-free-m1@example.com",
+    )
+    user.plan_tier = "free"
+    db.session.commit()
+    trade = _create_closed_mt5_trade_with_m5_bars(user, trade_account, "7770003")
+
+    response = client.get(f"/api/trades/{trade.pubkey}/chart-data?timeframe=M1")
+
+    assert response.status_code == 403
+    payload = response.get_json()
+    assert payload["error"] == "upgrade_required"
+    assert payload["requested_timeframe"] == "M1"
+    assert payload["available_timeframes"] == ["M5", "M15"]
+    assert payload["required_tier"] == "trader"
+    assert payload["upgrade_url"] == "/pricing"
+    assert payload["cta"]["source"] == "replay_gate"
+    assert payload["cta"]["feature_interest"] == "advanced_replay"
+
+
+def test_trade_chart_data_allows_free_user_m5_and_m15(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-chart-free-allowed-user",
+        email="trade-chart-free-allowed@example.com",
+    )
+    user.plan_tier = "free"
+    db.session.commit()
+    trade = _create_closed_mt5_trade_with_m5_bars(user, trade_account, "7770004")
+
+    m5_response = client.get(f"/api/trades/{trade.pubkey}/chart-data?timeframe=M5")
+    m15_response = client.get(f"/api/trades/{trade.pubkey}/chart-data?timeframe=M15")
+
+    assert m5_response.status_code == 200
+    assert m5_response.get_json()["timeframe"] == "M5"
+    assert m5_response.get_json()["available_timeframes"] == ["M5", "M15"]
+    assert m15_response.status_code == 200
+    assert m15_response.get_json()["timeframe"] == "M15"
+    assert m15_response.get_json()["available_timeframes"] == ["M5", "M15"]
+
+
+@pytest.mark.parametrize("plan_tier", ["trader", "pro"])
+def test_trade_chart_data_returns_not_implemented_for_paid_tier_m1(app_ctx, client, plan_tier):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username=f"trade-chart-{plan_tier}-m1-user",
+        email=f"trade-chart-{plan_tier}-m1@example.com",
+    )
+    user.plan_tier = plan_tier
+    db.session.commit()
+    trade = _create_closed_mt5_trade_with_m5_bars(user, trade_account, f"777000-{plan_tier}")
+
+    response = client.get(f"/api/trades/{trade.pubkey}/chart-data?timeframe=M1")
+
+    assert response.status_code == 501
+    payload = response.get_json()
+    assert payload["error"] == "timeframe_not_available"
+    assert payload["requested_timeframe"] == "M1"
+    assert payload["available_timeframes"] == ["M5", "M15"]
+    assert "timeframe" not in payload
+    assert payload["cta"]["source"] == "replay_gate"

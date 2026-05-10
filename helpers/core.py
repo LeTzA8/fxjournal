@@ -583,10 +583,12 @@ def build_mt5_access_state(user_id, trade_accounts=None):
                 mt5_account,
             )
         linked_mt5_trade_account_ids = set(mt5_accounts_by_trade_account.keys())
+        from helpers.entitlements import is_mt5_sync_paused
         active_mt5_trade_account_ids = {
             trade_account_id
             for trade_account_id, mt5_account in mt5_accounts_by_trade_account.items()
             if bool(getattr(mt5_account, "is_active", False))
+            and not is_mt5_sync_paused(mt5_account)
         }
         request_rows = (
             MT5AccessRequest.query.filter(

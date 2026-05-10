@@ -52,6 +52,8 @@
                     {% set mt5_is_archived = mt5_account and mt5_account.is_archived %}
                     {% set mt5_is_failed = mt5_account and mt5_account.is_connection_failed and not mt5_is_active_linked and not mt5_is_archived %}
                     {% set mt5_has_setup_artifacts = mt5_account and not mt5_is_failed and ((mt5_account.terminal_path or '') or (mt5_account.appdata_hash or '')) %}
+                    {% set mt5_trial_state = mt5_trial_states_by_trade_account.get(trade_account.id) if mt5_trial_states_by_trade_account is defined else none %}
+                    {% set mt5_is_paused = mt5_trial_state and mt5_trial_state.state == "paused" %}
                     <article
                         class="account-card {% if active_trade_account and trade_account.id == active_trade_account.id %}active{% endif %}"
                         data-trade-account-card
@@ -86,7 +88,9 @@
                                 {% else %}
                                 <span class="chip default default-chip" hidden>Default</span>
                                 {% endif %}
-                                {% if trade_account.account_type == "CFD" and mt5_is_active_linked %}
+                                {% if trade_account.account_type == "CFD" and mt5_is_paused %}
+                                <span class="chip chip--warn">MT5 Sync Paused</span>
+                                {% elif trade_account.account_type == "CFD" and mt5_is_active_linked %}
                                 <span class="chip default">MT5 Linked</span>
                                 {% elif trade_account.account_type == "CFD" and mt5_is_archived %}
                                 <span class="chip default">MT5 Sync Inactive</span>
@@ -163,7 +167,31 @@
                         {% if trade_account.account_type == "CFD" %}
                         <div class="mt5-request-block">
                             <p class="account-meta mt5-request-title">MT5 Sync Access</p>
-                            {% if mt5_is_active_linked %}
+                            {% if mt5_trial_state and mt5_trial_state.state == "grandfathered" %}
+                            <p class="account-meta mt5-trial-indicator mt5-trial-indicator--ok">
+                                Beta access: <strong>grandfathered for MT5 sync</strong>
+                            </p>
+                            {% endif %}
+                            {% if mt5_trial_state and mt5_trial_state.show_trial_ui %}
+                            {% if mt5_trial_state.state == "active" %}
+                            <p class="account-meta mt5-trial-indicator mt5-trial-indicator--{% if mt5_trial_state.days_remaining <= 7 %}warn{% else %}ok{% endif %}">
+                                MT5 Sync trial: <strong>{{ mt5_trial_state.days_remaining }} day{% if mt5_trial_state.days_remaining != 1 %}s{% endif %} remaining</strong>
+                            </p>
+                            {% elif mt5_trial_state.state in ("expired", "paused") %}
+                            <div class="mt5-trial-expired-notice">
+                                <p class="account-meta mt5-trial-indicator mt5-trial-indicator--expired">
+                                    MT5 Sync trial ended. Your trade history is safe.
+                                </p>
+                                <a href="{{ url_for('pricing_page') }}" class="ghost-link btn-link">Upgrade to Trader to continue sync &rarr;</a>
+                            </div>
+                            {% elif mt5_trial_state.state == "not_started" %}
+                            <p class="account-meta soft">MT5 Sync trial ({{ mt5_trial_state.days_remaining }} days) starts automatically on first successful sync.</p>
+                            {% endif %}
+                            {% endif %}
+                            {% if mt5_is_paused %}
+                            <p class="account-meta">MT5 sync is paused for this account. Your trade history is safe.</p>
+                            <a href="{{ url_for('pricing_page') }}" class="ghost-link btn-link">View Trader waitlist &rarr;</a>
+                            {% elif mt5_is_active_linked %}
                             <p class="account-meta">This trade account already has MT5 sync access configured.</p>
                             {% elif mt5_is_archived %}
                             <p class="account-meta">MT5 sync is inactive due to inactivity for this account.</p>

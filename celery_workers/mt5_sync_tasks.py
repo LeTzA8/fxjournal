@@ -30,6 +30,8 @@ MT5_SYNC_BEAT_EXPIRES_SECONDS = 28
 MT5_SYNC_BEAT_MAX_QUEUE_DEPTH = 150
 MT5_SERVER_OFFSET_STALE_TICK_SECONDS = 6 * 3600
 MT5_SERVER_OFFSET_HOUR_TOLERANCE_SECONDS = 5 * 60
+MT5_HISTORY_STALE_THRESHOLD_MINUTES = 30
+MT5_HISTORY_DEALS_CHUNK_DAYS = 31
 
 # MetaTrader5 keeps process-global session state, so sync tasks must not
 # overlap MT5 API calls inside the same worker process.
@@ -60,6 +62,142 @@ def _shift_datetime_by_minutes(value, *, minutes=0):
     if value is None:
         return None
     return value + timedelta(minutes=int(minutes or 0))
+
+
+def _env_bool(name, default=True):
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return bool(default)
+    return str(raw_value).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _env_int(name, default):
+    try:
+        return int(str(os.getenv(name, default)).strip())
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _chunked_history_deals_get(mt5, date_from, date_to, *, chunk_days=None):
+    """Fetch MT5 deal history in bounded windows for callers that need slicing."""
+    if chunk_days is None:
+        chunk_days = _env_int("FXJ_MT5_HISTORY_CHUNK_DAYS", MT5_HISTORY_DEALS_CHUNK_DAYS)
+    deals = []
+    chunk_count = 0
+    current = date_from
+    step = timedelta(days=max(int(chunk_days or MT5_HISTORY_DEALS_CHUNK_DAYS), 1))
+    while current < date_to:
+        chunk_to = min(current + step, date_to)
+        chunk_count += 1
+        deals.extend(mt5.history_deals_get(current, chunk_to) or [])
+        current = chunk_to
+    return deals, chunk_count
+
+
+def _latest_deal_context(deals, *, offset_minutes=0):
+    latest_deal = None
+    latest_time = None
+    for deal in deals or []:
+        raw_time = getattr(deal, "time", None)
+        if raw_time is None:
+            continue
+        try:
+            numeric_time = float(raw_time)
+        except (TypeError, ValueError):
+            continue
+        if latest_time is None or numeric_time > latest_time:
+            latest_time = numeric_time
+            latest_deal = deal
+    if latest_deal is None:
+        return None, None
+    adjusted_time = _adjust_mt5_unix_epoch(latest_time, offset_minutes=offset_minutes)
+    latest_utc = datetime.fromtimestamp(adjusted_time, tz=timezone.utc)
+    return latest_utc, getattr(latest_deal, "position_id", None)
+
+
+def _open_position_ids(positions):
+    ids = []
+    for pos in positions or []:
+        pos_id = getattr(pos, "identifier", None) or getattr(pos, "ticket", None)
+        if pos_id is not None:
+            ids.append(str(pos_id))
+    return ids
+
+
+def _history_stale_diag(
+    *,
+    latest_deal_utc,
+    open_positions,
+    db_open_mt5_count,
+    now_utc,
+    threshold_minutes=None,
+):
+    if threshold_minutes is None:
+        threshold_minutes = _env_int(
+            "FXJ_MT5_HISTORY_STALE_THRESHOLD_MINUTES",
+            MT5_HISTORY_STALE_THRESHOLD_MINUTES,
+        )
+    latest_deal_lag_minutes = None
+    history_stale = False
+    if latest_deal_utc is not None:
+        latest_deal_lag_minutes = max(
+            int((now_utc - latest_deal_utc).total_seconds() // 60),
+            0,
+        )
+        history_stale = (
+            not open_positions
+            and int(db_open_mt5_count or 0) > 0
+            and latest_deal_lag_minutes >= int(threshold_minutes)
+        )
+    return history_stale, latest_deal_lag_minutes
+
+
+def _record_mt5_sync_diag(
+    *,
+    mt5_account_id,
+    latest_deal_lag_minutes,
+    db_open_mt5_count,
+    history_stale,
+    soft_reconnect,
+):
+    try:
+        from celery_workers.cache import CacheUnavailableError, set_worker_state
+        set_worker_state(
+            "mt5_sync_diag",
+            str(mt5_account_id),
+            {
+                "mt5_account_id": str(mt5_account_id),
+                "latest_deal_lag_minutes": (
+                    "" if latest_deal_lag_minutes is None else str(latest_deal_lag_minutes)
+                ),
+                "db_open_mt5": str(int(db_open_mt5_count or 0)),
+                "history_stale": "1" if history_stale else "0",
+                "soft_reconnect": "1" if soft_reconnect else "0",
+            },
+        )
+    except CacheUnavailableError:
+        return
+    except Exception:
+        logger.debug("Failed to write MT5 sync diagnostics", exc_info=True)
+
+
+def _benign_skip_only_result(result):
+    if int(result.get("errors") or 0) != 0:
+        return False
+    if int(result.get("saved") or 0) != 0 or int(result.get("updated") or 0) != 0:
+        return False
+    if int(result.get("skipped") or 0) <= 0:
+        return False
+    skip_reasons = result.get("skip_reasons") or {}
+    worrisome_total = 0
+    for reason, count in skip_reasons.items():
+        if reason == "existing_already_closed_or_no_state_change":
+            continue
+        try:
+            worrisome_total += int(count or 0)
+        except (TypeError, ValueError):
+            worrisome_total += 1
+    return worrisome_total == 0 and not result.get("skip_debug")
 
 
 def _naive_utc_to_aware(value):
@@ -129,7 +267,7 @@ def _positions_to_open_trades(positions, *, position_type_buy=0, offset_minutes=
                 "entry_price": entry_price,
                 "exit_price": None,
                 "lot_size": lot_size,
-                "pnl": None,
+                "pnl": _deal_float_value(pos, "profit"),
                 "commission": _deal_float_value(pos, "commission"),
                 "swap": _deal_float_value(pos, "swap"),
                 "stop_loss": sl,
@@ -588,6 +726,13 @@ def sync_mt5_account(
     mt5_equity = None
     mt5_server_delta_minutes = 0
     applied_offset_minutes = 0
+    latest_deal_utc = None
+    latest_deal_position = None
+    latest_deal_lag_minutes = None
+    open_position_ids = []
+    db_open_mt5_count = 0
+    history_stale = False
+    soft_reconnect_attempted = False
     sync_started_at = None
     sync_finished_at = None
     sync_mode = "rolling_7d"
@@ -617,7 +762,7 @@ def sync_mt5_account(
             raise RuntimeError("MetaTrader5 not installed on this worker.") from exc
 
         from helpers.utils import decrypt_password
-        from models import MT5Account, db
+        from models import MT5Account, Trade, db
 
         account = db.session.get(MT5Account, mt5_account_id)
         if account is None or not account.is_active:
@@ -646,6 +791,41 @@ def sync_mt5_account(
                 level=logging.WARNING,
             )
             return {"error": "MT5Account is orphaned"}
+
+        from helpers.entitlements import can_use_mt5_sync
+        sync_permission = can_use_mt5_sync(account.user, account)
+        if not sync_permission["allowed"]:
+            if not account.sync_paused_at:
+                account.sync_paused_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                account.sync_pause_reason = sync_permission["reason"]
+                try:
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                from celery_workers.mt5_setup_tasks import pause_mt5_terminal_process
+                try:
+                    pause_mt5_terminal_process.apply_async(
+                        args=[mt5_account_id],
+                        queue="mt5_setup",
+                    )
+                except Exception as dispatch_exc:
+                    logger.warning(
+                        "MT5 sync: pause task dispatch failed mt5_account_id=%s: %s",
+                        mt5_account_id,
+                        dispatch_exc,
+                    )
+            log_ascii_table(
+                logger,
+                "MT5 Sync Skipped",
+                [
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("User ID", account.user_id),
+                    ("Reason", f"sync not allowed: {sync_permission['reason']}"),
+                ],
+                level=logging.WARNING,
+            )
+            return {"error": f"MT5 sync not allowed: {sync_permission['reason']}"}
 
         user_id = account.user_id
         trade_account_id = account.trade_account_id
@@ -682,7 +862,7 @@ def sync_mt5_account(
                 mt5_equity = getattr(account_info, "equity", None)
                 if actual_login != expected_login:
                     raise RuntimeError(
-                        f"Wrong MT5 account logged in during sync: expected {expected_login}, got {actual_login}"
+                        f"Wrong account logged in during MT5 sync: expected {expected_login}, got {actual_login}"
                     )
 
                 if used_full_history_window:
@@ -737,7 +917,63 @@ def sync_mt5_account(
                 # practice, so shift the request window into server time while
                 # continuing to normalize returned timestamps back to UTC.
                 deals = mt5.history_deals_get(mt5_from_date, mt5_to_date) or []
+                open_positions = mt5.positions_get() or []
                 raw_deal_count = len(deals)
+                latest_deal_utc, latest_deal_position = _latest_deal_context(
+                    deals,
+                    offset_minutes=applied_offset_minutes,
+                )
+                open_position_ids = _open_position_ids(open_positions)
+                db_open_mt5_count = Trade.query.filter(
+                    Trade.trade_account_id == trade_account_id,
+                    Trade.mt5_position.isnot(None),
+                    Trade.closed_at.is_(None),
+                ).count()
+                history_stale, latest_deal_lag_minutes = _history_stale_diag(
+                    latest_deal_utc=latest_deal_utc,
+                    open_positions=open_positions,
+                    db_open_mt5_count=db_open_mt5_count,
+                    now_utc=to_date,
+                )
+
+                if history_stale and _env_bool("FXJ_MT5_SOFT_RECONNECT_ON_STALE", True):
+                    soft_reconnect_attempted = True
+                    logger.warning(
+                        "MT5 sync soft reconnect mt5_account_id=%s latest_deal_lag_min=%s db_open_mt5=%s",
+                        mt5_account_id,
+                        latest_deal_lag_minutes,
+                        db_open_mt5_count,
+                    )
+                    mt5.shutdown()
+                    if not mt5.initialize(**init_kwargs):
+                        raise RuntimeError(f"MT5 soft reconnect init failed: {mt5.last_error()}")
+                    if not mt5.login(expected_login, password=investor_password, server=server):
+                        raise RuntimeError(f"MT5 soft reconnect login failed: {mt5.last_error()}")
+                    account_info = mt5.account_info()
+                    if account_info is None:
+                        raise RuntimeError(f"MT5 soft reconnect account_info returned None: {mt5.last_error()}")
+                    actual_login = getattr(account_info, "login", None)
+                    if actual_login != expected_login:
+                        raise RuntimeError(
+                            f"Wrong account logged in during MT5 soft reconnect: expected {expected_login}, got {actual_login}"
+                        )
+                    mt5_login = actual_login
+                    mt5_balance = getattr(account_info, "balance", mt5_balance)
+                    mt5_equity = getattr(account_info, "equity", mt5_equity)
+                    deals = mt5.history_deals_get(mt5_from_date, mt5_to_date) or []
+                    open_positions = mt5.positions_get() or []
+                    raw_deal_count = len(deals)
+                    latest_deal_utc, latest_deal_position = _latest_deal_context(
+                        deals,
+                        offset_minutes=applied_offset_minutes,
+                    )
+                    open_position_ids = _open_position_ids(open_positions)
+                    history_stale, latest_deal_lag_minutes = _history_stale_diag(
+                        latest_deal_utc=latest_deal_utc,
+                        open_positions=open_positions,
+                        db_open_mt5_count=db_open_mt5_count,
+                        now_utc=to_date,
+                    )
 
                 deal_type_buy = getattr(mt5, "DEAL_TYPE_BUY", 0)
                 trades = aggregate_deals_to_trades(
@@ -756,14 +992,32 @@ def sync_mt5_account(
                 # positions_get() is authoritative for running trades regardless of
                 # when they were opened, so it catches trades that fall outside the
                 # history_deals_get window or whose entry deals are filtered out.
-                open_positions = mt5.positions_get() or []
                 position_trades = _positions_to_open_trades(
                     open_positions,
                     position_type_buy=deal_type_buy,
                     offset_minutes=applied_offset_minutes,
                 )
                 deals_positions = {t["mt5_position"] for t in trades if t.get("mt5_position")}
-                trades = trades + [t for t in position_trades if t.get("mt5_position") not in deals_positions]
+                position_trades_by_id = {
+                    t["mt5_position"]: t
+                    for t in position_trades
+                    if t.get("mt5_position")
+                }
+                for trade_row in trades:
+                    position_row = position_trades_by_id.get(trade_row.get("mt5_position"))
+                    if not position_row or not trade_row.get("is_open"):
+                        continue
+                    for key in ("pnl", "stop_loss", "take_profit"):
+                        if position_row.get(key) is not None:
+                            trade_row[key] = position_row[key]
+                    for key in ("commission", "swap"):
+                        if trade_row.get(key) in (None, 0, 0.0) and position_row.get(key) is not None:
+                            trade_row[key] = position_row[key]
+                trades = trades + [
+                    t
+                    for t in position_trades
+                    if t.get("mt5_position") not in deals_positions
+                ]
             finally:
                 mt5.shutdown()
 
@@ -805,6 +1059,8 @@ def sync_mt5_account(
             account.last_synced_at = worker_completion_stamp
             if used_full_history_window:
                 account.last_full_history_sync_at = worker_completion_stamp
+            if not getattr(account.user, "plan_grandfathered", False) and account.mt5_trial_started_at is None:
+                account.mt5_trial_started_at = worker_completion_stamp
             db.session.commit()
             worker_stamp_saved = True
         except Exception as stamp_exc:
@@ -815,6 +1071,40 @@ def sync_mt5_account(
                 trigger_label,
                 stamp_exc,
             )
+        _record_mt5_sync_diag(
+            mt5_account_id=mt5_account_id,
+            latest_deal_lag_minutes=latest_deal_lag_minutes,
+            db_open_mt5_count=db_open_mt5_count,
+            history_stale=history_stale,
+            soft_reconnect=soft_reconnect_attempted,
+        )
+        if _benign_skip_only_result(result):
+            latest_deal_label = (
+                latest_deal_utc.isoformat(timespec="seconds")
+                if latest_deal_utc is not None
+                else "-"
+            )
+            open_position_ids_label = ",".join(open_position_ids) if open_position_ids else "-"
+            log_method = logger.warning if history_stale else logger.info
+            log_method(
+                "MT5 sync noop mt5_account_id=%s trigger=%s mode=%s skipped=%s "
+                "latest_deal_utc=%s latest_deal_position=%s open_positions=%s "
+                "open_position_ids=%s latest_deal_lag_min=%s db_open_mt5=%s "
+                "history_stale=%s soft_reconnect=%s",
+                mt5_account_id,
+                trigger_label,
+                sync_mode,
+                result.get("skipped"),
+                latest_deal_label,
+                latest_deal_position if latest_deal_position is not None else "-",
+                len(open_position_ids),
+                open_position_ids_label,
+                latest_deal_lag_minutes if latest_deal_lag_minutes is not None else "-",
+                db_open_mt5_count,
+                1 if history_stale else 0,
+                1 if soft_reconnect_attempted else 0,
+            )
+            return result
         log_ascii_table(
             logger,
             "MT5 Sync Result",
@@ -857,13 +1147,19 @@ def sync_mt5_account(
             )
             skip_debug_rows = result.get("skip_debug") or []
             if skip_debug_rows:
+                logger.warning(
+                    "MT5 sync skip_debug mt5_account_id=%s rows=%s sample=%r",
+                    mt5_account_id,
+                    len(skip_debug_rows),
+                    skip_debug_rows,
+                )
                 log_ascii_table(
                     logger,
                     "MT5 Skip Debug",
                     [
                         ("Task ID", task_id),
                         ("MT5 Account ID", mt5_account_id),
-                        ("Rows Logged", len(skip_debug_rows)),
+                        ("Skip debug rows (count)", len(skip_debug_rows)),
                         ("Sample", skip_debug_rows),
                     ],
                     level=logging.WARNING,
@@ -1338,6 +1634,7 @@ def fetch_trade_bars_batch(self, mt5_account_id, trade_ids):
 def sync_all_active_mt5_accounts():
     from models import MT5Account
     from celery_workers.cache import CacheUnavailableError, get_queue_depth
+    from helpers.schema_compat import mt5_trial_columns_available
 
     try:
         sync_queue_depth = get_queue_depth(MT5_SYNC_QUEUE_NAME)
@@ -1355,13 +1652,15 @@ def sync_all_active_mt5_accounts():
     except CacheUnavailableError as exc:
         logger.warning("MT5 beat queue-depth guard unavailable: %s", exc)
 
-    accounts = (
-        MT5Account.query.filter(
-            MT5Account.is_active.is_(True),
-            MT5Account.user_id.isnot(None),
-            MT5Account.trade_account_id.isnot(None),
-        ).all()
-    )
+    filters = [
+        MT5Account.is_active.is_(True),
+        MT5Account.user_id.isnot(None),
+        MT5Account.trade_account_id.isnot(None),
+    ]
+    if mt5_trial_columns_available():
+        filters.append(MT5Account.sync_paused_at.is_(None))
+
+    accounts = MT5Account.query.filter(*filters).all()
     if not accounts:
         return
     for account in accounts:

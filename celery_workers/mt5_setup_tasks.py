@@ -945,6 +945,123 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         _retry_with_backoff(self, exc, base_delay=30, max_delay=300)
 
 
+@celery.task(bind=True, max_retries=2, default_retry_delay=30, queue="mt5_setup")
+def pause_mt5_terminal_process(self, mt5_account_id: int):
+    """
+    Stops the MT5 terminal process for a trial-expired account.
+
+    Preserves ALL of: terminal files, AppData folder, MT5Account row,
+    terminal_path, appdata_hash, investor_password_encrypted, is_active.
+    This is NOT archive/cleanup — nothing is deleted.
+
+    Fast reactivation: restart the terminal and clear sync_paused_at on upgrade.
+    """
+    task_id = getattr(getattr(self, "request", None), "id", None)
+    started_at = datetime.now(timezone.utc)
+    finished_at = None
+
+    from models import MT5Account, db
+
+    account = db.session.get(MT5Account, mt5_account_id)
+    if account is None:
+        log_ascii_table(
+            logger,
+            "MT5 Trial Pause Skipped",
+            [
+                ("Task ID", task_id),
+                ("MT5 Account ID", mt5_account_id),
+                ("Reason", "account not found"),
+            ],
+            level=logging.WARNING,
+        )
+        return {"skipped": "account not found"}
+
+    terminal_path = account.terminal_path
+    log_ascii_table(
+        logger,
+        "MT5 Trial Pause Context",
+        [
+            ("Task ID", task_id),
+            ("MT5 Account ID", mt5_account_id),
+            ("User ID", account.user_id),
+            ("Trade Account ID", account.trade_account_id),
+            ("Terminal Path", terminal_path or "none"),
+            ("Sync Paused At", account.sync_paused_at or "not set"),
+            ("Pause Reason", account.sync_pause_reason or "not set"),
+        ],
+    )
+
+    if os.name != "nt":
+        finished_at = datetime.now(timezone.utc)
+        log_ascii_table(
+            logger,
+            "MT5 Trial Pause Result",
+            [
+                ("Finished", finished_at),
+                ("Duration", duration_label(started_at, finished_at)),
+                ("Task ID", task_id),
+                ("MT5 Account ID", mt5_account_id),
+                ("Status", "not Windows, process termination skipped"),
+            ],
+            level=logging.WARNING,
+        )
+        return {"status": "not Windows, process termination skipped"}
+
+    process_terminated = False
+    if terminal_path and os.path.exists(terminal_path):
+        try:
+            _terminate_mt5_processes(terminal_path)
+            process_terminated = True
+        except Exception as term_exc:
+            logger.warning(
+                "MT5 trial pause: process termination failed mt5_account_id=%s: %s",
+                mt5_account_id,
+                term_exc,
+            )
+    elif terminal_path:
+        logger.info(
+            "MT5 trial pause: terminal exe not found, nothing to terminate mt5_account_id=%s path=%s",
+            mt5_account_id,
+            terminal_path,
+        )
+
+    # Ensure sync_paused_at is stamped on the account row (may already be set
+    # by the sync task before dispatching this pause task).
+    try:
+        refreshed_account = db.session.get(MT5Account, mt5_account_id)
+        if refreshed_account is not None and not refreshed_account.sync_paused_at:
+            refreshed_account.sync_paused_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            refreshed_account.sync_pause_reason = refreshed_account.sync_pause_reason or "trial_expired"
+            db.session.commit()
+    except Exception as db_exc:
+        db.session.rollback()
+        logger.warning(
+            "MT5 trial pause: DB stamp failed mt5_account_id=%s: %s",
+            mt5_account_id,
+            db_exc,
+        )
+
+    finished_at = datetime.now(timezone.utc)
+    log_ascii_table(
+        logger,
+        "MT5 Trial Pause Result",
+        [
+            ("Finished", finished_at),
+            ("Duration", duration_label(started_at, finished_at)),
+            ("Task ID", task_id),
+            ("MT5 Account ID", mt5_account_id),
+            ("Terminal Path", terminal_path or "none"),
+            ("Process Terminated", process_terminated),
+            ("Status", "trial pause complete"),
+        ],
+    )
+    return {
+        "terminal_path": terminal_path,
+        "process_terminated": process_terminated,
+        "status": "trial pause complete",
+    }
+
+
 @celery.task(bind=True, max_retries=2, default_retry_delay=10, queue="mt5_setup")
 def cleanup_mt5_terminal(
     self,

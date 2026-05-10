@@ -11,6 +11,8 @@ from sqlalchemy.engine import Engine
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 from werkzeug.middleware.proxy_fix import ProxyFix
 from auth_account import (
+    build_external_url,
+    normalize_public_path,
     register_public_auth_routes,
     send_email_placeholder,
     user_has_admin_access,
@@ -345,8 +347,7 @@ def inject_trade_account_context():
     current_page_path = request.full_path.rstrip("?")
     if not current_page_path:
         current_page_path = request.path or url_for("dashboard.home")
-    public_base_url = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/") or request.host_url.rstrip("/")
-    default_canonical_url = f"{public_base_url}{request.path}" if request.path != "/" else f"{public_base_url}/"
+    default_canonical_url = build_external_url(normalize_public_path(request.path))
     return {
         "active_trade_account": getattr(g, "active_trade_account", None),
         "header_trade_accounts": getattr(g, "user_trade_accounts", []),
@@ -434,7 +435,11 @@ def handle_rate_limit(_error):
             ),
             429,
         )
-    wants_json = request.path.startswith("/api/") or request.path.startswith("/dashboard/weekly-review/")
+    wants_json = (
+        request.path.startswith("/api/")
+        or request.path.startswith("/dashboard/weekly-review/")
+        or request.path == "/pricing/waitlist"
+    )
     if not wants_json and (request.accept_mimetypes.best or "") == "application/json":
         wants_json = True
     if wants_json:
@@ -442,6 +447,7 @@ def handle_rate_limit(_error):
             jsonify(
                 {
                     "error": "Too many requests. Please try again later.",
+                    "ok": False,
                 }
             ),
             429,

@@ -1,3 +1,9 @@
+from sqlalchemy import event
+from werkzeug.security import generate_password_hash
+
+from models import User, db
+
+
 def test_landing_page_includes_canonical_and_search_metadata(client):
     response = client.get("/")
 
@@ -18,6 +24,8 @@ def test_robots_txt_exposes_sitemap_and_private_paths(client):
     assert b"Disallow: /register" not in response.data
     assert b"Disallow: /dashboard/" not in response.data
     assert b"Disallow: /password/" in response.data
+    assert b"Disallow: /auth/" in response.data
+    assert b"Disallow: /session/" in response.data
     assert b"Sitemap: http://localhost:5000/sitemap.xml" in response.data
 
 
@@ -27,6 +35,7 @@ def test_sitemap_xml_lists_public_pages(client):
     assert response.status_code == 200
     assert b'<?xml version="1.0" encoding="UTF-8"?>' in response.data
     assert b"<loc>http://localhost:5000/</loc>" in response.data
+    assert b"<loc>http://localhost:5000/pricing</loc>" in response.data
     assert b"<loc>http://localhost:5000/dashboard</loc>" in response.data
     assert b"<loc>http://localhost:5000/login</loc>" in response.data
     assert b"<loc>http://localhost:5000/register</loc>" in response.data
@@ -39,6 +48,15 @@ def test_sitemap_xml_lists_public_pages(client):
     assert b"<loc>http://localhost:5000/forex-trading-journal</loc>" in response.data
     assert b"<loc>http://localhost:5000/weekly-trading-review</loc>" in response.data
     assert b"<loc>http://localhost:5000/trade-replay-chart</loc>" in response.data
+
+
+def test_legal_aliases_redirect_to_canonical_urls(client):
+    r_privacy = client.get("/privacy-policy", follow_redirects=False)
+    assert r_privacy.status_code == 301
+    assert "/privacy" in (r_privacy.headers.get("Location") or "")
+    r_terms = client.get("/terms-and-conditions", follow_redirects=False)
+    assert r_terms.status_code == 301
+    assert "/terms" in (r_terms.headers.get("Location") or "")
 
 
 def test_login_page_has_indexable_metadata(client):
@@ -94,3 +112,32 @@ def test_free_mt5_sync_page_has_indexable_metadata(client):
     assert b"Free during open beta" in response.data
     assert b'<meta name="robots" content="index, follow">' in response.data
     assert b'href="http://localhost:5000/free-mt5-sync"' in response.data
+
+
+def test_pricing_page_renders_authenticated_without_selecting_phase2_user_columns(client, app_ctx):
+    user = User(
+        username="pricing-auth-user",
+        email="pricing-auth-user@example.com",
+        password=generate_password_hash("test-pass-123"),
+        email_verified=True,
+    )
+    db.session.add(user)
+    db.session.commit()
+
+    statements = []
+
+    def _capture_statement(_conn, _cursor, statement, _params, _context, _executemany):
+        statements.append(statement.lower())
+
+    event.listen(db.engine, "before_cursor_execute", _capture_statement)
+    try:
+        with client.session_transaction() as session_data:
+            session_data["user_id"] = user.id
+        response = client.get("/pricing")
+    finally:
+        event.remove(db.engine, "before_cursor_execute", _capture_statement)
+
+    assert response.status_code == 200
+    user_selects = [statement for statement in statements if " from users " in statement]
+    assert all("plan_tier" not in statement for statement in user_selects)
+    assert all("plan_grandfathered" not in statement for statement in user_selects)

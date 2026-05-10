@@ -1388,6 +1388,17 @@ def bundle_review_complete():
 
 
 _CHART_UI_TIMEFRAMES = ("M5", "M15")
+_REPLAY_REQUEST_TIMEFRAMES = ("M1", "M5", "M15")
+_REPLAY_NOT_IMPLEMENTED_TIMEFRAMES = frozenset({"M1"})
+
+
+def _replay_waitlist_cta(feature_interest="advanced_replay"):
+    return {
+        "label": "Join Trader waitlist",
+        "url": url_for("pricing_page"),
+        "source": "replay_gate",
+        "feature_interest": feature_interest,
+    }
 
 
 def _trade_bar_row_to_ohlc_dict(row):
@@ -1442,9 +1453,42 @@ def trade_chart_data(trade_pubkey):
     else:
         available_timeframes = sorted(stored_ui_tfs)
 
+    from helpers.entitlements import can_access_replay_timeframe, get_replay_entitlement
+    replay_entitlement = get_replay_entitlement(trade.user)
+    available_timeframes = [
+        tf for tf in available_timeframes
+        if tf in replay_entitlement["allowed_timeframes"]
+    ]
+
     requested_tf = (request.args.get("timeframe") or "M5").strip().upper()
-    if requested_tf not in _CHART_UI_TIMEFRAMES:
-        requested_tf = "M5"
+    if requested_tf not in _REPLAY_REQUEST_TIMEFRAMES:
+        return jsonify({
+            "error": "unsupported_timeframe",
+            "requested_timeframe": requested_tf,
+            "available_timeframes": available_timeframes,
+            "message": f"{requested_tf or 'That'} replay timeframe is not supported yet.",
+        }), 400
+
+    tf_gate = can_access_replay_timeframe(trade.user, requested_tf)
+    if not tf_gate["allowed"]:
+        return jsonify({
+            "error": "upgrade_required",
+            "requested_timeframe": requested_tf,
+            "available_timeframes": available_timeframes,
+            "required_tier": tf_gate["required_tier"],
+            "upgrade_url": tf_gate["upgrade_url"],
+            "cta": _replay_waitlist_cta("advanced_replay"),
+            "message": f"{requested_tf} replay requires {(tf_gate['required_tier'] or 'Trader').title()} plan.",
+        }), 403
+
+    if requested_tf in _REPLAY_NOT_IMPLEMENTED_TIMEFRAMES:
+        return jsonify({
+            "error": "timeframe_not_available",
+            "requested_timeframe": requested_tf,
+            "available_timeframes": available_timeframes,
+            "cta": _replay_waitlist_cta("advanced_replay"),
+            "message": f"{requested_tf} replay is not available yet. Use 5m or 15m replay for now.",
+        }), 501
 
     m5_dicts = [_trade_bar_row_to_ohlc_dict(b) for b in by_tf.get("M5", [])]
     m15_native_dicts = [_trade_bar_row_to_ohlc_dict(b) for b in by_tf.get("M15", [])]

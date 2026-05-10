@@ -627,6 +627,71 @@ def test_dashboard_home_shows_archived_mt5_state_with_reactivation_prompt(app_ct
     assert b"Reactivate MT5 sync" in response.data
 
 
+def test_dashboard_home_shows_paused_mt5_state_not_connected(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _stub_weekly_ai_state(monkeypatch)
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-paused-dashboard",
+        email="mt5-paused-dashboard@example.com",
+        account_name="Paused Account",
+    )
+    _log_in_user(client, user, trade_account)
+
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            account_number="70018883",
+            investor_password_encrypted=encrypt_password("investor-pass"),
+            server="Broker-Live",
+            is_active=True,
+            sync_paused_at=utcnow_naive(),
+            sync_pause_reason="trial_expired",
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b'data-current-stage="4"' in response.data
+    assert b"Sync Paused" in response.data
+    assert b"MT5 sync is paused for this account. Your trade history is safe." in response.data
+    assert b"Connected Account" not in response.data
+
+
+def test_dashboard_home_shows_grandfathered_mt5_beta_access(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _stub_weekly_ai_state(monkeypatch)
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-grandfathered-dashboard",
+        email="mt5-grandfathered-dashboard@example.com",
+        account_name="Grandfathered Account",
+    )
+    user.plan_grandfathered = True
+    _log_in_user(client, user, trade_account)
+
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            account_number="70018884",
+            investor_password_encrypted=encrypt_password("investor-pass"),
+            server="Broker-Live",
+            is_active=True,
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b"Connected Account" in response.data
+    assert b"Beta access: this account is grandfathered for MT5 sync during the beta." in response.data
+
+
 def test_dashboard_home_treats_legacy_approved_request_as_direct_submit_flow(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     _stub_weekly_ai_state(monkeypatch)
@@ -815,13 +880,35 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
         account_type="CFD",
         is_default=False,
     )
+    active_linked_account = TradeAccount(
+        user_id=user.id,
+        name="Active Linked CFD",
+        account_type="CFD",
+        is_default=False,
+    )
+    paused_account = TradeAccount(
+        user_id=user.id,
+        name="Paused CFD",
+        account_type="CFD",
+        is_default=False,
+    )
     archived_account = TradeAccount(
         user_id=user.id,
         name="Archived CFD",
         account_type="CFD",
         is_default=False,
     )
-    db.session.add_all([pending_account, approved_account, linked_account, archived_account])
+    user.plan_grandfathered = True
+    db.session.add_all(
+        [
+            pending_account,
+            approved_account,
+            linked_account,
+            active_linked_account,
+            paused_account,
+            archived_account,
+        ]
+    )
     db.session.commit()
 
     db.session.add(
@@ -853,6 +940,28 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
     db.session.add(
         MT5Account(
             user_id=user.id,
+            trade_account_id=active_linked_account.id,
+            account_number="99110013",
+            investor_password_encrypted=encrypt_password("investor-pass"),
+            server="Broker-Active",
+            is_active=True,
+        )
+    )
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
+            trade_account_id=paused_account.id,
+            account_number="99110014",
+            investor_password_encrypted=encrypt_password("investor-pass"),
+            server="Broker-Paused",
+            is_active=True,
+            sync_paused_at=utcnow_naive(),
+            sync_pause_reason="trial_expired",
+        )
+    )
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
             trade_account_id=archived_account.id,
             account_number="99110004",
             investor_password_encrypted=encrypt_password("investor-pass"),
@@ -870,8 +979,12 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
 
     assert response.status_code == 200
     assert b"MT5 Needs Details" in response.data
+    assert b"MT5 Linked" in response.data
+    assert b"MT5 Sync Paused" in response.data
     assert b"MT5 Setup Queued" in response.data
     assert b"MT5 Sync Inactive" in response.data
+    assert b"Beta access:" in response.data
+    assert b"grandfathered for MT5 sync" in response.data
     assert b"Manage MT5 sync from the dashboard card instead of per-account forms." in response.data
     assert b"Open Dashboard MT5 Access" in response.data
     assert b"Finish the full MT5 sync form from the dashboard card" not in response.data

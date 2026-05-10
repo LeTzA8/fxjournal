@@ -1,10 +1,12 @@
 import os
 import json
 import secrets
+import re
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 from functools import wraps
 
-from flask import Response, abort, current_app, flash, redirect, render_template, request, session, url_for
+from flask import Response, abort, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import contains_eager, joinedload, load_only, selectinload
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
@@ -36,6 +38,7 @@ from helpers.core import (
     clear_support_view_session,
     delete_users_with_related_data,
     get_mt5_sync_batch_state,
+    is_local_dev_environment as core_is_local_dev_environment,
     reactivate_mt5_account,
     reset_mt5_terminal_state,
     queue_mt5_account_cleanup,
@@ -85,6 +88,23 @@ VALID_SIGNUP_STATUSES = {
 SIGNUP_CODE_MODE_OFF = "off"
 SIGNUP_CODE_MODE_OPTIONAL = "optional"
 SIGNUP_CODE_MODE_REQUIRED = "required"
+WAITLIST_EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
+WAITLIST_ALLOWED_SOURCES = {
+    "pricing_page",
+    "replay_gate",
+    "mt5_trial_expired",
+    "dashboard_sidebar",
+    "ai_review_cta",
+}
+WAITLIST_ALLOWED_FEATURES = {
+    "advanced_replay",
+    "multi_timeframe_replay",
+    "mt5_sync",
+    "conversational_review",
+    "full_review_history",
+    "pattern_tracking",
+    "ai_review",
+}
 VALID_SIGNUP_CODE_MODES = {
     SIGNUP_CODE_MODE_OFF,
     SIGNUP_CODE_MODE_OPTIONAL,
@@ -365,17 +385,46 @@ def user_has_root_admin_access(user):
     return is_root_admin_email(getattr(user, "email", ""))
 
 
+def _public_base_host_is_local(url):
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return False
+    return host in {"localhost", "127.0.0.1", "[::1]", "::1"}
+
+
 def get_public_base_url():
     configured_base = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
     if configured_base:
-        return configured_base
-    return request.host_url.rstrip("/")
+        base = configured_base
+    else:
+        base = request.host_url.rstrip("/")
+    if (
+        base.startswith("http://")
+        and not core_is_local_dev_environment()
+        and not _public_base_host_is_local(base)
+    ):
+        base = "https://" + base[len("http://") :]
+    return base
+
+
+def normalize_public_path(path):
+    if path is None:
+        return "/"
+    normalized = str(path).strip()
+    if not normalized:
+        return "/"
+    if not normalized.startswith("/"):
+        normalized = "/" + normalized
+    if normalized != "/":
+        normalized = normalized.rstrip("/") or "/"
+    return normalized
 
 
 def build_external_url(path_or_url):
     if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
         return path_or_url
-    return f"{get_public_base_url()}{path_or_url}"
+    return f"{get_public_base_url()}{normalize_public_path(path_or_url)}"
 
 
 def render_app_template(template_name, **context):
@@ -915,7 +964,382 @@ SEO_PAGE_DEFINITIONS = {
             },
         ),
     },
+    "ai-weekly-trading-review": {
+        "title": "AI Weekly Trading Review — See What Your Trades Actually Show | MyFXJournal",
+        "meta_description": (
+            "MyFXJournal's AI weekly review reads your closed trades and tells you the one pattern worth fixing this week — with cited trades, evidence-bounded coaching, and follow-up questions."
+        ),
+        "eyebrow": "AI weekly trading review",
+        "hero_title": "A weekly review that reads your trades — not just your feelings about them.",
+        "hero_body": (
+            "Most traders review their week with vague summaries and good intentions. "
+            "MyFXJournal's AI weekly review reads your actual closed trades, finds the pattern that mattered most, and tells you exactly what it costs you — with references to specific trades, not generic advice."
+        ),
+        "chips": ("Evidence-bounded coaching", "Cited trades", "No generic advice"),
+        "intro_title": "Why most trade reviews don't work",
+        "intro_body": (
+            "Manual reviewing is slow and biased toward recent trades. Generic AI summaries tell you what happened, not what it means. "
+            "A useful review needs to read the sequence — when did you press the same idea twice, what happened after a loss, which session kept burning you — and connect those facts to a single actionable diagnosis."
+        ),
+        "fit_points": (
+            "The review reads timing, session context, exit handling, and re-entry sequences — not just win rate and average R.",
+            "Every diagnosis comes with cited trade references so you can see exactly which trades drove the conclusion.",
+            "Follow-up chat is scoped to that review: ask why something happened, what you missed, or what to watch for next week.",
+        ),
+        "cards": (
+            {
+                "title": "Evidence first, advice second",
+                "body": "The review identifies the most significant pattern, anchors it to specific trades, and explains the implication before suggesting an adjustment.",
+            },
+            {
+                "title": "One coaching insight per week",
+                "body": "Not a list of everything that went wrong — one main diagnosis, with the supporting context you need to recognise it again.",
+            },
+            {
+                "title": "Ask follow-up questions",
+                "body": "The weekly review doesn't end at the summary. Ask what you missed, why a trade was cited, or what to test next week — the chat stays grounded in your actual trades.",
+            },
+        ),
+        "workflow_steps": (
+            {
+                "title": "Import or sync your trades",
+                "body": "Upload an MT5 history file, use MT5 sync, or add trades manually. The review runs on your closed trades for the week.",
+            },
+            {
+                "title": "Read your weekly review",
+                "body": "Every week, a new review is generated: one main insight, cited trades, a coaching takeaway, and a suggested experiment for next week.",
+            },
+            {
+                "title": "Ask the follow-up questions",
+                "body": "Not sure what a pattern means? Ask. The chat is scoped to that review and those trades — not a generic AI assistant.",
+            },
+        ),
+        "workflow_heading": "Review that works from your data, not your memory.",
+        "cta_heading": "Your trades already contain the answer.",
+        "cta_body": "Import your trade history and get a weekly review this week — no credit card, no setup overhead.",
+        "faq": (
+            {
+                "question": "Is this just an AI summary of my stats?",
+                "answer": "No. The review identifies a specific pattern — like re-entering after a loss, exiting winners early, or trading the wrong session — and tells you which trades show it and why it matters.",
+            },
+            {
+                "question": "What does 'evidence-bounded' mean?",
+                "answer": "The review will not claim a pattern exists unless it can cite at least one specific trade that shows it. It will not make up trends or generalise from too little data.",
+            },
+            {
+                "question": "Can I ask questions about the review?",
+                "answer": "Yes — on Trader and above. The follow-up chat is scoped to the current week's review and its cited trades. It refuses generic advice and stays grounded in your actual data.",
+            },
+            {
+                "question": "How is this different from ChatGPT?",
+                "answer": "ChatGPT does not have your trades. MyFXJournal's review reads your actual closed trade history — entries, exits, timing, session context, and behavioral signals — not a description you typed.",
+            },
+        ),
+    },
+    "revenge-trading-journal": {
+        "title": "Revenge Trading Journal — Catch Revenge Trades Before They Compound | MyFXJournal",
+        "meta_description": (
+            "MyFXJournal automatically detects post-loss re-entry patterns in your trade history. Your weekly review shows you when and how revenge trading is costing you — without manual tagging."
+        ),
+        "eyebrow": "Revenge trading journal",
+        "hero_title": "You already know what revenge trading looks like. The hard part is catching it in your own history.",
+        "hero_body": (
+            "Revenge trades look obvious in hindsight. In the moment, they feel like recovering a loss. "
+            "MyFXJournal's weekly review detects post-loss re-entry sequences in your trade history — without you having to tag or admit anything."
+        ),
+        "chips": ("Post-loss re-entry detection", "Automatic flagging", "Weekly review citation"),
+        "intro_title": "Why traders don't catch revenge trading themselves",
+        "intro_body": (
+            "Manual journaling relies on honesty in the moment — which is exactly when objectivity breaks down. "
+            "Most traders can identify revenge trading in others or in past screenshots. "
+            "They cannot identify it in their own current-week data because they rationalise each entry as it happens. "
+            "An automated review that reads the sequence — not the justification — catches what manual review misses."
+        ),
+        "fit_points": (
+            "The review reads your post-loss sequences: same symbol, tighter spacing, increasing size, quick re-entry after a stop.",
+            "Flagged patterns are cited to specific trades so you can see exactly where it happened rather than accepting a vague label.",
+            "The weekly coaching diagnosis connects the pattern to outcome: did the revenge trade recover, or compound the loss?",
+        ),
+        "cards": (
+            {
+                "title": "Sequence detection, not tag-based",
+                "body": "You don't have to label a trade as revenge. The review reads the timing and sequence and flags it when the pattern is there.",
+            },
+            {
+                "title": "Outcome-first framing",
+                "body": "The review distinguishes between a revenge trade that happened to win (habit reinforced) and one that lost (cost confirmed). Both are problems — just different ones.",
+            },
+            {
+                "title": "One experiment per week",
+                "body": "The review suggests a specific, testable rule for next week: not 'stop revenge trading' but a concrete behavioural constraint you can actually measure.",
+            },
+        ),
+        "workflow_steps": (
+            {
+                "title": "Connect your trades",
+                "body": "Import via MT5 XLSX, CSV, or MT5 sync. No manual tagging needed — the review reads the raw sequence.",
+            },
+            {
+                "title": "Get your review",
+                "body": "When a post-loss re-entry pattern appears in your data, it surfaces in the weekly review with the specific trades cited.",
+            },
+            {
+                "title": "Apply one fix",
+                "body": "The review ends with a specific experiment: a rule to test next week that directly targets the pattern it found.",
+            },
+        ),
+        "workflow_heading": "Catch it in the data, not in the regret.",
+        "cta_heading": "Find out if revenge trading is in your history.",
+        "cta_body": "Import your trades and get a weekly review this week. If the pattern is there, it will show up — with the trades to prove it.",
+        "faq": (
+            {
+                "question": "Do I have to manually tag revenge trades?",
+                "answer": "No. The review detects post-loss re-entry sequences automatically. You do not need to tag, label, or admit anything in the moment.",
+            },
+            {
+                "question": "What counts as a revenge trade in the review?",
+                "answer": "A fast re-entry on the same or related symbol after a loss, often with tighter spacing, similar size, or repeating direction. The review looks at the sequence — not just the tag.",
+            },
+            {
+                "question": "What if the revenge trade actually won?",
+                "answer": "The review handles this case specifically. A winning revenge trade reinforces the habit without validating the decision. The coaching diagnosis explains the difference.",
+            },
+            {
+                "question": "Is this only for forex?",
+                "answer": "No. The behavioral review works for any instrument you trade through MT5 — forex, indices, commodities, crypto.",
+            },
+        ),
+    },
+    "why-do-i-keep-losing-forex-trades": {
+        "title": "Why Do I Keep Losing Forex Trades? Find the Real Pattern | MyFXJournal",
+        "meta_description": (
+            "If you keep losing forex trades despite knowing the strategy, the issue is usually a behavioural pattern in your execution. MyFXJournal's weekly review reads your trade history and shows you what it actually is."
+        ),
+        "eyebrow": "Why do I keep losing?",
+        "hero_title": "You are probably not losing because of your strategy.",
+        "hero_body": (
+            "If you have taken courses, watched the videos, and know the setup — but your equity curve keeps going the wrong direction — "
+            "the issue is almost certainly not the strategy. It is a pattern in your execution that you are not seeing. "
+            "MyFXJournal reads your actual trade history and shows you what it is."
+        ),
+        "chips": ("Execution pattern detection", "Weekly AI review", "Cited trade evidence"),
+        "intro_title": "The patterns that most traders miss",
+        "intro_body": (
+            "Losing traders usually focus on entry quality. The data almost always tells a different story. "
+            "The most common patterns in losing weeks are: exiting winners too early, sizing up after losses, "
+            "trading the same idea after it has already failed, and taking setups outside the session where your edge actually exists. "
+            "None of these show up in a standard P&L table."
+        ),
+        "fit_points": (
+            "The review reads exit handling, re-entry sequences, session distribution, and sizing behaviour — not just win rate.",
+            "Each diagnosis is tied to specific trades in your history so you can see the pattern rather than just reading about it.",
+            "The weekly experiment gives you one specific rule to test so you can isolate the variable rather than changing everything at once.",
+        ),
+        "cards": (
+            {
+                "title": "Exit too early, not entry too late",
+                "body": "Most losing weeks are not about bad entries. They are about cutting winners short while letting the same losing idea run. The review reads the exit side.",
+            },
+            {
+                "title": "Session and context mismatch",
+                "body": "If your edge exists in one session and you keep trading outside it, the data will show it. The review breaks down performance by session and time of day.",
+            },
+            {
+                "title": "Post-loss decision shift",
+                "body": "Many traders change their behaviour after a loss in ways that compound the damage — bigger size, faster re-entry, different setup. The review detects the sequence.",
+            },
+        ),
+        "workflow_steps": (
+            {
+                "title": "Bring in your trade history",
+                "body": "Import your MT5 file, connect MT5 sync, or add trades manually. The more history you bring in, the clearer the patterns.",
+            },
+            {
+                "title": "Read this week's review",
+                "body": "The weekly review picks the most significant pattern from your recent trades and explains exactly what it cost you — with cited trades.",
+            },
+            {
+                "title": "Test one change",
+                "body": "The review ends with one specific experiment for next week. Not a personality change — a testable rule you can apply to this week's trades.",
+            },
+        ),
+        "workflow_heading": "Find the actual reason, not another theory.",
+        "cta_heading": "Stop guessing why the equity curve looks the same every week.",
+        "cta_body": "Import your trades and get a weekly review. Free to start. No credit card.",
+        "faq": (
+            {
+                "question": "I know my strategy works — why am I still losing?",
+                "answer": "Strategy knowledge and strategy execution are different things. The review reads execution patterns — timing, exit decisions, post-loss behaviour — not whether you know the rules.",
+            },
+            {
+                "question": "Will the review tell me what to trade next?",
+                "answer": "No. It tells you what patterns are in your closed trade history and what they cost you. Trade decisions are yours.",
+            },
+            {
+                "question": "What if I only have a few weeks of history?",
+                "answer": "The review runs on whatever is available. Smaller samples get appropriate hedging — the review won't claim a strong pattern from two trades.",
+            },
+            {
+                "question": "Is this only for losing traders?",
+                "answer": "No. Profitable traders use it to identify habits that work and protect them, not just to fix losing habits. The review surfaces both.",
+            },
+        ),
+    },
+    "myfxjournal-vs-tradersync": {
+        "title": "MyFXJournal vs TraderSync — Which Is Right For You? | MyFXJournal",
+        "meta_description": (
+            "Honest comparison: MyFXJournal focuses on weekly AI review, behavioral pattern detection, and reflection depth. TraderSync offers broader analytics and multi-broker support. Here's how to decide."
+        ),
+        "eyebrow": "MyFXJournal vs TraderSync",
+        "hero_title": "TraderSync and MyFXJournal are solving different problems.",
+        "hero_body": (
+            "TraderSync is a comprehensive trade tracker with detailed analytics, tags, and multi-broker coverage. "
+            "MyFXJournal focuses on something narrower: a weekly coaching review that reads your execution patterns and tells you the one thing worth fixing. "
+            "Which is right depends on what you actually need."
+        ),
+        "chips": ("Honest comparison", "No affiliate bias", "Different use cases"),
+        "intro_title": "What each product is built for",
+        "intro_body": (
+            "TraderSync is built for traders who want detailed statistics, manual tagging, broker integrations across many platforms, and a deep analytics dashboard. "
+            "MyFXJournal is built for traders who want a lower-friction weekly review habit with AI-assisted pattern detection — and eventually, conversational reflection grounded in their trade history. "
+            "These are genuinely different products for different workflows."
+        ),
+        "fit_points": (
+            "If you want the deepest analytics dashboard and multi-broker support, TraderSync is the stronger choice — it has more integrations and more tag-based analytics.",
+            "If you want a weekly coaching review that automatically identifies behavioral patterns without manual tagging, MyFXJournal is built around that workflow.",
+            "If MT5 is your primary platform, MyFXJournal's read-only MT5 sync is purpose-built for the MT5 retail trader workflow.",
+        ),
+        "cards": (
+            {
+                "title": "Analytics depth vs review quality",
+                "body": "TraderSync has more analytics surfaces. MyFXJournal puts that energy into the weekly review: what the patterns mean and what to do about them.",
+            },
+            {
+                "title": "Manual tagging vs automatic detection",
+                "body": "TraderSync relies on manual setup categories and tags. MyFXJournal detects behavioral patterns — revenge entries, exit habits, session mismatches — from the raw sequence.",
+            },
+            {
+                "title": "Price point",
+                "body": "TraderSync starts at ~$29.95/month. MyFXJournal is free during beta; Trader tier will launch at $14/month.",
+            },
+        ),
+        "workflow_steps": (
+            {
+                "title": "Import or sync your trades",
+                "body": "Both products support MT5 imports. MyFXJournal also supports read-only MT5 sync for automatic weekly updates.",
+            },
+            {
+                "title": "Review your week",
+                "body": "TraderSync shows you a detailed stats dashboard. MyFXJournal shows you a weekly coaching review: one main insight, cited trades, and one thing to change.",
+            },
+            {
+                "title": "Reflect and adjust",
+                "body": "TraderSync surfaces your custom tags and categories. MyFXJournal offers follow-up chat scoped to the review, so you can explore what the pattern actually means.",
+            },
+        ),
+        "workflow_heading": "Two different approaches to the same problem.",
+        "cta_heading": "Try the weekly review approach — free.",
+        "cta_body": "No credit card. Import your trades and get a weekly review this week. If the review-first approach fits your workflow, great.",
+        "faq": (
+            {
+                "question": "Is this a fair comparison?",
+                "answer": "We think so. TraderSync is a strong product with more broker integrations and a deeper analytics surface. We're focused on something narrower: the weekly review habit and the behavioral patterns underneath it.",
+            },
+            {
+                "question": "Does MyFXJournal work with platforms other than MT5?",
+                "answer": "Yes — MT5 XLSX imports, Tradovate CSV, and manual entry. MT5 sync is purpose-built. Other broker integrations are not a current focus.",
+            },
+            {
+                "question": "What happens when MyFXJournal launches paid tiers?",
+                "answer": "Free tier stays free. Trader tier will launch at $14/month — below TraderSync's entry price. Everyone currently using the product during beta gets grandfathered pricing.",
+            },
+        ),
+    },
+    "myfxjournal-vs-edgewonk": {
+        "title": "MyFXJournal vs Edgewonk — Different Tools, Different Habits | MyFXJournal",
+        "meta_description": (
+            "Edgewonk focuses on deep trade analytics and manual journaling discipline. MyFXJournal focuses on automatic weekly review and behavioral pattern detection. Honest comparison."
+        ),
+        "eyebrow": "MyFXJournal vs Edgewonk",
+        "hero_title": "Edgewonk and MyFXJournal are built around different trading habits.",
+        "hero_body": (
+            "Edgewonk is a desktop-based trade journal with deep analytics, manual trade tagging, and a strong emphasis on process discipline. "
+            "MyFXJournal is web-based, MT5-connected, and focused on a weekly AI review that reads patterns in your trade history without requiring manual journaling effort. "
+            "The difference is mostly about what kind of work you want to do."
+        ),
+        "chips": ("Honest comparison", "Different workflows", "Free to try"),
+        "intro_title": "What separates them",
+        "intro_body": (
+            "Edgewonk's strength is in its deep manual discipline model: every trade gets tagged, scored, and reviewed against your own rules. "
+            "For traders who want to build that kind of systematic process, it is genuinely powerful. "
+            "MyFXJournal takes the opposite stance: the review should run automatically on your trade data so the habit is frictionless, "
+            "and the AI should do the pattern detection so you don't have to self-identify your mistakes in the moment."
+        ),
+        "fit_points": (
+            "If you want a deeply manual journaling workflow with your own scoring system and trade categories, Edgewonk is more flexible for that.",
+            "If you want the weekly review to happen automatically and the pattern detection to work without tagging, MyFXJournal is built around that workflow.",
+            "Edgewonk is a one-time purchase (~$169). MyFXJournal is free during beta; Trader tier launches at $14/month.",
+        ),
+        "cards": (
+            {
+                "title": "Manual discipline vs automatic review",
+                "body": "Edgewonk works if you commit to the tagging and scoring process. MyFXJournal's value comes from having no process to maintain — the review runs on your raw trade data.",
+            },
+            {
+                "title": "Desktop vs web",
+                "body": "Edgewonk is a downloaded desktop app. MyFXJournal is web-based and syncs with MT5 automatically — no exports, no local file management.",
+            },
+            {
+                "title": "Coaching style",
+                "body": "Edgewonk surfaces your own rules and lets you score against them. MyFXJournal's review identifies patterns you may not have named or noticed yet.",
+            },
+        ),
+        "workflow_steps": (
+            {
+                "title": "Import your trade history",
+                "body": "Both products support trade imports. Edgewonk uses its own import flow; MyFXJournal supports MT5 XLSX, CSV, and read-only MT5 sync.",
+            },
+            {
+                "title": "Review and reflect",
+                "body": "Edgewonk shows your custom scoring dashboard. MyFXJournal shows a weekly coaching review — one main insight, cited trades, one suggested experiment.",
+            },
+            {
+                "title": "Build the habit",
+                "body": "Both products are only useful if you return to them. The difference is how much setup you need to do to get value from each visit.",
+            },
+        ),
+        "workflow_heading": "Both are useful. The question is what habit you want to build.",
+        "cta_heading": "Try the frictionless approach.",
+        "cta_body": "Free during beta. No credit card. Import your trades and get a weekly review — no tagging, no scoring, no setup discipline required.",
+        "faq": (
+            {
+                "question": "Is Edgewonk worth the one-time price?",
+                "answer": "For traders who want to build a deep manual journaling discipline and are willing to do the tagging work consistently, yes. If manual process maintenance is what caused you to stop journaling in the past, probably not.",
+            },
+            {
+                "question": "Does MyFXJournal require manual tagging?",
+                "answer": "No. Behavioral patterns — revenge entries, exit habits, session mismatches — are detected automatically from the trade sequence. You don't tag anything.",
+            },
+            {
+                "question": "Can I use both?",
+                "answer": "Yes. Some traders use Edgewonk for deep manual scoring and MyFXJournal for the automatic weekly review. They solve different parts of the problem.",
+            },
+        ),
+    },
 }
+
+# Paths included in `sitemap.xml` (must match canonical URLs on those pages — no trailing slash except `/`).
+SEO_SITEMAP_PATHS = (
+    "/",
+    "/pricing",
+    "/dashboard",
+    "/login",
+    "/register",
+    "/contact",
+    "/privacy",
+    "/terms",
+    "/faq/mt5-server",
+) + tuple(f"/{slug}" for slug in SEO_PAGE_DEFINITIONS)
 
 
 def get_allowed_signup_email_domains():
@@ -1753,31 +2177,179 @@ def register_public_auth_routes(
     def trade_replay_chart_page():
         return _render_public_seo_page("trade-replay-chart")
 
+    @app.route("/ai-weekly-trading-review")
+    def ai_weekly_trading_review_page():
+        return _render_public_seo_page("ai-weekly-trading-review")
+
+    @app.route("/revenge-trading-journal")
+    def revenge_trading_journal_page():
+        return _render_public_seo_page("revenge-trading-journal")
+
+    @app.route("/why-do-i-keep-losing-forex-trades")
+    def why_keep_losing_page():
+        return _render_public_seo_page("why-do-i-keep-losing-forex-trades")
+
+    @app.route("/myfxjournal-vs-tradersync")
+    def vs_tradersync_page():
+        return _render_public_seo_page("myfxjournal-vs-tradersync")
+
+    @app.route("/myfxjournal-vs-edgewonk")
+    def vs_edgewonk_page():
+        return _render_public_seo_page("myfxjournal-vs-edgewonk")
+
+    @app.route("/pricing")
+    def pricing_page():
+        return render_template(
+            "pricing.html",
+            title="Pricing | MyFXJournal — Free during beta",
+            meta_description="MyFXJournal is free during open beta. See planned Trader and Pro tiers, including advanced replay and MT5 sync access, and join the waitlist.",
+            canonical_url=build_external_url("/pricing"),
+            body_class="landing-layout",
+            user_logged_in=bool(session.get("user_id")),
+        )
+
+    @app.route("/pricing/waitlist", methods=["POST"])
+    @limiter.limit("5 per minute;40 per hour")
+    def pricing_waitlist_post():
+        from models import UpgradeWaitlistEntry
+
+        try:
+            data = request.get_json(silent=True) or {}
+            email = (data.get("email") or "").strip().lower()
+            tier = (data.get("tier") or "trader").strip().lower()
+            source = (data.get("source") or "pricing_page").strip().lower()
+            feature_interest = (data.get("feature_interest") or "").strip().lower()
+            cta_context = (data.get("cta_context") or "").strip().lower()
+        except Exception:
+            return jsonify({"ok": False, "error": "Invalid request."}), 400
+
+        if (
+            not email
+            or len(email) > 254
+            or not WAITLIST_EMAIL_RE.match(email)
+            or ".." in email
+        ):
+            return jsonify({"ok": False, "error": "Please enter a valid email address."}), 400
+
+        allowed_tiers = {"trader", "pro"}
+        if tier not in allowed_tiers:
+            tier = "trader"
+
+        if source not in WAITLIST_ALLOWED_SOURCES:
+            source = "pricing_page"
+
+        if not feature_interest:
+            feature_interest = "advanced_replay" if tier == "trader" else "multi_timeframe_replay"
+        elif feature_interest not in WAITLIST_ALLOWED_FEATURES:
+            feature_interest = "advanced_replay" if tier == "trader" else "multi_timeframe_replay"
+
+        if cta_context and len(cta_context) > 96:
+            cta_context = cta_context[:96]
+
+        user_id = session.get("user_id")
+
+        def _enrich_existing_entry(entry):
+            if entry is None:
+                return
+            changed = False
+            if user_id and not getattr(entry, "user_id", None):
+                entry.user_id = user_id
+                changed = True
+            if cta_context and not getattr(entry, "cta_context", None):
+                entry.cta_context = cta_context
+                changed = True
+            if not changed:
+                return
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                current_app.logger.exception(
+                    "Failed to enrich waitlist entry email=%s tier=%s source=%s feature=%s",
+                    email,
+                    tier,
+                    source,
+                    feature_interest,
+                )
+
+        existing = UpgradeWaitlistEntry.query.filter_by(
+            email=email,
+            tier_intent=tier,
+            source=source,
+            feature_interest=feature_interest,
+        ).first()
+        if existing:
+            _enrich_existing_entry(existing)
+        else:
+            entry = UpgradeWaitlistEntry(
+                email=email,
+                tier_intent=tier,
+                source=source,
+                feature_interest=feature_interest,
+                cta_context=cta_context or None,
+                user_id=user_id,
+            )
+            db.session.add(entry)
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                existing = UpgradeWaitlistEntry.query.filter_by(
+                    email=email,
+                    tier_intent=tier,
+                    source=source,
+                    feature_interest=feature_interest,
+                ).first()
+                _enrich_existing_entry(existing)
+            except Exception:
+                db.session.rollback()
+                current_app.logger.exception(
+                    "Failed to save waitlist entry email=%s tier=%s source=%s feature=%s",
+                    email,
+                    tier,
+                    source,
+                    feature_interest,
+                )
+                return jsonify({"ok": False, "error": "Something went wrong — please try again."}), 500
+
+        tier_label_map = {"trader": "Trader", "pro": "Pro"}
+        tier_label = tier_label_map.get(tier, "Trader")
+        try:
+            html_body = render_template(
+                "emails/waitlist-confirmation.html",
+                tier_label=tier_label,
+                dashboard_url=build_external_url(url_for("dashboard.home")),
+                site_url=build_external_url("/"),
+                site_label="myfxjournal.com",
+            )
+            send_email_placeholder(
+                email,
+                f"You're on the waitlist — MyFXJournal {tier_label}",
+                f"You're on the MyFXJournal {tier_label} waitlist. We'll reach out when early access opens.",
+                html_body=html_body,
+            )
+        except Exception:
+            current_app.logger.warning("Waitlist confirmation email failed for %s", email)
+
+        return jsonify({"ok": True})
+
     @app.route("/robots.txt")
     def robots_txt():
         robots_lines = [
             "User-agent: *",
             "Allow: /",
             "Disallow: /password/",
-            "Disallow: /verify-email/",
+            "Disallow: /verify-email",
             "Disallow: /onboarding",
-            "Disallow: /auth/google",
+            "Disallow: /auth/",
+            "Disallow: /session/",
             "Sitemap: " + build_external_url("/sitemap.xml"),
         ]
         return Response("\n".join(robots_lines) + "\n", mimetype="text/plain")
 
     @app.route("/sitemap.xml")
     def sitemap_xml():
-        public_urls = (
-            build_external_url("/"),
-            build_external_url("/dashboard"),
-            build_external_url("/login"),
-            build_external_url("/register"),
-            build_external_url("/contact"),
-            build_external_url("/privacy"),
-            build_external_url("/terms"),
-            build_external_url("/faq/mt5-server"),
-        ) + tuple(build_external_url(f"/{slug}") for slug in SEO_PAGE_DEFINITIONS)
+        public_urls = tuple(build_external_url(path) for path in SEO_SITEMAP_PATHS)
         sitemap_items = "\n".join(f"  <url><loc>{url}</loc></url>" for url in public_urls)
         sitemap = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -1788,7 +2360,6 @@ def register_public_auth_routes(
         return Response(sitemap, mimetype="application/xml")
 
     @app.route("/privacy")
-    @app.route("/privacy-policy")
     def privacy_policy():
         return render_template(
             "privacy_policy.html",
@@ -1798,8 +2369,11 @@ def register_public_auth_routes(
             last_updated=legal_last_updated,
         )
 
+    @app.route("/privacy-policy")
+    def privacy_policy_legacy_path():
+        return redirect(url_for("privacy_policy"), code=301)
+
     @app.route("/terms")
-    @app.route("/terms-and-conditions")
     def terms_and_conditions():
         return render_template(
             "terms_and_conditions.html",
@@ -1808,6 +2382,10 @@ def register_public_auth_routes(
             canonical_url=build_external_url("/terms"),
             last_updated=legal_last_updated,
         )
+
+    @app.route("/terms-and-conditions")
+    def terms_and_conditions_legacy_path():
+        return redirect(url_for("terms_and_conditions"), code=301)
 
     @app.route("/faq/mt5-server")
     def faq_mt5_server():

@@ -414,16 +414,20 @@ def test_admin_regenerate_ai_advice_success_appends_new_row_and_keeps_history(ap
 
     call_state = {"count": 0}
 
-    def fake_delay(*args, **kwargs):
+    def fake_dispatch(task, *, args=None, kwargs=None, **_extra):
         call_state["count"] += 1
+        assert task is celery_tasks.generate_weekly_ai_task
+        args = args or []
+        kwargs = kwargs or {}
         assert args[0] == target_user.id
         assert args[1] == account.id
         assert args[2] == "dashboard_advice.txt"
         assert args[3] == period["period_start_utc"].isoformat()
         assert kwargs["force_regenerate"] is True
         assert kwargs["send_weekly_email"] is False
+        return type("DispatchResult", (), {"id": "test-task-id"})()
 
-    monkeypatch.setattr(celery_tasks.generate_weekly_ai_task, "delay", fake_delay)
+    monkeypatch.setattr(auth_account, "dispatch_celery_task", fake_dispatch)
 
     _login_as(client, root_admin)
     response = client.post(
@@ -458,10 +462,10 @@ def test_admin_regenerate_ai_advice_requires_account_selection(app_ctx, client, 
 
     call_state = {"count": 0}
 
-    def fake_delay(*args, **kwargs):
+    def fake_dispatch(*args, **kwargs):
         call_state["count"] += 1
 
-    monkeypatch.setattr(celery_tasks.generate_weekly_ai_task, "delay", fake_delay)
+    monkeypatch.setattr(auth_account, "dispatch_celery_task", fake_dispatch)
 
     _login_as(client, root_admin)
     response = client.post(
@@ -508,10 +512,10 @@ def test_admin_regenerate_ai_advice_warns_when_no_period_exists(app_ctx, client,
     monkeypatch.setattr(auth_account, "get_latest_trade_week_period", lambda **kwargs: None)
     call_state = {"count": 0}
 
-    def fake_delay(*args, **kwargs):
+    def fake_dispatch(*args, **kwargs):
         call_state["count"] += 1
 
-    monkeypatch.setattr(celery_tasks.generate_weekly_ai_task, "delay", fake_delay)
+    monkeypatch.setattr(auth_account, "dispatch_celery_task", fake_dispatch)
 
     _login_as(client, root_admin)
     response = client.post(
@@ -572,10 +576,10 @@ def test_admin_regenerate_ai_advice_rolls_back_and_preserves_existing_rows_on_fa
 
     monkeypatch.setattr(auth_account, "send_email_placeholder", fake_send_email)
 
-    def fake_delay(*args, **kwargs):
+    def fake_dispatch(*args, **kwargs):
         raise AIRequestError("temporary failure")
 
-    monkeypatch.setattr(celery_tasks.generate_weekly_ai_task, "delay", fake_delay)
+    monkeypatch.setattr(auth_account, "dispatch_celery_task", fake_dispatch)
 
     _login_as(client, root_admin)
     response = client.post(
@@ -630,10 +634,10 @@ def test_admin_regenerate_ai_advice_rolls_back_on_config_error(app_ctx, client, 
 
     monkeypatch.setattr(auth_account, "get_latest_trade_week_period", lambda **kwargs: period)
 
-    def fake_delay(*args, **kwargs):
+    def fake_dispatch(*args, **kwargs):
         raise AIConfigError("missing api key")
 
-    monkeypatch.setattr(celery_tasks.generate_weekly_ai_task, "delay", fake_delay)
+    monkeypatch.setattr(auth_account, "dispatch_celery_task", fake_dispatch)
 
     _login_as(client, root_admin)
     response = client.post(

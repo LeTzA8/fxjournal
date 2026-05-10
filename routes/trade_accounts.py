@@ -1041,6 +1041,15 @@ def trade_accounts():
         .all()
     )
     mt5_access_state = build_mt5_access_state(user_id, account_rows)
+    from helpers.entitlements import get_mt5_trial_state
+    from models import User as _User
+    _current_user = db.session.get(_User, user_id)
+    mt5_trial_states_by_trade_account = {}
+    if _current_user is not None:
+        for _ta_id, _mt5_account in mt5_access_state["mt5_accounts_by_trade_account"].items():
+            mt5_trial_states_by_trade_account[_ta_id] = get_mt5_trial_state(
+                _current_user, _mt5_account
+            )
     edit_pubkey = request.args.get("edit", "").strip() or request.args.get(
         "edit_id", ""
     ).strip()
@@ -1088,6 +1097,7 @@ def trade_accounts():
         linked_mt5_trade_account_ids=mt5_access_state["linked_mt5_trade_account_ids"],
         active_mt5_trade_account_ids=mt5_access_state["active_mt5_trade_account_ids"],
         trade_profile_options=get_user_trade_profiles(user_id),
+        mt5_trial_states_by_trade_account=mt5_trial_states_by_trade_account,
     )
 
 

@@ -106,6 +106,19 @@ def test_setup_mt5_terminal_sends_ready_email_when_account_becomes_active(app_ct
         lambda path: str(base_appdata) if os.path.normcase(str(path)) == os.path.normcase(str(base_dir)) else str(new_appdata),
     )
 
+    class _FakeProcess:
+        def terminate(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(
+        mt5_setup_module.subprocess,
+        "Popen",
+        lambda *args, **kwargs: _FakeProcess(),
+    )
+
     fake_mt5 = _FakeMt5Module(expected_login=int(mt5_account.account_number))
     _set_mt5_import(monkeypatch, fake_mt5)
 

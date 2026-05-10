@@ -1418,6 +1418,38 @@ body.app-layout .trade-accounts-page .helper-note {
     cursor: not-allowed;
 }
 
+.trade-chart-tf-upgrade {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.32rem 0.52rem;
+    border-right: 1px solid var(--border, #e2e8f0);
+    opacity: 0.7;
+}
+.trade-chart-tf-upgrade-label {
+    font-size: 0.8rem;
+    color: var(--muted, #66758f);
+    font-weight: 500;
+}
+.trade-chart-tf-upgrade-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: #eef4ff;
+    border: 1px solid #dce4f0;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: #3658e8;
+    text-decoration: none;
+    white-space: nowrap;
+    line-height: 1.5;
+}
+.trade-chart-tf-upgrade-badge:hover {
+    background: #dce4f0;
+    text-decoration: none;
+}
+
 .trade-chart-container {
     height: 420px;
     min-height: 320px;

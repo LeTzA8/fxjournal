@@ -1,6 +1,70 @@
 # CURRENT_STATE
 
-Last Updated: 2026-05-10
+Last Updated: 2026-05-11
+
+## Monetization rollout final hardening (2026-05-11)
+
+- Replay chart API no longer normalizes unsupported timeframe requests before gating. Free users requesting `M1` now receive a 403 `upgrade_required` JSON response with `/pricing` waitlist CTA metadata; Trader/Pro users requesting `M1` receive a clean 501 `timeframe_not_available` response until 1m replay is actually implemented. Returned `available_timeframes` only lists implemented + entitled UI options (`M5`, `M15` for now). (`routes/trades.py`, `tests/test_trades_routes.py`)
+- Explicit MT5 pause state is now respected outside the sync worker: Beat excludes accounts with `sync_paused_at`, shared MT5 access state does not treat paused accounts as active, and dashboard/trade-account templates render `Sync Paused` instead of `Connected`. Grandfathered beta MT5 access now has a lightweight visible indicator. (`helpers/entitlements.py`, `helpers/core.py`, `celery_workers/mt5_sync_tasks.py`, `routes/dashboard.py`, `templates/index.html`, `templates/trade_accounts.html`, `tests/test_mt5_access_requests.py`)
+- MT5 sync regression pass restored live open-position `profit` -> outbound `pnl` propagation, stale-history diagnostics, soft reconnect on stale broker history, compact benign noop logging, and chunked history helper coverage. The obsolete Redis global-lock skip expectation was aligned to the current per-account lock design. (`celery_workers/mt5_sync_tasks.py`, `tests/test_mt5_sync.py`)
+- Pricing copy now frames 1m replay, review archives, multi-timeframe replay, multiple MT5 accounts, annual billing, and refund terms as planned/future rollout instead of live/legal commitments before billing exists. (`templates/pricing.html`, `auth_account.py`)
+- Waitlist duplicate handling now enriches an existing row with `user_id` and missing `cta_context` when a later duplicate submission is authenticated. `/pricing/waitlist` rate-limit responses are JSON with `ok: false`. The waitlist intent migration now documents its PostgreSQL-specific duplicate-cleanup/constraint caveat for local SQLite. (`auth_account.py`, `app.py`, `migrations/versions/20260510_0057_waitlist_intent_fields.py`, `tests/test_pricing_waitlist.py`)
+
+## Legal pages — Terms & Privacy pass-through (2026-05-11)
+
+- Updated `templates/terms_and_conditions.html` and `templates/privacy_policy.html` so disclosures match current product behavior: MT5 sync vs file import, behavioral/coaching-hypothesis analytics, persisted weekly AI, review-scoped conversational chat threads, profile/check-in context, waitlist and phased rollout language, and subscription/payment expectations (processor-handled cards, no enterprise compliance claims).
+- `helpers/legal.py` `LEGAL_LAST_UPDATED` set to **May 11, 2026** (also used for MT5 consent version stamping).
+
+## SEO / indexing consistency (2026-05-11)
+
+- Canonical hygiene: production-style bases use `https://` when the app is not in local dev and the host is not loopback; paths normalize to no trailing slash except `/`. Default template canonicals run through `build_external_url(normalize_public_path(...))` in `app.py`.
+- Duplicate legal URLs: `GET /privacy-policy` → 301 `/privacy`; `GET /terms-and-conditions` → 301 `/terms`.
+- `robots.txt`: disallow `/auth/`, `/session/`, and `/verify-email` prefix; `/register` stays crawlable.
+- Sitemap: single source `SEO_SITEMAP_PATHS` (includes `/pricing` and all SEO landings); matches page-level canonical URLs.
+- `base.html`: `noindex` for any `/auth/*` HTML response path.
+
+## Phase 1 + Phase 2 hardening pass (2026-05-11)
+
+- Added schema-compat safety for partially migrated environments:
+  - `User.plan_tier` / `User.plan_grandfathered` and `MT5Account.mt5_trial_started_at` / `sync_paused_at` / `sync_pause_reason` are ORM-deferred so authenticated non-entitlement pages (for example `/pricing`) do not hard-fail when Phase 2 columns are missing.
+  - New `helpers/schema_compat.py` introspects DB columns with cache; entitlement helpers fail open (`schema_compat`) when those columns are absent so legacy environments avoid 500/blocking behavior until migrations are applied.
+- Waitlist intent tracking extended:
+  - `UpgradeWaitlistEntry` now stores `source`, `feature_interest`, and optional `cta_context`.
+  - New migration `20260510_0057_waitlist_intent_fields.py` adds fields, backfills existing rows, deduplicates existing duplicates, and enforces unique key `uq_upgrade_waitlist_email_tier_source_feature`.
+  - `/pricing/waitlist` now accepts + validates intent fields, applies defaults, rate-limits submissions (`5/min;40/hour`), and handles duplicate races gracefully via unique constraint + `IntegrityError` rollback.
+- Public header/nav consistency:
+  - Added reusable shared public header partials: `templates/partials/public_header.html`, `public_header_styles.html`, `public_header_script.html`.
+  - Landing, SEO pages, and pricing now render the same shared header/navigation component.
+  - Mobile navigation now has a lightweight toggle menu instead of removing nav entirely on small screens.
+- Added regression coverage:
+  - `tests/test_public_seo.py`: authenticated `/pricing` render test asserts user queries do not select Phase 2 entitlement columns (pre-0056 compatibility guardrail).
+  - `tests/test_pricing_waitlist.py`: intent storage + duplicate-submission graceful handling.
+  - `tests/test_migration_ordering.py`: explicit migration chain checks for `0055 -> 0056 -> 0057`.
+- Deploy sequencing clarified: when shipping pricing/waitlist + entitlement code, run migrations in order up to `20260510_0057` before or with app deploy (`0055` waitlist table, `0056` entitlement columns, `0057` waitlist intent + unique key) to keep all environments aligned.
+
+## Phase 2 — Entitlement / Gating Infrastructure (2026-05-10)
+
+Central entitlement system, MT5 14-day trial enforcement, replay timeframe gating, and VM pause-on-expiry.
+
+**New files:**
+- `helpers/entitlements.py` — all plan-gating decisions. Constants: `MT5_TRIAL_DAYS=14`, `BILLING_LAUNCH_DATE=None` (set to UTC datetime when Stripe goes live; while None trial expiry is not enforced, but explicit sync pauses are respected), `FREE_REPLAY_TIMEFRAMES={M5,M15}`, `TRADER_REPLAY_TIMEFRAMES={M1,M5,M15}`, `FREE_REPLAY_MAX_TRADE_AGE_DAYS=90`. Helpers: `get_user_plan_state`, `is_mt5_sync_paused`, `get_mt5_trial_state` (states: grandfathered/not_started/active/expired/paused), `can_use_mt5_sync`, `can_access_replay_timeframe`, `can_generate_replay_bars`, `get_replay_entitlement`. Admin bypass via `_is_admin → user_has_admin_access`. Grandfathered users get Trader entitlement throughout.
+- `migrations/versions/20260510_0056_entitlement_fields.py` — adds `plan_tier`/`plan_grandfathered` to `users`; adds `mt5_trial_started_at`/`sync_paused_at`/`sync_pause_reason` to `mt5_account`. Data upgrade sets `plan_grandfathered=TRUE` for all users with `last_synced_at IS NOT NULL` (existing beta users grandfathered silently).
+- `tests/test_entitlements.py` — 37 tests, all passing. Uses `SimpleNamespace` mocks; no DB fixtures.
+
+**Modified files:**
+- `models.py` — `User.plan_tier` (String 32, default "free"), `User.plan_grandfathered` (Boolean, default False); `MT5Account.mt5_trial_started_at`, `MT5Account.sync_paused_at`, `MT5Account.sync_pause_reason` (String 64).
+- `celery_workers/mt5_setup_tasks.py` — new `pause_mt5_terminal_process` Celery task. Uses `_terminate_mt5_processes(terminal_path)` only (no file deletion, no `cleanup_mt5_terminal`). Sets `sync_paused_at` if not already set.
+- `celery_workers/mt5_sync_tasks.py` — trial guard after `is_orphaned` check; stamps `mt5_trial_started_at` on first successful sync for non-grandfathered users.
+- `routes/trades.py` — `trade_chart_data()` returns 403 `upgrade_required` for Free user requesting M1, returns 501 `timeframe_not_available` for Trader/Pro requesting M1 before implementation, and filters `available_timeframes` to implemented + plan-allowed UI timeframes.
+- `routes/mt5_internal.py` — `_queue_auto_trade_bar_sync()` skips trades outside Free-tier age limit via `can_generate_replay_bars`.
+- `routes/trade_accounts.py` — computes `mt5_trial_states_by_trade_account` dict passed to template.
+- `templates/trade_accounts.html` — trial state badge: days-remaining (green/amber), expired soft CTA, not-started notice.
+
+**Critical invariants:**
+- `BILLING_LAUNCH_DATE = None` → trial expiry is not enforced (safe to deploy now); explicit `sync_paused_at` still blocks scheduling/sync until pause state is cleared
+- Grandfathered path bypasses all trial logic; existing beta users are unaffected
+- Trial pause ≠ archive: `sync_paused_at`/`sync_pause_reason` are entirely separate from `archived_at`/`archive_reason`/`cleanup_mt5_terminal`
+- M5/M15 replay is never gated for any user; M1 gating is forward-compatible (M1 not yet stored)
 
 ## Dashboard trends changed to week-on-week comparisons (2026-05-10)
 

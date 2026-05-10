@@ -2,7 +2,7 @@ import secrets
 
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import event, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, deferred
 
 from helpers.utils import utcnow_naive  # noqa: F401 – re-exported for existing callers
 
@@ -73,6 +73,14 @@ class User(db.Model):
     )
     verification_sent_at = db.Column(db.DateTime, nullable=True)
     last_login_at = db.Column(db.DateTime, nullable=True)
+    # Deferred for migration-compat safety: pre-0056 environments can still
+    # render routes that do not actually require entitlement values.
+    plan_tier = deferred(
+        db.Column(db.String(32), nullable=False, default="free", server_default="free")
+    )
+    plan_grandfathered = deferred(
+        db.Column(db.Boolean, nullable=False, default=False, server_default="false")
+    )
     trade_accounts = db.relationship(
         "TradeAccount",
         backref="user",
@@ -659,6 +667,9 @@ class MT5Account(db.Model):
     connection_status = db.Column(db.String(16), nullable=False, default="pending")
     connection_error_message = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    mt5_trial_started_at = deferred(db.Column(db.DateTime, nullable=True))
+    sync_paused_at = deferred(db.Column(db.DateTime, nullable=True))
+    sync_pause_reason = deferred(db.Column(db.String(64), nullable=True))
 
     CONNECTION_STATUS_PENDING = "pending"
     CONNECTION_STATUS_CONNECTED = "connected"
@@ -1058,6 +1069,38 @@ class WeeklyReviewChatMessage(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, index=True)
     model_used = db.Column(db.String(64), nullable=True)
     prompt_version = db.Column(db.String(64), nullable=True)
+
+
+class UpgradeWaitlistEntry(db.Model):
+    __tablename__ = "upgrade_waitlist_entries"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "email",
+            "tier_intent",
+            "source",
+            "feature_interest",
+            name="uq_upgrade_waitlist_email_tier_source_feature",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(254), nullable=False, index=True)
+    tier_intent = db.Column(db.String(32), nullable=True)
+    source = db.Column(db.String(64), nullable=False, default="pricing_page", index=True)
+    feature_interest = db.Column(
+        db.String(64),
+        nullable=False,
+        default="advanced_replay",
+        index=True,
+    )
+    cta_context = db.Column(db.String(96), nullable=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
 
 
 @event.listens_for(Session, "before_flush")

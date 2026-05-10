@@ -1323,7 +1323,7 @@ def _build_latest_trade_snapshot(user_trades, timezone_name):
     }
 
 
-def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_access_state):
+def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_access_state, current_user=None):
     mt5_cfd_accounts = [
         account
         for account in account_rows
@@ -1343,12 +1343,27 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
         is_linked = mt5_account is not None
         is_active_linked = account.id in active_mt5_trade_account_ids
         is_archived = bool(getattr(mt5_account, "is_archived", False))
+        mt5_trial_state = None
+        is_paused = False
+        if mt5_account is not None:
+            from helpers.entitlements import get_mt5_trial_state, is_mt5_sync_paused
+            is_paused = is_mt5_sync_paused(mt5_account)
+            if current_user is not None:
+                mt5_trial_state = get_mt5_trial_state(current_user, mt5_account)
+                is_paused = is_paused or mt5_trial_state.get("state") == "paused"
         has_setup_artifacts = bool(
             str(getattr(mt5_account, "terminal_path", "") or "").strip()
             or str(getattr(mt5_account, "appdata_hash", "") or "").strip()
         )
 
-        if is_active_linked:
+        if is_paused:
+            status = "paused"
+            status_label = "Sync Paused"
+            note = (
+                "MT5 sync is paused for this account. Your trade history is safe; "
+                "view pricing to join the Trader waitlist for sync reactivation."
+            )
+        elif is_active_linked:
             status = "linked"
             status_label = "MT5 Linked"
             note = "MT5 details are already on file for this account."
@@ -1408,6 +1423,8 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
                 "is_active_linked": is_active_linked,
                 "is_archived": is_archived,
                 "has_setup_artifacts": has_setup_artifacts,
+                "is_paused": is_paused,
+                "mt5_trial_state": mt5_trial_state,
             }
         )
 
@@ -1476,11 +1493,14 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
 
     active_trade_account = get_active_trade_account_for_user(user_id)
     account_rows = get_user_trade_accounts(user_id)
+    if not is_admin_view:
+        target_user = db.session.get(User, user_id)
     mt5_access_state = build_mt5_access_state(user_id, account_rows)
     mt5_sections = _build_dashboard_mt5_sections(
         account_rows=account_rows,
         active_trade_account=active_trade_account,
         mt5_access_state=mt5_access_state,
+        current_user=target_user,
     )
     user_trades = _load_user_trades(user_id, active_trade_account)
     dashboard_analytics = _load_dashboard_analytics(

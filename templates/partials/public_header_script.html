@@ -1,0 +1,46 @@
+<script>
+(function () {
+    var header = document.querySelector(".landing-header");
+    if (!header) return;
+
+    var mobileToggle = header.querySelector("[data-mobile-nav-toggle]");
+    var mobileNav = document.getElementById("publicMobileNav");
+
+    if (mobileToggle && mobileNav) {
+        mobileToggle.addEventListener("click", function () {
+            var expanded = mobileToggle.getAttribute("aria-expanded") === "true";
+            mobileToggle.setAttribute("aria-expanded", expanded ? "false" : "true");
+            mobileNav.hidden = expanded;
+        });
+    }
+
+    var dropdown = header.querySelector("[data-nav-dropdown]");
+    var dropdownToggle = header.querySelector("[data-nav-dropdown-toggle]");
+    var dropdownMenu = header.querySelector("[data-nav-dropdown-menu]");
+    if (!dropdown || !dropdownToggle || !dropdownMenu) return;
+
+    function closeDropdown() {
+        dropdown.classList.remove("is-open");
+        dropdownToggle.setAttribute("aria-expanded", "false");
+        dropdownMenu.hidden = true;
+    }
+
+    function openDropdown() {
+        dropdown.classList.add("is-open");
+        dropdownToggle.setAttribute("aria-expanded", "true");
+        dropdownMenu.hidden = false;
+    }
+
+    dropdownToggle.addEventListener("click", function () {
+        var isOpen = dropdown.classList.contains("is-open");
+        if (isOpen) closeDropdown();
+        else openDropdown();
+    });
+
+    document.addEventListener("click", function (event) {
+        if (!dropdown.contains(event.target)) closeDropdown();
+    });
+
+    dropdown.addEventListener("mouseleave", closeDropdown);
+})();
+</script>

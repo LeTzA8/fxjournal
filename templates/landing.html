@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% set public_header_current = "landing" %}
 <section class="landing-wrap">
     <div class="landing-glass" aria-hidden="true"></div>
     <div class="landing-market-bg" aria-hidden="true">
@@ -12,46 +13,7 @@
         </div>
     </div>
 
-    <header class="landing-header{% if user_logged_in %} is-user-logged-in{% endif %}">
-        <a href="{{ url_for('landing') }}" class="landing-brand" aria-label="MyFXJournal Home">
-            <img
-                src="{{ url_for('static', filename='site-logo.png') }}"
-                alt="MyFXJournal"
-                class="landing-brand-logo"
-            >
-            <span class="landing-brand-text">MyFXJournal</span>
-        </a>
-        <nav class="landing-nav" aria-label="Landing">
-            <a href="#workflow">Workflow</a>
-            <a href="#features">Features</a>
-            <div class="landing-nav-dropdown site-nav-group" data-nav-dropdown>
-                <button type="button" class="landing-nav-summary" aria-haspopup="true" aria-expanded="false" data-nav-dropdown-toggle>Explore</button>
-                <div class="landing-nav-menu" aria-label="Explore workflows" data-nav-dropdown-menu hidden>
-                    <a href="{{ url_for('trading_journal_page') }}" class="site-nav-link site-nav-sublink">Trading Journal</a>
-                    <a href="{{ url_for('free_mt5_sync_page') }}" class="site-nav-link site-nav-sublink">Free MT5 Sync</a>
-                    <a href="{{ url_for('weekly_trading_review_page') }}" class="site-nav-link site-nav-sublink">Weekly Trading Review</a>
-                    <a href="{{ url_for('trade_replay_chart_page') }}" class="site-nav-link site-nav-sublink">Trade replay <span class="site-nav-soon">Soon</span></a>
-                    <a href="{{ url_for('why_not_improving_page') }}" class="site-nav-link site-nav-sublink">Why Am I Not Improving?</a>
-                </div>
-            </div>
-            <a href="#compare">Compare</a>
-            <a href="#founder">About</a>
-            <a href="{{ url_for('contact.contact') }}">Contact</a>
-        </nav>
-        <div class="landing-auth-links{% if user_logged_in %} is-user-logged-in{% endif %}">
-            {% if user_logged_in %}
-            <a href="{{ url_for('dashboard.home') }}" class="ghost-btn">Dashboard</a>
-            <a href="{{ url_for('account.account') }}" class="submit-btn">Account</a>
-            <form action="{{ url_for('logout') }}" method="post">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="ghost-btn logout-btn">Log Out</button>
-            </form>
-            {% else %}
-            <a href="{{ url_for('login') }}" class="ghost-btn">Log In</a>
-            <a href="{{ url_for('register') }}" class="submit-btn">Start Free</a>
-            {% endif %}
-        </div>
-    </header>
+    {% include "partials/public_header.html" %}
 
     {% set hero_headline = "Stop guessing your trading." %}
     {# Alternative hero headlines:
@@ -206,7 +168,7 @@
                         <section class="landing-proof-review-section" aria-labelledby="landing-proof-review-title">
                             <p class="landing-proof-section-label" id="landing-proof-review-title">🧠 What mattered this week</p>
                             <p class="ai-demo-title">You were profitable. Your risk still leaked.</p>
-                            <p class="ai-demo-text">
+                            <p id="ai-demo-text" class="ai-demo-text" data-typewriter-target>
                                 After losses, your next positions got bigger.
                                 That one habit created most of the drawdown.
                             </p>
@@ -308,11 +270,10 @@
 
     <section class="landing-section" id="features" aria-labelledby="feature-showcase-title" data-reveal-scope>
         <div class="landing-inner">
-            <p class="eyebrow landing-reveal" data-reveal-delay="40">What's Live Right Now</p>
-            <h2 id="feature-showcase-title" class="landing-reveal" data-reveal-delay="110">Built so you actually stick with it.</h2>
-            {# Alternative: Everything works. No setup headache. #}
+            <p class="eyebrow landing-reveal" data-reveal-delay="40">How it works</p>
+            <h2 id="feature-showcase-title" class="landing-reveal" data-reveal-delay="110">Three layers. One habit.</h2>
             <p class="muted landing-reveal" data-reveal-delay="180">
-                Capture the week, understand the pattern, then ask better questions about your trades.
+                Capture your week, review what the data shows, then reflect on what it means.
             </p>
 
             <div class="feature-showcase-stack">
@@ -320,31 +281,33 @@
                     <article class="feature-showcase-card feature-concept-card landing-reveal" data-reveal-delay="260" role="listitem">
                         <div class="feature-showcase-copy">
                             <p class="feature-concept-step feature-concept-step-capture">Capture</p>
-                            <h3>Import your trades in seconds.</h3>
+                            <h3>Trades in. No effort required.</h3>
                             <p>
-                                Unlimited Excel imports, or MT5 sync when you want.<br>
-                                No cleanup. No rebuilding your week.
+                                MT5 sync pulls your history automatically.<br>
+                                Or import a file in under a minute.<br>
+                                No manual logging. No cleanup.
                             </p>
                         </div>
                     </article>
                     <article class="feature-showcase-card feature-concept-card landing-reveal" data-reveal-delay="340" role="listitem">
                         <div class="feature-showcase-copy">
-                            <p class="feature-concept-step feature-concept-step-understand">Understand</p>
-                            <h3>See where your trading actually breaks down.</h3>
+                            <p class="feature-concept-step feature-concept-step-understand">Review</p>
+                            <h3>See what the week actually shows.</h3>
                             <p>
-                                We handle the calculations and interpret the stats.<br>
-                                Know what's costing you, not just what happened.
+                                Weekly AI review with cited trades.<br>
+                                Analytics, replay, and behavioral insights.<br>
+                                Know what pattern mattered — not just what happened.
                             </p>
                         </div>
                     </article>
                     <article class="feature-showcase-card feature-concept-card landing-reveal" data-reveal-delay="420" role="listitem">
                         <div class="feature-showcase-copy">
-                            <p class="feature-concept-step feature-concept-step-act">Act</p>
-                            <h3>Ask questions. Get real answers.</h3>
+                            <p class="feature-concept-step feature-concept-step-act">Reflect</p>
+                            <h3>Ask. Understand. Take it forward.</h3>
                             <p>
-                                Didn't understand your review?<br>
-                                Ask why a trade failed, or what you missed.<br>
-                                Get answers based on your actual trades.
+                                Follow-up chat scoped to your review and trades.<br>
+                                Ask what a pattern means, or what to test next week.<br>
+                                <span class="feature-coming-note">Recurring pattern tracking coming Q3 2026.</span>
                             </p>
                         </div>
                     </article>
@@ -353,10 +316,10 @@
                 <article class="feature-showcase-card feature-showcase-card-replay-panel landing-reveal" data-reveal-delay="520" aria-label="Trade replay chart feature">
                     <div class="feature-replay-panel-head">
                         <div class="feature-showcase-copy feature-replay-panel-copy">
-                            <h3>See your trades on the chart.</h3>
+                            <h3>Replay your execution on the chart.</h3>
                             <p>
                                 Entries and exits, back on price.<br>
-                                Not just a row in a list.
+                                Standard Replay included. <span class="feature-tier-note">Advanced Replay on Trader.</span>
                             </p>
                         </div>
                     </div>
@@ -378,6 +341,19 @@
             </div>
         </div>
     </section>
+
+    <style>
+    .feature-coming-note {
+        display: inline-block;
+        margin-top: 0.25rem;
+        font-size: 0.8rem;
+        color: var(--text-muted, #66758f);
+    }
+    .feature-tier-note {
+        font-size: 0.82rem;
+        color: var(--text-muted, #66758f);
+    }
+    </style>
 
     <section class="landing-section comparison-section" id="compare" aria-labelledby="comparison-title" data-reveal-scope>
         <div class="landing-inner">
@@ -3930,9 +3906,11 @@
         }
     }
 </style>
+{% include "partials/public_header_styles.html" %}
 
 {% endblock %}
 
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/landing_page.js') }}"></script>
+{% include "partials/public_header_script.html" %}
 {% endblock %}

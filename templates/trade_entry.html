@@ -104,6 +104,10 @@
                         <div class="trade-chart-tf-group" id="tradeChartTfGroup" role="group" aria-label="Chart timeframe">
                             <button type="button" class="trade-chart-tf-btn is-active" data-trade-tf="M5" aria-pressed="true">5m</button>
                             <button type="button" class="trade-chart-tf-btn" data-trade-tf="M15" aria-pressed="false">15m</button>
+                            <span class="trade-chart-tf-upgrade" title="1-minute replay is part of Advanced Replay on Trader">
+                                <span class="trade-chart-tf-upgrade-label">1m</span>
+                                <a href="{{ url_for('pricing_page') }}" class="trade-chart-tf-upgrade-badge">Trader</a>
+                            </span>
                         </div>
                     </div>
                 </div>

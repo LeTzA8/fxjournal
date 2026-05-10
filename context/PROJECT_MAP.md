@@ -373,6 +373,7 @@ Sensitive areas: auth/admin/support view, `models.py`, migrations, MT5 credentia
 3. Render worker redeploys when `celery_app.py`, worker modules, prompts, AI dependencies, or scheduled task behavior changes.
 4. Hyonix VM pulls new code (`manual VM scripts\gitpull.bat` or `git pull` in `C:\Users\Administrator\fxjournal`) and restarts MT5 workers when MT5 worker/scripts dependencies change.
 5. Alembic migrations must run before new code relies on new columns. Ship schema + app code together for model changes.
+   For May 2026 pricing/entitlement rollout, apply in order: `20260510_0055` -> `20260510_0056` -> `20260510_0057` before enabling the new waitlist + entitlement code paths.
 6. If Task Scheduler XML changes, re-import the XML on the VM. Editing repo exports does not update live scheduler entries.
 
 ## Operational Guardrails

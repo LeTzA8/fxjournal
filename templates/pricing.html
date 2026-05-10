@@ -1,0 +1,545 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% set public_header_current = "pricing" %}
+<section class="landing-wrap pricing-wrap">
+    <div class="landing-glass" aria-hidden="true"></div>
+
+    {% include "partials/public_header.html" %}
+
+    <div class="pricing-hero">
+        <p class="eyebrow">Simple, transparent pricing</p>
+        <h1>Everything you need to review your trading.</h1>
+        <p class="muted pricing-hero-sub">Everything currently live is free during open beta. Paid tiers launch later — join the waitlist to hear first about early access pricing.</p>
+        <p class="pricing-beta-note">
+            <span class="pricing-beta-badge">Free beta</span>
+            All features are currently free. No credit card required.
+        </p>
+    </div>
+
+    <div class="pricing-grid" role="list" aria-label="Pricing tiers">
+
+        {# ── FREE ── #}
+        <article class="pricing-card" role="listitem" aria-label="Free tier">
+            <div class="pricing-card-head">
+                <p class="pricing-tier-name">Free</p>
+                <p class="pricing-price"><span class="pricing-amount">$0</span> <span class="pricing-period">forever</span></p>
+                <p class="pricing-tagline">The weekly review, no setup required.</p>
+            </div>
+            <div class="pricing-card-cta">
+                <a href="{{ url_for('register') }}" class="submit-btn pricing-cta-btn">Get Started Free</a>
+            </div>
+            <ul class="pricing-features" aria-label="Free tier features">
+                <li class="pricing-feature pricing-feature--yes">Manual entry, MT5 XLSX and CSV import</li>
+                <li class="pricing-feature pricing-feature--yes">Dashboard, analytics &amp; running P&amp;L</li>
+                <li class="pricing-feature pricing-feature--yes">Weekly AI review — most recent week</li>
+                <li class="pricing-feature pricing-feature--yes">Standard Replay — 5m &amp; 15m, recent history</li>
+                <li class="pricing-feature pricing-feature--yes">Single trade account</li>
+                <li class="pricing-feature pricing-feature--no">Conversational review (ask follow-ups)</li>
+                <li class="pricing-feature pricing-feature--no">Review history archive — planned</li>
+                <li class="pricing-feature pricing-feature--no">Advanced Replay — 1m &amp; extended history planned</li>
+                <li class="pricing-feature pricing-feature--no">MT5 sync (after beta)</li>
+            </ul>
+        </article>
+
+        {# ── TRADER ── #}
+        <article class="pricing-card pricing-card--featured" role="listitem" aria-label="Trader tier">
+            <div class="pricing-card-badge">Most popular</div>
+            <div class="pricing-card-head">
+                <p class="pricing-tier-name">Trader</p>
+                <p class="pricing-price">
+                    <span class="pricing-amount">$14</span>
+                    <span class="pricing-period">/ month</span>
+                </p>
+                <p class="pricing-price-annual">Annual option planned before billing opens</p>
+                <p class="pricing-tagline">The full review experience.</p>
+                <div class="pricing-beta-overlay" aria-label="Free during beta">
+                    <span>Free during beta</span>
+                </div>
+            </div>
+            <div class="pricing-card-cta">
+                <button
+                    type="button"
+                    class="submit-btn pricing-cta-btn"
+                    data-waitlist-trigger="trader"
+                    data-waitlist-feature="advanced_replay"
+                    data-waitlist-cta-context="pricing_tier_card"
+                    aria-haspopup="dialog"
+                >Join waitlist</button>
+            </div>
+            <ul class="pricing-features" aria-label="Trader tier features">
+                <li class="pricing-feature pricing-feature--yes">Everything in Free</li>
+                <li class="pricing-feature pricing-feature--yes"><strong>Conversational review</strong> — ask follow-ups about your weekly review</li>
+                <li class="pricing-feature pricing-feature--coming">Review history archive <span class="pricing-coming-badge">planned</span></li>
+                <li class="pricing-feature pricing-feature--coming"><strong>Advanced Replay</strong> — 1m timeframe &amp; extended history <span class="pricing-coming-badge">planned</span></li>
+                <li class="pricing-feature pricing-feature--yes">MT5 sync — 1 account</li>
+                <li class="pricing-feature pricing-feature--yes">Behavior interpretation &amp; coaching hypotheses</li>
+                <li class="pricing-feature pricing-feature--coming">Recurring pattern tracking <span class="pricing-coming-badge">Q3 2026</span></li>
+                <li class="pricing-feature pricing-feature--no">Multi-timeframe Replay</li>
+                <li class="pricing-feature pricing-feature--no">Multiple MT5 accounts</li>
+            </ul>
+        </article>
+
+        {# ── PRO ── #}
+        <article class="pricing-card" role="listitem" aria-label="Pro tier">
+            <div class="pricing-card-head">
+                <p class="pricing-tier-name">Pro</p>
+                <p class="pricing-price">
+                    <span class="pricing-amount">$29</span>
+                    <span class="pricing-period">/ month</span>
+                </p>
+                <p class="pricing-price-annual">Annual option planned before billing opens</p>
+                <p class="pricing-tagline">For traders who treat it like a system.</p>
+                <div class="pricing-beta-overlay" aria-label="Free during beta">
+                    <span>Free during beta</span>
+                </div>
+            </div>
+            <div class="pricing-card-cta">
+                <button
+                    type="button"
+                    class="ghost-btn pricing-cta-btn"
+                    data-waitlist-trigger="pro"
+                    data-waitlist-feature="multi_timeframe_replay"
+                    data-waitlist-cta-context="pricing_tier_card"
+                    aria-haspopup="dialog"
+                >Join waitlist</button>
+            </div>
+            <ul class="pricing-features" aria-label="Pro tier features">
+                <li class="pricing-feature pricing-feature--yes">Everything in Trader</li>
+                <li class="pricing-feature pricing-feature--coming"><strong>Multi-timeframe Replay</strong> — full timeframe access &amp; deepest history <span class="pricing-coming-badge">planned</span></li>
+                <li class="pricing-feature pricing-feature--coming">Multiple MT5 accounts — up to 5 <span class="pricing-coming-badge">planned</span></li>
+                <li class="pricing-feature pricing-feature--coming">Priority MT5 backfill <span class="pricing-coming-badge">planned</span></li>
+                <li class="pricing-feature pricing-feature--coming">Custom strategy/playbook context in AI reviews <span class="pricing-coming-badge">planned</span></li>
+                <li class="pricing-feature pricing-feature--coming">Conversational journaling <span class="pricing-coming-badge">Q4 2026</span></li>
+                <li class="pricing-feature pricing-feature--coming">Shareable/exportable reviews <span class="pricing-coming-badge">Q4 2026</span></li>
+                <li class="pricing-feature pricing-feature--coming">Early access to new AI surfaces <span class="pricing-coming-badge">future rollout</span></li>
+            </ul>
+        </article>
+
+    </div>
+
+    <section class="pricing-faq" aria-labelledby="pricing-faq-title">
+        <div class="landing-inner">
+            <h2 id="pricing-faq-title">Common questions</h2>
+            <div class="pricing-faq-grid">
+                <div class="pricing-faq-item">
+                    <h3>Is it really free right now?</h3>
+                    <p>Yes. The product is in open beta and currently live features are free. No credit card required. When paid tiers launch, existing users will hear first about early access pricing.</p>
+                </div>
+                <div class="pricing-faq-item">
+                    <h3>What happens when beta ends?</h3>
+                    <p>Free tier stays free. Trader and Pro features will require a subscription. Everyone who signed up during beta will hear first and get a grandfathered discount as a thank-you for being early.</p>
+                </div>
+                <div class="pricing-faq-item">
+                    <h3>Why join the waitlist now?</h3>
+                    <p>Waitlist members hear first about early-access rates before public pricing goes live. You're also helping shape what gets built next — we reach out to waitlist members when new features roll out.</p>
+                </div>
+                <div class="pricing-faq-item">
+                    <h3>What is Advanced Replay?</h3>
+                    <p>Standard Replay shows your trade on a 5m or 15m chart. Advanced Replay is the planned Trader rollout for lower timeframes such as 1m and extended replay history.</p>
+                </div>
+                <div class="pricing-faq-item">
+                    <h3>What does MT5 sync cost?</h3>
+                    <p>MT5 sync is free during beta. When billing launches, it is included in Trader and Pro. Free accounts will have a 14-day trial before needing to upgrade.</p>
+                </div>
+                <div class="pricing-faq-item">
+                    <h3>Can I cancel anytime?</h3>
+                    <p>Monthly and annual options are planned, but final billing terms will be published before subscriptions open. There is no active paid billing during beta.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="pricing-bottom-cta" aria-label="Get started">
+        <div class="landing-inner pricing-bottom-cta-inner">
+            <h2>Start with the weekly review — free.</h2>
+            <p class="muted">Import your trades, get a review this week, and decide later if you want more.</p>
+            <div class="pricing-bottom-cta-actions">
+                <a href="{{ url_for('register') }}" class="submit-btn">Get Started Free</a>
+                {% if not user_logged_in %}
+                <a href="{{ url_for('login') }}" class="ghost-btn">Log In</a>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <footer class="landing-footer">
+        <div class="landing-inner landing-footer-inner">
+            <p>&copy; 2026 MyFXJournal</p>
+            <nav aria-label="Footer links">
+                <a href="{{ url_for('terms_and_conditions') }}">Terms</a>
+                <a href="{{ url_for('privacy_policy') }}">Privacy</a>
+                <a href="{{ url_for('contact.contact') }}">Contact</a>
+            </nav>
+        </div>
+    </footer>
+</section>
+
+{# ── Waitlist modal ── #}
+<div id="waitlistModal" class="pricing-modal" role="dialog" aria-modal="true" aria-labelledby="waitlistModalTitle" hidden>
+    <div class="pricing-modal-backdrop" data-waitlist-close></div>
+    <div class="pricing-modal-card">
+        <button type="button" class="pricing-modal-close" data-waitlist-close aria-label="Close">&times;</button>
+        <p class="pricing-modal-eyebrow">Join the waitlist</p>
+        <h2 id="waitlistModalTitle" class="pricing-modal-title">Early access to <span id="waitlistModalTier">Trader</span></h2>
+        <p class="pricing-modal-body">You'll hear first when this tier opens — along with an early-access rate as a thank-you for being here during beta.</p>
+        <form id="waitlistForm" novalidate>
+            <input type="hidden" id="waitlistTierInput" name="tier" value="trader">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="pricing-modal-field">
+                <label for="waitlistEmail">Email address</label>
+                <input
+                    type="email"
+                    id="waitlistEmail"
+                    name="email"
+                    autocomplete="email"
+                    placeholder="you@example.com"
+                    required
+                >
+            </div>
+            <button type="submit" class="submit-btn pricing-modal-submit">Join waitlist</button>
+        </form>
+        <p id="waitlistSuccess" class="pricing-modal-success" hidden>You're on the list. We'll be in touch.</p>
+        <p id="waitlistError" class="pricing-modal-error" hidden>Something went wrong — please try again.</p>
+    </div>
+</div>
+
+<style>
+/* ── Pricing layout ── */
+.pricing-wrap {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+.pricing-hero {
+    text-align: center;
+    padding: 6rem 1.5rem 3rem;
+    max-width: 640px;
+    margin: 0 auto;
+}
+.pricing-hero h1 {
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: var(--text-primary, #182538);
+    margin: 0.5rem 0 1rem;
+}
+.pricing-hero-sub {
+    font-size: 1rem;
+    line-height: 1.7;
+    max-width: 520px;
+    margin: 0 auto 1.25rem;
+}
+.pricing-beta-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--text-muted, #66758f);
+}
+.pricing-beta-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: #eef4ff;
+    border: 1px solid #dce4f0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #3658e8;
+}
+
+/* ── Pricing grid ── */
+.pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.25rem;
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 0 1.5rem 3rem;
+    width: 100%;
+    box-sizing: border-box;
+}
+@media (min-width: 900px) {
+    .pricing-grid { grid-template-columns: 1fr 1.05fr 1fr; align-items: start; }
+}
+
+/* ── Pricing card ── */
+.pricing-card {
+    position: relative;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 16px;
+    padding: 2rem 1.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+.pricing-card--featured {
+    border-color: #3658e8;
+    box-shadow: 0 0 0 1px #3658e820, 0 8px 32px #3658e812;
+}
+.pricing-card-badge {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #3658e8;
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    padding: 4px 14px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+.pricing-card-head { display: flex; flex-direction: column; gap: 0.35rem; }
+.pricing-tier-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-muted, #66758f);
+    margin: 0;
+}
+.pricing-price { margin: 0; display: flex; align-items: baseline; gap: 0.3rem; }
+.pricing-amount { font-size: 2.4rem; font-weight: 800; letter-spacing: -0.04em; color: var(--text-primary, #182538); }
+.pricing-period { font-size: 0.9rem; color: var(--text-muted, #66758f); }
+.pricing-price-annual { margin: 0; font-size: 0.8rem; color: var(--text-muted, #66758f); }
+.pricing-tagline { margin: 0.15rem 0 0; font-size: 0.9rem; color: var(--text-secondary, #334155); }
+.pricing-beta-overlay {
+    display: inline-block;
+    margin-top: 0.5rem;
+    padding: 4px 12px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #16a34a;
+}
+.pricing-cta-btn { width: 100%; text-align: center; justify-content: center; font-size: 0.95rem; }
+
+/* ── Feature list ── */
+.pricing-features { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; flex: 1; }
+.pricing-feature {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: var(--text-secondary, #334155);
+}
+.pricing-feature::before {
+    flex-shrink: 0;
+    width: 1.1em;
+    margin-top: 0.1em;
+    font-size: 0.85em;
+}
+.pricing-feature--yes { color: var(--text-secondary, #334155); }
+.pricing-feature--yes::before { content: "✓"; color: #16a34a; font-weight: 700; }
+.pricing-feature--no { color: var(--text-muted, #66758f); }
+.pricing-feature--no::before { content: "—"; color: var(--border, #cbd5e1); }
+.pricing-feature--coming { color: var(--text-muted, #66758f); }
+.pricing-feature--coming::before { content: "◦"; color: #94a3b8; }
+.pricing-coming-badge {
+    display: inline-block;
+    margin-left: 0.3rem;
+    padding: 1px 7px;
+    background: #f1f5f9;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+/* ── FAQ ── */
+.pricing-faq { padding: 3rem 0 2rem; border-top: 1px solid var(--border, #e2e8f0); }
+.pricing-faq h2 { text-align: center; font-size: 1.5rem; font-weight: 700; margin-bottom: 2rem; }
+.pricing-faq-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+}
+.pricing-faq-item h3 { font-size: 0.95rem; font-weight: 700; margin: 0 0 0.4rem; color: var(--text-primary, #182538); }
+.pricing-faq-item p { font-size: 0.875rem; color: var(--text-muted, #66758f); line-height: 1.7; margin: 0; }
+
+/* ── Bottom CTA ── */
+.pricing-bottom-cta { padding: 4rem 0; text-align: center; }
+.pricing-bottom-cta h2 { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.5rem; }
+.pricing-bottom-cta .muted { margin-bottom: 1.5rem; }
+.pricing-bottom-cta-actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+
+/* ── Modal ── */
+.pricing-modal { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.pricing-modal[hidden] { display: none; }
+.pricing-modal-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,0.45); backdrop-filter: blur(2px); }
+.pricing-modal-card {
+    position: relative;
+    z-index: 1;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 16px;
+    padding: 2.25rem 2rem;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: 0 24px 64px rgba(15,23,42,0.18);
+}
+.pricing-modal-close {
+    position: absolute;
+    top: 1rem; right: 1rem;
+    background: none; border: none; cursor: pointer;
+    font-size: 1.4rem; color: var(--text-muted, #66758f); line-height: 1; padding: 4px 8px;
+}
+.pricing-modal-eyebrow { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: #3658e8; margin: 0 0 0.35rem; }
+.pricing-modal-title { font-size: 1.4rem; font-weight: 800; margin: 0 0 0.75rem; letter-spacing: -0.03em; }
+.pricing-modal-body { font-size: 0.9rem; color: var(--text-muted, #66758f); line-height: 1.7; margin: 0 0 1.5rem; }
+.pricing-modal-field { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+.pricing-modal-field label { font-size: 0.85rem; font-weight: 600; color: var(--text-secondary, #334155); }
+.pricing-modal-field input {
+    padding: 0.65rem 0.9rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    color: var(--text-primary, #182538);
+    background: var(--surface, #fff);
+    outline: none;
+    transition: border-color 0.15s;
+}
+.pricing-modal-field input:focus { border-color: #3658e8; box-shadow: 0 0 0 3px #3658e820; }
+.pricing-modal-submit { width: 100%; justify-content: center; }
+.pricing-modal-success { margin: 0.75rem 0 0; font-size: 0.875rem; color: #16a34a; font-weight: 600; }
+.pricing-modal-error { margin: 0.75rem 0 0; font-size: 0.875rem; color: #dc2626; }
+
+/* ── Footer ── */
+.pricing-wrap .landing-footer { margin-top: auto; padding: 2rem 1.5rem; border-top: 1px solid var(--border, #e2e8f0); }
+.landing-footer-inner { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; color: var(--text-muted, #66758f); }
+.landing-footer-inner nav { display: flex; gap: 1rem; }
+.landing-footer-inner nav a { color: var(--text-muted, #66758f); text-decoration: none; }
+.landing-footer-inner nav a:hover { color: var(--text-primary, #182538); }
+</style>
+{% include "partials/public_header_styles.html" %}
+
+<script>
+(function () {
+    var modal = document.getElementById("waitlistModal");
+    var tierInput = document.getElementById("waitlistTierInput");
+    var tierLabel = document.getElementById("waitlistModalTier");
+    var form = document.getElementById("waitlistForm");
+    var sourceInput = document.createElement("input");
+    sourceInput.type = "hidden";
+    sourceInput.name = "source";
+    sourceInput.value = "pricing_page";
+    form.appendChild(sourceInput);
+    var featureInput = document.createElement("input");
+    featureInput.type = "hidden";
+    featureInput.name = "feature_interest";
+    featureInput.value = "advanced_replay";
+    form.appendChild(featureInput);
+    var ctaContextInput = document.createElement("input");
+    ctaContextInput.type = "hidden";
+    ctaContextInput.name = "cta_context";
+    ctaContextInput.value = "pricing_modal";
+    form.appendChild(ctaContextInput);
+    var emailInput = document.getElementById("waitlistEmail");
+    var successMsg = document.getElementById("waitlistSuccess");
+    var errorMsg = document.getElementById("waitlistError");
+
+    var tierLabels = { trader: "Trader", pro: "Pro" };
+
+    function openModal(tier, featureInterest, ctaContext) {
+        tierInput.value = tier || "trader";
+        tierLabel.textContent = tierLabels[tier] || "Trader";
+        featureInput.value = featureInterest || (tier === "pro" ? "multi_timeframe_replay" : "advanced_replay");
+        ctaContextInput.value = ctaContext || "pricing_modal";
+        successMsg.hidden = true;
+        errorMsg.hidden = true;
+        form.style.display = "";
+        emailInput.value = "";
+        modal.hidden = false;
+        emailInput.focus();
+    }
+
+    function closeModal() {
+        modal.hidden = true;
+    }
+
+    document.querySelectorAll("[data-waitlist-trigger]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            openModal(
+                btn.getAttribute("data-waitlist-trigger"),
+                btn.getAttribute("data-waitlist-feature"),
+                btn.getAttribute("data-waitlist-cta-context")
+            );
+        });
+    });
+
+    document.querySelectorAll("[data-waitlist-close]").forEach(function (el) {
+        el.addEventListener("click", closeModal);
+    });
+
+    modal.addEventListener("keydown", function (e) {
+        if (e.key === "Escape") closeModal();
+    });
+
+    form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var email = emailInput.value.trim();
+        var tier = tierInput.value;
+        var source = sourceInput.value;
+        var featureInterest = featureInput.value;
+        var ctaContext = ctaContextInput.value;
+        var csrf = form.querySelector("[name=csrf_token]").value;
+
+        if (!email) {
+            emailInput.focus();
+            return;
+        }
+
+        var submitBtn = form.querySelector("[type=submit]");
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Joining…";
+
+        fetch("{{ url_for('pricing_waitlist_post') }}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrf,
+                "X-Requested-With": "XMLHttpRequest",
+            },
+            body: JSON.stringify({
+                email: email,
+                tier: tier,
+                source: source,
+                feature_interest: featureInterest,
+                cta_context: ctaContext
+            }),
+        })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.ok) {
+                    form.style.display = "none";
+                    successMsg.hidden = false;
+                } else {
+                    errorMsg.textContent = data.error || "Something went wrong — please try again.";
+                    errorMsg.hidden = false;
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = "Join waitlist";
+                }
+            })
+            .catch(function () {
+                errorMsg.hidden = false;
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Join waitlist";
+            });
+    });
+})();
+</script>
+{% include "partials/public_header_script.html" %}
+{% endblock %}

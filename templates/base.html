@@ -10,7 +10,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    {% set should_noindex = is_app_layout or request.path.startswith('/password/') or request.path.startswith('/verify-email') or request.path.startswith('/onboarding') or request.path.startswith('/auth/google') %}
+    {% set should_noindex = is_app_layout or request.path.startswith('/password/') or request.path.startswith('/verify-email') or request.path.startswith('/onboarding') or request.path.startswith('/auth/') %}
     {% set resolved_meta_robots = meta_robots or ('noindex, nofollow' if should_noindex else 'index, follow') %}
     {% set resolved_canonical_url = canonical_url or default_canonical_url %}
     <title>{{ title or "MyFXJournal | Free Forex Trading Journal With Weekly AI Review" }}</title>

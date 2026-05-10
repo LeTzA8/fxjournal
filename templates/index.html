@@ -774,6 +774,8 @@
                         <span class="soft">
                             {% if mt5_selected_status == "linked" %}
                             Connected
+                            {% elif mt5_selected_status == "paused" %}
+                            Sync Paused
                             {% elif mt5_selected_status == "archived" %}
                             Inactive
                             {% elif mt5_selected_status == "failed" %}
@@ -789,7 +791,7 @@
                     </div>
 
                     {% if mt5_selected_row %}
-                    {% if mt5_selected_status in ("linked", "archived") %}
+                    {% if mt5_selected_status in ("linked", "archived", "paused") %}
                     {% set mt5_progress_stage = 4 %}
                     {% elif mt5_selected_status == "setting_up" %}
                     {% set mt5_progress_stage = 3 %}
@@ -800,7 +802,8 @@
                     {% endif %}
                     <div class="mt5-workflow-summary">
                         <ol class="mt5-progress-track" data-mt5-progress data-current-stage="{{ mt5_progress_stage }}" aria-label="MT5 sync progress">
-                            {% for progress_label in ["Submit Details", "Setup Queued", "Setting Up", "Sync Active"] %}
+                            {% set _mt5_progress_labels = ["Submit Details", "Setup Queued", "Setting Up", "Sync Paused"] if mt5_selected_status == "paused" else ["Submit Details", "Setup Queued", "Setting Up", "Sync Active"] %}
+                            {% for progress_label in _mt5_progress_labels %}
                             {% set progress_step = loop.index %}
                             <li class="mt5-progress-step{% if progress_step == 1 %} is-entry{% endif %}{% if progress_step < mt5_progress_stage %} is-complete{% elif progress_step == mt5_progress_stage %} is-current{% else %} is-upcoming{% endif %}" data-mt5-progress-step="{{ progress_step }}"{% if progress_step == mt5_progress_stage %} aria-current="step"{% endif %}>
                                 <span class="mt5-progress-dot" aria-hidden="true"></span>
@@ -832,7 +835,7 @@
                         {% endif %}
                     </p>
                     {% endif %}
-                    {% if mt5_batch_state.batches_enabled and mt5_batch_state.active_batch and mt5_batch_state.slots_remaining is not none and mt5_batch_state.slots_remaining > 0 and mt5_selected_status not in ("linked", "archived", "queued", "setting_up") %}
+                    {% if mt5_batch_state.batches_enabled and mt5_batch_state.active_batch and mt5_batch_state.slots_remaining is not none and mt5_batch_state.slots_remaining > 0 and mt5_selected_status not in ("linked", "paused", "archived", "queued", "setting_up") %}
                     {% set _cap = (mt5_batch_state.active_batch.capacity_total or 0)|int %}
                     {% set _rem = mt5_batch_state.slots_remaining|int %}
                     {% set _used = ([_cap - _rem, 0] | max) %}
@@ -1201,6 +1204,26 @@
                         <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
                     </form>
                     <p class="mt5-card-footnote">Reactivation keeps your saved read-only credentials. Disconnect if you want to remove them completely.</p>
+                    {% elif mt5_selected_status == "paused" and mt5_selected_account %}
+                    <p class="mt5-card-empty">MT5 sync is paused for this account. Your trade history is safe.</p>
+                    <div class="mt5-selected-account-card">
+                        <span class="mt5-selected-account-label">Sync Paused</span>
+                        <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
+                        <span class="mt5-selected-account-meta">Join the Trader waitlist when you want sync reactivation access.</span>
+                    </div>
+                    <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
+                        <a href="{{ url_for('pricing_page') }}" class="ghost-btn">View Pricing</a>
+                    </div>
+                    <form
+                        method="post"
+                        action="{{ url_for('trade_accounts.unlink_mt5_sync') }}"
+                        class="mt5-unlink-form"
+                    >
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
+                        <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
+                        <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
+                    </form>
                     {% elif mt5_selected_status == "linked" and mt5_selected_account %}
                     <div class="mt5-selected-account-card mt5-selected-account-card--compact">
                         <span class="mt5-selected-account-label">
@@ -1219,6 +1242,9 @@
                         </span>
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
                     </div>
+                    {% if mt5_selected_row.mt5_trial_state and mt5_selected_row.mt5_trial_state.state == "grandfathered" %}
+                    <p class="mt5-card-footnote">Beta access: this account is grandfathered for MT5 sync during the beta.</p>
+                    {% endif %}
                     <form
                         method="post"
                         action="{{ url_for('trade_accounts.unlink_mt5_sync') }}"
