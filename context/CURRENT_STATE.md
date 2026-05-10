@@ -1,6 +1,10 @@
 # CURRENT_STATE
 
-Last Updated: 2026-05-04
+Last Updated: 2026-05-10
+
+## Rolling trends include finished trading week after market cutoff (2026-05-10)
+
+- Dashboard rolling win-rate/expectancy trends now use the same Friday 5:30 PM New York market-week cutoff as weekly AI eligibility to decide whether the current dashboard week can be included. Before the cutoff, rolling trends still look at the previous four completed local weeks; after the cutoff, the current week can become the newest trend week, so weekend dashboards do not show one-week-stale performance direction. Focused tests cover the cutoff and a Sunday case where this week's worse expectancy correctly trends declining. (`routes/dashboard.py`, `tests/test_dashboard_weekly_ai.py`)
 
 ## MT5 sync completion heartbeat stamp (2026-05-04)
 

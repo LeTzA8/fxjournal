@@ -14,6 +14,7 @@ from ai_service import (
     WEEKLY_DASHBOARD_KIND,
     build_dashboard_review_display,
     count_closed_trade_ideas_in_period,
+    get_current_market_week_period,
     generate_weekly_review_chat_reply,
     get_latest_trade_week_period,
     get_latest_weekly_dashboard_advice,
@@ -956,19 +957,35 @@ def _summarize_week(records, start_local, end_local=None):
     }
 
 
-def _build_performance_trends(closed_records, now_local, min_trades_per_week=3):
+def _rolling_trends_include_current_week(now_utc=None):
+    period = get_weekly_dashboard_period(now_utc=now_utc)
+    current_period = get_current_market_week_period(now_utc=now_utc)
+    return period.get("period_start_utc") == current_period.get("period_start_utc")
+
+
+def _build_performance_trends(
+    closed_records,
+    now_local,
+    min_trades_per_week=3,
+    include_current_week=False,
+):
     """
     Win rate and expectancy trend over the last four completed weeks (Mon–Mon, local).
     Direction is None when there is not enough non-null weekly data.
     """
-    week_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
+    current_week_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
         days=now_local.weekday()
+    )
+    latest_week_start = (
+        current_week_start
+        if include_current_week
+        else current_week_start - timedelta(weeks=1)
     )
 
     weeks = []
-    for i in range(1, 5):
-        start = week_start - timedelta(weeks=i)
-        end = week_start - timedelta(weeks=i - 1)
+    for i in range(4):
+        start = latest_week_start - timedelta(weeks=i)
+        end = start + timedelta(weeks=1)
         week_records = [
             r
             for r in closed_records
@@ -1591,7 +1608,11 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
     has_ai_review = weekly_ai_state["weekly_ai_review"] is not None
     show_whats_next_banner = not (has_any_trades and has_ai_review)
 
-    performance_trends = _build_performance_trends(closed_records, now_local)
+    performance_trends = _build_performance_trends(
+        closed_records,
+        now_local,
+        include_current_week=_rolling_trends_include_current_week(now_utc),
+    )
     ei_trend_data = _build_ei_trend(user_id, active_trade_account_id)
     latest_trade_snapshot = _build_latest_trade_snapshot(user_trades, timezone_name)
     weekly_review_chat_prompts = _build_weekly_review_chat_prompts(

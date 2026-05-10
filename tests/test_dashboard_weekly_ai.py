@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import json
 
@@ -99,6 +99,47 @@ def _create_weekly_review(user, trade_account, prompt_id="weekly-chat"):
     db.session.add(review)
     db.session.commit()
     return review
+
+
+def test_rolling_trends_current_week_enabled_after_market_cutoff():
+    assert dashboard_routes._rolling_trends_include_current_week(
+        datetime(2026, 5, 8, 22, 0, 0)
+    )
+    assert not dashboard_routes._rolling_trends_include_current_week(
+        datetime(2026, 5, 8, 20, 0, 0)
+    )
+
+
+def test_performance_trends_can_include_finished_current_trading_week():
+    now_local = datetime(2026, 5, 10, 12, 0, 0)
+    current_week_start = datetime(2026, 5, 4, 0, 0, 0)
+    previous_week_start = current_week_start - timedelta(days=7)
+    closed_records = []
+
+    for index in range(12):
+        closed_records.append(
+            {
+                "realized_at_local": current_week_start + timedelta(days=1, hours=index),
+                "pnl": -3375.35 / 12,
+            }
+        )
+    for index in range(4):
+        closed_records.append(
+            {
+                "realized_at_local": previous_week_start + timedelta(days=1, hours=index),
+                "pnl": -709.00 / 4,
+            }
+        )
+
+    result = dashboard_routes._build_performance_trends(
+        closed_records,
+        now_local,
+        min_trades_per_week=3,
+        include_current_week=True,
+    )
+
+    assert result["current_expectancy"] == pytest.approx(-281.28, abs=0.01)
+    assert result["expectancy_trend"] == "declining"
 
 
 def test_weekly_review_chat_prompt_exposes_trade_link_refs_without_raw_codes_in_review_text(app_ctx):
