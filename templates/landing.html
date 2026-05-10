@@ -32,7 +32,7 @@
     #}
     <article class="landing-hero" data-reveal-scope data-reveal-immediate>
         <div class="landing-hero-inner">
-            <p class="hero-badge landing-reveal" data-reveal-delay="240">Free beta. No credit card required.</p>
+            <p class="hero-badge landing-reveal" data-reveal-delay="240">Free trial — no credit card required.</p>
             <p class="eyebrow landing-reveal" data-reveal-delay="340">Trade review without the homework.</p>
             <h1
                 class="hero-title landing-reveal"
@@ -49,43 +49,17 @@
             </p>
             {% if signup_code_mode == "required" %}
             <p class="hero-note landing-reveal" data-reveal-delay="920">
-                Beta access is currently invite-only with a referral code.
+                Access is currently invite-only with a referral code.
             </p>
             {% elif manual_signup_review_enabled %}
             <p class="hero-note landing-reveal" data-reveal-delay="920">
-                New accounts are reviewed before first login during this beta period.
+                New accounts may be reviewed before first login while we onboard carefully.
             </p>
             {% endif %}
-            {% if show_public_mt5_slot_urgency and mt5_batch_state.batches_enabled %}
-            {% set landing_has_open_mt5_slots = mt5_batch_state.active_batch and mt5_batch_state.slots_remaining is not none and mt5_batch_state.slots_remaining > 0 %}
-            <div class="hero-availability{% if not landing_has_open_mt5_slots %} hero-availability--muted{% endif %} landing-reveal" data-reveal-delay="980" role="status" aria-live="polite">
-                <div class="hero-availability__top">
-                    <p class="hero-availability__kicker">MT5 beta availability</p>
-                    <span class="hero-availability__pill">
-                        {% if landing_has_open_mt5_slots %}Batch open now{% else %}Import still open{% endif %}
-                    </span>
-                </div>
-                <div class="hero-availability__body">
-                    {% if landing_has_open_mt5_slots %}
-                    {% set landing_slots_left = mt5_batch_state.slots_remaining|int %}
-                    <div class="hero-availability__count">{{ landing_slots_left }}</div>
-                    <div class="hero-availability__copy">
-                        <p class="hero-availability__headline">
-                            free MT5 sync slot{% if landing_slots_left != 1 %}s{% endif %} left right now
-                        </p>
-                        <p class="hero-availability__text">
-                            Start free, import trades right away, then submit read-only MT5 details to claim one while this batch is open.
-                        </p>
-                    </div>
-                    {% else %}
-                    <div class="hero-availability__copy hero-availability__copy--full">
-                        <p class="hero-availability__headline">{{ mt5_batch_state.public_badge or "MT5 sync batch unavailable right now" }}</p>
-                        <p class="hero-availability__text">
-                            {{ mt5_batch_state.request_blocked_message or "You can still start free today, import trades right away, and claim MT5 sync when the next batch opens." }}
-                        </p>
-                    </div>
-                    {% endif %}
-                </div>
+            {% if not user_logged_in %}
+            <div class="hero-mt5-trial landing-reveal" data-reveal-delay="980">
+                <p class="hero-mt5-trial__headline">MT5 sync trial — 14 days free, no card required.</p>
+                <p class="hero-mt5-trial__sub">Import trades first and sync when ready. Trial pauses after 14 days unless you upgrade later.</p>
             </div>
             {% endif %}
 
@@ -374,7 +348,7 @@
                     </p>
                     <ul class="comparison-highlight-list">
                         <li>Unlimited Excel import first. MT5 sync is optional.</li>
-                        <li>Free during open beta.</li>
+                        <li>Full access during your free trial.</li>
                     </ul>
                     <div class="comparison-highlight-actions">
                         {% if user_logged_in %}
@@ -390,7 +364,7 @@
             <div class="comparison-grid" role="list" aria-label="Trading journal comparison">
                 <article class="comparison-card comparison-card-primary landing-reveal" data-reveal-delay="320">
                     <p class="comparison-card-brand">MyFXJournal</p>
-                    <p class="comparison-card-price">Free during open beta</p>
+                    <p class="comparison-card-price">Free trial — full access</p>
                     <p class="comparison-card-summary">All the review. None of the overhead.</p>
                     <div class="comparison-card-tags" aria-label="MyFXJournal fit">
                         <span class="comparison-feature-pill is-yes">Designed for it</span>
@@ -510,8 +484,8 @@
                     </div>
                 </div>
                 <aside class="founder-card landing-reveal" data-reveal-delay="180">
-                    <p class="founder-card-kicker">Why join beta now</p>
-                    <h3>Open beta, direct feedback loop</h3>
+                    <p class="founder-card-kicker">Why start your trial</p>
+                    <h3>Early access, direct feedback loop</h3>
                     <ul class="founder-list">
                         <li>Free to use right now, no credit card required.</li>
                         <li>Core dashboard, analytics, and review workflow are already live in the product.</li>
@@ -1166,184 +1140,28 @@
         font-weight: 700;
     }
 
-    @property --availability-angle {
-        syntax: "<angle>";
-        initial-value: 0deg;
-        inherits: false;
-    }
-
-    @keyframes hero-availability-edge-spin {
-        to {
-            --availability-angle: 360deg;
-        }
-    }
-
-    @keyframes hero-availability-shimmer {
-        0% {
-            transform: translateX(-135%);
-        }
-        26%, 100% {
-            transform: translateX(230%);
-        }
-    }
-
-    .hero-availability {
+    .hero-mt5-trial {
         margin: -0.05rem auto 1.15rem;
         max-width: 760px;
-        padding: 0.95rem 1rem;
-        position: relative;
-        overflow: hidden;
-        isolation: isolate;
-        border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
-        border-radius: 20px;
-        background:
-            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 16%, transparent), transparent 42%),
-            linear-gradient(180deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 74%, transparent));
-        box-shadow: 0 16px 34px rgba(2, 6, 23, 0.18);
+        padding: 0.85rem 1.1rem;
+        border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--surface) 64%, transparent);
         text-align: left;
     }
 
-    .hero-availability > * {
-        position: relative;
-        z-index: 1;
-    }
-
-    .hero-availability:not(.hero-availability--muted)::before {
-        content: "";
-        position: absolute;
-        inset: -1px;
-        border-radius: inherit;
-        padding: 1.5px;
-        background: conic-gradient(
-            from var(--availability-angle),
-            transparent 0deg,
-            color-mix(in srgb, white 64%, var(--accent) 36%) 46deg,
-            transparent 96deg,
-            transparent 188deg,
-            color-mix(in srgb, var(--accent) 54%, transparent) 232deg,
-            transparent 288deg,
-            transparent 360deg
-        );
-        -webkit-mask:
-            linear-gradient(#000 0 0) content-box,
-            linear-gradient(#000 0 0);
-        -webkit-mask-composite: xor;
-        mask:
-            linear-gradient(#000 0 0) content-box,
-            linear-gradient(#000 0 0);
-        mask-composite: exclude;
-        pointer-events: none;
-        animation: hero-availability-edge-spin 3.6s linear infinite;
-    }
-
-    .hero-availability:not(.hero-availability--muted)::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border-radius: inherit;
-        background: linear-gradient(
-            112deg,
-            transparent 18%,
-            color-mix(in srgb, white 20%, transparent) 48%,
-            transparent 78%
-        );
-        transform: translateX(-135%);
-        opacity: 0.72;
-        pointer-events: none;
-        animation: hero-availability-shimmer 3.2s ease-in-out infinite;
-    }
-
-    .hero-availability--muted {
-        border-color: color-mix(in srgb, var(--border) 74%, transparent);
-        background:
-            radial-gradient(circle at top right, color-mix(in srgb, var(--border) 14%, transparent), transparent 44%),
-            linear-gradient(180deg, color-mix(in srgb, var(--surface) 84%, transparent), color-mix(in srgb, var(--surface) 74%, transparent));
-    }
-
-    .hero-availability__top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.7rem;
-        flex-wrap: wrap;
-        margin-bottom: 0.72rem;
-    }
-
-    .hero-availability__kicker {
-        margin: 0;
-        color: color-mix(in srgb, var(--accent) 78%, var(--ink));
-        font-family: var(--landing-font-mono);
-        font-size: 0.72rem;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-    }
-
-    .hero-availability__pill {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 28px;
-        padding: 0.22rem 0.65rem;
-        border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
-        background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-        color: color-mix(in srgb, var(--accent) 82%, var(--ink));
-        font-size: 0.68rem;
-        font-weight: 800;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-    }
-
-    .hero-availability--muted .hero-availability__pill {
-        border-color: color-mix(in srgb, var(--border) 82%, transparent);
-        background: color-mix(in srgb, var(--surface) 90%, transparent);
-        color: color-mix(in srgb, var(--muted) 74%, var(--ink));
-    }
-
-    .hero-availability__body {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr);
-        gap: 0.95rem;
-        align-items: start;
-    }
-
-    .hero-availability__count {
-        min-width: 84px;
-        padding: 0.68rem 0.8rem;
-        border-radius: 18px;
-        border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
-        background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+    .hero-mt5-trial__headline {
+        margin: 0 0 0.25rem;
         color: var(--ink);
-        font-size: clamp(2rem, 4vw, 2.75rem);
-        font-weight: 900;
-        line-height: 0.95;
-        text-align: center;
-        box-shadow: inset 0 0 0 1px color-mix(in srgb, white 10%, transparent);
+        font-size: 0.93rem;
+        font-weight: 700;
+        line-height: 1.35;
     }
 
-    .hero-availability__copy {
-        display: grid;
-        gap: 0.35rem;
-        min-width: 0;
-    }
-
-    .hero-availability__copy--full {
-        grid-column: 1 / -1;
-    }
-
-    .hero-availability__headline {
-        margin: 0;
-        color: var(--ink);
-        font-size: 1.02rem;
-        font-weight: 800;
-        line-height: 1.25;
-    }
-
-    .hero-availability__text {
+    .hero-mt5-trial__sub {
         margin: 0;
         color: var(--muted);
-        font-size: 0.92rem;
+        font-size: 0.84rem;
         line-height: 1.55;
     }
 
@@ -3735,19 +3553,6 @@
             padding: 0.64rem 0.78rem;
         }
 
-        .hero-availability {
-            padding: 0.9rem;
-        }
-
-        .hero-availability__body {
-            grid-template-columns: 1fr;
-        }
-
-        .hero-availability__count {
-            min-width: 0;
-            width: min(110px, 100%);
-        }
-
         .landing-proof#ai-demo {
             width: 100%;
         }
@@ -3892,8 +3697,6 @@
         .hook-signal::after,
         .hook-journal-card,
         .hook-chip,
-        .hero-availability::before,
-        .hero-availability::after,
         .comparison-card,
         .comparison-card-primary,
         .comparison-card-primary::before,

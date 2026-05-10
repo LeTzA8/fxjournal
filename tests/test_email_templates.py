@@ -78,6 +78,18 @@ import pytest
             },
             ["your review is ready", "View Full Review"],
         ),
+        (
+            "emails/free-trial-expired.html",
+            {
+                "name": "Template Tester",
+                "account_name": "Main MT5",
+                "account_number": "77112233",
+                "paused_feature_label": "MT5 sync",
+                "pricing_url": "https://example.com/pricing",
+                "dashboard_url": "https://example.com/dashboard",
+            },
+            ["free trial has ended", "MT5 sync is paused", "View Pricing"],
+        ),
     ],
 )
 def test_user_email_templates_render_with_shared_shell(app_ctx, template_name, context, expected_snippets):

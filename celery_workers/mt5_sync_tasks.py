@@ -78,6 +78,52 @@ def _env_int(name, default):
         return int(default)
 
 
+def _send_free_trial_expired_email(account, *, paused_feature_label="MT5 sync"):
+    user = getattr(account, "user", None)
+    if user is None or not getattr(user, "email", None):
+        return
+
+    from auth_account import get_public_base_url, render_app_template, send_email_placeholder
+
+    try:
+        trade_account = getattr(account, "trade_account", None)
+        account_name = getattr(trade_account, "name", None) or f"MT5 account {account.account_number}"
+        base_url = get_public_base_url()
+        pricing_url = f"{base_url}/pricing"
+        dashboard_url = f"{base_url}/dashboard"
+        html_body = render_app_template(
+            "emails/free-trial-expired.html",
+            name=user.username,
+            account_name=account_name,
+            account_number=account.account_number,
+            paused_feature_label=paused_feature_label,
+            pricing_url=pricing_url,
+            dashboard_url=dashboard_url,
+            logo_url=f"{base_url}/static/site-logo.png",
+        )
+        send_email_placeholder(
+            user.email,
+            "Your MyFXJournal free trial has ended",
+            (
+                f"Hi {user.username}, your MyFXJournal free trial has ended. "
+                f"{paused_feature_label} for {account_name} is now paused, but your imported "
+                f"and synced trade history stays in your journal. View pricing here: {pricing_url}"
+            ),
+            html_body=html_body,
+        )
+    except Exception as exc:
+        log_ascii_table(
+            logger,
+            "Free Trial Expired Email Failed",
+            [
+                ("MT5 Account ID", getattr(account, "id", None)),
+                ("User ID", getattr(user, "id", None)),
+                ("Error", exc),
+            ],
+            level=logging.WARNING,
+        )
+
+
 def _chunked_history_deals_get(mt5, date_from, date_to, *, chunk_days=None):
     """Fetch MT5 deal history in bounded windows for callers that need slicing."""
     if chunk_days is None:
@@ -798,10 +844,14 @@ def sync_mt5_account(
             if not account.sync_paused_at:
                 account.sync_paused_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 account.sync_pause_reason = sync_permission["reason"]
+                pause_stamped = False
                 try:
                     db.session.commit()
+                    pause_stamped = True
                 except Exception:
                     db.session.rollback()
+                if pause_stamped and sync_permission["reason"] == "expired":
+                    _send_free_trial_expired_email(account, paused_feature_label="MT5 sync")
                 from celery_workers.mt5_setup_tasks import pause_mt5_terminal_process
                 try:
                     pause_mt5_terminal_process.apply_async(

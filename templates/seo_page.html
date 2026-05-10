@@ -27,38 +27,25 @@
                         <span class="ai-demo-chip{% if loop.first %} is-accent{% endif %}">{{ chip }}</span>
                         {% endfor %}
                     </div>
-                    {% if show_public_mt5_slot_urgency and mt5_batch_state.batches_enabled %}
-                    {% set seo_has_open_mt5_slots = mt5_batch_state.active_batch and mt5_batch_state.slots_remaining is not none and mt5_batch_state.slots_remaining > 0 %}
-                    <div class="hero-availability{% if not seo_has_open_mt5_slots %} hero-availability--muted{% endif %} landing-reveal" data-reveal-delay="390" role="status" aria-live="polite">
+                    <div class="hero-availability hero-availability--muted landing-reveal" data-reveal-delay="390" role="region" aria-label="MT5 sync trial and waitlist">
                         <div class="hero-availability__top">
-                            <p class="hero-availability__kicker">MT5 beta availability</p>
-                            <span class="hero-availability__pill">
-                                {% if seo_has_open_mt5_slots %}Batch open now{% else %}Import still open{% endif %}
-                            </span>
+                            <p class="hero-availability__kicker">MT5 sync trial</p>
+                            <span class="hero-availability__pill">No credit card</span>
                         </div>
                         <div class="hero-availability__body">
-                            {% if seo_has_open_mt5_slots %}
-                            {% set seo_slots_left = mt5_batch_state.slots_remaining|int %}
-                            <div class="hero-availability__count">{{ seo_slots_left }}</div>
-                            <div class="hero-availability__copy">
-                                <p class="hero-availability__headline">
-                                    free MT5 sync slot{% if seo_slots_left != 1 %}s{% endif %} left right now
-                                </p>
-                                <p class="hero-availability__text">
-                                    Start free now, import trades right away, then submit read-only MT5 details to claim one while this batch is still open.
-                                </p>
-                            </div>
-                            {% else %}
                             <div class="hero-availability__copy hero-availability__copy--full">
-                                <p class="hero-availability__headline">{{ mt5_batch_state.public_badge or "MT5 sync batch unavailable right now" }}</p>
+                                <p class="hero-availability__headline">
+                                    Try read-only MT5 sync during your free trial.
+                                </p>
                                 <p class="hero-availability__text">
-                                    {{ mt5_batch_state.request_blocked_message or "You can still start free today, import trades right away, and claim MT5 sync when the next batch opens." }}
+                                    Import trades anytime while you evaluate. Paid tiers are waitlist-first — join on Pricing for early access when billing opens.
+                                </p>
+                                <p class="hero-availability__text" style="margin-top:0.5rem;">
+                                    <a href="{{ url_for('pricing') }}" class="ghost-btn" style="display:inline-flex;min-height:38px;padding:0 1rem;font-size:0.74rem;">Pricing &amp; waitlist</a>
                                 </p>
                             </div>
-                            {% endif %}
                         </div>
                     </div>
-                    {% endif %}
                     <div class="landing-actions landing-reveal" data-reveal-delay="420">
                         {% if user_logged_in %}
                         <a href="{{ url_for('dashboard.home') }}" class="submit-btn hero-cta">Open Dashboard</a>

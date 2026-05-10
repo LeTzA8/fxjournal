@@ -15,10 +15,10 @@
     {% set resolved_canonical_url = canonical_url or default_canonical_url %}
     <title>{{ title or "MyFXJournal | Free Forex Trading Journal With Weekly AI Review" }}</title>
     <meta name="robots" content="{{ resolved_meta_robots }}">
-    <meta name="description" content="{{ meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
+    <meta name="description" content="{{ meta_description or 'Free trial — no credit card required. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
     <link rel="canonical" href="{{ resolved_canonical_url }}">
     <meta property="og:title" content="{{ title or 'MyFXJournal | Free Forex Trading Journal With Weekly AI Review' }}">
-    <meta property="og:description" content="{{ meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
+    <meta property="og:description" content="{{ meta_description or 'Free trial — no credit card required. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
     <meta property="og:type" content="website">
     <meta property="og:locale" content="en_GB">
     <meta property="og:site_name" content="MyFXJournal">
@@ -27,7 +27,7 @@
     <meta property="og:image:alt" content="MyFXJournal dashboard and weekly AI review preview">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ title or 'MyFXJournal | Free Forex Trading Journal With Weekly AI Review' }}">
-    <meta name="twitter:description" content="{{ meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
+    <meta name="twitter:description" content="{{ meta_description or 'Free trial — no credit card required. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.' }}">
     <meta name="twitter:image" content="{{ url_for('static', filename='images/features/dashboard.png', v='1', _external=True) }}">
     {% if google_analytics_measurement_id %}
     <script>
@@ -78,7 +78,7 @@
             "@type": "WebSite",
             "name": "MyFXJournal",
             "url": {{ url_for('landing', _external=True)|tojson }},
-            "description": {{ (meta_description or 'Free during open beta. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.')|tojson }},
+            "description": {{ (meta_description or 'Free trial — no credit card required. Track, analyse, and review your forex trading with weekly AI review and lower-overhead journaling.')|tojson }},
             "publisher": {
                 "@type": "Organization",
                 "name": "MyFXJournal",

@@ -29,16 +29,16 @@
         <p class="notice error">{{ error }}</p>
         {% endif %}
         <div class="auth-reassurance" aria-label="Signup reassurance">
-            <span>Free beta</span>
+            <span>Free trial</span>
             <span>Google or email</span>
             <span>Upload first</span>
         </div>
         <p class="helper-note auth-helper-copy">Fastest first win: upload an MT5 report or add trades after signup. Your first weekly review appears after at least {{ weekly_ai_min_closed_trades }} closed trades land in a finished trade week.</p>
         {% if manual_signup_review_enabled %}
-        <p class="helper-note auth-helper-copy">New accounts are reviewed before first login during this beta period.</p>
+        <p class="helper-note auth-helper-copy">New accounts may be reviewed before first login while we onboard carefully.</p>
         {% endif %}
         {% if signup_code_mode == "required" %}
-        <p class="helper-note auth-helper-copy">This beta is currently invite-only and requires a referral code.</p>
+        <p class="helper-note auth-helper-copy">Access is currently invite-only and requires a referral code.</p>
         {% endif %}
 
         {% if google_auth_enabled %}

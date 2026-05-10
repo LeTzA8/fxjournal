@@ -1,0 +1,54 @@
+{% extends "emails/_base.html" %}
+{% set title = "Your MyFXJournal free trial has ended" %}
+{% set preheader = "Trial access is paused, but your journal history is still available." %}
+
+{% block card_content %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+  <tr>
+    <td align="center">
+      <div class="email-surface email-accent" style="display:inline-block;padding:10px 14px;border-radius:999px;background-color:#eef4ff;border:1px solid #dce4f0;font-size:12px;font-weight:700;letter-spacing:0.7px;text-transform:uppercase;color:#3658e8;">Trial ended</div>
+    </td>
+  </tr>
+</table>
+<p class="email-text" style="margin:0 0 8px 0;font-size:24px;font-weight:700;color:#182538;letter-spacing:-0.3px;text-align:center;">Your MyFXJournal free trial has ended.</p>
+<p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#66758f;line-height:1.7;text-align:center;">Hi {{ name }}, trial access for paid features is now paused. Your existing journal data and trade history remain available.</p>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
+  <tr>
+    <td class="email-surface" style="border-radius:14px;background-color:#eef4ff;border:1px solid #dce4f0;padding:18px 20px;">
+      <p class="email-accent" style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#3658e8;letter-spacing:0.7px;text-transform:uppercase;">Account status</p>
+      <p class="email-text" style="margin:0 0 6px 0;font-size:14px;font-weight:700;color:#182538;">{{ paused_feature_label }} is paused{% if account_name %} for {{ account_name }}{% endif %}.</p>
+      <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">You can keep reviewing what is already in your journal. To reactivate paid features when access opens, view the current pricing and waitlist options.</p>
+    </td>
+  </tr>
+</table>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:18px;">
+  <tr>
+    <td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td class="email-button-cell" bgcolor="#3658e8" align="center" style="background-color:#3658e8;border-radius:10px;">
+            <a href="{{ pricing_url }}" class="email-button-link" style="display:block;padding:14px 36px;border:1px solid #3658e8;border-radius:10px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">View Pricing</a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+
+<p class="email-muted" style="margin:0;text-align:center;font-size:13px;color:#66758f;line-height:1.6;">You can also <a href="{{ dashboard_url }}" class="email-accent" style="color:#3658e8;text-decoration:none;">open your dashboard</a> to review your existing trades.</p>
+{% endblock %}
+
+{% block footer %}
+<p class="email-muted" style="margin:0 0 8px 0;font-size:13px;color:#66758f;">You are receiving this account-status notice because trial access changed on your MyFXJournal account.</p>
+<p class="email-muted" style="margin:0;font-size:12px;color:#66758f;">
+  <a href="{{ site_url|default('https://myfxjournal.com') }}" class="email-accent" style="color:#3658e8;text-decoration:none;">{{ site_label|default("myfxjournal.com") }}</a>
+  &nbsp;&middot;&nbsp;
+  <a href="mailto:{{ support_email|default('support@myfxjournal.com') }}" class="email-muted" style="color:#66758f;text-decoration:none;">{{ support_email|default("support@myfxjournal.com") }}</a>
+  {% if account_number %}
+  &nbsp;&middot;&nbsp;
+  MT5 account {{ account_number }}
+  {% endif %}
+</p>
+{% endblock %}

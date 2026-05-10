@@ -3761,6 +3761,69 @@ def test_sync_all_active_mt5_accounts_skips_paused_accounts(app_ctx, monkeypatch
     ]
 
 
+def test_sync_mt5_account_sends_free_trial_expired_email_on_first_pause(app_ctx, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.com")
+    monkeypatch.setitem(sys.modules, "MetaTrader5", SimpleNamespace())
+
+    user, trade_account = _create_user_with_account(
+        username="trial-expired-user",
+        email="trial-expired-user@example.com",
+    )
+    user.plan_tier = "free"
+    user.plan_grandfathered = False
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="91919191",
+    )
+    mt5_account.mt5_trial_started_at = datetime.utcnow() - timedelta(days=20)
+    db.session.commit()
+
+    import helpers.entitlements as entitlements
+    import celery_workers.mt5_setup_tasks as mt5_setup_module
+    import celery_workers.mt5_sync_tasks as mt5_sync_module
+
+    monkeypatch.setattr(entitlements, "BILLING_LAUNCH_DATE", datetime(2026, 1, 1))
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: None)
+
+    queued_pause_tasks = []
+
+    def _fake_pause_apply_async(*, args, queue):
+        queued_pause_tasks.append({"args": args, "queue": queue})
+
+    sent_emails = []
+
+    def _fake_send_email(to_email, subject, text_body, html_body=None):
+        sent_emails.append(
+            {
+                "to": to_email,
+                "subject": subject,
+                "text": text_body,
+                "html": html_body,
+            }
+        )
+        return {"sent": True, "mode": "test"}
+
+    monkeypatch.setattr(mt5_setup_module.pause_mt5_terminal_process, "apply_async", _fake_pause_apply_async)
+    monkeypatch.setattr("auth_account.send_email_placeholder", _fake_send_email)
+
+    result = mt5_sync_module.sync_mt5_account.run(mt5_account.id)
+
+    db.session.refresh(mt5_account)
+    assert result == {"error": "MT5 sync not allowed: expired"}
+    assert mt5_account.sync_paused_at is not None
+    assert mt5_account.sync_pause_reason == "expired"
+    assert queued_pause_tasks == [{"args": [mt5_account.id], "queue": "mt5_setup"}]
+    assert len(sent_emails) == 1
+    assert sent_emails[0]["to"] == user.email
+    assert sent_emails[0]["subject"] == "Your MyFXJournal free trial has ended"
+    assert "https://example.com/pricing" in sent_emails[0]["text"]
+    assert "View Pricing" in sent_emails[0]["html"]
+    assert "MT5 sync is paused" in sent_emails[0]["html"]
+
+
 def test_sync_all_active_mt5_accounts_skips_when_sync_queues_are_backed_up(app_ctx, monkeypatch, caplog):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     for existing_account in MT5Account.query.all():

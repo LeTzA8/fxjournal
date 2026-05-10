@@ -10,17 +10,17 @@
     <div class="pricing-hero">
         <p class="eyebrow">Simple, transparent pricing</p>
         <h1>Everything you need to review your trading.</h1>
-        <p class="muted pricing-hero-sub">Everything currently live is free during open beta. Paid tiers launch later — join the waitlist to hear first about early access pricing.</p>
-        <p class="pricing-beta-note">
-            <span class="pricing-beta-badge">Free beta</span>
-            All features are currently free. No credit card required.
+        <p class="muted pricing-hero-sub">Try everything that is live today with a free trial. Paid tiers launch later — join the waitlist to hear first about early access pricing.</p>
+        <p class="pricing-trial-note">
+            <span class="pricing-trial-badge">Free trial</span>
+            Full access while you evaluate. No credit card required.
         </p>
     </div>
 
     <div class="pricing-grid" role="list" aria-label="Pricing tiers">
 
         {# ── FREE ── #}
-        <article class="pricing-card" role="listitem" aria-label="Free tier">
+        <article class="pricing-card pricing-card--free" role="listitem" aria-label="Free tier">
             <div class="pricing-card-head">
                 <p class="pricing-tier-name">Free</p>
                 <p class="pricing-price"><span class="pricing-amount">$0</span> <span class="pricing-period">forever</span></p>
@@ -29,17 +29,25 @@
             <div class="pricing-card-cta">
                 <a href="{{ url_for('register') }}" class="submit-btn pricing-cta-btn">Get Started Free</a>
             </div>
-            <ul class="pricing-features" aria-label="Free tier features">
-                <li class="pricing-feature pricing-feature--yes">Manual entry, MT5 XLSX and CSV import</li>
-                <li class="pricing-feature pricing-feature--yes">Dashboard, analytics &amp; running P&amp;L</li>
-                <li class="pricing-feature pricing-feature--yes">Weekly AI review — most recent week</li>
-                <li class="pricing-feature pricing-feature--yes">Standard Replay — 5m &amp; 15m, recent history</li>
-                <li class="pricing-feature pricing-feature--yes">Single trade account</li>
-                <li class="pricing-feature pricing-feature--no">Conversational review (ask follow-ups)</li>
-                <li class="pricing-feature pricing-feature--no">Review history archive — planned</li>
-                <li class="pricing-feature pricing-feature--no">Advanced Replay — 1m &amp; extended history planned</li>
-                <li class="pricing-feature pricing-feature--no">MT5 sync (after beta)</li>
-            </ul>
+            <div class="pricing-features-stack">
+                <section class="pricing-liquid-panel" aria-label="Included in Free">
+                    <p class="pricing-panel-kicker">Included now</p>
+                    <ul class="pricing-features" aria-label="Free tier included features">
+                        <li class="pricing-feature pricing-feature--yes">Manual entry, MT5 XLSX and CSV import</li>
+                        <li class="pricing-feature pricing-feature--yes">Dashboard, analytics &amp; running P&amp;L</li>
+                        <li class="pricing-feature pricing-feature--yes"><span class="pricing-feature-copy"><span>Weekly AI review</span><span class="pricing-feature-detail">Most recent week</span></span></li>
+                        <li class="pricing-feature pricing-feature--yes"><span class="pricing-feature-copy"><span>Standard Replay</span><span class="pricing-feature-detail">5m &amp; 15m, recent history</span></span></li>
+                        <li class="pricing-feature pricing-feature--yes">Single trade account</li>
+                    </ul>
+                </section>
+                <section class="pricing-liquid-panel pricing-liquid-panel--secondary" aria-label="Not included in Free">
+                    <p class="pricing-panel-kicker">Not in this tier</p>
+                    <ul class="pricing-features" aria-label="Free tier limitations">
+                        <li class="pricing-feature pricing-feature--no">Conversational review (ask follow-ups)</li>
+                        <li class="pricing-feature pricing-feature--no"><span class="pricing-feature-copy"><span>MT5 sync after trial</span><span class="pricing-feature-detail">Upgrade or waitlist</span></span></li>
+                    </ul>
+                </section>
+            </div>
         </article>
 
         {# ── TRADER ── #}
@@ -53,8 +61,8 @@
                 </p>
                 <p class="pricing-price-annual">Annual option planned before billing opens</p>
                 <p class="pricing-tagline">The full review experience.</p>
-                <div class="pricing-beta-overlay" aria-label="Free during beta">
-                    <span>Free during beta</span>
+                <div class="pricing-trial-overlay" aria-label="Free trial">
+                    <span>Free trial</span>
                 </div>
             </div>
             <div class="pricing-card-cta">
@@ -67,21 +75,28 @@
                     aria-haspopup="dialog"
                 >Join waitlist</button>
             </div>
-            <ul class="pricing-features" aria-label="Trader tier features">
-                <li class="pricing-feature pricing-feature--yes">Everything in Free</li>
-                <li class="pricing-feature pricing-feature--yes"><strong>Conversational review</strong> — ask follow-ups about your weekly review</li>
-                <li class="pricing-feature pricing-feature--coming">Review history archive <span class="pricing-coming-badge">planned</span></li>
-                <li class="pricing-feature pricing-feature--coming"><strong>Advanced Replay</strong> — 1m timeframe &amp; extended history <span class="pricing-coming-badge">planned</span></li>
-                <li class="pricing-feature pricing-feature--yes">MT5 sync — 1 account</li>
-                <li class="pricing-feature pricing-feature--yes">Behavior interpretation &amp; coaching hypotheses</li>
-                <li class="pricing-feature pricing-feature--coming">Recurring pattern tracking <span class="pricing-coming-badge">Q3 2026</span></li>
-                <li class="pricing-feature pricing-feature--no">Multi-timeframe Replay</li>
-                <li class="pricing-feature pricing-feature--no">Multiple MT5 accounts</li>
-            </ul>
+            <div class="pricing-features-stack">
+                <section class="pricing-liquid-panel" aria-label="Included in Trader when launched">
+                    <p class="pricing-panel-kicker">Included</p>
+                    <ul class="pricing-features" aria-label="Trader tier included features">
+                        <li class="pricing-feature pricing-feature--yes">Everything in Free</li>
+                        <li class="pricing-feature pricing-feature--yes"><span class="pricing-feature-copy"><strong>Conversational review</strong><span class="pricing-feature-detail">Ask follow-ups about your weekly review</span></span></li>
+                        <li class="pricing-feature pricing-feature--yes"><span class="pricing-feature-copy"><span>MT5 sync</span><span class="pricing-feature-detail">1 account</span></span></li>
+                        <li class="pricing-feature pricing-feature--yes">Behavior interpretation &amp; coaching hypotheses</li>
+                    </ul>
+                </section>
+                <section class="pricing-liquid-panel pricing-liquid-panel--secondary" aria-label="Best fit for Trader">
+                    <p class="pricing-panel-kicker">Best fit</p>
+                    <ul class="pricing-features" aria-label="Trader best fit">
+                        <li class="pricing-feature pricing-feature--yes">You want a weekly review you can question</li>
+                        <li class="pricing-feature pricing-feature--yes">You use one main trading account</li>
+                    </ul>
+                </section>
+            </div>
         </article>
 
         {# ── PRO ── #}
-        <article class="pricing-card" role="listitem" aria-label="Pro tier">
+        <article class="pricing-card pricing-card--pro" role="listitem" aria-label="Pro tier">
             <div class="pricing-card-head">
                 <p class="pricing-tier-name">Pro</p>
                 <p class="pricing-price">
@@ -90,8 +105,8 @@
                 </p>
                 <p class="pricing-price-annual">Annual option planned before billing opens</p>
                 <p class="pricing-tagline">For traders who treat it like a system.</p>
-                <div class="pricing-beta-overlay" aria-label="Free during beta">
-                    <span>Free during beta</span>
+                <div class="pricing-trial-overlay" aria-label="Free trial">
+                    <span>Free trial</span>
                 </div>
             </div>
             <div class="pricing-card-cta">
@@ -104,47 +119,88 @@
                     aria-haspopup="dialog"
                 >Join waitlist</button>
             </div>
-            <ul class="pricing-features" aria-label="Pro tier features">
-                <li class="pricing-feature pricing-feature--yes">Everything in Trader</li>
-                <li class="pricing-feature pricing-feature--coming"><strong>Multi-timeframe Replay</strong> — full timeframe access &amp; deepest history <span class="pricing-coming-badge">planned</span></li>
-                <li class="pricing-feature pricing-feature--coming">Multiple MT5 accounts — up to 5 <span class="pricing-coming-badge">planned</span></li>
-                <li class="pricing-feature pricing-feature--coming">Priority MT5 backfill <span class="pricing-coming-badge">planned</span></li>
-                <li class="pricing-feature pricing-feature--coming">Custom strategy/playbook context in AI reviews <span class="pricing-coming-badge">planned</span></li>
-                <li class="pricing-feature pricing-feature--coming">Conversational journaling <span class="pricing-coming-badge">Q4 2026</span></li>
-                <li class="pricing-feature pricing-feature--coming">Shareable/exportable reviews <span class="pricing-coming-badge">Q4 2026</span></li>
-                <li class="pricing-feature pricing-feature--coming">Early access to new AI surfaces <span class="pricing-coming-badge">future rollout</span></li>
-            </ul>
+            <div class="pricing-features-stack">
+                <section class="pricing-liquid-panel" aria-label="Pro tier baseline">
+                    <p class="pricing-panel-kicker">Baseline</p>
+                    <ul class="pricing-features" aria-label="Pro tier includes">
+                        <li class="pricing-feature pricing-feature--yes">Everything in Trader</li>
+                        <li class="pricing-feature pricing-feature--yes">Built for deeper review workflows</li>
+                        <li class="pricing-feature pricing-feature--yes">First access to Pro-level rollouts</li>
+                    </ul>
+                </section>
+                <section class="pricing-liquid-panel pricing-liquid-panel--secondary" aria-label="Best fit for Pro">
+                    <p class="pricing-panel-kicker">Best fit</p>
+                    <ul class="pricing-features" aria-label="Pro best fit">
+                        <li class="pricing-feature pricing-feature--yes">You manage multiple playbooks or accounts</li>
+                        <li class="pricing-feature pricing-feature--yes">You want the deepest review surfaces first</li>
+                    </ul>
+                </section>
+            </div>
         </article>
 
     </div>
 
+    <section class="pricing-roadmap" aria-labelledby="pricing-roadmap-title">
+        <div class="pricing-roadmap-panel">
+            <div class="pricing-roadmap-head">
+                <p class="pricing-panel-kicker">Shared roadmap</p>
+                <h2 id="pricing-roadmap-title">What is planned after the core launch</h2>
+                <p>Trader and Pro share one product roadmap. Trader gets the deeper weekly review first; Pro adds higher-capacity workflows as those surfaces mature.</p>
+            </div>
+            <div class="pricing-roadmap-grid">
+                <section class="pricing-roadmap-lane pricing-roadmap-lane--trader" aria-label="Trader roadmap">
+                    <p class="pricing-roadmap-tier">Trader</p>
+                    <ul class="pricing-features" aria-label="Trader planned features">
+                        <li class="pricing-feature pricing-feature--coming">Review history archive <span class="pricing-coming-badge">planned</span></li>
+                        <li class="pricing-feature pricing-feature--coming"><span class="pricing-feature-copy"><strong>Advanced Replay</strong><span class="pricing-feature-detail">1m timeframe &amp; extended history <span class="pricing-coming-badge">planned</span></span></span></li>
+                        <li class="pricing-feature pricing-feature--coming">Recurring pattern tracking <span class="pricing-coming-badge">Q3 2026</span></li>
+                    </ul>
+                </section>
+                <section class="pricing-roadmap-lane pricing-roadmap-lane--pro" aria-label="Pro roadmap">
+                    <p class="pricing-roadmap-tier">Pro</p>
+                    <ul class="pricing-features" aria-label="Pro planned features">
+                        <li class="pricing-feature pricing-feature--coming"><span class="pricing-feature-copy"><strong>Multi-timeframe Replay</strong><span class="pricing-feature-detail">Full timeframe access &amp; deepest history <span class="pricing-coming-badge">planned</span></span></span></li>
+                        <li class="pricing-feature pricing-feature--coming"><span class="pricing-feature-copy"><span>Multiple MT5 accounts</span><span class="pricing-feature-detail">Up to 5 <span class="pricing-coming-badge">planned</span></span></span></li>
+                        <li class="pricing-feature pricing-feature--coming">Priority MT5 backfill <span class="pricing-coming-badge">planned</span></li>
+                        <li class="pricing-feature pricing-feature--coming">Custom strategy/playbook context in AI reviews <span class="pricing-coming-badge">planned</span></li>
+                        <li class="pricing-feature pricing-feature--coming">Conversational journaling <span class="pricing-coming-badge">Q4 2026</span></li>
+                        <li class="pricing-feature pricing-feature--coming">Shareable/exportable reviews <span class="pricing-coming-badge">Q4 2026</span></li>
+                        <li class="pricing-feature pricing-feature--coming">Early access to new AI surfaces <span class="pricing-coming-badge">future rollout</span></li>
+                    </ul>
+                </section>
+            </div>
+        </div>
+    </section>
+
     <section class="pricing-faq" aria-labelledby="pricing-faq-title">
         <div class="landing-inner">
-            <h2 id="pricing-faq-title">Common questions</h2>
-            <div class="pricing-faq-grid">
-                <div class="pricing-faq-item">
-                    <h3>Is it really free right now?</h3>
-                    <p>Yes. The product is in open beta and currently live features are free. No credit card required. When paid tiers launch, existing users will hear first about early access pricing.</p>
+            <div class="pricing-faq-panel">
+                <h2 id="pricing-faq-title">Common questions</h2>
+                <div class="pricing-faq-grid">
+                    <div class="pricing-faq-item">
+                    <h3>How does the free trial work?</h3>
+                    <p>You get full access to what is live today while you evaluate — no credit card required. When paid tiers launch, existing users will hear first about early access pricing.</p>
                 </div>
-                <div class="pricing-faq-item">
-                    <h3>What happens when beta ends?</h3>
-                    <p>Free tier stays free. Trader and Pro features will require a subscription. Everyone who signed up during beta will hear first and get a grandfathered discount as a thank-you for being early.</p>
+                    <div class="pricing-faq-item">
+                    <h3>What happens when paid tiers launch?</h3>
+                    <p>Free tier stays free. Trader and Pro features will require a subscription. Everyone who signed up early will hear first and get a grandfathered discount as a thank-you.</p>
                 </div>
-                <div class="pricing-faq-item">
+                    <div class="pricing-faq-item">
                     <h3>Why join the waitlist now?</h3>
                     <p>Waitlist members hear first about early-access rates before public pricing goes live. You're also helping shape what gets built next — we reach out to waitlist members when new features roll out.</p>
                 </div>
-                <div class="pricing-faq-item">
+                    <div class="pricing-faq-item">
                     <h3>What is Advanced Replay?</h3>
                     <p>Standard Replay shows your trade on a 5m or 15m chart. Advanced Replay is the planned Trader rollout for lower timeframes such as 1m and extended replay history.</p>
                 </div>
-                <div class="pricing-faq-item">
+                    <div class="pricing-faq-item">
                     <h3>What does MT5 sync cost?</h3>
-                    <p>MT5 sync is free during beta. When billing launches, it is included in Trader and Pro. Free accounts will have a 14-day trial before needing to upgrade.</p>
+                    <p>MT5 sync is included while you are on a trial or paid Trader/Pro plan. When billing launches, it ships with Trader and Pro. Free accounts can try sync on a 14-day trial before upgrading.</p>
                 </div>
-                <div class="pricing-faq-item">
+                    <div class="pricing-faq-item">
                     <h3>Can I cancel anytime?</h3>
-                    <p>Monthly and annual options are planned, but final billing terms will be published before subscriptions open. There is no active paid billing during beta.</p>
+                    <p>Monthly and annual options are planned, but final billing terms will be published before subscriptions open. There is no paid billing active yet.</p>
+                </div>
                 </div>
             </div>
         </div>
@@ -152,27 +208,18 @@
 
     <section class="pricing-bottom-cta" aria-label="Get started">
         <div class="landing-inner pricing-bottom-cta-inner">
-            <h2>Start with the weekly review — free.</h2>
-            <p class="muted">Import your trades, get a review this week, and decide later if you want more.</p>
-            <div class="pricing-bottom-cta-actions">
-                <a href="{{ url_for('register') }}" class="submit-btn">Get Started Free</a>
-                {% if not user_logged_in %}
-                <a href="{{ url_for('login') }}" class="ghost-btn">Log In</a>
-                {% endif %}
+            <div class="pricing-liquid-panel pricing-bottom-cta-panel">
+                <h2>Start with the weekly review — free.</h2>
+                <p class="muted">Import your trades, get a review this week, and decide later if you want more.</p>
+                <div class="pricing-bottom-cta-actions">
+                    <a href="{{ url_for('register') }}" class="submit-btn">Get Started Free</a>
+                    {% if not user_logged_in %}
+                    <a href="{{ url_for('login') }}" class="ghost-btn">Log In</a>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </section>
-
-    <footer class="landing-footer">
-        <div class="landing-inner landing-footer-inner">
-            <p>&copy; 2026 MyFXJournal</p>
-            <nav aria-label="Footer links">
-                <a href="{{ url_for('terms_and_conditions') }}">Terms</a>
-                <a href="{{ url_for('privacy_policy') }}">Privacy</a>
-                <a href="{{ url_for('contact.contact') }}">Contact</a>
-            </nav>
-        </div>
-    </footer>
 </section>
 
 {# ── Waitlist modal ── #}
@@ -182,7 +229,7 @@
         <button type="button" class="pricing-modal-close" data-waitlist-close aria-label="Close">&times;</button>
         <p class="pricing-modal-eyebrow">Join the waitlist</p>
         <h2 id="waitlistModalTitle" class="pricing-modal-title">Early access to <span id="waitlistModalTier">Trader</span></h2>
-        <p class="pricing-modal-body">You'll hear first when this tier opens — along with an early-access rate as a thank-you for being here during beta.</p>
+        <p class="pricing-modal-body">You'll hear first when this tier opens — along with an early-access rate as a thank-you for joining early.</p>
         <form id="waitlistForm" novalidate>
             <input type="hidden" id="waitlistTierInput" name="tier" value="trader">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -205,23 +252,59 @@
 </div>
 
 <style>
+/* ── Landing layout inheritance ── */
+body.landing-layout main {
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 100vh;
+    overflow: visible;
+}
+.landing-glass {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        linear-gradient(170deg, rgba(0, 0, 0, 0.24), transparent 46%),
+        radial-gradient(circle at 14% 14%, rgba(69, 98, 255, 0.06), transparent 48%),
+        radial-gradient(circle at 88% 16%, rgba(72, 84, 214, 0.06), transparent 50%),
+        radial-gradient(circle at 52% 84%, rgba(39, 76, 184, 0.04), transparent 52%),
+        linear-gradient(165deg, color-mix(in srgb, var(--card) 10%, transparent), transparent);
+    backdrop-filter: blur(12px) brightness(0.94);
+    -webkit-backdrop-filter: blur(12px) brightness(0.94);
+    filter: saturate(0.98);
+}
+.pricing-wrap > *:not(.landing-glass) {
+    position: relative;
+    z-index: 2;
+    min-width: 0;
+}
+
 /* ── Pricing layout ── */
 .pricing-wrap {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+    margin: 0;
+    padding: clamp(0.8rem, 3vw, 2rem);
+    gap: 1rem;
 }
 .pricing-hero {
     text-align: center;
-    padding: 6rem 1.5rem 3rem;
-    max-width: 640px;
+    padding: 4.6rem 1.5rem 3.35rem;
+    max-width: 720px;
     margin: 0 auto;
 }
 .pricing-hero h1 {
-    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    font-size: clamp(2.15rem, 4.6vw, 3.15rem);
     font-weight: 800;
     letter-spacing: -0.04em;
-    color: var(--text-primary, #182538);
+    color: var(--ink);
     margin: 0.5rem 0 1rem;
 }
 .pricing-hero-sub {
@@ -230,24 +313,24 @@
     max-width: 520px;
     margin: 0 auto 1.25rem;
 }
-.pricing-beta-note {
+.pricing-trial-note {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
     font-size: 0.875rem;
-    color: var(--text-muted, #66758f);
+    color: var(--muted);
 }
-.pricing-beta-badge {
+.pricing-trial-badge {
     display: inline-block;
     padding: 3px 10px;
     border-radius: 999px;
-    background: #eef4ff;
-    border: 1px solid #dce4f0;
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
     font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.5px;
     text-transform: uppercase;
-    color: #3658e8;
+    color: var(--accent);
 }
 
 /* ── Pricing grid ── */
@@ -262,31 +345,159 @@
     box-sizing: border-box;
 }
 @media (min-width: 900px) {
-    .pricing-grid { grid-template-columns: 1fr 1.05fr 1fr; align-items: start; }
+    .pricing-grid { grid-template-columns: 1fr 1.06fr 1fr; align-items: start; }
 }
 
-/* ── Pricing card ── */
+@property --primary-card-angle {
+    syntax: "<angle>";
+    initial-value: 0deg;
+    inherits: false;
+}
+
+@keyframes primary-card-spin {
+    to { --primary-card-angle: 360deg; }
+}
+
+@keyframes primary-card-pulse {
+    0%, 100% { opacity: 0.82; }
+    50% { opacity: 1; }
+}
+
+/* ── Pricing card (same edge highlight treatment as comparison grid) ── */
 .pricing-card {
+    --pricing-card-accent: color-mix(in srgb, var(--muted) 78%, var(--accent) 22%);
+    --pricing-card-base: color-mix(in srgb, #0b1020 82%, var(--surface));
+    --pricing-card-panel: color-mix(in srgb, #111936 62%, var(--surface));
     position: relative;
-    background: var(--surface, #fff);
-    border: 1px solid var(--border, #e2e8f0);
-    border-radius: 16px;
+    overflow: visible;
+    isolation: isolate;
+    margin: 0;
     padding: 2rem 1.75rem;
+    border-radius: 14px;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    border: 1px solid color-mix(in srgb, var(--pricing-card-accent) 26%, var(--border));
+    background:
+        linear-gradient(180deg, color-mix(in srgb, white 4%, transparent), transparent 38%),
+        radial-gradient(circle at top right, color-mix(in srgb, var(--pricing-card-accent) 12%, transparent), transparent 44%),
+        var(--pricing-card-base);
+    transition:
+        transform 220ms ease,
+        box-shadow 220ms ease,
+        border-color 220ms ease;
 }
+
+.pricing-card:hover,
+.pricing-card:focus-within {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 30px rgba(2, 6, 23, 0.18);
+}
+
+.pricing-card--free {
+    --pricing-card-accent: color-mix(in srgb, var(--good) 76%, #9fb4ff 24%);
+    --pricing-card-base: #0b1620;
+    --pricing-card-panel: #07111a;
+}
+
 .pricing-card--featured {
-    border-color: #3658e8;
-    box-shadow: 0 0 0 1px #3658e820, 0 8px 32px #3658e812;
+    --pricing-card-accent: var(--accent);
+    --pricing-card-base: #171638;
+    --pricing-card-panel: #080b1b;
+    transform: scale(1.028);
+    border-color: color-mix(in srgb, var(--pricing-card-accent) 55%, var(--border));
+    background:
+        radial-gradient(circle at top right, color-mix(in srgb, var(--pricing-card-accent) 22%, transparent), transparent 46%),
+        radial-gradient(circle at bottom left, color-mix(in srgb, var(--pricing-card-accent) 8%, transparent), transparent 52%),
+        var(--pricing-card-base);
+    animation: primary-card-pulse 2.8s ease-in-out infinite;
+    box-shadow:
+        0 24px 48px rgba(2, 6, 23, 0.36),
+        0 0 0 1px color-mix(in srgb, var(--pricing-card-accent) 48%, transparent),
+        0 0 28px color-mix(in srgb, var(--pricing-card-accent) 28%, transparent),
+        0 0 64px color-mix(in srgb, var(--pricing-card-accent) 16%, transparent),
+        0 0 120px color-mix(in srgb, var(--pricing-card-accent) 7%, transparent);
 }
+
+.pricing-card--featured:hover,
+.pricing-card--featured:focus-within {
+    transform: scale(1.028) translateY(-2px);
+    box-shadow:
+        0 24px 48px rgba(2, 6, 23, 0.36),
+        0 0 0 1px color-mix(in srgb, var(--pricing-card-accent) 48%, transparent),
+        0 0 28px color-mix(in srgb, var(--pricing-card-accent) 28%, transparent),
+        0 0 64px color-mix(in srgb, var(--pricing-card-accent) 16%, transparent),
+        0 0 120px color-mix(in srgb, var(--pricing-card-accent) 7%, transparent);
+}
+
+.pricing-card--pro {
+    --pricing-card-accent: #67e8f9;
+    --pricing-card-base: #0d1524;
+    --pricing-card-panel: #07101d;
+}
+
+.pricing-card--featured::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 2px;
+    background: conic-gradient(
+        from var(--primary-card-angle),
+        transparent 0deg,
+        color-mix(in srgb, white 72%, var(--pricing-card-accent) 28%) 50deg,
+        transparent 105deg,
+        transparent 180deg,
+        color-mix(in srgb, white 52%, var(--pricing-card-accent) 48%) 230deg,
+        transparent 285deg,
+        transparent 360deg
+    );
+    -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: primary-card-spin 2.8s linear infinite;
+    pointer-events: none;
+}
+
+.pricing-card--featured::after {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1.5px;
+    background:
+        linear-gradient(
+            135deg,
+            color-mix(in srgb, white 28%, var(--pricing-card-accent) 72%) 0%,
+            transparent 28%,
+            transparent 68%,
+            color-mix(in srgb, var(--pricing-card-accent) 40%, transparent) 100%
+        );
+    -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+    opacity: 0.8;
+}
+
 .pricing-card-badge {
     position: absolute;
-    top: -12px;
+    z-index: 6;
+    top: 0;
     left: 50%;
-    transform: translateX(-50%);
-    background: #3658e8;
-    color: #fff;
+    transform: translate(-50%, -50%);
+    background: var(--accent);
+    color: var(--card);
     font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 0.7px;
@@ -294,86 +505,283 @@
     padding: 4px 14px;
     border-radius: 999px;
     white-space: nowrap;
+    box-shadow: 0 10px 24px rgba(2, 6, 23, 0.28);
 }
-.pricing-card-head { display: flex; flex-direction: column; gap: 0.35rem; }
+.pricing-card-head { display: flex; flex-direction: column; gap: 0.35rem; position: relative; z-index: 1; }
 .pricing-tier-name {
     font-size: 0.8rem;
     font-weight: 700;
     letter-spacing: 0.8px;
     text-transform: uppercase;
-    color: var(--text-muted, #66758f);
+    color: var(--muted);
     margin: 0;
 }
 .pricing-price { margin: 0; display: flex; align-items: baseline; gap: 0.3rem; }
-.pricing-amount { font-size: 2.4rem; font-weight: 800; letter-spacing: -0.04em; color: var(--text-primary, #182538); }
-.pricing-period { font-size: 0.9rem; color: var(--text-muted, #66758f); }
-.pricing-price-annual { margin: 0; font-size: 0.8rem; color: var(--text-muted, #66758f); }
-.pricing-tagline { margin: 0.15rem 0 0; font-size: 0.9rem; color: var(--text-secondary, #334155); }
-.pricing-beta-overlay {
+.pricing-amount { font-size: 2.4rem; font-weight: 800; letter-spacing: -0.04em; color: var(--ink); }
+.pricing-period { font-size: 0.9rem; color: var(--muted); }
+.pricing-price-annual { margin: 0; font-size: 0.8rem; color: var(--muted); }
+.pricing-tagline { margin: 0.15rem 0 0; font-size: 0.9rem; color: var(--ink); }
+.pricing-trial-overlay {
     display: inline-block;
     margin-top: 0.5rem;
     padding: 4px 12px;
-    background: #f0fdf4;
-    border: 1px solid #bbf7d0;
+    background: color-mix(in srgb, var(--good) 12%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--good) 28%, var(--border));
     border-radius: 999px;
     font-size: 0.75rem;
     font-weight: 600;
-    color: #16a34a;
+    color: var(--good);
 }
+.pricing-card-cta { position: relative; z-index: 1; }
 .pricing-cta-btn { width: 100%; text-align: center; justify-content: center; font-size: 0.95rem; }
 
+@media (max-width: 899px) {
+    .pricing-card,
+    .pricing-card--featured {
+        transform: none;
+    }
+
+    .pricing-card--featured:hover,
+    .pricing-card--featured:focus-within {
+        transform: translateY(-2px);
+    }
+}
+
+/* ── Liquid glass feature panels (matches landing proof / workflow panels) ── */
+.pricing-features-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    z-index: 1;
+}
+
+.pricing-liquid-panel {
+    padding: clamp(0.85rem, 1.4vw, 1.05rem);
+    border: 1px solid color-mix(in srgb, var(--pricing-card-accent) 56%, white 10%);
+    border-radius: 14px;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, white 10%, transparent), transparent 54%),
+        var(--pricing-card-panel);
+    box-shadow:
+        0 16px 34px rgba(2, 6, 23, 0.42),
+        inset 0 1px 0 color-mix(in srgb, white 14%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+.pricing-liquid-panel--secondary {
+    border-color: color-mix(in srgb, var(--pricing-card-accent) 32%, var(--border));
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--pricing-card-accent) 9%, transparent), transparent 62%),
+        color-mix(in srgb, #141a2c 64%, var(--pricing-card-panel));
+    box-shadow:
+        0 12px 28px rgba(2, 6, 23, 0.32),
+        inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+}
+
+.pricing-panel-kicker {
+    margin: 0 0 0.55rem;
+    color: color-mix(in srgb, var(--accent) 72%, var(--ink));
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.pricing-liquid-panel--secondary .pricing-panel-kicker {
+    color: color-mix(in srgb, var(--pricing-card-accent) 46%, var(--muted));
+}
+
 /* ── Feature list ── */
-.pricing-features { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.6rem; flex: 1; }
+.pricing-features { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.72rem; flex: 1; }
 .pricing-feature {
     display: flex;
     align-items: flex-start;
-    gap: 0.6rem;
+    gap: 0.68rem;
     font-size: 0.875rem;
-    line-height: 1.5;
-    color: var(--text-secondary, #334155);
+    line-height: 1.42;
+    color: var(--ink);
 }
 .pricing-feature::before {
     flex-shrink: 0;
-    width: 1.1em;
+    width: 1.05em;
     margin-top: 0.1em;
     font-size: 0.85em;
+    text-align: center;
 }
-.pricing-feature--yes { color: var(--text-secondary, #334155); }
-.pricing-feature--yes::before { content: "✓"; color: #16a34a; font-weight: 700; }
-.pricing-feature--no { color: var(--text-muted, #66758f); }
-.pricing-feature--no::before { content: "—"; color: var(--border, #cbd5e1); }
-.pricing-feature--coming { color: var(--text-muted, #66758f); }
-.pricing-feature--coming::before { content: "◦"; color: #94a3b8; }
+.pricing-feature-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.12rem;
+}
+.pricing-feature-detail {
+    color: color-mix(in srgb, var(--muted) 86%, var(--ink));
+    font-size: 0.82rem;
+    line-height: 1.38;
+}
+.pricing-feature--yes { color: var(--ink); }
+.pricing-feature--yes::before { content: "✓"; color: var(--good); font-weight: 700; }
+.pricing-feature--no { color: color-mix(in srgb, var(--muted) 92%, var(--ink)); }
+.pricing-feature--no::before {
+    content: "";
+    height: 1px;
+    margin-top: 0.72em;
+    background: color-mix(in srgb, var(--border) 82%, white 10%);
+}
+.pricing-feature--coming { color: color-mix(in srgb, var(--ink) 72%, var(--muted)); }
+.pricing-feature--coming::before {
+    content: "";
+    width: 0.38rem;
+    height: 0.38rem;
+    margin: 0.58em 0.335em 0 0.335em;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 42%, var(--muted));
+}
 .pricing-coming-badge {
     display: inline-block;
     margin-left: 0.3rem;
     padding: 1px 7px;
-    background: #f1f5f9;
+    background: color-mix(in srgb, #f8c96b 18%, var(--surface));
+    border: 1px solid color-mix(in srgb, #f8c96b 24%, transparent);
     border-radius: 999px;
     font-size: 0.7rem;
     font-weight: 600;
-    color: #64748b;
+    color: color-mix(in srgb, #f8c96b 72%, var(--ink));
     white-space: nowrap;
 }
 
+.pricing-feature--coming::before {
+    color: #f8c96b;
+}
+
 /* ── FAQ ── */
+.pricing-roadmap {
+    width: 100%;
+    max-width: 1060px;
+    margin: -1rem auto 0;
+    padding: 0 1.5rem 3rem;
+    box-sizing: border-box;
+}
+
+.pricing-roadmap-panel {
+    --pricing-card-accent: color-mix(in srgb, var(--accent) 72%, #67e8f9 28%);
+    padding: clamp(1.25rem, 2.6vw, 2rem);
+    border: 1px solid color-mix(in srgb, var(--pricing-card-accent) 34%, var(--border));
+    border-radius: 16px;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, white 7%, transparent), transparent 42%),
+        radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 44%),
+        radial-gradient(circle at bottom right, color-mix(in srgb, #67e8f9 10%, transparent), transparent 46%),
+        color-mix(in srgb, #080b1b 84%, var(--surface));
+    box-shadow:
+        0 20px 46px rgba(2, 6, 23, 0.34),
+        inset 0 1px 0 color-mix(in srgb, white 9%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.pricing-roadmap-head {
+    display: grid;
+    gap: 0.45rem;
+    max-width: 680px;
+    margin-bottom: 1.25rem;
+}
+
+.pricing-roadmap-head h2 {
+    margin: 0;
+    color: var(--ink);
+    font-size: clamp(1.35rem, 2.2vw, 1.8rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
+
+.pricing-roadmap-head p:not(.pricing-panel-kicker) {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.65;
+}
+
+.pricing-roadmap-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.pricing-roadmap-lane {
+    padding: clamp(0.95rem, 1.6vw, 1.2rem);
+    border: 1px solid color-mix(in srgb, var(--roadmap-lane-accent, var(--pricing-card-accent)) 30%, var(--border));
+    border-radius: 14px;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--roadmap-lane-accent, var(--pricing-card-accent)) 10%, transparent), transparent 60%),
+        color-mix(in srgb, #111827 58%, var(--surface));
+}
+
+.pricing-roadmap-lane--trader {
+    --roadmap-lane-accent: var(--accent);
+}
+
+.pricing-roadmap-lane--pro {
+    --roadmap-lane-accent: #67e8f9;
+}
+
+.pricing-roadmap-tier {
+    margin: 0 0 0.75rem;
+    color: color-mix(in srgb, var(--roadmap-lane-accent) 58%, var(--ink));
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+@media (max-width: 760px) {
+    .pricing-roadmap-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .pricing-faq { padding: 3rem 0 2rem; border-top: 1px solid var(--border, #e2e8f0); }
-.pricing-faq h2 { text-align: center; font-size: 1.5rem; font-weight: 700; margin-bottom: 2rem; }
+.pricing-faq-panel {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: clamp(1rem, 4vw, 2.5rem);
+    border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+    border-radius: 18px;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, #050816 82%, transparent), color-mix(in srgb, #07091a 72%, transparent)),
+        color-mix(in srgb, var(--surface) 44%, transparent);
+    box-shadow:
+        0 18px 44px rgba(2, 6, 23, 0.3),
+        inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+.pricing-faq h2 { text-align: center; font-size: 1.5rem; font-weight: 700; margin: 0 0 2rem; }
 .pricing-faq-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
     gap: 1.5rem;
-    max-width: 860px;
     margin: 0 auto;
-    padding: 0 1.5rem;
 }
-.pricing-faq-item h3 { font-size: 0.95rem; font-weight: 700; margin: 0 0 0.4rem; color: var(--text-primary, #182538); }
-.pricing-faq-item p { font-size: 0.875rem; color: var(--text-muted, #66758f); line-height: 1.7; margin: 0; }
+.pricing-faq-item h3 { font-size: 0.95rem; font-weight: 700; margin: 0 0 0.4rem; color: var(--ink); }
+.pricing-faq-item p { font-size: 0.875rem; color: var(--muted); line-height: 1.7; margin: 0; }
 
 /* ── Bottom CTA ── */
 .pricing-bottom-cta { padding: 4rem 0; text-align: center; }
-.pricing-bottom-cta h2 { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.5rem; }
-.pricing-bottom-cta .muted { margin-bottom: 1.5rem; }
+.pricing-bottom-cta-inner { max-width: 560px; margin: 0 auto; }
+.pricing-bottom-cta-panel { padding: clamp(1.25rem, 2.5vw, 1.75rem) clamp(1rem, 3vw, 2rem); }
+.pricing-bottom-cta-panel h2 {
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    margin: 0 0 0.5rem;
+}
+.pricing-bottom-cta .muted { margin: 0 0 1.5rem; }
 .pricing-bottom-cta-actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
 
 /* ── Modal ── */
@@ -395,34 +803,39 @@
     position: absolute;
     top: 1rem; right: 1rem;
     background: none; border: none; cursor: pointer;
-    font-size: 1.4rem; color: var(--text-muted, #66758f); line-height: 1; padding: 4px 8px;
+    font-size: 1.4rem; color: var(--muted); line-height: 1; padding: 4px 8px;
 }
-.pricing-modal-eyebrow { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: #3658e8; margin: 0 0 0.35rem; }
+.pricing-modal-eyebrow { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--accent); margin: 0 0 0.35rem; }
 .pricing-modal-title { font-size: 1.4rem; font-weight: 800; margin: 0 0 0.75rem; letter-spacing: -0.03em; }
-.pricing-modal-body { font-size: 0.9rem; color: var(--text-muted, #66758f); line-height: 1.7; margin: 0 0 1.5rem; }
+.pricing-modal-body { font-size: 0.9rem; color: var(--muted); line-height: 1.7; margin: 0 0 1.5rem; }
 .pricing-modal-field { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
-.pricing-modal-field label { font-size: 0.85rem; font-weight: 600; color: var(--text-secondary, #334155); }
+.pricing-modal-field label { font-size: 0.85rem; font-weight: 600; color: var(--ink); }
 .pricing-modal-field input {
     padding: 0.65rem 0.9rem;
     border: 1px solid var(--border, #e2e8f0);
     border-radius: 8px;
     font-size: 0.95rem;
-    color: var(--text-primary, #182538);
+    color: var(--ink);
     background: var(--surface, #fff);
     outline: none;
     transition: border-color 0.15s;
 }
-.pricing-modal-field input:focus { border-color: #3658e8; box-shadow: 0 0 0 3px #3658e820; }
+.pricing-modal-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
 .pricing-modal-submit { width: 100%; justify-content: center; }
-.pricing-modal-success { margin: 0.75rem 0 0; font-size: 0.875rem; color: #16a34a; font-weight: 600; }
-.pricing-modal-error { margin: 0.75rem 0 0; font-size: 0.875rem; color: #dc2626; }
+.pricing-modal-success { margin: 0.75rem 0 0; font-size: 0.875rem; color: var(--good); font-weight: 600; }
+.pricing-modal-error { margin: 0.75rem 0 0; font-size: 0.875rem; color: var(--bad); }
 
-/* ── Footer ── */
-.pricing-wrap .landing-footer { margin-top: auto; padding: 2rem 1.5rem; border-top: 1px solid var(--border, #e2e8f0); }
-.landing-footer-inner { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.8rem; color: var(--text-muted, #66758f); }
-.landing-footer-inner nav { display: flex; gap: 1rem; }
-.landing-footer-inner nav a { color: var(--text-muted, #66758f); text-decoration: none; }
-.landing-footer-inner nav a:hover { color: var(--text-primary, #182538); }
+@media (prefers-reduced-motion: reduce) {
+    .pricing-card--featured,
+    .pricing-card--featured::before,
+    .pricing-card--featured::after {
+        animation: none !important;
+    }
+
+    .pricing-card--featured {
+        opacity: 1;
+    }
+}
 </style>
 {% include "partials/public_header_styles.html" %}
 

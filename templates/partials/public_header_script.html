@@ -14,6 +14,13 @@
         });
     }
 
+    // landing_page.js also wires [data-nav-dropdown] on pages that load it; its toggle handler
+    // runs first and opens the menu, then this script would see .is-open and close it again.
+    // Body gets class js-landing-animate only from landing_page.js (landing + SEO pages).
+    if (document.body.classList.contains("js-landing-animate")) {
+        return;
+    }
+
     var dropdown = header.querySelector("[data-nav-dropdown]");
     var dropdownToggle = header.querySelector("[data-nav-dropdown-toggle]");
     var dropdownMenu = header.querySelector("[data-nav-dropdown-menu]");

@@ -2,6 +2,27 @@
 
 Last Updated: 2026-05-11
 
+## Free-trial expiry email (2026-05-11)
+
+- Added a general free-trial expiry email template that frames the message as an account-status notice first, explains that existing journal data remains available, and links to `/pricing` for paid access / waitlist options with restrained upsell copy. (`templates/emails/free-trial-expired.html`)
+- MT5 trial expiry now sends this email once when the sync worker first stamps `sync_paused_at` because entitlement reason is `expired`; existing paused accounts are not re-emailed by beat because paused accounts are excluded from scheduling. (`celery_workers/mt5_sync_tasks.py`, `tests/test_mt5_sync.py`, `tests/test_email_templates.py`)
+- Current limitation: MT5 sync is still the only feature with a concrete trial-expiry transition. Other gated features use entitlement checks but do not yet have an account-level trial clock or expiry event to trigger this email.
+
+## Pricing page polish (2026-05-11)
+
+- Raised the pricing hero by reducing top padding and made the main headline larger/wider for stronger first-viewport emphasis.
+- Fixed the featured Trader "Most popular" badge being clipped by card overflow; the badge now sits above the card with its own stacking/shadow.
+- Sharpened pricing tier contrast with per-tier card/panel accents for Free, Trader, and Pro, and improved roadmap/planned item contrast with warmer planned badges. (`templates/pricing.html`)
+- Moved Trader and Pro planned features out of the tier cards into one shared roadmap panel below the pricing grid, with separate Trader and Pro lanes so the cards stay focused on current tier value. (`templates/pricing.html`)
+- Rebalanced desktop pricing card heights after the shared roadmap extraction: Free limitations are shorter, side cards share a baseline height, and Trader remains slightly larger as the featured tier. (`templates/pricing.html`)
+- Removed forced pricing-card min-heights that created blank empty areas, and added compact "Best fit" panels to Trader and Pro so card balance comes from useful content instead of empty vertical space. (`templates/pricing.html`)
+
+## Landing hero + pricing layout fixes (2026-05-11)
+
+- **Landing hero**: Removed the `hero-availability` scarcity card (slot-count, batch-open/closed states, animated conic border) and all its CSS. Replaced with a clean `hero-mt5-trial` section that conveys: "MT5 sync trial — 14 days free, no card required. Import trades first and sync when ready. Trial pauses after 14 days unless you upgrade later." No scarcity framing. Card is only shown to logged-out visitors. (`templates/landing.html`)
+- **Pricing page layout**: Fixed desktop layout that was rendering at mobile/tablet widths due to `base.html`'s global `main { max-width: 760px; margin: 4rem auto; }` overriding the full-width layout. Added `body.landing-layout main` override (removes the 760px cap), `.landing-glass` background gradient/blur layer, and proper `.pricing-wrap` padding (`clamp(0.8rem, 3vw, 2rem)`) to match landing page spacing. (`templates/pricing.html`)
+- **Pricing page theming**: Replaced all `--text-primary` / `--text-muted` / `--text-secondary` custom properties (undefined in the dark theme, falling back to light-mode hex colors → near-invisible text) with the correct design system variables: `var(--ink)`, `var(--muted)`. Updated hardcoded accent/success/error hex values (`#3658e8`, `#16a34a`, `#f0fdf4` etc.) to use `var(--accent)`, `var(--good)`, `var(--bad)` and `color-mix` equivalents. (`templates/pricing.html`)
+
 ## Monetization rollout final hardening (2026-05-11)
 
 - Replay chart API no longer normalizes unsupported timeframe requests before gating. Free users requesting `M1` now receive a 403 `upgrade_required` JSON response with `/pricing` waitlist CTA metadata; Trader/Pro users requesting `M1` receive a clean 501 `timeframe_not_available` response until 1m replay is actually implemented. Returned `available_timeframes` only lists implemented + entitled UI options (`M5`, `M15` for now). (`routes/trades.py`, `tests/test_trades_routes.py`)
