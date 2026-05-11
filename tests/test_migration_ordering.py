@@ -16,6 +16,7 @@ def test_waitlist_and_entitlement_migrations_are_ordered():
     waitlist = _load_migration_module("20260510_0055_upgrade_waitlist.py")
     entitlements = _load_migration_module("20260510_0056_entitlement_fields.py")
     waitlist_intent = _load_migration_module("20260510_0057_waitlist_intent_fields.py")
+    journal_mvp = _load_migration_module("20260512_0057_journal_mvp.py")
 
     assert waitlist.revision == "20260510_0055"
     assert waitlist.down_revision == "20260426_0054"
@@ -23,3 +24,5 @@ def test_waitlist_and_entitlement_migrations_are_ordered():
     assert entitlements.down_revision == "20260510_0055"
     assert waitlist_intent.revision == "20260510_0057"
     assert waitlist_intent.down_revision == "20260510_0056"
+    assert journal_mvp.revision == "20260512_0057"
+    assert journal_mvp.down_revision == "20260510_0057"

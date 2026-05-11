@@ -5,6 +5,7 @@ from routes.trade_accounts import bp as trade_accounts_bp
 from routes.trade_profiles import bp as trade_profiles_bp
 from routes.account import bp as account_bp
 from routes.contact import bp as contact_bp
+from routes.admin_journal import bp as admin_journal_bp
 from routes.mt5_internal import bp as mt5_internal_bp
 
 all_blueprints = [
@@ -15,5 +16,6 @@ all_blueprints = [
     trade_profiles_bp,
     account_bp,
     contact_bp,
+    admin_journal_bp,
     mt5_internal_bp,
 ]

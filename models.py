@@ -144,6 +144,20 @@ class User(db.Model):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    journal_sessions = db.relationship(
+        "JournalSession",
+        backref="user",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    journal_messages = db.relationship(
+        "JournalMessage",
+        backref="user",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     weekly_checkins = db.relationship(
         "WeeklyCheckin",
         backref="user",
@@ -305,6 +319,13 @@ class TradeAccount(db.Model):
     )
     weekly_review_chat_messages = db.relationship(
         "WeeklyReviewChatMessage",
+        backref="trade_account",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    journal_sessions = db.relationship(
+        "JournalSession",
         backref="trade_account",
         lazy=True,
         cascade="all, delete-orphan",
@@ -1069,6 +1090,85 @@ class WeeklyReviewChatMessage(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, index=True)
     model_used = db.Column(db.String(64), nullable=True)
     prompt_version = db.Column(db.String(64), nullable=True)
+
+
+class JournalSession(db.Model):
+    __tablename__ = "journal_sessions"
+    __table_args__ = (
+        db.Index("ix_journal_sessions_user_started", "user_id", "started_at"),
+        db.Index("ix_journal_sessions_scope_started", "scope_type", "started_at"),
+    )
+
+    SCOPE_TRADE = "trade"
+    SCOPE_DAY = "day"
+    SCOPE_FREEFORM = "freeform"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    trade_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey("trade_accounts.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    scope_type = db.Column(db.String(16), nullable=False)
+    scope_trade_pubkey = db.Column(db.String(64), nullable=True)
+    scope_date = db.Column(db.Date, nullable=True)
+    title = db.Column(db.String(200), nullable=True)
+    tags_json = db.Column(db.Text, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    started_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, index=True)
+    ended_at = db.Column(db.DateTime, nullable=True)
+    messages = db.relationship(
+        "JournalMessage",
+        backref="session",
+        lazy=True,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class JournalMessage(db.Model):
+    __tablename__ = "journal_messages"
+    __table_args__ = (
+        db.Index("ix_journal_messages_session_created", "session_id", "created_at"),
+        db.Index("ix_journal_messages_user_role_created", "user_id", "role", "created_at"),
+    )
+
+    ROLE_USER = "user"
+    ROLE_ASSISTANT = "assistant"
+
+    FEEDBACK_USEFUL = "useful"
+    FEEDBACK_GENERIC = "generic"
+    FEEDBACK_NEEDED_MORE_CONTEXT = "needed_more_context"
+    FEEDBACK_MISSING_FEATURE = "missing_feature"
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(
+        db.Integer,
+        db.ForeignKey("journal_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role = db.Column(db.String(16), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    model_used = db.Column(db.String(64), nullable=True)
+    prompt_version = db.Column(db.String(64), nullable=True)
+    citations_json = db.Column(db.Text, nullable=True)
+    feedback = db.Column(db.String(32), nullable=True)
+    feedback_note = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, index=True)
 
 
 class UpgradeWaitlistEntry(db.Model):

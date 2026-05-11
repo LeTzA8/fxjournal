@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+{% include 'partials/admin_panel_head.html' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin_journal.css') }}">
+{% endblock %}
+
+{% block content %}
+{% include 'partials/admin_shell_start.html' %}
+
+        <section class="panel admin-journal-start">
+            <div class="panel-head panel-head-stack">
+                <div>
+                    <h2>Start New Session</h2>
+                    <p class="helper-note">Admin-only research surface. Sessions stay isolated and use only structured trade context.</p>
+                </div>
+            </div>
+            <div class="admin-journal-start-grid">
+                <form action="{{ url_for('admin_journal.create_session') }}" method="post" class="admin-journal-start-card">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="scope_type" value="trade">
+                    <label for="journalTradePicker">Reflect on a trade</label>
+                    <select id="journalTradePicker" name="scope_trade_pubkey" required>
+                        <option value="">Choose a recent closed trade</option>
+                        {% for trade in recent_trades %}
+                        <option value="{{ trade.pubkey }}">{{ trade.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="submit-btn">Start trade session</button>
+                </form>
+
+                <form action="{{ url_for('admin_journal.create_session') }}" method="post" class="admin-journal-start-card">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="scope_type" value="day">
+                    <label for="journalDayPicker">Reflect on a day</label>
+                    <input id="journalDayPicker" type="date" name="scope_date" value="{{ today_utc }}" required>
+                    <button type="submit" class="submit-btn">Start day session</button>
+                </form>
+
+                <form action="{{ url_for('admin_journal.create_session') }}" method="post" class="admin-journal-start-card">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="scope_type" value="freeform">
+                    <label>Open reflection</label>
+                    <p class="helper-note">Uses the last 20 closed trades on the active account.</p>
+                    <button type="submit" class="submit-btn">Start open session</button>
+                </form>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head panel-head-stack">
+                <div>
+                    <h2>Past Sessions</h2>
+                    <p class="helper-note">Use titles, tags, notes, and message feedback as research signals.</p>
+                </div>
+            </div>
+            <div class="admin-journal-table-wrap">
+                <table class="admin-table admin-journal-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Scope</th>
+                            <th>Title</th>
+                            <th>Tags</th>
+                            <th>Last message</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in session_rows %}
+                        {% set item = row.session %}
+                        <tr>
+                            <td>{{ item.started_at.strftime("%Y-%m-%d %H:%M") if item.started_at else "-" }}</td>
+                            <td>{{ item.scope_type }}</td>
+                            <td>{{ item.title or "-" }}</td>
+                            <td>
+                                {% for tag in row.tags %}
+                                <span class="admin-journal-chip">{{ tag }}</span>
+                                {% else %}
+                                <span class="soft">-</span>
+                                {% endfor %}
+                            </td>
+                            <td>{{ row.last_message_preview or "-" }}</td>
+                            <td><a class="view-btn" href="{{ url_for('admin_journal.view_session', session_id=item.id) }}">Open</a></td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="soft">No journal sessions yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+{% include 'partials/admin_shell_end.html' %}
+{% endblock %}

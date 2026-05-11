@@ -2,6 +2,14 @@
 
 Last Updated: 2026-05-11
 
+## Phase 2.5 admin conversational journal MVP (2026-05-11)
+
+- Added the admin-only conversational journal research surface at `/admin/journal`, gated invisibly with `user_has_admin_access` and 404s for non-admin/anonymous access. It supports trade, day, and freeform sessions, a single chat thread per session, session title/tags/notes, optional end-session stamping, and per-assistant-message feedback (`useful`, `generic`, `needed_more_context`, `missing_feature`). (`routes/admin_journal.py`, `templates/admin_journal.html`, `templates/admin_journal_session.html`, `static/js/admin_journal.js`, `static/css/admin_journal.css`)
+- Added lean journal persistence with `JournalSession` and `JournalMessage`, plus Alembic migration `20260512_0057_journal_mvp.py`. The migration chains after the current repo head `20260510_0057_waitlist_intent_fields.py` to avoid an Alembic branch while keeping the journal revision id distinct. (`models.py`, `migrations/versions/20260512_0057_journal_mvp.py`, `tests/test_migration_ordering.py`)
+- Added structured journal payload building in `helpers/journal_context.py`: trade scope includes a deep market-context focal trade plus same-symbol context, day scope summarizes closed trades on the UTC date with minimal market context (hard-capped at 50 trades per UTC day, chronological, with `day_scope_truncation` when truncated), and freeform scope uses the last 20 closed trades on the active trade account with behavior flag counts.
+- Added `prompts/journal_chat.txt` and `ai_service` helpers (`load_journal_chat_prompt_text`, `build_journal_chat_messages`, `generate_journal_chat_reply`) that mirror the weekly review follow-up chat pattern while keeping scope/refusal/missing-context/interview behavior in the prompt.
+- Regression coverage added for admin gating, session creation by scope, prompt-file loading, chat persistence/citations, feedback writes, tags/notes saves, session ending, admin route inventory, day-scope payload cap, and cross-admin / non-admin isolation on journal routes (`tests/test_admin_journal.py`).
+
 ## Premium workflow trial gating (2026-05-11)
 
 - Broadened the 14-day trial semantics from MT5-only to a shared premium workflow trial in `helpers/entitlements.py`. `get_trial_state(user, account=None)` now exposes trial state from existing MT5 trial storage when present, falling back to user creation time for non-MT5 premium workflow access; `get_mt5_trial_state()` remains as a compatibility wrapper.

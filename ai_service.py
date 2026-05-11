@@ -15,6 +15,7 @@ from sqlalchemy import and_, func
 from sqlalchemy.orm import load_only, selectinload
 
 from helpers.ai_market_context import build_trade_market_context
+from helpers.journal_context import format_journal_payload_for_prompt
 from helpers.scoring import compute_emotional_index, prepare_closed_trade_signal_inputs
 from helpers.trade_analysis import (
     build_trade_annotations as _build_trade_annotations,
@@ -64,7 +65,9 @@ PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 WEEKLY_DASHBOARD_KIND = "weekly_dashboard_advice"
 DEFAULT_REWRITE_PROMPT_FILE = "dashboard_advice_rewrite.txt"
 DEFAULT_WEEKLY_REVIEW_CHAT_PROMPT_FILE = "weekly_review_followup.txt"
+DEFAULT_JOURNAL_CHAT_PROMPT_FILE = "journal_chat.txt"
 WEEKLY_REVIEW_CHAT_PROMPT_VERSION = "weekly_review_followup_v1"
+JOURNAL_CHAT_PROMPT_VERSION = "journal_v1"
 WEEKLY_MARKET_TIMEZONE = ZoneInfo("America/New_York")
 WEEKLY_CUTOFF_WEEKDAY = 4
 WEEKLY_CUTOFF_HOUR = 17
@@ -240,6 +243,10 @@ def load_prompt_text(prompt_filename=None):
 
 def load_weekly_review_chat_prompt_text():
     return load_prompt_text(DEFAULT_WEEKLY_REVIEW_CHAT_PROMPT_FILE)["prompt_text"]
+
+
+def load_journal_chat_prompt_text():
+    return load_prompt_text(DEFAULT_JOURNAL_CHAT_PROMPT_FILE)["prompt_text"]
 
 
 def normalize_dashboard_advice_text(value):
@@ -3106,6 +3113,87 @@ def generate_weekly_review_chat_reply(
         user_message,
         chat_history=chat_history,
         timezone_name=timezone_name,
+    )
+    response_payload = request_openai_response(messages, model=resolved_model)
+    reply = extract_response_text(response_payload)
+    if not reply:
+        raise AIRequestError(describe_empty_response(response_payload))
+    return reply, response_payload, resolved_model
+
+
+def _format_journal_chat_ref_map(payload):
+    trades = payload.get("trades") if isinstance(payload, dict) else []
+    if not isinstance(trades, list):
+        return ""
+    lines = [
+        "Use only these refs in square brackets after a plain-language trade phrase; the UI hides the ref and links the phrase."
+    ]
+    for trade in trades:
+        if not isinstance(trade, dict):
+            continue
+        ref = str(trade.get("ref") or "").strip().upper()
+        symbol = str(trade.get("symbol") or "").strip()
+        closed_at = str(trade.get("closed_at") or "").strip()
+        if not ref or not symbol:
+            continue
+        label = symbol
+        if closed_at:
+            label = f"{symbol} closed {closed_at[:10]}"
+        lines.append(f"{ref}: {label} (trade)")
+    return "\n".join(lines)
+
+
+def build_journal_chat_messages(session, payload, user_message, chat_history=None):
+    formatted_payload = format_journal_payload_for_prompt(payload)
+    ref_map = _format_journal_chat_ref_map(payload if isinstance(payload, dict) else {})
+    scope_type = str(getattr(session, "scope_type", "") or "").strip().lower()
+
+    history_lines = []
+    for message in chat_history or []:
+        role = str(getattr(message, "role", "") or "").strip().lower()
+        if role not in {"user", "assistant"}:
+            continue
+        content = str(getattr(message, "content", "") or "").strip()
+        if not content:
+            continue
+        history_lines.append(f"{role}: {content}")
+
+    user_context = "\n\n".join(
+        [
+            f"SESSION_SCOPE_TYPE\n{scope_type or '-'}",
+            "TRADE_LINK_REFS_AVAILABLE_FOR_OUTPUT\n" + (ref_map or "-"),
+            "STRUCTURED_SCOPE_PAYLOAD\n" + (formatted_payload or "-"),
+            "RECENT_CHAT_HISTORY_FOR_THIS_SESSION\n" + ("\n".join(history_lines) if history_lines else "-"),
+            "USER_MESSAGE\n" + str(user_message or "").strip(),
+        ]
+    )
+
+    return [
+        {
+            "role": "system",
+            "content": [{"type": "input_text", "text": load_journal_chat_prompt_text()}],
+        },
+        {
+            "role": "user",
+            "content": [{"type": "input_text", "text": user_context}],
+        },
+    ]
+
+
+def generate_journal_chat_reply(
+    session,
+    payload,
+    user_message,
+    chat_history=None,
+    *,
+    model=None,
+):
+    resolved_model = model or get_ai_model()
+    messages = build_journal_chat_messages(
+        session,
+        payload,
+        user_message,
+        chat_history=chat_history,
     )
     response_payload = request_openai_response(messages, model=resolved_model)
     reply = extract_response_text(response_payload)

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+{% include 'partials/admin_panel_head.html' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin_journal.css') }}">
+{% endblock %}
+
+{% block content %}
+{% include 'partials/admin_shell_start.html' %}
+
+        <section
+            class="panel admin-journal-session"
+            data-admin-journal-session
+            data-chat-url="{{ url_for('admin_journal.post_chat', session_id=journal_session.id) }}"
+            data-tags-url="{{ url_for('admin_journal.update_tags', session_id=journal_session.id) }}"
+            data-feedback-template="{{ url_for('admin_journal.update_feedback', message_id=0) }}"
+            data-csrf-token="{{ csrf_token() }}"
+        >
+            <div class="admin-journal-meta" data-journal-tags-form>
+                <div class="admin-journal-title-row">
+                    <label for="journalTitle">Title</label>
+                    <input id="journalTitle" name="title" value="{{ journal_session.title or '' }}" maxlength="200" placeholder="revenge on EURUSD">
+                    <form action="{{ url_for('admin_journal.end_session', session_id=journal_session.id) }}" method="post">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="ghost-btn">End session</button>
+                    </form>
+                </div>
+                <div>
+                    <label for="journalTags">Tags</label>
+                    <input id="journalTags" name="tags" value="{{ session_tags|join(', ') }}" list="journalSuggestedTags" placeholder="emotion:tilted, theme:revenge">
+                    <datalist id="journalSuggestedTags">
+                        {% for tag in suggested_tags %}
+                        <option value="{{ tag }}"></option>
+                        {% endfor %}
+                    </datalist>
+                </div>
+                <div>
+                    <label for="journalNotes">Notes</label>
+                    <textarea id="journalNotes" name="notes" rows="3" placeholder="Post-session notes">{{ journal_session.notes or '' }}</textarea>
+                </div>
+                <p class="admin-journal-save-state soft" data-journal-save-state hidden>Saved</p>
+            </div>
+
+            <details class="admin-journal-context" open>
+                <summary>Context summary</summary>
+                <p>{{ context_summary.line }}</p>
+                <div class="admin-journal-ref-list">
+                    {% for ref in context_summary.refs %}
+                    {% if ref.url %}
+                    <a href="{{ ref.url }}" class="admin-journal-ref-pill">{{ ref.ref }} {{ ref.label }}</a>
+                    {% else %}
+                    <span class="admin-journal-ref-pill">{{ ref.ref }} {{ ref.label }}</span>
+                    {% endif %}
+                    {% else %}
+                    <span class="soft">No closed trades in this scope.</span>
+                    {% endfor %}
+                </div>
+            </details>
+
+            <div class="admin-journal-chat-log" data-journal-chat-log>
+                {% for message in messages %}
+                <div class="admin-journal-bubble admin-journal-bubble--{{ message.role }}" data-message-id="{{ message.id or '' }}">
+                    <div class="admin-journal-bubble-body">
+                        {% for segment in message.segments %}
+                            {% if segment.type == "citation" %}
+                            <a class="ai-citation-btn admin-journal-citation" href="{{ segment.trade_url or '#' }}" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}">{{ segment.label }}</a>
+                            {% else %}
+                            {{ segment.text }}
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% if message.role == "assistant" %}
+                    <div class="admin-journal-feedback" data-feedback-current="{{ message.feedback or '' }}">
+                        <button type="button" data-feedback="useful">Useful</button>
+                        <button type="button" data-feedback="generic">Generic</button>
+                        <button type="button" data-feedback="needed_more_context">Missing context</button>
+                        <button type="button" data-feedback="missing_feature">Missing feature</button>
+                        <input type="text" data-feedback-note value="{{ message.feedback_note or '' }}" placeholder="Optional note">
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <form class="admin-journal-chat-form" data-journal-chat-form>
+                <label for="journalChatInput">Message</label>
+                <textarea id="journalChatInput" data-journal-chat-input rows="3" maxlength="1200" placeholder="Ask about this scoped set of trades"></textarea>
+                <div class="admin-journal-chat-actions">
+                    <p class="bad admin-journal-error" data-journal-chat-error hidden></p>
+                    <button type="submit" class="submit-btn">Send</button>
+                </div>
+            </form>
+        </section>
+
+{% include 'partials/admin_shell_end.html' %}
+<script src="{{ url_for('static', filename='js/admin_journal.js') }}"></script>
+{% endblock %}

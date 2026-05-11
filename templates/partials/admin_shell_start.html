@@ -17,6 +17,10 @@
           href="{{ url_for('admin_signup_codes') }}"
           class="admin-side-nav-link{% if section == 'codes' %} is-active{% endif %}"
         >Invite codes</a>
+        <a
+          href="{{ url_for('admin_journal.journal_home') }}"
+          class="admin-side-nav-link{% if section == 'journal' %} is-active{% endif %}"
+        >Journal</a>
         {% if is_root_admin %}
         <a
           href="{{ url_for('admin_mt5_accounts') }}"

@@ -40,6 +40,13 @@ ALL_ADMIN_ROUTES = [
     ("post", "/dashboard/admin/access/mt5/1/delete"),
     ("post", "/dashboard/admin/access/codes/create"),
     ("post", "/dashboard/admin/access/codes/1/toggle"),
+    ("get", "/admin/journal"),
+    ("post", "/admin/journal/sessions"),
+    ("get", "/admin/journal/sessions/1"),
+    ("post", "/admin/journal/sessions/1/chat"),
+    ("post", "/admin/journal/sessions/1/tags"),
+    ("post", "/admin/journal/messages/1/feedback"),
+    ("post", "/admin/journal/sessions/1/end"),
 ]
 
 ROOT_ONLY_ADMIN_ROUTES = [
