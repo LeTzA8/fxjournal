@@ -86,12 +86,16 @@ def _admin_shell_context(user, *, section="journal", page_heading="Journal - adm
     }
 
 
-def _session_or_404(user_id, session_id):
-    journal_session = (
+def get_journal_session_for_user(user_id, session_id):
+    return (
         JournalSession.query.filter_by(id=session_id, user_id=user_id)
         .options(selectinload(JournalSession.messages))
         .first()
     )
+
+
+def _session_or_404(user_id, session_id):
+    journal_session = get_journal_session_for_user(user_id, session_id)
     if journal_session is None:
         abort(404)
     return journal_session
@@ -261,6 +265,165 @@ def _context_summary(payload):
     }
 
 
+def create_journal_session_from_incoming(user, incoming):
+    """
+    Create and persist a journal session for the given user.
+    Returns (JournalSession, None) on success, or (None, err_payload) where err_payload
+    is a dict suitable for jsonify (no status code).
+    """
+    incoming = incoming or {}
+    scope_type = str(incoming.get("scope_type") or "").strip().lower()
+    if scope_type not in JOURNAL_ALLOWED_SCOPES:
+        return None, {"error": "invalid_scope", "message": "Choose a valid reflection scope."}
+
+    active_account = get_active_trade_account_for_user(user.id)
+    trade_account_id = getattr(active_account, "id", None)
+    scope_trade_pubkey = None
+    scope_date = None
+
+    if scope_type == JournalSession.SCOPE_TRADE:
+        scope_trade_pubkey = str(incoming.get("scope_trade_pubkey") or "").strip()
+        if not scope_trade_pubkey:
+            return None, {"error": "missing_trade", "message": "Pick a closed trade to reflect on."}
+        trade = Trade.query.filter_by(user_id=user.id, pubkey=scope_trade_pubkey).first()
+        if trade is None:
+            return None, {"error": "trade_not_found", "message": "That trade was not found."}
+        trade_account_id = trade.trade_account_id
+    elif scope_type == JournalSession.SCOPE_DAY:
+        raw_date = str(incoming.get("scope_date") or "").strip()
+        try:
+            scope_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
+        except ValueError:
+            return None, {"error": "invalid_date", "message": "Use a valid calendar date."}
+    elif scope_type == JournalSession.SCOPE_FREEFORM:
+        scope_trade_pubkey = None
+
+    journal_session = JournalSession(
+        user_id=user.id,
+        trade_account_id=trade_account_id,
+        scope_type=scope_type,
+        scope_trade_pubkey=scope_trade_pubkey,
+        scope_date=scope_date,
+        started_at=utcnow_naive(),
+    )
+    db.session.add(journal_session)
+    db.session.commit()
+    return journal_session, None
+
+
+def journal_session_api_payload(user, journal_session):
+    """Serializable session state for dashboard inline journal."""
+    payload = build_journal_payload(user, journal_session)
+    messages = (
+        JournalMessage.query.filter_by(session_id=journal_session.id, user_id=user.id)
+        .order_by(JournalMessage.created_at.asc(), JournalMessage.id.asc())
+        .all()
+    )
+    return {
+        "session_id": journal_session.id,
+        "context_summary": _context_summary(payload),
+        "messages": [_display_message(message, payload) for message in messages],
+        "session_tags": _session_tags(journal_session),
+        "title": journal_session.title or "",
+        "notes": journal_session.notes or "",
+    }
+
+
+def journal_post_chat_response(user, journal_session, message):
+    """Run journal chat turn; returns (response_dict, http_status)."""
+    message = str(message or "").strip()
+    if not message:
+        return {"error": "Ask a journal question first."}, 400
+    if len(message) > JOURNAL_CHAT_MAX_CHARS:
+        return {"error": f"Keep messages under {JOURNAL_CHAT_MAX_CHARS} characters."}, 400
+
+    journal_payload = build_journal_payload(user, journal_session)
+    chat_history = (
+        JournalMessage.query.filter_by(session_id=journal_session.id, user_id=user.id)
+        .order_by(JournalMessage.created_at.desc(), JournalMessage.id.desc())
+        .limit(JOURNAL_CHAT_HISTORY_LIMIT)
+        .all()
+    )
+    chat_history.reverse()
+
+    try:
+        reply, _response_payload, model_used = generate_journal_chat_reply(
+            journal_session,
+            journal_payload,
+            message,
+            chat_history=chat_history,
+        )
+    except AIRequestError as exc:
+        current_app.logger.warning(
+            "Journal chat AI request failed. user_id=%s session_id=%s error=%s",
+            user.id,
+            journal_session.id,
+            exc,
+        )
+        return {"error": "Could not answer that right now. Please try again shortly."}, 502
+    except Exception:
+        current_app.logger.exception("Journal chat failed. user_id=%s session_id=%s", user.id, journal_session.id)
+        return {"error": "Could not answer that right now. Please try again shortly."}, 500
+
+    reply_segments = _display_segments(reply, journal_payload)
+    citations_json = json.dumps([segment for segment in reply_segments if segment.get("type") == "citation"])
+    user_row = JournalMessage(
+        session_id=journal_session.id,
+        user_id=user.id,
+        role=JournalMessage.ROLE_USER,
+        content=message,
+        prompt_version=JOURNAL_CHAT_PROMPT_VERSION,
+    )
+    assistant_row = JournalMessage(
+        session_id=journal_session.id,
+        user_id=user.id,
+        role=JournalMessage.ROLE_ASSISTANT,
+        content=reply,
+        model_used=model_used,
+        prompt_version=JOURNAL_CHAT_PROMPT_VERSION,
+        citations_json=citations_json,
+    )
+    db.session.add_all([user_row, assistant_row])
+    db.session.commit()
+    return (
+        {
+            "reply": _JOURNAL_REF_RE.sub("", reply).strip(),
+            "segments": reply_segments,
+            "message_id": assistant_row.id,
+        },
+        200,
+    )
+
+
+def journal_update_tags_response(user, journal_session, payload):
+    title = str(payload.get("title") or "").strip()
+    notes = str(payload.get("notes") or "").strip()
+    tags = _parse_tags(payload.get("tags") or payload.get("tags_json") or "")
+    journal_session.title = title[:200] or None
+    journal_session.notes = notes or None
+    journal_session.tags_json = json.dumps(tags) if tags else None
+    db.session.commit()
+    return {
+        "ok": True,
+        "title": journal_session.title,
+        "tags": tags,
+        "notes": journal_session.notes or "",
+    }
+
+
+def journal_update_feedback_response(user, message_id, payload):
+    message = JournalMessage.query.filter_by(id=message_id, user_id=user.id).first()
+    if message is None or message.role != JournalMessage.ROLE_ASSISTANT:
+        return {"error": "not_found"}, 404
+    feedback = str(payload.get("feedback") or "").strip()
+    if feedback not in JOURNAL_ALLOWED_FEEDBACK:
+        return {"error": "Unsupported feedback value."}, 400
+    message.feedback = feedback
+    message.feedback_note = str(payload.get("feedback_note") or "").strip()[:1000] or None
+    db.session.commit()
+    return {"ok": True, "feedback": message.feedback, "feedback_note": message.feedback_note or ""}, 200
+
+
 @bp.route("", methods=["GET"])
 @_admin_journal_required
 @login_required
@@ -292,41 +455,9 @@ def journal_home():
 def create_session():
     user = _current_user()
     incoming = request.get_json(silent=True) if request.is_json else request.form
-    incoming = incoming or {}
-    scope_type = str(incoming.get("scope_type") or "").strip().lower()
-    if scope_type not in JOURNAL_ALLOWED_SCOPES:
+    journal_session, err = create_journal_session_from_incoming(user, incoming or {})
+    if err is not None:
         abort(400)
-
-    active_account = get_active_trade_account_for_user(user.id)
-    trade_account_id = getattr(active_account, "id", None)
-    scope_trade_pubkey = None
-    scope_date = None
-
-    if scope_type == JournalSession.SCOPE_TRADE:
-        scope_trade_pubkey = str(incoming.get("scope_trade_pubkey") or "").strip()
-        if not scope_trade_pubkey:
-            abort(400)
-        trade = Trade.query.filter_by(user_id=user.id, pubkey=scope_trade_pubkey).first_or_404()
-        trade_account_id = trade.trade_account_id
-    elif scope_type == JournalSession.SCOPE_DAY:
-        raw_date = str(incoming.get("scope_date") or "").strip()
-        try:
-            scope_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
-        except ValueError:
-            abort(400)
-    elif scope_type == JournalSession.SCOPE_FREEFORM:
-        scope_trade_pubkey = None
-
-    journal_session = JournalSession(
-        user_id=user.id,
-        trade_account_id=trade_account_id if scope_type != JournalSession.SCOPE_FREEFORM else trade_account_id,
-        scope_type=scope_type,
-        scope_trade_pubkey=scope_trade_pubkey,
-        scope_date=scope_date,
-        started_at=utcnow_naive(),
-    )
-    db.session.add(journal_session)
-    db.session.commit()
     return redirect(url_for("admin_journal.view_session", session_id=journal_session.id))
 
 
@@ -367,61 +498,8 @@ def post_chat(session_id):
     journal_session = _session_or_404(user.id, session_id)
     payload = request.get_json(silent=True) or {}
     message = str(payload.get("message") or "").strip()
-    if not message:
-        return jsonify({"error": "Ask a journal question first."}), 400
-    if len(message) > JOURNAL_CHAT_MAX_CHARS:
-        return jsonify({"error": f"Keep messages under {JOURNAL_CHAT_MAX_CHARS} characters."}), 400
-
-    journal_payload = build_journal_payload(user, journal_session)
-    chat_history = (
-        JournalMessage.query.filter_by(session_id=journal_session.id, user_id=user.id)
-        .order_by(JournalMessage.created_at.desc(), JournalMessage.id.desc())
-        .limit(JOURNAL_CHAT_HISTORY_LIMIT)
-        .all()
-    )
-    chat_history.reverse()
-
-    try:
-        reply, _response_payload, model_used = generate_journal_chat_reply(
-            journal_session,
-            journal_payload,
-            message,
-            chat_history=chat_history,
-        )
-    except AIRequestError as exc:
-        current_app.logger.warning("Journal chat AI request failed. user_id=%s session_id=%s error=%s", user.id, journal_session.id, exc)
-        return jsonify({"error": "Could not answer that right now. Please try again shortly."}), 502
-    except Exception:
-        current_app.logger.exception("Journal chat failed. user_id=%s session_id=%s", user.id, journal_session.id)
-        return jsonify({"error": "Could not answer that right now. Please try again shortly."}), 500
-
-    reply_segments = _display_segments(reply, journal_payload)
-    citations_json = json.dumps([segment for segment in reply_segments if segment.get("type") == "citation"])
-    user_row = JournalMessage(
-        session_id=journal_session.id,
-        user_id=user.id,
-        role=JournalMessage.ROLE_USER,
-        content=message,
-        prompt_version=JOURNAL_CHAT_PROMPT_VERSION,
-    )
-    assistant_row = JournalMessage(
-        session_id=journal_session.id,
-        user_id=user.id,
-        role=JournalMessage.ROLE_ASSISTANT,
-        content=reply,
-        model_used=model_used,
-        prompt_version=JOURNAL_CHAT_PROMPT_VERSION,
-        citations_json=citations_json,
-    )
-    db.session.add_all([user_row, assistant_row])
-    db.session.commit()
-    return jsonify(
-        {
-            "reply": _JOURNAL_REF_RE.sub("", reply).strip(),
-            "segments": reply_segments,
-            "message_id": assistant_row.id,
-        }
-    )
+    body, status = journal_post_chat_response(user, journal_session, message)
+    return jsonify(body), status
 
 
 @bp.route("/sessions/<int:session_id>/tags", methods=["POST"])
@@ -431,14 +509,7 @@ def update_tags(session_id):
     user = _current_user()
     journal_session = _session_or_404(user.id, session_id)
     payload = request.get_json(silent=True) if request.is_json else request.form
-    title = str(payload.get("title") or "").strip()
-    notes = str(payload.get("notes") or "").strip()
-    tags = _parse_tags(payload.get("tags") or payload.get("tags_json") or "")
-    journal_session.title = title[:200] or None
-    journal_session.notes = notes or None
-    journal_session.tags_json = json.dumps(tags) if tags else None
-    db.session.commit()
-    return jsonify({"ok": True, "title": journal_session.title, "tags": tags, "notes": journal_session.notes or ""})
+    return jsonify(journal_update_tags_response(user, journal_session, payload or {}))
 
 
 @bp.route("/messages/<int:message_id>/feedback", methods=["POST"])
@@ -446,17 +517,11 @@ def update_tags(session_id):
 @login_required
 def update_feedback(message_id):
     user = _current_user()
-    message = JournalMessage.query.filter_by(id=message_id, user_id=user.id).first()
-    if message is None or message.role != JournalMessage.ROLE_ASSISTANT:
-        abort(404)
     payload = request.get_json(silent=True) or {}
-    feedback = str(payload.get("feedback") or "").strip()
-    if feedback not in JOURNAL_ALLOWED_FEEDBACK:
-        return jsonify({"error": "Unsupported feedback value."}), 400
-    message.feedback = feedback
-    message.feedback_note = str(payload.get("feedback_note") or "").strip()[:1000] or None
-    db.session.commit()
-    return jsonify({"ok": True, "feedback": message.feedback, "feedback_note": message.feedback_note or ""})
+    body, status = journal_update_feedback_response(user, message_id, payload)
+    if status == 404:
+        abort(404)
+    return jsonify(body), status
 
 
 @bp.route("/sessions/<int:session_id>/end", methods=["POST"])

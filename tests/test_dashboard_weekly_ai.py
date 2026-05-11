@@ -11,7 +11,7 @@ from ai_service import (
     build_weekly_review_chat_messages,
     load_prompt_text,
 )
-from models import AIGeneratedResponse, AIPromptHistory, MT5Account, WeeklyReviewChatMessage
+from models import AIGeneratedResponse, AIPromptHistory, JournalSession, MT5Account, WeeklyReviewChatMessage
 
 import routes.dashboard as dashboard_routes
 from helpers.trade_interpretation import apply_interpretation
@@ -603,6 +603,98 @@ def test_dashboard_home_renders_weekly_review_chat_inside_review_panel(app_ctx, 
     assert "Why did risk drive this review?" in response_text
     assert "Was this bad luck or my execution?" not in response_text
     assert "weekly_review_chat.js" in response_text
+
+
+def test_dashboard_home_shows_admin_ai_journal_carousel_tab(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-journal-preview-admin",
+        email="dashboard-journal-preview-admin@example.com",
+    )
+    user.is_admin = True
+    user.email_verified = True
+    user.signup_status = "approved"
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1,
+        exit_price=1.105,
+        lot_size=0.1,
+        pnl=50.0,
+        opened_at=datetime(2026, 5, 8, 9, 0),
+        closed_at=datetime(2026, 5, 8, 10, 0),
+    )
+    db.session.add(trade)
+    db.session.add(
+        JournalSession(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            scope_type="freeform",
+            title="revenge reflection",
+            started_at=datetime(2026, 5, 9, 9, 0),
+        )
+    )
+    db.session.commit()
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-journal-preview")
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": review,
+            "weekly_ai_review_display": {
+                "summary": {"text": "Summary", "segments": [{"type": "text", "text": "Summary"}], "refs": [], "citations": []},
+                "takeaways": [],
+                "improvement": {"text": "Improve this week: Keep risk fixed.", "segments": [{"type": "text", "text": "Improve this week: Keep risk fixed."}], "refs": [], "citations": []},
+                "strength": {"text": "You're already strong at: Waiting.", "segments": [{"type": "text", "text": "You're already strong at: Waiting."}], "refs": [], "citations": []},
+                "experiment": {},
+                "has_citations": False,
+            },
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    response = client.get("/dashboard")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'data-weekly-ai-carousel-tab="1"' in response_text
+    assert "AI Journal" in response_text
+    assert "EURUSD" in response_text
+    assert "revenge reflection" in response_text
+    assert "/admin/journal/sessions" in response_text
+
+
+def test_dashboard_home_hides_ai_journal_carousel_tab_for_non_admin(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-journal-preview-plain",
+        email="dashboard-journal-preview-plain@example.com",
+    )
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-journal-preview-hidden")
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": review,
+            "weekly_ai_review_display": {},
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    response = client.get("/dashboard")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'data-weekly-ai-carousel-tab="1"' not in response_text
+    assert "AI Journal" not in response_text
 
 
 def test_dashboard_home_keeps_existing_chat_history_visible_after_trial_expiry(app_ctx, client, monkeypatch):

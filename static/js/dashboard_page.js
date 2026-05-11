@@ -1,4 +1,52 @@
 (() => {
+    const carousel = document.querySelector("[data-weekly-ai-carousel]");
+    if (!carousel) {
+        return;
+    }
+
+    const slides = Array.from(carousel.querySelectorAll("[data-weekly-ai-carousel-slide]"));
+    const controls = document.querySelector("[data-weekly-ai-carousel-controls]");
+    if (!controls || slides.length < 2) {
+        return;
+    }
+
+    const tabs = Array.from(controls.querySelectorAll("[data-weekly-ai-carousel-tab]"));
+    const prev = controls.querySelector("[data-weekly-ai-carousel-prev]");
+    const next = controls.querySelector("[data-weekly-ai-carousel-next]");
+    let activeIndex = 0;
+
+    const setActive = (nextIndex) => {
+        activeIndex = (nextIndex + slides.length) % slides.length;
+        slides.forEach((slide, index) => {
+            const isActive = index === activeIndex;
+            slide.classList.toggle("is-active", isActive);
+            slide.hidden = !isActive;
+        });
+        tabs.forEach((tab, index) => {
+            const isActive = index === activeIndex;
+            tab.classList.toggle("is-active", isActive);
+            tab.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
+    };
+
+    tabs.forEach((tab) => {
+        tab.addEventListener("click", () => {
+            const index = Number.parseInt(tab.dataset.weeklyAiCarouselTab || "0", 10);
+            setActive(Number.isFinite(index) ? index : 0);
+        });
+    });
+
+    if (prev) {
+        prev.addEventListener("click", () => setActive(activeIndex - 1));
+    }
+    if (next) {
+        next.addEventListener("click", () => setActive(activeIndex + 1));
+    }
+
+    setActive(0);
+})();
+
+(() => {
     const chartShell = document.getElementById("pnlChartShell");
     const svg = document.getElementById("pnlLineChart");
     const grid = document.getElementById("pnlGrid");

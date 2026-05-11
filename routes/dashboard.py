@@ -64,12 +64,22 @@ from helpers.weekly_review_ref_rewrite import (
     parse_json_blob as _parse_json_blob,
     rewrite_review_text_refs as _rewrite_review_text_refs,
 )
-from auth_account import build_external_url
+from auth_account import build_external_url, user_has_admin_access
 from extensions import limiter
+from routes.admin_journal import (
+    create_journal_session_from_incoming,
+    get_journal_session_for_user,
+    journal_post_chat_response,
+    journal_session_api_payload,
+    journal_update_feedback_response,
+    journal_update_tags_response,
+)
 from helpers.utils import login_required, utcnow_naive
 from models import (
     AccountCashFlow,
     AIGeneratedResponse,
+    JournalMessage,
+    JournalSession,
     Trade,
     User,
     UserProfile,
@@ -124,6 +134,86 @@ _WEEKLY_REVIEW_CHAT_BRACKETED_REFS_RE = re.compile(
     r"\s*[\(\[\{]\s*[BT]\d+(?:\s*,\s*[BT]\d+)*\s*[\)\]\}]",
     re.IGNORECASE,
 )
+
+
+def _build_weekly_journal_preview(user_id, trade_account_id, user_trades, timezone_name):
+    if trade_account_id is None:
+        return {
+            "trade_options": [],
+            "recent_sessions": [],
+            "session_count": 0,
+            "feedback_count": 0,
+            "missing_signal_count": 0,
+        }
+
+    closed_trades = [
+        trade
+        for trade in user_trades or []
+        if getattr(trade, "trade_account_id", None) == trade_account_id
+        and getattr(trade, "closed_at", None) is not None
+    ]
+    closed_trades.sort(
+        key=lambda trade: (getattr(trade, "closed_at", None) or datetime.min, getattr(trade, "id", 0) or 0),
+        reverse=True,
+    )
+    trade_options = []
+    cutoff = utcnow_naive() - timedelta(days=60)
+    for trade in closed_trades:
+        closed_at = getattr(trade, "closed_at", None)
+        if closed_at is not None and closed_at < cutoff:
+            continue
+        closed_local = to_display_timezone(closed_at, timezone_name) if closed_at else None
+        date_label = closed_local.strftime("%d %b") if closed_local else "closed"
+        pnl_value = resolve_net_pnl(trade)
+        pnl_label = ""
+        if pnl_value is not None:
+            try:
+                pnl_label = f" {float(pnl_value):+.2f}"
+            except (TypeError, ValueError):
+                pnl_label = ""
+        trade_options.append(
+            {
+                "pubkey": getattr(trade, "pubkey", "") or "",
+                "label": f"{format_trade_symbol(trade)} - {date_label}{pnl_label}",
+            }
+        )
+        if len(trade_options) >= 12:
+            break
+
+    recent_sessions = (
+        JournalSession.query.filter_by(user_id=user_id)
+        .order_by(JournalSession.started_at.desc(), JournalSession.id.desc())
+        .limit(3)
+        .all()
+    )
+    feedback_count = (
+        db.session.query(JournalMessage.id)
+        .filter(
+            JournalMessage.user_id == user_id,
+            JournalMessage.feedback.isnot(None),
+        )
+        .count()
+    )
+    missing_signal_count = (
+        db.session.query(JournalMessage.id)
+        .filter(
+            JournalMessage.user_id == user_id,
+            JournalMessage.feedback.in_(
+                [
+                    JournalMessage.FEEDBACK_NEEDED_MORE_CONTEXT,
+                    JournalMessage.FEEDBACK_MISSING_FEATURE,
+                ]
+            ),
+        )
+        .count()
+    )
+    return {
+        "trade_options": trade_options,
+        "recent_sessions": recent_sessions,
+        "session_count": JournalSession.query.filter_by(user_id=user_id).count(),
+        "feedback_count": feedback_count,
+        "missing_signal_count": missing_signal_count,
+    }
 
 
 def _serialize_datetime(value):
@@ -1696,6 +1786,17 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
             active_trade_account_id,
             timezone_name,
         )
+    # AI journal carousel is internal dogfood only: same gate as /admin/journal (not customers).
+    show_weekly_journal_preview = bool(
+        target_user is not None
+        and user_has_admin_access(target_user)
+        and not is_admin_view
+    )
+    weekly_journal_preview = (
+        _build_weekly_journal_preview(user_id, active_trade_account_id, user_trades, timezone_name)
+        if show_weekly_journal_preview
+        else None
+    )
 
     return render_template(
         "index.html",
@@ -1703,6 +1804,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         username=username,
         admin_viewer_username=admin_viewer_username,
         active_trade_account=active_trade_account,
+        now_local=now_local,
         win_rate=summary.get("win_rate"),
         closed_trade_count=closed_trade_count,
         net_pnl_week=summary.get("weekly_pnl"),
@@ -1726,6 +1828,8 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         weekly_review_chat_send_state=weekly_review_chat_send_state,
         weekly_review_chat_usage=weekly_review_chat_usage,
         weekly_review_chat_history=weekly_review_chat_history,
+        show_weekly_journal_preview=show_weekly_journal_preview,
+        weekly_journal_preview=weekly_journal_preview,
         weekly_ai_generated_at_label=weekly_ai_state["weekly_ai_generated_at_label"],
         weekly_ai_period_label=weekly_ai_state["weekly_ai_period_label"],
         weekly_ai_empty_message=weekly_ai_state["weekly_ai_empty_message"],
@@ -1909,6 +2013,129 @@ def weekly_review_chat(review_id):
             "segments": reply_display["segments"],
         }
     )
+
+
+def _dashboard_journal_support_blocked():
+    return jsonify({"error": "That action is not available in read-only support view."}), 403
+
+
+def _dashboard_journal_admin_only(user):
+    if user is None or not user_has_admin_access(user):
+        return (
+            jsonify(
+                {
+                    "error": "admin_only",
+                    "message": "AI journal is only available to admin accounts.",
+                }
+            ),
+            403,
+        )
+    return None
+
+
+def _dashboard_journal_urls(session_id):
+    return {
+        "chat_url": url_for("dashboard.dashboard_journal_chat", session_id=session_id),
+        "tags_url": url_for("dashboard.dashboard_journal_tags", session_id=session_id),
+        "feedback_url_template": url_for("dashboard.dashboard_journal_feedback", message_id=0),
+    }
+
+
+@bp.route("/dashboard/journal/sessions", methods=["POST"])
+@login_required
+def dashboard_journal_create_session():
+    if is_support_view_session_active():
+        return _dashboard_journal_support_blocked()
+    user_id = get_effective_user_id()
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"error": "not_found", "message": "User not found."}), 404
+    deny = _dashboard_journal_admin_only(user)
+    if deny:
+        return deny
+    payload = request.get_json(silent=True) or {}
+    journal_session, err = create_journal_session_from_incoming(user, payload)
+    if err is not None:
+        status = 404 if err.get("error") == "trade_not_found" else 400
+        return jsonify(err), status
+    api = journal_session_api_payload(user, journal_session)
+    api.update(_dashboard_journal_urls(journal_session.id))
+    return jsonify(api)
+
+
+@bp.route("/dashboard/journal/sessions/<int:session_id>", methods=["GET"])
+@login_required
+def dashboard_journal_session_detail(session_id):
+    user_id = get_effective_user_id()
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"error": "not_found", "message": "User not found."}), 404
+    deny = _dashboard_journal_admin_only(user)
+    if deny:
+        return deny
+    journal_session = get_journal_session_for_user(user.id, session_id)
+    if journal_session is None:
+        return jsonify({"error": "session_not_found", "message": "Session not found."}), 404
+    api = journal_session_api_payload(user, journal_session)
+    api.update(_dashboard_journal_urls(journal_session.id))
+    return jsonify(api)
+
+
+@bp.route("/dashboard/journal/sessions/<int:session_id>/chat", methods=["POST"])
+@login_required
+def dashboard_journal_chat(session_id):
+    if is_support_view_session_active():
+        return _dashboard_journal_support_blocked()
+    user_id = get_effective_user_id()
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"error": "not_found"}), 404
+    deny = _dashboard_journal_admin_only(user)
+    if deny:
+        return deny
+    journal_session = get_journal_session_for_user(user.id, session_id)
+    if journal_session is None:
+        return jsonify({"error": "session_not_found"}), 404
+    payload = request.get_json(silent=True) or {}
+    message = str(payload.get("message") or "").strip()
+    body, status = journal_post_chat_response(user, journal_session, message)
+    return jsonify(body), status
+
+
+@bp.route("/dashboard/journal/sessions/<int:session_id>/tags", methods=["POST"])
+@login_required
+def dashboard_journal_tags(session_id):
+    if is_support_view_session_active():
+        return _dashboard_journal_support_blocked()
+    user_id = get_effective_user_id()
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"error": "not_found"}), 404
+    deny = _dashboard_journal_admin_only(user)
+    if deny:
+        return deny
+    journal_session = get_journal_session_for_user(user.id, session_id)
+    if journal_session is None:
+        return jsonify({"error": "session_not_found"}), 404
+    payload = request.get_json(silent=True) if request.is_json else request.form
+    return jsonify(journal_update_tags_response(user, journal_session, payload or {}))
+
+
+@bp.route("/dashboard/journal/messages/<int:message_id>/feedback", methods=["POST"])
+@login_required
+def dashboard_journal_feedback(message_id):
+    if is_support_view_session_active():
+        return _dashboard_journal_support_blocked()
+    user_id = get_effective_user_id()
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"error": "not_found"}), 404
+    deny = _dashboard_journal_admin_only(user)
+    if deny:
+        return deny
+    payload = request.get_json(silent=True) or {}
+    body, status = journal_update_feedback_response(user, message_id, payload)
+    return jsonify(body), status
 
 
 @bp.route("/dashboard/analytics")

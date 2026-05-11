@@ -1473,6 +1473,18 @@
                     <p class="ai-hero-copy">Consistency, behavior patterns, and what to improve next.</p>
                     {% endif %}
                 </div>
+                {% if show_weekly_journal_preview %}
+                <div class="weekly-ai-carousel-controls" data-weekly-ai-carousel-controls>
+                    <button type="button" class="weekly-ai-carousel-arrow" data-weekly-ai-carousel-prev aria-label="Show previous AI panel">&larr;</button>
+                    <div class="weekly-ai-carousel-tabs" role="tablist" aria-label="AI review surfaces">
+                        <button type="button" class="weekly-ai-carousel-tab is-active" role="tab" aria-selected="true" data-weekly-ai-carousel-tab="0">Weekly review</button>
+                        <button type="button" class="weekly-ai-carousel-tab" role="tab" aria-selected="false" data-weekly-ai-carousel-tab="1">AI journal</button>
+                    </div>
+                    <button type="button" class="weekly-ai-carousel-arrow" data-weekly-ai-carousel-next aria-label="Show next AI panel">&rarr;</button>
+                </div>
+                {% endif %}
+                <div class="weekly-ai-product-carousel{% if not show_weekly_journal_preview %} weekly-ai-product-carousel--single{% endif %}" data-weekly-ai-carousel>
+                <section class="weekly-ai-carousel-slide is-active" data-weekly-ai-carousel-slide aria-label="Weekly AI review">
                 <div class="ai-review-panels">
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-main">
                         <p class="insight-title">
@@ -1621,6 +1633,65 @@
                     </form>
                 </section>
                 {% endif %}
+                </section>
+                {% if show_weekly_journal_preview %}
+                <section class="weekly-ai-carousel-slide" data-weekly-ai-carousel-slide hidden aria-label="AI journal">
+                    <div class="ai-journal-product-surface">
+                        <div class="ai-journal-product-main ai-hero-card">
+                            <p class="insight-title">AI Journal</p>
+                            <h3>Reflect on the trades behind the week</h3>
+                            <p class="insight-body">Start a scoped conversation from a trade, a day, or your latest closed trades. Replies stay tied to structured journal data and the feedback buttons become research signal.</p>
+                            <div class="ai-journal-start-grid">
+                                <form action="{{ url_for('admin_journal.create_session') }}" method="post" class="ai-journal-start-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="scope_type" value="trade">
+                                    <label for="dashboardJournalTrade">Trade</label>
+                                    <select id="dashboardJournalTrade" name="scope_trade_pubkey" required>
+                                        <option value="">Choose a closed trade</option>
+                                        {% for trade in weekly_journal_preview.trade_options %}
+                                        <option value="{{ trade.pubkey }}">{{ trade.label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="submit">Reflect</button>
+                                </form>
+                                <form action="{{ url_for('admin_journal.create_session') }}" method="post" class="ai-journal-start-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="scope_type" value="day">
+                                    <label for="dashboardJournalDay">Day</label>
+                                    <input id="dashboardJournalDay" type="date" name="scope_date" value="{{ now_local.strftime('%Y-%m-%d') }}" required>
+                                    <button type="submit">Reflect</button>
+                                </form>
+                                <form action="{{ url_for('admin_journal.create_session') }}" method="post" class="ai-journal-start-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="scope_type" value="freeform">
+                                    <label>Open reflection</label>
+                                    <span class="soft">Last 20 closed trades</span>
+                                    <button type="submit">Open</button>
+                                </form>
+                            </div>
+                        </div>
+                        <aside class="ai-journal-product-side ai-hero-card">
+                            <p class="insight-title">Research Signals</p>
+                            <div class="ai-journal-signal-grid">
+                                <span><strong>{{ weekly_journal_preview.session_count }}</strong> sessions</span>
+                                <span><strong>{{ weekly_journal_preview.feedback_count }}</strong> feedback clicks</span>
+                                <span><strong>{{ weekly_journal_preview.missing_signal_count }}</strong> missing-data notes</span>
+                            </div>
+                            <div class="ai-journal-session-list">
+                                {% for item in weekly_journal_preview.recent_sessions %}
+                                <a href="{{ url_for('admin_journal.view_session', session_id=item.id) }}">
+                                    <span>{{ item.title or item.scope_type|title ~ " reflection" }}</span>
+                                    <small>{{ item.started_at.strftime("%d %b %H:%M") if item.started_at else "" }}</small>
+                                </a>
+                                {% else %}
+                                <p class="soft">No AI journal sessions yet.</p>
+                                {% endfor %}
+                            </div>
+                        </aside>
+                    </div>
+                </section>
+                {% endif %}
+                </div>
                 <div class="ai-hero-meta">
                     {% if is_state_one and not weekly_ai_review %}
                     <p class="insight-note">Journaling only; not financial advice.</p>
@@ -2822,6 +2893,164 @@
         font-size: 1rem;
         line-height: 1.72; }
 
+    .weekly-ai-carousel-controls {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 0.6rem;
+        align-items: center;
+        margin: 0.95rem 0 0.85rem;
+    }
+
+    .weekly-ai-carousel-tabs {
+        display: flex;
+        justify-content: center;
+        gap: 0.35rem;
+        padding: 0.22rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface) 82%, transparent);
+    }
+
+    .weekly-ai-carousel-tab,
+    .weekly-ai-carousel-arrow {
+        appearance: none;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
+        background: var(--card);
+        color: var(--ink);
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .weekly-ai-carousel-tab {
+        min-height: 2rem;
+        padding: 0.35rem 0.8rem;
+        border-radius: 999px;
+        font-size: 0.78rem;
+    }
+
+    .weekly-ai-carousel-tab.is-active {
+        border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+        background: color-mix(in srgb, var(--accent) 16%, var(--card));
+        color: color-mix(in srgb, var(--accent) 74%, white 26%);
+    }
+
+    .weekly-ai-carousel-arrow {
+        display: inline-grid;
+        place-items: center;
+        width: 2.15rem;
+        height: 2.15rem;
+        border-radius: 50%;
+    }
+
+    .weekly-ai-product-carousel {
+        display: grid;
+    }
+
+    .weekly-ai-carousel-slide {
+        min-width: 0;
+    }
+
+    .ai-journal-product-surface {
+        display: grid;
+        grid-template-columns: minmax(0, 1.6fr) minmax(240px, 0.8fr);
+        gap: 0.9rem;
+        align-items: start;
+    }
+
+    .ai-journal-product-main h3 {
+        margin: 0.4rem 0 0;
+        font-size: clamp(1.08rem, 1.7vw, 1.42rem);
+        letter-spacing: 0;
+        color: var(--ink);
+    }
+
+    .ai-journal-start-grid {
+        display: grid;
+        gap: 0.65rem;
+        margin-top: 1rem;
+    }
+
+    .ai-journal-start-form {
+        display: grid;
+        grid-template-columns: minmax(6rem, 0.45fr) minmax(0, 1fr) auto;
+        gap: 0.55rem;
+        align-items: center;
+        padding: 0.55rem;
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 76%, transparent);
+    }
+
+    .ai-journal-start-form label {
+        font-size: 0.78rem;
+        font-weight: 800;
+        color: color-mix(in srgb, var(--accent) 50%, var(--ink));
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .ai-journal-start-form select,
+    .ai-journal-start-form input {
+        min-width: 0;
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 0.45rem 0.55rem;
+        background: var(--card);
+        color: var(--ink);
+        font: inherit;
+        font-size: 0.84rem;
+    }
+
+    .ai-journal-start-form button {
+        border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+        border-radius: 999px;
+        padding: 0.45rem 0.7rem;
+        background: color-mix(in srgb, var(--accent) 14%, var(--card));
+        color: var(--ink);
+        font: inherit;
+        font-size: 0.78rem;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .ai-journal-signal-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+    }
+
+    .ai-journal-signal-grid span,
+    .ai-journal-session-list a {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.65rem;
+        padding: 0.58rem 0.65rem;
+        border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 76%, transparent);
+        color: var(--ink);
+        text-decoration: none;
+    }
+
+    .ai-journal-signal-grid strong {
+        font-size: 1.12rem;
+        color: color-mix(in srgb, var(--accent) 70%, white 30%);
+    }
+
+    .ai-journal-session-list {
+        display: grid;
+        gap: 0.45rem;
+        margin-top: 0.8rem;
+    }
+
+    .ai-journal-session-list small {
+        color: var(--muted);
+        white-space: nowrap;
+    }
+
     .ai-review-structured {
         display: grid;
         gap: 0.9rem;
@@ -3011,6 +3240,14 @@
                 "main"
                 "improve"
                 "strength";
+        }
+
+        .ai-journal-product-surface {
+            grid-template-columns: 1fr;
+        }
+
+        .ai-journal-start-form {
+            grid-template-columns: 1fr;
         }
 
         .ai-review-layout {
