@@ -457,6 +457,8 @@ def create_session():
     incoming = request.get_json(silent=True) if request.is_json else request.form
     journal_session, err = create_journal_session_from_incoming(user, incoming or {})
     if err is not None:
+        if err.get("error") == "trade_not_found":
+            abort(404)
         abort(400)
     return redirect(url_for("admin_journal.view_session", session_id=journal_session.id))
 

@@ -1635,40 +1635,46 @@
                 {% endif %}
                 </section>
                 {% if show_weekly_journal_preview %}
+                {% set journal_session_url_ph = 9000000009001 %}
                 <section class="weekly-ai-carousel-slide" data-weekly-ai-carousel-slide hidden aria-label="AI journal">
-                    <div class="ai-journal-product-surface">
+                    <div
+                        class="ai-journal-product-surface"
+                        data-dashboard-ai-journal
+                        data-create-session-url="{{ url_for('dashboard.dashboard_journal_create_session') }}"
+                        data-csrf-token="{{ csrf_token() }}"
+                        data-journal-session-url-pattern="{{ url_for('dashboard.dashboard_journal_session_detail', session_id=journal_session_url_ph) }}"
+                        data-journal-session-url-placeholder="{{ journal_session_url_ph }}"
+                    >
                         <div class="ai-journal-product-main ai-hero-card">
                             <p class="insight-title">AI Journal</p>
                             <h3>Reflect on the trades behind the week</h3>
                             <p class="insight-body">Start a scoped conversation from a trade, a day, or your latest closed trades. Replies stay tied to structured journal data and the feedback buttons become research signal.</p>
-                            <div class="ai-journal-start-grid">
-                                <form action="{{ url_for('admin_journal.create_session') }}" method="post" class="ai-journal-start-form">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <input type="hidden" name="scope_type" value="trade">
-                                    <label for="dashboardJournalTrade">Trade</label>
-                                    <select id="dashboardJournalTrade" name="scope_trade_pubkey" required>
-                                        <option value="">Choose a closed trade</option>
-                                        {% for trade in weekly_journal_preview.trade_options %}
-                                        <option value="{{ trade.pubkey }}">{{ trade.label }}</option>
-                                        {% endfor %}
-                                    </select>
-                                    <button type="submit">Reflect</button>
-                                </form>
-                                <form action="{{ url_for('admin_journal.create_session') }}" method="post" class="ai-journal-start-form">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <input type="hidden" name="scope_type" value="day">
-                                    <label for="dashboardJournalDay">Day</label>
-                                    <input id="dashboardJournalDay" type="date" name="scope_date" value="{{ now_local.strftime('%Y-%m-%d') }}" required>
-                                    <button type="submit">Reflect</button>
-                                </form>
-                                <form action="{{ url_for('admin_journal.create_session') }}" method="post" class="ai-journal-start-form">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                    <input type="hidden" name="scope_type" value="freeform">
-                                    <label>Open reflection</label>
-                                    <span class="soft">Last 20 closed trades</span>
-                                    <button type="submit">Open</button>
-                                </form>
+                            <p class="bad" data-dashboard-journal-error role="alert" hidden></p>
+                            <div data-dashboard-journal-start-panel>
+                                <div class="ai-journal-start-grid">
+                                    <form action="#" method="post" class="ai-journal-start-form" data-dashboard-journal-start-form data-journal-scope="trade">
+                                        <label for="dashboardJournalTrade">Trade</label>
+                                        <select id="dashboardJournalTrade" name="scope_trade_pubkey" required>
+                                            <option value="">Choose a closed trade</option>
+                                            {% for trade in weekly_journal_preview.trade_options %}
+                                            <option value="{{ trade.pubkey }}">{{ trade.label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <button type="submit">Reflect</button>
+                                    </form>
+                                    <form action="#" method="post" class="ai-journal-start-form" data-dashboard-journal-start-form data-journal-scope="day">
+                                        <label for="dashboardJournalDay">Day</label>
+                                        <input id="dashboardJournalDay" type="date" name="scope_date" value="{{ now_local.strftime('%Y-%m-%d') }}" required>
+                                        <button type="submit">Reflect</button>
+                                    </form>
+                                    <form action="#" method="post" class="ai-journal-start-form" data-dashboard-journal-start-form data-journal-scope="freeform">
+                                        <label>Open reflection</label>
+                                        <span class="soft">Last 20 closed trades</span>
+                                        <button type="submit">Open</button>
+                                    </form>
+                                </div>
                             </div>
+                            <div data-dashboard-journal-session-panel hidden></div>
                         </div>
                         <aside class="ai-journal-product-side ai-hero-card">
                             <p class="insight-title">Research Signals</p>
@@ -1679,10 +1685,10 @@
                             </div>
                             <div class="ai-journal-session-list">
                                 {% for item in weekly_journal_preview.recent_sessions %}
-                                <a href="{{ url_for('admin_journal.view_session', session_id=item.id) }}">
+                                <button type="button" class="ai-journal-session-row" data-dashboard-journal-open-session="{{ item.id }}">
                                     <span>{{ item.title or item.scope_type|title ~ " reflection" }}</span>
                                     <small>{{ item.started_at.strftime("%d %b %H:%M") if item.started_at else "" }}</small>
-                                </a>
+                                </button>
                                 {% else %}
                                 <p class="soft">No AI journal sessions yet.</p>
                                 {% endfor %}
@@ -3023,7 +3029,8 @@
     }
 
     .ai-journal-signal-grid span,
-    .ai-journal-session-list a {
+    .ai-journal-session-list a,
+    .ai-journal-session-list button.ai-journal-session-row {
         display: flex;
         justify-content: space-between;
         gap: 0.65rem;
@@ -3033,6 +3040,10 @@
         background: color-mix(in srgb, var(--surface) 76%, transparent);
         color: var(--ink);
         text-decoration: none;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        width: 100%;
     }
 
     .ai-journal-signal-grid strong {
@@ -3049,6 +3060,10 @@
     .ai-journal-session-list small {
         color: var(--muted);
         white-space: nowrap;
+    }
+
+    .dashboard-journal-inline-toolbar {
+        margin-bottom: 0.65rem;
     }
 
     .ai-review-structured {
@@ -5078,12 +5093,19 @@
         .guided-focus-panel-pulse { animation: none !important;
             transition: none !important; } }
 </style>
+{% if show_weekly_journal_preview %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin_journal.css') }}">
+{% endif %}
 
 {% endblock %}
 
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/trade_filters_shared.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard_page.js') }}"></script>
+{% if show_weekly_journal_preview %}
+<script src="{{ url_for('static', filename='js/admin_journal.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard_journal.js') }}"></script>
+{% endif %}
 <script src="{{ url_for('static', filename='js/mt5_request_form.js') }}"></script>
 {% if latest_trade_snapshot and latest_trade_snapshot.chart_data_url %}
 <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>

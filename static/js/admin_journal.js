@@ -1,9 +1,4 @@
 (function () {
-    const roots = document.querySelectorAll("[data-admin-journal-session]");
-    if (!roots.length) {
-        return;
-    }
-
     const createCitationSegment = (segment) => {
         const link = document.createElement("a");
         link.className = "ai-citation-btn admin-journal-citation";
@@ -27,55 +22,6 @@
             }
             node.appendChild(document.createTextNode((segment && segment.text) || ""));
         });
-    };
-
-    const createFeedbackControls = (messageId, root) => {
-        const row = document.createElement("div");
-        row.className = "admin-journal-feedback";
-        row.dataset.feedbackCurrent = "";
-        [
-            ["useful", "Useful"],
-            ["generic", "Generic"],
-            ["needed_more_context", "Missing context"],
-            ["missing_feature", "Missing feature"],
-        ].forEach(([value, label]) => {
-            const button = document.createElement("button");
-            button.type = "button";
-            button.dataset.feedback = value;
-            button.textContent = label;
-            row.appendChild(button);
-        });
-        const note = document.createElement("input");
-        note.type = "text";
-        note.dataset.feedbackNote = "";
-        note.placeholder = "Optional note";
-        row.appendChild(note);
-        bindFeedback(row, messageId, root);
-        return row;
-    };
-
-    const createBubble = (role, text, segments, messageId, root) => {
-        const bubble = document.createElement("div");
-        bubble.className = `admin-journal-bubble admin-journal-bubble--${role}`;
-        if (messageId) {
-            bubble.dataset.messageId = String(messageId);
-        }
-        const body = document.createElement("div");
-        body.className = "admin-journal-bubble-body";
-        fillSegments(body, text, segments);
-        bubble.appendChild(body);
-        if (role === "assistant" && messageId) {
-            bubble.appendChild(createFeedbackControls(messageId, root));
-        }
-        return bubble;
-    };
-
-    const createLoadingBubble = () => {
-        const bubble = document.createElement("div");
-        bubble.className = "admin-journal-bubble admin-journal-bubble--assistant admin-journal-bubble--loading";
-        bubble.setAttribute("aria-busy", "true");
-        bubble.textContent = "Thinking...";
-        return bubble;
     };
 
     const feedbackUrl = (root, messageId) => {
@@ -118,7 +64,55 @@
         });
     }
 
-    roots.forEach((root) => {
+    const createFeedbackControls = (messageId) => {
+        const row = document.createElement("div");
+        row.className = "admin-journal-feedback";
+        row.dataset.feedbackCurrent = "";
+        [
+            ["useful", "Useful"],
+            ["generic", "Generic"],
+            ["needed_more_context", "Missing context"],
+            ["missing_feature", "Missing feature"],
+        ].forEach(([value, label]) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.dataset.feedback = value;
+            button.textContent = label;
+            row.appendChild(button);
+        });
+        const note = document.createElement("input");
+        note.type = "text";
+        note.dataset.feedbackNote = "";
+        note.placeholder = "Optional note";
+        row.appendChild(note);
+        return row;
+    };
+
+    const createBubble = (role, text, segments, messageId, root) => {
+        const bubble = document.createElement("div");
+        bubble.className = `admin-journal-bubble admin-journal-bubble--${role}`;
+        if (messageId) {
+            bubble.dataset.messageId = String(messageId);
+        }
+        const body = document.createElement("div");
+        body.className = "admin-journal-bubble-body";
+        fillSegments(body, text, segments);
+        bubble.appendChild(body);
+        if (role === "assistant" && messageId) {
+            bubble.appendChild(createFeedbackControls(messageId));
+        }
+        return bubble;
+    };
+
+    const createLoadingBubble = () => {
+        const bubble = document.createElement("div");
+        bubble.className = "admin-journal-bubble admin-journal-bubble--assistant admin-journal-bubble--loading";
+        bubble.setAttribute("aria-busy", "true");
+        bubble.textContent = "Thinking...";
+        return bubble;
+    };
+
+    function bindAdminJournalSessionRoot(root) {
         const form = root.querySelector("[data-journal-chat-form]");
         const input = root.querySelector("[data-journal-chat-input]");
         const log = root.querySelector("[data-journal-chat-log]");
@@ -173,7 +167,7 @@
         if (meta) {
             meta.querySelectorAll("input, textarea").forEach((field) => {
                 field.addEventListener("blur", () => {
-                    saveMeta().catch((error) => window.alert(error.message));
+                    saveMeta().catch((err) => window.alert(err.message));
                 });
             });
         }
@@ -222,23 +216,33 @@
                     throw new Error(payload.error || "Could not answer that right now.");
                 }
                 loadingBubble.remove();
-                log.appendChild(
-                    createBubble(
-                        "assistant",
-                        payload.reply || "",
-                        payload.segments || [],
-                        payload.message_id,
-                        root,
-                    ),
+                const assistantBubble = createBubble(
+                    "assistant",
+                    payload.reply || "",
+                    payload.segments || [],
+                    payload.message_id,
+                    root,
                 );
-            } catch (error) {
+                log.appendChild(assistantBubble);
+                const feedbackRow = assistantBubble.querySelector(".admin-journal-feedback");
+                if (feedbackRow && payload.message_id) {
+                    bindFeedback(feedbackRow, payload.message_id, root);
+                }
+            } catch (err) {
                 loadingBubble.remove();
                 userBubble.remove();
-                showError(error.message || "Could not answer that right now.");
+                showError(err.message || "Could not answer that right now.");
             } finally {
                 input.disabled = false;
                 input.focus();
             }
         });
-    });
+    }
+
+    document.querySelectorAll("[data-admin-journal-session]").forEach(bindAdminJournalSessionRoot);
+    window.FXJBindAdminJournalSessionRoot = bindAdminJournalSessionRoot;
+    window.FXJAppendJournalMessageBubble = (root, log, role, text, segments, messageId) => {
+        log.appendChild(createBubble(role, text, segments, messageId, root));
+    };
 })();
+

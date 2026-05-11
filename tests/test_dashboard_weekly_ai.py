@@ -666,7 +666,8 @@ def test_dashboard_home_shows_admin_ai_journal_carousel_tab(app_ctx, client, mon
     assert "AI Journal" in response_text
     assert "EURUSD" in response_text
     assert "revenge reflection" in response_text
-    assert "/admin/journal/sessions" in response_text
+    assert "/dashboard/journal/sessions" in response_text
+    assert "dashboard_journal.js" in response_text
 
 
 def test_dashboard_home_hides_ai_journal_carousel_tab_for_non_admin(app_ctx, client, monkeypatch):
