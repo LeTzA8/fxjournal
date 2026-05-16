@@ -118,10 +118,25 @@ def test_free_mt5_sync_page_has_indexable_metadata(client):
     response = client.get("/free-mt5-sync")
 
     assert response.status_code == 200
-    assert b"MyFXJournal | Free MT5 Sync" in response.data
-    assert b"Free during open beta" in response.data
+    assert b"MyFXJournal | MT5 Sync Trial" in response.data
+    assert b"14-day premium workflow trial" in response.data
     assert b'<meta name="robots" content="index, follow">' in response.data
     assert b'href="http://localhost:5000/free-mt5-sync"' in response.data
+
+
+def test_public_trial_pages_do_not_show_mt5_slot_scarcity_copy(client):
+    for path in ("/", "/pricing", "/free-mt5-sync", "/mt5-trading-journal"):
+        response = client.get(path)
+        assert response.status_code == 200
+        text = response.get_data(as_text=True)
+        assert "free MT5 sync slot" not in text
+        assert "slots left" not in text
+        assert "claim a sync slot" not in text
+        assert "Fills fast" not in text
+
+    pricing_text = client.get("/pricing").get_data(as_text=True)
+    assert "Core journaling stays free" in pricing_text
+    assert "14-day trial" in pricing_text
 
 
 def test_pricing_page_renders_authenticated_without_selecting_phase2_user_columns(client, app_ctx):
@@ -151,3 +166,4 @@ def test_pricing_page_renders_authenticated_without_selecting_phase2_user_column
     user_selects = [statement for statement in statements if " from users " in statement]
     assert all("plan_tier" not in statement for statement in user_selects)
     assert all("plan_grandfathered" not in statement for statement in user_selects)
+    assert all("premium_trial_started_at" not in statement for statement in user_selects)

@@ -1246,7 +1246,7 @@ def test_mt5_submission_blocks_when_open_batch_is_full(app_ctx, client, monkeypa
     assert response.status_code == 200
     assert MT5AccessRequest.query.filter_by(trade_account_id=trade_account.id).count() == 0
     assert MT5Account.query.filter_by(trade_account_id=trade_account.id).count() == 0
-    assert b"Full Batch is full right now. Start with file import and join the next MT5 sync batch." in response.data
+    assert b"MT5 setup capacity is currently closed. Import trades now and connect MT5 when setup capacity opens." in response.data
 
 
 def test_root_admin_can_create_expand_and_close_mt5_sync_batch(app_ctx, client):

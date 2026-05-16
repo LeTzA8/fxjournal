@@ -53,6 +53,7 @@ from helpers.core import (
 from helpers.entitlements import (
     can_send_weekly_followup_message,
     get_weekly_followup_message_usage,
+    start_premium_trial_if_needed,
 )
 from helpers.running_pnl import build_running_pnl_events, summarize_running_pnl
 from helpers.scoring import compute_emotional_index
@@ -1985,6 +1986,7 @@ def weekly_review_chat(review_id):
         get_display_timezone_name(),
     )
 
+    start_premium_trial_if_needed(user_row, getattr(review, "trade_account", None))
     db.session.add_all(
         [
             WeeklyReviewChatMessage(
@@ -2016,7 +2018,15 @@ def weekly_review_chat(review_id):
 
 
 def _dashboard_journal_support_blocked():
-    return jsonify({"error": "That action is not available in read-only support view."}), 403
+    return (
+        jsonify(
+            {
+                "error": "support_view_read_only",
+                "message": "That action is not available in read-only support view.",
+            }
+        ),
+        403,
+    )
 
 
 def _dashboard_journal_admin_only(user):
@@ -2056,6 +2066,12 @@ def dashboard_journal_create_session():
     payload = request.get_json(silent=True) or {}
     journal_session, err = create_journal_session_from_incoming(user, payload)
     if err is not None:
+        current_app.logger.info(
+            "Dashboard journal session create rejected. user_id=%s scope_type=%s error=%s",
+            user.id,
+            str(payload.get("scope_type") or "").strip().lower(),
+            err.get("error"),
+        )
         status = 404 if err.get("error") == "trade_not_found" else 400
         return jsonify(err), status
     api = journal_session_api_payload(user, journal_session)
@@ -2095,7 +2111,7 @@ def dashboard_journal_chat(session_id):
         return deny
     journal_session = get_journal_session_for_user(user.id, session_id)
     if journal_session is None:
-        return jsonify({"error": "session_not_found"}), 404
+        return jsonify({"error": "session_not_found", "message": "Session not found."}), 404
     payload = request.get_json(silent=True) or {}
     message = str(payload.get("message") or "").strip()
     body, status = journal_post_chat_response(user, journal_session, message)

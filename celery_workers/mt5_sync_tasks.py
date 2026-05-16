@@ -838,7 +838,7 @@ def sync_mt5_account(
             )
             return {"error": "MT5Account is orphaned"}
 
-        from helpers.entitlements import can_use_mt5_sync, get_trial_state
+        from helpers.entitlements import can_use_mt5_sync
         sync_permission = can_use_mt5_sync(account.user, account)
         if not sync_permission["allowed"]:
             if not account.sync_paused_at:
@@ -1109,9 +1109,13 @@ def sync_mt5_account(
             account.last_synced_at = worker_completion_stamp
             if used_full_history_window:
                 account.last_full_history_sync_at = worker_completion_stamp
-            if not getattr(account.user, "plan_grandfathered", False) and account.mt5_trial_started_at is None:
-                trial_state = get_trial_state(account.user, account)
-                account.mt5_trial_started_at = trial_state.get("started_at") or worker_completion_stamp
+            if not getattr(account.user, "plan_grandfathered", False):
+                from helpers.entitlements import start_premium_trial_if_needed
+                start_premium_trial_if_needed(
+                    account.user,
+                    account,
+                    started_at=worker_completion_stamp,
+                )
             db.session.commit()
             worker_stamp_saved = True
         except Exception as stamp_exc:

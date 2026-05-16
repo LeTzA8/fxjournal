@@ -20,6 +20,17 @@
         return "";
     };
 
+    const responseErrorMessage = (response, data, fallback) => {
+        if (data && (data.message || data.error)) {
+            return data.message || data.error;
+        }
+        if (response && response.status) {
+            const label = response.statusText ? ` ${response.statusText}` : "";
+            return `${fallback || "Request failed."} (${response.status}${label})`;
+        }
+        return fallback || "Request failed.";
+    };
+
     const showSurfaceError = (message) => {
         if (!sessionError) {
             return;
@@ -182,8 +193,7 @@
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            const msg = data.message || data.error || "Request failed.";
-            throw new Error(msg);
+            throw new Error(responseErrorMessage(response, data, "Could not start reflection."));
         }
         return data;
     };
@@ -201,7 +211,7 @@
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-            throw new Error(data.message || data.error || "Could not load session.");
+            throw new Error(responseErrorMessage(response, data, "Could not load session."));
         }
         return data;
     };

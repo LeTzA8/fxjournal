@@ -30,6 +30,10 @@ def user_entitlement_columns_available() -> bool:
     return table_has_columns("users", ("plan_tier", "plan_grandfathered"))
 
 
+def user_premium_trial_column_available() -> bool:
+    return table_has_columns("users", ("premium_trial_started_at",))
+
+
 def mt5_trial_columns_available() -> bool:
     return table_has_columns("mt5_account", ("mt5_trial_started_at", "sync_paused_at", "sync_pause_reason"))
 

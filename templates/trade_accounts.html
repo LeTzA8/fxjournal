@@ -185,7 +185,7 @@
                                 <a href="{{ url_for('pricing_page') }}" class="ghost-link btn-link">Join Trader waitlist to continue sync &rarr;</a>
                             </div>
                             {% elif mt5_trial_state.state == "not_started" %}
-                            <p class="account-meta soft">Premium workflow trial ({{ mt5_trial_state.days_remaining }} days) starts automatically when trial access begins.</p>
+                            <p class="account-meta soft">Premium workflow trial ({{ mt5_trial_state.days_remaining }} days) starts when you first use a premium feature, such as successful MT5 sync.</p>
                             {% endif %}
                             {% endif %}
                             {% if mt5_is_paused %}

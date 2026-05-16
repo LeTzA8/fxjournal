@@ -656,11 +656,11 @@ def get_mt5_sync_batch_state(*, for_update=False):
         state.update(
             {
                 "can_accept_requests": False,
-                "status_label": "No Open Batch",
-                "status_message": "No free MT5 sync batch is open right now.",
-                "public_badge": "No free MT5 sync batch open right now",
+                "status_label": "Setup Capacity Closed",
+                "status_message": "MT5 setup capacity is currently closed.",
+                "public_badge": "MT5 setup capacity is currently closed",
                 "request_blocked_message": (
-                    "No free MT5 sync batch is open right now. Start with file import and check back for the next batch."
+                    "MT5 setup capacity is currently closed. Import trades now and connect MT5 when setup capacity opens."
                 ),
             }
         )
@@ -690,16 +690,15 @@ def get_mt5_sync_batch_state(*, for_update=False):
     active_batch.claimed_slots = claimed_slots
     active_batch.slots_remaining = slots_remaining
 
-    slot_word = "slot" if slots_remaining == 1 else "slots"
     if slots_remaining > 0:
         state.update(
             {
                 "active_slots_used": active_slots_used,
                 "slots_remaining": slots_remaining,
                 "can_accept_requests": True,
-                "status_label": "Batch Open",
-                "status_message": f"{slots_remaining} free MT5 sync {slot_word} left in {active_batch.name}.",
-                "public_badge": f"{slots_remaining} free MT5 sync {slot_word} left",
+                "status_label": "Setup Available",
+                "status_message": "MT5 sync setup is available for this account during your premium workflow trial.",
+                "public_badge": "MT5 sync setup available during your premium workflow trial",
             }
         )
         return state
@@ -709,11 +708,11 @@ def get_mt5_sync_batch_state(*, for_update=False):
             "active_slots_used": active_slots_used,
             "slots_remaining": 0,
             "can_accept_requests": False,
-            "status_label": "Batch Full",
-            "status_message": f"{active_batch.name} is full right now.",
-            "public_badge": "Current free MT5 sync batch is full",
+            "status_label": "Setup Capacity Closed",
+            "status_message": "MT5 setup capacity is currently closed.",
+            "public_badge": "MT5 setup capacity is currently closed",
             "request_blocked_message": (
-                f"{active_batch.name} is full right now. Start with file import and join the next MT5 sync batch."
+                "MT5 setup capacity is currently closed. Import trades now and connect MT5 when setup capacity opens."
             ),
         }
     )

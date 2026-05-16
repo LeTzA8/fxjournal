@@ -222,7 +222,7 @@ Runtime env-file loading is shared by Flask and Celery: `FXJ_ENV_FILE` first, th
 - Root admins can delete non-root users with related data cleanup.
 - Admin panel uses sidebar navigation, contextual stat tiles, section-scoped quick filters, server-side search/sort for Users and MT5, admin weekly report links, and a root-admin CFD aliases tab.
 - Admin MT5 panel owns batch open/expand/close, submitted MT5 accounts, setup actions, reset/archive/delete, recalibration, clear-all-bars, manual sync, backfill bars, and queue diagnostics.
-- Public landing, auth, and SEO pages emphasize review-first positioning, live MT5 beta slot availability when open, import-first fallback when not, and lower signup friction.
+- Public landing, auth, and SEO pages emphasize review-first positioning, the 14-day premium workflow trial, MT5 setup capacity when available, import-first fallback when not, and lower signup friction.
 - Legal docs cover weekly-review follow-up chat, sync/import fallibility, optional Google OAuth, processors, live/real-funded MT5 account risk, read-only support access, and service availability expectations.
 
 ## Core User Flows
@@ -246,7 +246,7 @@ Runtime env-file loading is shared by Flask and Celery: `FXJ_ENV_FILE` first, th
 ### MT5 Batch-Gated Setup
 
 1. Admin opens/expands an MT5 sync batch.
-2. Public UI shows available slot count; user submits investor/read-only details.
+2. Public UI describes MT5 setup capacity; user submits investor/read-only details when capacity is available.
 3. Setup is queued on `mt5_setup`; Hyonix launches/verifies a terminal and stores encrypted credentials/runtime metadata.
 4. Failed setup writes user-friendly connection failure state and allows in-place retry.
 5. Wrong: setup worker stopped -> stuck at Setup Queued/Setting Up. Wrong: `ENCRYPTION_KEY` mismatch -> decrypt failures.

@@ -609,7 +609,7 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "question": "Is this free?",
-                "answer": "MT5 sync is free during beta. Import-based journaling is always free to start.",
+                "answer": "Core journaling is free to start. MT5 sync is included during the 14-day premium workflow trial when setup capacity is available.",
             },
             {
                 "question": "What if I trade on multiple MT5 accounts?",
@@ -618,16 +618,16 @@ SEO_PAGE_DEFINITIONS = {
         ),
     },
     "free-mt5-sync": {
-        "title": "MyFXJournal | Free MT5 Sync",
+        "title": "MyFXJournal | MT5 Sync Trial",
         "meta_description": (
-            "Free during open beta. Use batch-based read-only MetaTrader 5 (MT5) sync in MyFXJournal and turn account history into a weekly AI review without repeated exports."
+            "Try read-only MetaTrader 5 (MT5) sync during the 14-day premium workflow trial and turn account history into a weekly AI review without repeated exports."
         ),
-        "eyebrow": "Free MT5 sync",
+        "eyebrow": "MT5 sync trial",
         "hero_title": "Connect MT5 once. Stop exporting forever.",
         "hero_body": (
-            "MT5 sync is free during beta. Connect with read-only access and your trades feed the weekly review automatically — no exports, no cleanup."
+            "MT5 sync is included during the 14-day premium workflow trial when setup capacity is available. Connect with read-only access and your trades feed the weekly review automatically — no exports, no cleanup."
         ),
-        "chips": ("Free during beta", "Read-only access", "No export routine"),
+        "chips": ("14-day premium workflow trial", "Read-only access", "No export routine"),
         "intro_title": "The export routine stops here",
         "intro_body": (
             "The sync isn't the goal. It's how you stop rebuilding the week from scratch every Sunday."
@@ -640,7 +640,7 @@ SEO_PAGE_DEFINITIONS = {
         "cards": (
             {
                 "title": "Start with sync",
-                "body": "Use the open beta flow. No separate pipeline to set up.",
+                "body": "Use the premium workflow trial when setup capacity is available. No separate pipeline to set up.",
             },
             {
                 "title": "One account, one review",
@@ -653,12 +653,12 @@ SEO_PAGE_DEFINITIONS = {
         ),
         "workflow_steps": (
             {
-                "title": "Claim an open slot",
-                "body": "Use the in-product beta flow when a free sync slot is open. Manual import still works right away.",
+                "title": "Start the trial workflow",
+                "body": "Use the in-product setup flow when MT5 setup capacity is available. Manual import still works right away.",
             },
             {
                 "title": "Connect read-only",
-                "body": "Use investor credentials only. When a batch slot is open, setup starts after you submit details.",
+                "body": "Use investor credentials only. When setup capacity is available, setup starts after you submit details.",
             },
             {
                 "title": "Watch the review build",
@@ -666,12 +666,12 @@ SEO_PAGE_DEFINITIONS = {
             },
         ),
         "workflow_heading": "Automatic sync in. Weekly review out.",
-        "cta_heading": "Free sync. No export routine.",
-        "cta_body": "Connect read-only, skip the export routine, and start a review loop that actually runs.",
+        "cta_heading": "Trial sync. No export routine.",
+        "cta_body": "Connect read-only during the premium workflow trial, skip the export routine, and start a review loop that actually runs.",
         "faq": (
             {
-                "question": "Is MT5 sync really free?",
-                "answer": "Yes, during open beta. That can change later, but it is free right now.",
+                "question": "How does the trial work?",
+                "answer": "Core journaling stays free. MT5 sync is included during the 14-day premium workflow trial when setup capacity is available.",
             },
             {
                 "question": "Do I need to share trading access?",
@@ -679,7 +679,7 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "question": "How does the setup actually work?",
-                "answer": "Not fully automated yet. During beta, sync opens in batches. When a slot is open, setup starts after you submit your read-only credentials.",
+                "answer": "Setup is capacity-managed while the product is small. When capacity is available, setup starts after you submit your read-only credentials.",
             },
         ),
     },
@@ -924,7 +924,7 @@ SEO_PAGE_DEFINITIONS = {
         "workflow_steps": (
             {
                 "title": "Get trades into the journal",
-                "body": "Import MT5 or Tradovate files, add manual trades, or use read-only MT5 sync when a slot is open—replay will sit on top of that history.",
+                "body": "Import MT5 or Tradovate files, add manual trades, or use read-only MT5 sync when setup capacity is available—replay will sit on top of that history.",
             },
             {
                 "title": "Open replay on a trade (after launch)",
@@ -1220,7 +1220,7 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "title": "Price point",
-                "body": "TraderSync starts at ~$29.95/month. MyFXJournal is free during beta; Trader tier will launch at $14/month.",
+                "body": "TraderSync starts at ~$29.95/month. MyFXJournal keeps core journaling free; Trader tier will launch at $14/month after the trial/waitlist phase.",
             },
         ),
         "workflow_steps": (
@@ -1278,7 +1278,7 @@ SEO_PAGE_DEFINITIONS = {
         "fit_points": (
             "If you want a deeply manual journaling workflow with your own scoring system and trade categories, Edgewonk is more flexible for that.",
             "If you want the weekly review to happen automatically and the pattern detection to work without tagging, MyFXJournal is built around that workflow.",
-            "Edgewonk is a one-time purchase (~$169). MyFXJournal is free during beta; Trader tier launches at $14/month.",
+            "Edgewonk is a one-time purchase (~$169). MyFXJournal keeps core journaling free; Trader tier launches at $14/month after the trial/waitlist phase.",
         ),
         "cards": (
             {
@@ -1310,7 +1310,7 @@ SEO_PAGE_DEFINITIONS = {
         ),
         "workflow_heading": "Both are useful. The question is what habit you want to build.",
         "cta_heading": "Try the frictionless approach.",
-        "cta_body": "Free during beta. No credit card. Import your trades and get a weekly review — no tagging, no scoring, no setup discipline required.",
+        "cta_body": "Core journaling stays free. No credit card. Import your trades and get a weekly review — no tagging, no scoring, no setup discipline required.",
         "faq": (
             {
                 "question": "Is Edgewonk worth the one-time price?",
@@ -1800,8 +1800,8 @@ def register_public_auth_routes(
             "register.html",
             title="Create a MyFXJournal account | Free forex trading journal",
             meta_description=(
-                "Create a free MyFXJournal account during open beta. Import or sync trade history, "
-                "review by account, and get a weekly AI trading review without spreadsheet overhead."
+                "Create a free MyFXJournal account. Import trade history, review by account, "
+                "and try premium workflow features for 14 days without spreadsheet overhead."
             ),
             canonical_url=build_external_url("/register"),
             body_class="auth-layout",
@@ -2201,8 +2201,8 @@ def register_public_auth_routes(
     def pricing_page():
         return render_template(
             "pricing.html",
-            title="Pricing | MyFXJournal — Free during beta",
-            meta_description="MyFXJournal is free during open beta. See planned Trader and Pro tiers, including advanced replay and MT5 sync access, and join the waitlist.",
+            title="Pricing | MyFXJournal - 14-day premium workflow trial",
+            meta_description="Core journaling stays free. Try premium workflow features for 14 days, including MT5 sync when setup capacity is available, and join the Trader/Pro waitlist.",
             canonical_url=build_external_url("/pricing"),
             body_class="landing-layout",
             user_logged_in=bool(session.get("user_id")),

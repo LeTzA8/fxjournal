@@ -1,6 +1,12 @@
 # CURRENT_STATE
 
-Last Updated: 2026-05-11
+Last Updated: 2026-05-17
+
+## Dashboard AI journal + trial copy alignment (2026-05-17)
+
+- Hardened the dashboard AI journal session flow so admin-only inline journal starters return JSON for trade/day/freeform sessions, support-view and non-admin blocks stay JSON/XHR-friendly, and CSRF/HTTP failures no longer collapse into generic frontend "Request failed" copy. Dashboard journal create rejections now log user/scope/error context without message or trade payloads. (`app.py`, `routes/dashboard.py`, `static/js/dashboard_journal.js`, `tests/test_dashboard_weekly_ai.py`, `tests/test_admin_journal.py`)
+- Removed customer-facing MT5 slot/scarcity framing from dashboard/public copy. Internal MT5 batch/slot mechanics remain for admin operations and capacity gating, but user-facing states now describe a 14-day premium workflow trial, free core journal, and MT5 setup capacity availability. (`helpers/core.py`, `routes/trade_accounts.py`, `templates/index.html`, `templates/landing.html`, `templates/partials/public_header.html`, `auth_account.py`, public SEO/pricing tests)
+- Changed the shared premium workflow trial clock so imports/account creation do not start it. `User.premium_trial_started_at` is now the durable shared start timestamp, backfilled from existing MT5 trial starts; first successful MT5 sync and first successful weekly-review follow-up reply stamp it when needed. MT5 account trial stamps remain for sync pause compatibility. (`models.py`, `helpers/entitlements.py`, `celery_workers/mt5_sync_tasks.py`, `routes/dashboard.py`, `migrations/versions/20260517_0058_premium_trial_started_at.py`, entitlement/dashboard/replay tests)
 
 ## Phase 2.5 admin conversational journal MVP (2026-05-11)
 
@@ -13,7 +19,7 @@ Last Updated: 2026-05-11
 
 ## Premium workflow trial gating (2026-05-11)
 
-- Broadened the 14-day trial semantics from MT5-only to a shared premium workflow trial in `helpers/entitlements.py`. `get_trial_state(user, account=None)` now exposes trial state from existing MT5 trial storage when present, falling back to user creation time for non-MT5 premium workflow access; `get_mt5_trial_state()` remains as a compatibility wrapper.
+- Broadened the 14-day trial semantics from MT5-only to a shared premium workflow trial in `helpers/entitlements.py`. As of 2026-05-17, `get_trial_state(user, account=None)` reads the shared `User.premium_trial_started_at` timestamp first, falls back to existing MT5 trial storage for compatibility, and does not use user creation/import time as a trial start; `get_mt5_trial_state()` remains as a compatibility wrapper.
 - Weekly review generation/display remains core/free. Weekly review follow-up chat now uses entitlement helpers, allows 5 user-sent trial follow-up messages, blocks new sends after the cap or after trial expiry with waitlist CTA metadata, and keeps existing chat history visible in the dashboard. Assistant replies are not counted toward the cap. (`helpers/entitlements.py`, `routes/dashboard.py`, `templates/index.html`, `static/js/weekly_review_chat.js`, `tests/test_dashboard_weekly_ai.py`)
 - Advanced replay gating now follows the shared trial/premium gate: M5/M15 standard replay stays available, active-trial/Trader/Pro/grandfathered users can request advanced timeframes, and currently unimplemented M1 still returns `timeframe_not_available` instead of success. (`helpers/entitlements.py`, `routes/trades.py`, `tests/test_trades_routes.py`)
 - MT5 sync still uses the same trial window and pause behavior; on first successful sync, the MT5 account stores the broader trial start when available instead of extending the clock. Grandfathered/admin/paid-plan paths remain safe. (`celery_workers/mt5_sync_tasks.py`, `tests/test_entitlements.py`, `tests/test_mt5_access_requests.py`)
@@ -161,7 +167,7 @@ Central entitlement system, MT5 14-day trial enforcement, replay timeframe gatin
 
 ## Dashboard fine-print tooltip cleanup (2026-05-02)
 
-- Dashboard left-rail fine print is now tucked into accessible question-mark help bubbles instead of always-visible paragraphs. The MT5 sync card keeps the progress rail, account, and main action visible while moving status detail, batch availability, linked-account explanation, and disconnect consequences into tooltips. Rolling trends and latest closed trade also use the shared tooltip pattern for their explanatory subtitles. (`templates/index.html`, `static/js/mt5_request_form.js`)
+- Dashboard left-rail fine print is now tucked into accessible question-mark help bubbles instead of always-visible paragraphs. The MT5 sync card keeps the progress rail, account, and main action visible while moving status detail, setup capacity, linked-account explanation, and disconnect consequences into tooltips. Rolling trends and latest closed trade also use the shared tooltip pattern for their explanatory subtitles. (`templates/index.html`, `static/js/mt5_request_form.js`)
 
 ## Weekly AI evidence-first insight prompt rewrite (2026-05-02)
 
@@ -455,8 +461,8 @@ New admin action "Reset Terminal" on the MT5 accounts table. Lets root admins cl
 - MT5 batch flow work in `routes/trade_accounts.py`, `templates/trade_accounts.html`, `templates/index.html`, and `static/js/mt5_request_form.js`
 - MT5 archive/reactivate flow: `MT5Account` now supports `archived_at` / `archive_reason` (`20260412_0045`), so stale syncs can be archived without deleting the DB row or saved read-only credentials. Archiving clears VM terminal metadata, queues terminal/AppData cleanup, stops sync, and surfaces **Sync Inactive** / **Archived** states in dashboard, Trade Accounts, and admin; users can reactivate archived MT5 sync from the dashboard/Trade Accounts without re-entering credentials (`helpers/core.py`, `routes/trade_accounts.py`, `routes/dashboard.py`, `auth_account.py`, `templates/index.html`, `templates/trade_accounts.html`, `templates/admin_signup_access.html`, `tests/test_mt5_access_requests.py`)
 - MT5 receipt confirmation now uses the shared HTML email pattern in `routes/trade_accounts.py` and `templates/emails/mt5-request-received.html`; messaging now reflects immediate setup start vs saved-but-not-queued fallback
-- MT5 batch controls now live in admin: root admin can open, expand, and close MT5 sync batches while the public site shows remaining free slots from the active batch
-- MT5 sync is now batch-gated but immediate for new users: once a batch slot is open and details are submitted, terminal setup is queued right away; dashboard/trade-account states now distinguish `Submit Details` -> `Setup Queued` -> `Setting Up` -> `Sync Active`
+- MT5 batch controls now live in admin: root admin can open, expand, and close MT5 sync batches while the public site describes MT5 setup capacity without exposing exact slot counts.
+- MT5 sync is now batch-gated but immediate for new users: once setup capacity is available and details are submitted, terminal setup is queued right away; dashboard/trade-account states now distinguish `Submit Details` -> `Setup Queued` -> `Setting Up` -> `Sync Active`
 - Admin MT5 workflow labels now use Setup Queued, Setting Up, Active, and Inactive for current-user states, while legacy request-review routes remain only for old rows
 - User-facing emails now share a common `templates/emails/_base.html` shell, MT5 ready emails use the same HTML template pattern via `templates/emails/mt5-ready.html`, and worker-triggered emails render through app-level Jinja (`render_app_template`) so weekly-review and MT5-ready emails do not depend on request context
 - Admin MT5 tab now focuses on submitted MT5 accounts and setup actions instead of legacy request-review/manual-add panels; root admin can queue **Recalibrate all trade times**, **Clear all chart bars** (wipes `trade_bars` for every trade; trades unchanged), or per-account **Recalibrate times** (full-history sync with `refresh_closed_trade_timestamps`) to rewrite existing MT5 trades’ `opened_at`/`closed_at` from broker deals (`auth_account.py`, `templates/admin_signup_access.html`, `routes/mt5_internal.py`, `celery_workers/mt5_sync_tasks.py`, `tests/test_mt5_sync.py`, `tests/test_admin_route_gating.py`)
@@ -496,7 +502,7 @@ New admin action "Reset Terminal" on the MT5 accounts table. Lets root admins cl
 - AI role/taste guidance refinement in `context/ROLES.md`, `AGENTS.md`, and `CLAUDE.md`
 - Public acquisition messaging polish across `auth_account.py`, `templates/landing.html`, `templates/seo_page.html`, `templates/register.html`, `templates/login.html`, and `templates/base.html`
 - Second-pass landing/auth copy tightening for clearer review-first positioning and lower perceived signup friction
-- Landing and SEO hero sections now surface live MT5 beta availability from `get_mt5_sync_batch_state()`: open batches show the exact free-slot count and a sign-up-then-submit-details CTA, while full/no-open states keep the import-first fallback honest instead of implying signup alone reserves MT5 sync; the public urgency panel is hidden for logged-in users who already have MT5 linked or an MT5 request already in flight
+- Landing and SEO hero sections originally surfaced live MT5 beta availability from `get_mt5_sync_batch_state()`; as of 2026-05-17, public copy no longer exposes exact slot counts and instead frames MT5 as setup-capacity-managed inside the 14-day premium workflow trial, while keeping the import-first fallback honest.
 - Public SEO: `robots.txt` allows `/login`, `/register`, and `/dashboard`; sitemap lists `/`, `/dashboard`, `/login`, `/register`, contact, legal, and SEO landing slugs; signed-out `/dashboard` serves an indexable gate page (`dashboard_public_gate.html`); login/register use dedicated titles, meta descriptions, and canonicals; `base.html` adds `og:locale` and `WebSite` JSON-LD; contact page title refined for SERPs
 - SEO content refresh: new `/trading-journal` and `/why-am-i-not-improving-in-trading` pages added; `/mt5-trading-journal` rewritten with mistake-first positioning ("find your biggest trading mistake — without turning trading into a second job"); all three emphasize automated MT5 sync, zero manual logging, and weekly review over feature lists; Explore dropdown and landing use-case grid updated to include new pages (`auth_account.py`, `templates/seo_page.html`, `templates/landing.html`)
 

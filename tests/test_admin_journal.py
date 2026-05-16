@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta
 
-from ai_service import build_journal_chat_messages
+from ai_service import AIRequestError, build_journal_chat_messages
 from helpers.journal_context import MAX_DAY_SCOPE_TRADES, build_journal_payload
 import routes.admin_journal as admin_journal_routes
 from models import JournalMessage, JournalSession, Trade, TradeAccount, User, db
@@ -369,6 +369,36 @@ def test_admin_a_cannot_update_admin_b_session_tags_or_end(app_ctx, client):
     reloaded = db.session.get(JournalSession, journal_session_b.id)
     assert reloaded.title is None
     assert reloaded.ended_at is None
+
+
+def test_journal_chat_ai_failure_returns_clean_json(app_ctx, client, monkeypatch):
+    admin = _create_user("journal-admin-ai-fail", "journal-admin-ai-fail@example.com", is_admin=True)
+    account = _create_account(admin)
+    journal_session = JournalSession(
+        user_id=admin.id,
+        trade_account_id=account.id,
+        scope_type=JournalSession.SCOPE_FREEFORM,
+        started_at=datetime(2026, 5, 9, 9, 0),
+    )
+    db.session.add(journal_session)
+    db.session.commit()
+    _login_as(client, admin)
+
+    def fake_generate(*_args, **_kwargs):
+        raise AIRequestError("upstream unavailable")
+
+    monkeypatch.setattr(admin_journal_routes, "generate_journal_chat_reply", fake_generate)
+
+    response = client.post(
+        f"/admin/journal/sessions/{journal_session.id}/chat",
+        json={"message": "Start reflection"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+    assert response.status_code == 502
+    payload = response.get_json()
+    assert payload["error"] == "Could not answer that right now. Please try again shortly."
+    assert JournalMessage.query.filter_by(session_id=journal_session.id).count() == 0
 
 
 def test_admin_a_cannot_create_trade_session_with_admin_b_trade_pubkey(app_ctx, client):

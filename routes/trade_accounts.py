@@ -255,7 +255,7 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
                     return _build_mt5_request_response(
                         ok=False,
                         message=batch_state["request_blocked_message"]
-                        or "No free MT5 sync batch is open right now. Start with file import and check back later.",
+                        or "MT5 setup capacity is currently closed. Import trades now and connect MT5 when setup capacity opens.",
                         status="error",
                         status_code=409,
                     )

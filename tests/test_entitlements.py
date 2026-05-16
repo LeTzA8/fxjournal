@@ -16,10 +16,12 @@ import helpers.entitlements as ent
 # ── Fixtures / helpers ────────────────────────────────────────────────────────
 
 def _user(plan_tier="free", plan_grandfathered=False, is_admin=False,
-          email_verified=True, is_admin_field=False, created_at=None, user_id=1):
+          email_verified=True, is_admin_field=False, created_at=None,
+          premium_trial_started_at=None, user_id=1):
     return SimpleNamespace(
         id=user_id,
         created_at=created_at,
+        premium_trial_started_at=premium_trial_started_at,
         plan_tier=plan_tier,
         plan_grandfathered=plan_grandfathered,
         is_admin=is_admin_field or is_admin,
@@ -90,12 +92,21 @@ def test_mt5_trial_state_not_started():
     assert state["show_trial_ui"] is True
 
 
-def test_trial_state_uses_user_created_at_as_premium_trial_start():
+def test_trial_state_does_not_use_user_created_at_as_premium_trial_start():
     started = datetime.utcnow() - timedelta(days=4)
     user = _user(created_at=started)
     state = ent.get_trial_state(user)
+    assert state["state"] == "not_started"
+    assert state["source"] is None
+    assert state["days_remaining"] == ent.PREMIUM_TRIAL_DAYS
+
+
+def test_trial_state_uses_premium_trial_started_at():
+    started = datetime.utcnow() - timedelta(days=4)
+    user = _user(premium_trial_started_at=started)
+    state = ent.get_trial_state(user)
     assert state["state"] == "active"
-    assert state["source"] == "user_created_at"
+    assert state["source"] == "premium_trial_started_at"
     assert state["days_remaining"] == ent.PREMIUM_TRIAL_DAYS - 4
 
 
@@ -222,14 +233,14 @@ def test_replay_timeframe_free_m1_blocked():
 
 
 def test_advanced_replay_allowed_during_active_trial():
-    user = _user(created_at=datetime.utcnow() - timedelta(days=2))
+    user = _user(premium_trial_started_at=datetime.utcnow() - timedelta(days=2))
     result = ent.can_access_advanced_replay(user, "M1")
     assert result["allowed"] is True
     assert result["reason"] == "trial_active"
 
 
 def test_advanced_replay_blocked_after_trial_expiry():
-    user = _user(created_at=datetime.utcnow() - timedelta(days=ent.PREMIUM_TRIAL_DAYS + 1))
+    user = _user(premium_trial_started_at=datetime.utcnow() - timedelta(days=ent.PREMIUM_TRIAL_DAYS + 1))
     result = ent.can_access_advanced_replay(user, "M1")
     assert result["allowed"] is False
     assert result["reason"] == "expired"
@@ -329,10 +340,33 @@ def test_replay_entitlement_free():
 
 
 def test_replay_entitlement_active_trial_gets_advanced_replay():
-    user = _user(created_at=datetime.utcnow() - timedelta(days=1))
+    user = _user(premium_trial_started_at=datetime.utcnow() - timedelta(days=1))
     e = ent.get_replay_entitlement(user)
     assert e["allowed_timeframes"] == ent.TRADER_REPLAY_TIMEFRAMES
     assert e["label"] == "Advanced Replay Trial"
+
+
+def test_start_premium_trial_if_needed_stamps_user_and_mt5_account():
+    user = _user()
+    account = _mt5_account()
+    started = datetime.utcnow()
+
+    result = ent.start_premium_trial_if_needed(user, account, started_at=started)
+
+    assert result == started
+    assert user.premium_trial_started_at == started
+    assert account.mt5_trial_started_at == started
+
+
+def test_start_premium_trial_if_needed_does_not_stamp_grandfathered():
+    user = _user(plan_grandfathered=True)
+    account = _mt5_account()
+
+    result = ent.start_premium_trial_if_needed(user, account)
+
+    assert result is None
+    assert user.premium_trial_started_at is None
+    assert account.mt5_trial_started_at is None
 
 
 def test_replay_entitlement_trader():

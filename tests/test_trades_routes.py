@@ -908,7 +908,7 @@ def test_trade_chart_data_denies_expired_trial_user_requesting_m1(app_ctx, clien
         email="trade-chart-free-m1@example.com",
     )
     user.plan_tier = "free"
-    user.created_at = datetime.utcnow() - timedelta(days=20)
+    user.premium_trial_started_at = datetime.utcnow() - timedelta(days=20)
     db.session.commit()
     trade = _create_closed_mt5_trade_with_m5_bars(user, trade_account, "7770003")
 
@@ -932,7 +932,7 @@ def test_trade_chart_data_active_trial_user_reaches_m1_not_implemented(app_ctx, 
         email="trade-chart-active-trial-m1@example.com",
     )
     user.plan_tier = "free"
-    user.created_at = datetime.utcnow() - timedelta(days=2)
+    user.premium_trial_started_at = datetime.utcnow() - timedelta(days=2)
     db.session.commit()
     trade = _create_closed_mt5_trade_with_m5_bars(user, trade_account, "7770003-trial")
 
@@ -952,7 +952,7 @@ def test_trade_chart_data_allows_free_user_m5_and_m15(app_ctx, client):
         email="trade-chart-free-allowed@example.com",
     )
     user.plan_tier = "free"
-    user.created_at = datetime.utcnow() - timedelta(days=20)
+    user.premium_trial_started_at = datetime.utcnow() - timedelta(days=20)
     db.session.commit()
     trade = _create_closed_mt5_trade_with_m5_bars(user, trade_account, "7770004")
 

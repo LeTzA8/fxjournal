@@ -11,7 +11,7 @@ from ai_service import (
     build_weekly_review_chat_messages,
     load_prompt_text,
 )
-from models import AIGeneratedResponse, AIPromptHistory, JournalSession, MT5Account, WeeklyReviewChatMessage
+from models import AIGeneratedResponse, AIPromptHistory, JournalSession, MT5Account, MT5SyncBatch, WeeklyReviewChatMessage
 
 import routes.dashboard as dashboard_routes
 from helpers.trade_interpretation import apply_interpretation
@@ -459,6 +459,7 @@ def test_weekly_review_chat_route_enforces_trial_message_limit(app_ctx, client, 
         username="dashboard-review-chat-review-cap-user",
         email="dashboard-review-chat-review-cap@example.com",
     )
+    user.premium_trial_started_at = datetime.utcnow() - timedelta(days=1)
     review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-review-cap")
     for i in range(5):
         db.session.add(
@@ -517,6 +518,7 @@ def test_weekly_review_chat_route_counts_only_user_messages_for_trial_limit(app_
         json={"message": "first user question"},
     )
     assert response.status_code == 200
+    assert db.session.get(User, user.id).premium_trial_started_at is not None
 
 
 def test_weekly_review_chat_route_blocks_after_trial_expiry(app_ctx, client, monkeypatch):
@@ -525,7 +527,7 @@ def test_weekly_review_chat_route_blocks_after_trial_expiry(app_ctx, client, mon
         username="dashboard-review-chat-expired-user",
         email="dashboard-review-chat-expired@example.com",
     )
-    user.created_at = datetime.utcnow() - timedelta(days=20)
+    user.premium_trial_started_at = datetime.utcnow() - timedelta(days=20)
     db.session.commit()
     review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-expired")
 
@@ -550,7 +552,7 @@ def test_weekly_review_chat_grandfathered_user_bypasses_trial_expiry(app_ctx, cl
         username="dashboard-review-chat-grandfathered-user",
         email="dashboard-review-chat-grandfathered@example.com",
     )
-    user.created_at = datetime.utcnow() - timedelta(days=200)
+    user.premium_trial_started_at = datetime.utcnow() - timedelta(days=200)
     user.plan_grandfathered = True
     db.session.commit()
     review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-grandfathered")
@@ -698,13 +700,172 @@ def test_dashboard_home_hides_ai_journal_carousel_tab_for_non_admin(app_ctx, cli
     assert "AI Journal" not in response_text
 
 
+def test_dashboard_mt5_card_uses_trial_setup_capacity_copy(app_ctx, client):
+    _create_logged_in_user(
+        client,
+        username="dashboard-mt5-trial-copy",
+        email="dashboard-mt5-trial-copy@example.com",
+    )
+    batch = MT5SyncBatch(
+        name="Internal Capacity",
+        capacity_total=5,
+        total_slots_claimed=0,
+        is_open=True,
+        opened_at=datetime(2026, 5, 12, 9, 0),
+        created_at=datetime(2026, 5, 12, 9, 0),
+        updated_at=datetime(2026, 5, 12, 9, 0),
+    )
+    db.session.add(batch)
+    db.session.commit()
+
+    try:
+        response = client.get("/dashboard")
+        response_text = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert "14-day premium workflow trial" in response_text
+        assert "Core journal stays free" in response_text
+        assert "MT5 sync setup is available for this account during your premium workflow trial" in response_text
+        assert "free MT5 sync slot" not in response_text
+        assert "slots left" not in response_text
+        assert "claim a sync slot" not in response_text
+        assert "Fills fast" not in response_text
+    finally:
+        db.session.delete(batch)
+        db.session.commit()
+
+
+def _assert_dashboard_journal_session_payload(payload):
+    assert payload["session_id"]
+    assert payload["chat_url"].startswith("/dashboard/journal/sessions/")
+    assert payload["tags_url"].startswith("/dashboard/journal/sessions/")
+    assert payload["feedback_url_template"].endswith("/dashboard/journal/messages/0/feedback")
+    assert isinstance(payload["context_summary"], dict)
+    assert isinstance(payload["messages"], list)
+
+
+def test_dashboard_journal_create_session_returns_inline_json_for_admin(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-journal-create-admin",
+        email="dashboard-journal-create-admin@example.com",
+    )
+    user.is_admin = True
+    user.email_verified = True
+    user.signup_status = "approved"
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1,
+        exit_price=1.105,
+        pnl=50,
+        opened_at=datetime(2026, 5, 8, 9, 0),
+        closed_at=datetime(2026, 5, 8, 10, 0),
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    trade_response = client.post(
+        "/dashboard/journal/sessions",
+        json={"scope_type": "trade", "scope_trade_pubkey": trade.pubkey},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert trade_response.status_code == 200
+    trade_payload = trade_response.get_json()
+    _assert_dashboard_journal_session_payload(trade_payload)
+    assert trade_payload["context_summary"]["refs"][0]["label"].startswith("EURUSD")
+
+    day_response = client.post(
+        "/dashboard/journal/sessions",
+        json={"scope_type": "day", "scope_date": "2026-05-08"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert day_response.status_code == 200
+    _assert_dashboard_journal_session_payload(day_response.get_json())
+
+    freeform_response = client.post(
+        "/dashboard/journal/sessions",
+        json={"scope_type": "freeform"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert freeform_response.status_code == 200
+    _assert_dashboard_journal_session_payload(freeform_response.get_json())
+
+
+def test_dashboard_journal_create_session_blocks_non_admin_with_json(app_ctx, client):
+    _create_logged_in_user(
+        client,
+        username="dashboard-journal-create-plain",
+        email="dashboard-journal-create-plain@example.com",
+    )
+
+    response = client.post(
+        "/dashboard/journal/sessions",
+        json={"scope_type": "freeform"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+    assert response.status_code == 403
+    payload = response.get_json()
+    assert payload["error"] == "admin_only"
+    assert payload["message"] == "AI journal is only available to admin accounts."
+
+
+def test_dashboard_journal_create_session_blocks_support_view_with_json(app_ctx, client, monkeypatch):
+    root_email = "dashboard-journal-support-root@example.com"
+    monkeypatch.setenv("ADMIN_USER_EMAILS", root_email)
+    root, root_account = _create_logged_in_user(
+        client,
+        username="dashboard-journal-support-root",
+        email=root_email,
+    )
+    root.is_admin = True
+    root.email_verified = True
+    root.signup_status = "approved"
+    target = User(
+        username="dashboard-journal-support-target",
+        email="dashboard-journal-support-target@example.com",
+        password="hashed-password",
+        email_verified=True,
+    )
+    db.session.add(target)
+    db.session.flush()
+    db.session.add(
+        TradeAccount(
+            user_id=target.id,
+            name="Target Account",
+            account_type="CFD",
+            is_default=True,
+        )
+    )
+    db.session.commit()
+    with client.session_transaction() as session_state:
+        session_state["active_trade_account_id"] = root_account.id
+
+    start_response = client.get(f"/dashboard/admin/users/{target.id}/view-dashboard", follow_redirects=False)
+    assert start_response.status_code == 302
+
+    response = client.post(
+        "/dashboard/journal/sessions",
+        json={"scope_type": "freeform"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+    assert response.status_code == 403
+    payload = response.get_json()
+    assert payload["error"] == "support_view_read_only"
+    assert payload["message"] == "That action is not available in read-only support view."
+
+
 def test_dashboard_home_keeps_existing_chat_history_visible_after_trial_expiry(app_ctx, client, monkeypatch):
     user, trade_account = _create_logged_in_user(
         client,
         username="dashboard-review-chat-history-expired-user",
         email="dashboard-review-chat-history-expired@example.com",
     )
-    user.created_at = datetime.utcnow() - timedelta(days=20)
+    user.premium_trial_started_at = datetime.utcnow() - timedelta(days=20)
     db.session.commit()
     review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-history-expired")
     db.session.add_all(
@@ -763,6 +924,7 @@ def test_dashboard_home_keeps_existing_chat_history_visible_after_trial_message_
         username="dashboard-review-chat-history-cap-user",
         email="dashboard-review-chat-history-cap@example.com",
     )
+    user.premium_trial_started_at = datetime.utcnow() - timedelta(days=1)
     review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-history-cap")
     for i in range(5):
         db.session.add(

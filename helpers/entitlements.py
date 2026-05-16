@@ -2,8 +2,8 @@
 Central entitlement helpers for plan/access checks.
 
 All gating decisions go through these helpers, not scattered across routes or
-templates. The existing MT5 trial column still stores the MT5-linked trial
-clock, but this module exposes it as a broader premium workflow trial.
+templates. The shared trial starts only when a premium workflow feature is
+successfully used; core imports and account creation do not start the clock.
 """
 
 from datetime import timedelta, timezone
@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from helpers.schema_compat import (
     mt5_trial_columns_available,
     user_entitlement_columns_available,
+    user_premium_trial_column_available,
 )
 from helpers.utils import utcnow_naive
 
@@ -132,14 +133,20 @@ def _account_mt5_trial_started_at(user, account=None):
     return min(started_values) if started_values else None
 
 
+def _user_premium_trial_started_at(user):
+    if not user_premium_trial_column_available():
+        return None
+    return _safe_naive_datetime(getattr(user, "premium_trial_started_at", None))
+
+
 def _trial_started_at(user, account=None):
+    user_started_at = _user_premium_trial_started_at(user)
+    if user_started_at is not None:
+        return user_started_at, "premium_trial_started_at"
+
     mt5_started_at = _account_mt5_trial_started_at(user, account)
     if mt5_started_at is not None:
         return mt5_started_at, "mt5_trial_started_at"
-
-    created_at = _safe_naive_datetime(getattr(user, "created_at", None))
-    if created_at is not None:
-        return created_at, "user_created_at"
 
     return None, None
 
@@ -157,6 +164,41 @@ def _workflow_access_reason(user):
 
 
 # Public API
+
+def start_premium_trial_if_needed(user, account=None, *, started_at=None):
+    """
+    Stamp the shared premium trial start on successful premium-feature use.
+
+    The caller owns committing/rolling back the active DB transaction. Returns
+    the effective start timestamp, or None for paid/grandfathered/admin/schema
+    compatibility paths where no trial clock should be started.
+    """
+    if user is None:
+        return None
+    if _workflow_access_reason(user) is not None:
+        return None
+
+    existing_started_at, _source = _trial_started_at(user, account)
+    effective_started_at = existing_started_at or _safe_naive_datetime(started_at) or utcnow_naive()
+
+    if user_premium_trial_column_available() and getattr(user, "premium_trial_started_at", None) is None:
+        try:
+            user.premium_trial_started_at = effective_started_at
+        except Exception:
+            pass
+
+    if (
+        mt5_trial_columns_available()
+        and account is not None
+        and hasattr(account, "mt5_trial_started_at")
+        and getattr(account, "mt5_trial_started_at", None) is None
+    ):
+        try:
+            account.mt5_trial_started_at = effective_started_at
+        except Exception:
+            pass
+
+    return effective_started_at
 
 def get_user_plan_state(user) -> dict:
     """Returns {tier: str, grandfathered: bool}."""
@@ -296,6 +338,8 @@ def get_weekly_followup_message_usage(user, weekly_review=None) -> dict:
         )
         trial_state = get_trial_state(user, getattr(weekly_review, "trade_account", None))
         started_at = trial_state.get("started_at")
+        if trial_state.get("state") == "not_started":
+            return {"used": 0, "limit": limit, "remaining": limit}
         if started_at is not None:
             query = query.filter(WeeklyReviewChatMessage.created_at >= started_at)
         used = query.count()
@@ -321,10 +365,10 @@ def can_use_weekly_followup_chat(user, weekly_review) -> dict:
         return {"allowed": True, "reason": privileged_reason, "cta": None}
 
     trial_state = get_trial_state(user, getattr(weekly_review, "trade_account", None))
-    if trial_state["state"] == "active":
+    if trial_state["state"] in ("active", "not_started"):
         return {
             "allowed": True,
-            "reason": "trial_active",
+            "reason": f"trial_{trial_state['state']}",
             "trial_state": trial_state,
             "cta": None,
         }

@@ -81,6 +81,7 @@ class User(db.Model):
     plan_grandfathered = deferred(
         db.Column(db.Boolean, nullable=False, default=False, server_default="false")
     )
+    premium_trial_started_at = deferred(db.Column(db.DateTime, nullable=True))
     trade_accounts = db.relationship(
         "TradeAccount",
         backref="user",

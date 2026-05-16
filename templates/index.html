@@ -835,45 +835,23 @@
                         {% endif %}
                     </p>
                     {% endif %}
-                    {% if mt5_batch_state.batches_enabled and mt5_batch_state.active_batch and mt5_batch_state.slots_remaining is not none and mt5_batch_state.slots_remaining > 0 and mt5_selected_status not in ("linked", "paused", "archived", "queued", "setting_up") %}
-                    {% set _cap = (mt5_batch_state.active_batch.capacity_total or 0)|int %}
-                    {% set _rem = mt5_batch_state.slots_remaining|int %}
-                    {% set _used = ([_cap - _rem, 0] | max) %}
-                    {% set _pct = (_used * 100 // _cap) if _cap > 0 else 0 %}
-                    <div class="mt5-slots-urgency" role="status" aria-live="polite">
-                        <div class="mt5-slots-urgency__top">
-                            <p class="mt5-slots-urgency__kicker">Beta batch — limited free setup</p>
-                            <div class="mt5-slots-urgency__stat">
-                                <span class="mt5-slots-urgency__num">{{ _rem }}</span>
-                                <span class="mt5-slots-urgency__stat-text">
-                                    <span class="mt5-slots-urgency__headline">free MT5 sync slot{% if _rem != 1 %}s{% endif %} left</span>
-                                    <span class="mt5-slots-urgency__batch">in {{ mt5_batch_state.active_batch.name }}</span>
-                                </span>
-                            </div>
-                        </div>
-                        {% if _cap > 0 %}
-                        <div class="mt5-slots-urgency__meter" aria-label="Batch fill: {{ _pct }} percent of slots claimed, {{ _rem }} remaining">
-                            <div class="mt5-slots-urgency__track">
-                                <div class="mt5-slots-urgency__fill" style="width: {{ _pct }}%;"></div>
-                            </div>
-                            <div class="mt5-slots-urgency__meter-labels">
-                                <span>{{ _used }} / {{ _cap }} claimed</span>
-                                <span class="mt5-slots-urgency__hurry">Fills fast — claim yours</span>
-                            </div>
-                        </div>
-                        {% endif %}
-                    </div>
-                    {% elif mt5_batch_state.batches_enabled and mt5_batch_state.public_badge %}
+                    {% if mt5_batch_state.batches_enabled and mt5_selected_status not in ("linked", "paused", "archived", "queued", "setting_up") %}
                     <p class="mt5-panel-copy mt5-panel-copy--compact">
-                        Batch info
+                        14-day premium workflow trial
                         <span class="help-tooltip">
                             <button
                                 type="button"
                                 class="help-tooltip-button"
-                                aria-label="MT5 sync batch availability"
-                                aria-describedby="mt5-batch-detail-tooltip"
+                                aria-label="MT5 sync setup capacity"
+                                aria-describedby="mt5-capacity-detail-tooltip"
                             >?</button>
-                            <span id="mt5-batch-detail-tooltip" class="help-tooltip-bubble help-tooltip-bubble--mt5-server" role="tooltip">{{ mt5_batch_state.public_badge }}{% if mt5_batch_state.active_batch %} in {{ mt5_batch_state.active_batch.name }}{% endif %}.</span>
+                            <span id="mt5-capacity-detail-tooltip" class="help-tooltip-bubble help-tooltip-bubble--mt5-server" role="tooltip">
+                                {% if mt5_batch_state.can_accept_requests %}
+                                MT5 sync setup is available for this account during your premium workflow trial. Core journal stays free. No card required.
+                                {% else %}
+                                MT5 setup capacity is currently closed. Import trades now; connect MT5 when setup capacity opens.
+                                {% endif %}
+                            </span>
                         </span>
                     </p>
                     {% endif %}
@@ -1171,7 +1149,7 @@
                     <div class="mt5-selected-account-card">
                         <span class="mt5-selected-account-label">{{ mt5_selected_row.status_label }}</span>
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                        <span class="mt5-selected-account-meta">Start with file import today, then claim a sync slot in the next open batch.</span>
+                        <span class="mt5-selected-account-meta">Import trades now; connect MT5 when setup capacity opens.</span>
                     </div>
                     <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
                         <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Open Import</a>
@@ -1569,6 +1547,7 @@
                 {% if weekly_ai_review and weekly_ai_review.id is defined %}
                 {% set chat_can_send = weekly_review_chat_send_state and weekly_review_chat_send_state.allowed %}
                 {% set chat_is_trial = chat_can_send and weekly_review_chat_send_state.reason == "trial_active" %}
+                {% set chat_starts_trial = chat_can_send and weekly_review_chat_send_state.reason == "trial_not_started" %}
                 {% set chat_gate_message = weekly_review_chat_send_state.message if weekly_review_chat_send_state and weekly_review_chat_send_state.message is defined else none %}
                 {% set chat_cta = weekly_review_chat_send_state.cta if weekly_review_chat_send_state and weekly_review_chat_send_state.cta is defined else none %}
                 <section
@@ -1585,6 +1564,9 @@
                             {% if weekly_review_chat_usage and chat_is_trial and weekly_review_chat_usage.limit %}
                             Your free trial includes {{ weekly_review_chat_usage.limit }} follow-up messages.
                             {{ weekly_review_chat_usage.remaining }} remaining.
+                            {% elif weekly_review_chat_usage and chat_starts_trial and weekly_review_chat_usage.limit %}
+                            Sending your first follow-up starts your 14-day premium workflow trial.
+                            Your trial includes {{ weekly_review_chat_usage.limit }} follow-up messages.
                             {% else %}
                             Follow-ups use only this review and its stored trade context.
                             {% endif %}
@@ -3452,113 +3434,6 @@
         left: auto;
         right: 0.55rem;
         transform: translateX(0) rotate(45deg);
-    }
-
-    .mt5-slots-urgency {
-        margin: 0 0 0.65rem;
-        padding: 0.62rem 0.72rem;
-        border-radius: 12px;
-        border: 1px solid color-mix(in srgb, var(--good) 38%, var(--border));
-        background:
-            linear-gradient(
-                135deg,
-                color-mix(in srgb, var(--good) 14%, var(--card)) 0%,
-                color-mix(in srgb, var(--surface) 92%, var(--card)) 100%
-            );
-        box-shadow: 0 6px 22px color-mix(in srgb, var(--good) 12%, transparent);
-    }
-
-    .mt5-slots-urgency__top {
-        display: grid;
-        gap: 0.35rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .mt5-slots-urgency__kicker {
-        margin: 0;
-        font-size: 0.58rem;
-        font-weight: 900;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: color-mix(in srgb, var(--good) 72%, var(--ink));
-    }
-
-    .mt5-slots-urgency__stat {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        gap: 0.35rem 0.65rem;
-    }
-
-    .mt5-slots-urgency__num {
-        font-size: clamp(1.85rem, 4.2vw, 2.45rem);
-        font-weight: 900;
-        line-height: 1;
-        letter-spacing: -0.03em;
-        color: color-mix(in srgb, var(--good) 88%, var(--ink));
-        text-shadow: 0 0 28px color-mix(in srgb, var(--good) 35%, transparent);
-    }
-
-    .mt5-slots-urgency__stat-text {
-        display: grid;
-        gap: 0.12rem;
-        min-width: min(100%, 12rem);
-    }
-
-    .mt5-slots-urgency__headline {
-        font-size: 0.88rem;
-        font-weight: 800;
-        line-height: 1.25;
-        color: var(--ink);
-    }
-
-    .mt5-slots-urgency__batch {
-        font-size: 0.72rem;
-        font-weight: 600;
-        color: color-mix(in srgb, var(--muted) 86%, var(--ink));
-    }
-
-    .mt5-slots-urgency__meter {
-        display: grid;
-        gap: 0.28rem;
-    }
-
-    .mt5-slots-urgency__track {
-        height: 0.55rem;
-        border-radius: 999px;
-        overflow: hidden;
-        background: color-mix(in srgb, var(--border) 55%, var(--surface));
-        border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-    }
-
-    .mt5-slots-urgency__fill {
-        height: 100%;
-        min-width: 0;
-        border-radius: inherit;
-        background: linear-gradient(
-            90deg,
-            color-mix(in srgb, var(--good) 72%, var(--accent) 28%),
-            color-mix(in srgb, var(--good) 92%, #fff)
-        );
-        box-shadow: 0 0 12px color-mix(in srgb, var(--good) 45%, transparent);
-        transition: width 240ms ease;
-    }
-
-    .mt5-slots-urgency__meter-labels {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.35rem;
-        font-size: 0.68rem;
-        font-weight: 700;
-        color: color-mix(in srgb, var(--muted) 82%, var(--ink));
-    }
-
-    .mt5-slots-urgency__hurry {
-        font-weight: 800;
-        color: color-mix(in srgb, var(--good) 58%, var(--ink));
-        letter-spacing: 0.02em;
     }
 
     .mt5-progress-track {

@@ -5,7 +5,7 @@ from datetime import timedelta
 from urllib.parse import urlparse
 from flask import Flask, current_app, flash, g, jsonify, redirect, render_template, request, session, url_for
 from flask_migrate import Migrate
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFError, CSRFProtect
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
@@ -311,9 +311,12 @@ def enforce_support_view_read_only():
         request.method,
     )
 
-    message = "Support view is read-only. Exit support view before making changes."
-    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return {"ok": False, "message": message}, 403
+    if str(request.endpoint or "").startswith("dashboard.dashboard_journal_"):
+        message = "That action is not available in read-only support view."
+    else:
+        message = "Support view is read-only. Exit support view before making changes."
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+        return {"ok": False, "error": "support_view_read_only", "message": message}, 403
 
     flash(message, "error")
     referrer = request.referrer or ""
@@ -455,6 +458,36 @@ def handle_rate_limit(_error):
     return "Too many requests. Please try again later.", 429
 
 
+def request_wants_json_response():
+    if request.is_json:
+        return True
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return True
+    if (
+        request.path.startswith("/api/")
+        or request.path.startswith("/dashboard/weekly-review/")
+        or request.path.startswith("/dashboard/journal/")
+        or request.path == "/dashboard/journal/sessions"
+        or request.path == "/pricing/waitlist"
+    ):
+        return True
+    return (request.accept_mimetypes.best or "") == "application/json"
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(error):
+    message = error.description or "Your session expired. Please refresh and try again."
+    if request_wants_json_response():
+        return jsonify({"error": "csrf_failed", "message": message}), 400
+    flash(message, "error")
+    return render_error_page(
+        400,
+        "Request could not be verified",
+        message,
+        title="MyFXJournal | 400",
+    )
+
+
 def render_error_page(status_code, heading, description, title=None):
     user_logged_in = bool(session.get("user_id"))
     primary_endpoint = "dashboard.home" if user_logged_in else "login"
@@ -480,6 +513,16 @@ def render_error_page(status_code, heading, description, title=None):
 
 @app.errorhandler(HTTPException)
 def handle_http_error(error):
+    if request_wants_json_response():
+        return (
+            jsonify(
+                {
+                    "error": error.name or "request_error",
+                    "message": error.description or "Something went wrong while processing your request.",
+                }
+            ),
+            error.code or 500,
+        )
     page_content = {
         403: (
             "Access denied",
@@ -512,6 +555,16 @@ def handle_http_error(error):
 def handle_unexpected_error(error):
     app.logger.exception("Unhandled application error.", exc_info=error)
     send_error_notification_email(error)
+    if request_wants_json_response():
+        return (
+            jsonify(
+                {
+                    "error": "internal_error",
+                    "message": "The request could not be completed right now. Please try again in a moment.",
+                }
+            ),
+            500,
+        )
     return render_error_page(
         500,
         "Something broke on our side",
