@@ -156,6 +156,37 @@ def test_journal_chat_persists_messages_and_feedback(app_ctx, client, monkeypatc
     assert db.session.get(JournalMessage, messages[1].id).feedback == "generic"
 
 
+def test_trade_scoped_journal_payload_uses_only_selected_trade(app_ctx):
+    admin = _create_user("journal-admin-single-trade", "journal-admin-single-trade@example.com", is_admin=True)
+    account = _create_account(admin)
+    older_btc = _create_trade(
+        admin,
+        account,
+        symbol="BTCUSD",
+        closed_at=datetime(2026, 4, 24, 10, 0),
+    )
+    selected_btc = _create_trade(
+        admin,
+        account,
+        symbol="BTCUSD",
+        closed_at=datetime(2026, 5, 14, 10, 0),
+    )
+    db.session.commit()
+    journal_session = JournalSession(
+        user_id=admin.id,
+        trade_account_id=account.id,
+        scope_type=JournalSession.SCOPE_TRADE,
+        scope_trade_pubkey=selected_btc.pubkey,
+        started_at=datetime(2026, 5, 15, 9, 0),
+    )
+
+    payload = build_journal_payload(admin, journal_session)
+
+    assert payload["summary"]["trade_count"] == 1
+    assert [trade["trade_pubkey"] for trade in payload["trades"]] == [selected_btc.pubkey]
+    assert older_btc.pubkey not in [trade["trade_pubkey"] for trade in payload["trades"]]
+
+
 def test_journal_tags_save_and_reload(app_ctx, client):
     admin = _create_user("journal-admin-tags", "journal-admin-tags@example.com", is_admin=True)
     account = _create_account(admin)

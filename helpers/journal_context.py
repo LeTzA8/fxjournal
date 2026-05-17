@@ -16,7 +16,6 @@ from trading import classify_trading_session
 
 
 MAX_FREEFORM_TRADES = 20
-MAX_RELATED_TRADES = 5
 MAX_DAY_SCOPE_TRADES = 50
 
 
@@ -172,30 +171,12 @@ def build_journal_payload(user, session) -> dict:
         if focal_trade is None:
             payload["summary"] = {"error": "focal_trade_not_found"}
             return payload
-        related = (
-            _closed_trade_query(user_id, trade_account_id)
-            .filter(
-                Trade.symbol == focal_trade.symbol,
-                Trade.id != focal_trade.id,
-                Trade.closed_at <= focal_trade.closed_at,
-            )
-            .order_by(Trade.closed_at.desc(), Trade.id.desc())
-            .limit(MAX_RELATED_TRADES)
-            .all()
-        )
-        trades = [focal_trade] + list(reversed(related))
         payload["summary"] = {
             "focal_ref": "T1",
             "focal_symbol": focal_trade.symbol,
-            "related_closed_trades_same_symbol": len(related),
+            "trade_count": 1,
         }
-        payload["trades"] = [
-            _trade_dict(focal_trade, "T1", market_depth="deep"),
-            *[
-                _trade_dict(trade, f"T{index}", market_depth="none")
-                for index, trade in enumerate(trades[1:], start=2)
-            ],
-        ]
+        payload["trades"] = [_trade_dict(focal_trade, "T1", market_depth="deep")]
         return payload
 
     if scope_type == JournalSession.SCOPE_DAY:
