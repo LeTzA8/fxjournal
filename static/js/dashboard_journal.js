@@ -61,30 +61,6 @@
         section.dataset.feedbackTemplate = payload.feedback_url_template || "";
         section.dataset.csrfToken = csrfToken;
 
-        const meta = document.createElement("div");
-        meta.className = "admin-journal-meta";
-        meta.setAttribute("data-journal-tags-form", "");
-        meta.innerHTML = `
-            <div class="admin-journal-title-row">
-                <label for="dashboardJournalInlineTitle">Title</label>
-                <input id="dashboardJournalInlineTitle" name="title" value="" maxlength="200" placeholder="session label">
-            </div>
-            <div>
-                <label for="dashboardJournalInlineTags">Tags</label>
-                <input id="dashboardJournalInlineTags" name="tags" value="" placeholder="emotion:tilted, theme:revenge">
-            </div>
-            <div>
-                <label for="dashboardJournalInlineNotes">Notes</label>
-                <textarea id="dashboardJournalInlineNotes" name="notes" rows="2" placeholder="Post-session notes"></textarea>
-            </div>
-            <p class="admin-journal-save-state soft" data-journal-save-state hidden>Saved</p>
-        `;
-        meta.querySelector("[name='title']").value = payload.title || "";
-        meta.querySelector("[name='tags']").value = Array.isArray(payload.session_tags)
-            ? payload.session_tags.join(", ")
-            : "";
-        meta.querySelector("[name='notes']").value = payload.notes || "";
-
         const ctx = payload.context_summary || {};
         const refs = Array.isArray(ctx.refs) ? ctx.refs : [];
         const details = document.createElement("details");
@@ -137,7 +113,6 @@
             </div>
         `;
 
-        section.appendChild(meta);
         section.appendChild(details);
         section.appendChild(log);
         section.appendChild(form);
@@ -167,7 +142,7 @@
         const back = document.createElement("button");
         back.type = "button";
         back.className = "ghost-btn";
-        back.textContent = "← New reflection";
+        back.textContent = "New reflection";
         back.addEventListener("click", resetToStart);
         toolbar.appendChild(back);
         sessionPanel.appendChild(toolbar);
@@ -177,6 +152,11 @@
 
         if (typeof window.FXJBindAdminJournalSessionRoot === "function") {
             window.FXJBindAdminJournalSessionRoot(section);
+        }
+
+        const chatInput = section.querySelector("[data-journal-chat-input]");
+        if (chatInput) {
+            chatInput.focus();
         }
     };
 

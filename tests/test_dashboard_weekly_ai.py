@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import json
 
@@ -698,6 +699,17 @@ def test_dashboard_home_hides_ai_journal_carousel_tab_for_non_admin(app_ctx, cli
     assert response.status_code == 200
     assert 'data-weekly-ai-carousel-tab="1"' not in response_text
     assert "AI Journal" not in response_text
+
+
+def test_dashboard_journal_inline_renderer_is_chat_first():
+    script = Path("static/js/dashboard_journal.js").read_text(encoding="utf-8")
+
+    assert "dashboardJournalInlineTitle" not in script
+    assert "dashboardJournalInlineTags" not in script
+    assert "dashboardJournalInlineNotes" not in script
+    assert 'setAttribute("data-journal-tags-form"' not in script
+    assert "[data-journal-chat-input]" in script
+    assert ".focus()" in script
 
 
 def test_dashboard_mt5_card_uses_trial_setup_capacity_copy(app_ctx, client):
