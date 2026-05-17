@@ -670,6 +670,7 @@ def test_dashboard_home_shows_admin_ai_journal_carousel_tab(app_ctx, client, mon
     assert "EURUSD" in response_text
     assert "revenge reflection" in response_text
     assert "/dashboard/journal/sessions" in response_text
+    assert "/dashboard/journal/context-candidates" in response_text
     assert "dashboard_journal.js" in response_text
 
 
@@ -704,12 +705,197 @@ def test_dashboard_home_hides_ai_journal_carousel_tab_for_non_admin(app_ctx, cli
 def test_dashboard_journal_inline_renderer_is_chat_first():
     script = Path("static/js/dashboard_journal.js").read_text(encoding="utf-8")
 
+    assert "data-dashboard-journal-start-form" not in script
+    assert "data-journal-scope" not in script
+    assert "[data-dashboard-journal-resolve-form]" in script
     assert "dashboardJournalInlineTitle" not in script
     assert "dashboardJournalInlineTags" not in script
     assert "dashboardJournalInlineNotes" not in script
     assert 'setAttribute("data-journal-tags-form"' not in script
     assert "[data-journal-chat-input]" in script
     assert ".focus()" in script
+
+
+def test_dashboard_journal_unified_start_source_confirms_context_then_posts_message():
+    template = Path("templates/index.html").read_text(encoding="utf-8")
+    script = Path("static/js/dashboard_journal.js").read_text(encoding="utf-8")
+
+    assert "dashboardJournalTrade" not in template
+    assert "dashboardJournalDay" not in template
+    assert "Open reflection" not in template
+    assert "data-dashboard-journal-resolve-form" in template
+    assert "data-dashboard-journal-candidates" in template
+    assert "I think you mean..." in script
+    assert "postJson(createUrl, sessionBodyForCandidate(candidate))" in script
+    assert "FXJSendJournalMessage" in script
+
+
+def test_dashboard_journal_context_candidates_match_symbol_and_date(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-journal-resolver-trade",
+        email="dashboard-journal-resolver-trade@example.com",
+    )
+    user.is_admin = True
+    user.email_verified = True
+    user.signup_status = "approved"
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="BTCUSD",
+        side="BUY",
+        entry_price=65000,
+        exit_price=65300,
+        pnl=120,
+        opened_at=datetime(2026, 5, 14, 9, 0),
+        closed_at=datetime(2026, 5, 14, 10, 0),
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    response = client.post(
+        "/dashboard/journal/context-candidates",
+        json={"message": "Can we reflect on BTCUSD 2026-05-14?"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["recommended"]["scope_type"] == JournalSession.SCOPE_TRADE
+    assert payload["recommended"]["session_payload"]["scope_trade_pubkey"] == trade.pubkey
+    assert "BTCUSD" in payload["recommended"]["label"]
+
+
+def test_dashboard_journal_context_candidates_vague_message_defaults_to_review_week(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-journal-resolver-week",
+        email="dashboard-journal-resolver-week@example.com",
+    )
+    user.is_admin = True
+    user.email_verified = True
+    user.signup_status = "approved"
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1,
+            exit_price=1.105,
+            pnl=50,
+            opened_at=datetime(2026, 5, 14, 9, 0),
+            closed_at=datetime(2026, 5, 14, 10, 0),
+        )
+    )
+    db.session.commit()
+
+    response = client.post(
+        "/dashboard/journal/context-candidates",
+        json={"message": "What should I take away from this week?"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["recommended"]["scope_type"] == JournalSession.SCOPE_WEEK
+    assert payload["recommended"]["session_payload"]["scope_date"] == "2026-05-11"
+
+
+def test_dashboard_journal_context_candidates_unmatched_specific_ask_uses_open_context(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-journal-resolver-freeform",
+        email="dashboard-journal-resolver-freeform@example.com",
+    )
+    user.is_admin = True
+    user.email_verified = True
+    user.signup_status = "approved"
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1,
+            exit_price=1.105,
+            pnl=50,
+            opened_at=datetime(2026, 5, 8, 9, 0),
+            closed_at=datetime(2026, 5, 8, 10, 0),
+        )
+    )
+    db.session.commit()
+
+    response = client.post(
+        "/dashboard/journal/context-candidates",
+        json={"message": "Reflect on DOGE"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["recommended"]["scope_type"] == JournalSession.SCOPE_FREEFORM
+
+
+def test_dashboard_journal_context_candidates_blocks_non_admin_and_support_view(app_ctx, client, monkeypatch):
+    _create_logged_in_user(
+        client,
+        username="dashboard-journal-resolver-plain",
+        email="dashboard-journal-resolver-plain@example.com",
+    )
+
+    response = client.post(
+        "/dashboard/journal/context-candidates",
+        json={"message": "What happened this week?"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+    assert response.status_code == 403
+    assert response.get_json()["error"] == "admin_only"
+
+    root_email = "dashboard-journal-resolver-support-root@example.com"
+    monkeypatch.setenv("ADMIN_USER_EMAILS", root_email)
+    root, root_account = _create_logged_in_user(
+        client,
+        username="dashboard-journal-resolver-support-root",
+        email=root_email,
+    )
+    root.is_admin = True
+    root.email_verified = True
+    root.signup_status = "approved"
+    target = User(
+        username="dashboard-journal-resolver-support-target",
+        email="dashboard-journal-resolver-support-target@example.com",
+        password="hashed-password",
+        email_verified=True,
+    )
+    db.session.add(target)
+    db.session.flush()
+    db.session.add(
+        TradeAccount(
+            user_id=target.id,
+            name="Target Account",
+            account_type="CFD",
+            is_default=True,
+        )
+    )
+    db.session.commit()
+    with client.session_transaction() as session_state:
+        session_state["user_id"] = root.id
+        session_state["username"] = root.username
+        session_state["active_trade_account_id"] = root_account.id
+
+    start_response = client.get(f"/dashboard/admin/users/{target.id}/view-dashboard", follow_redirects=False)
+    assert start_response.status_code == 302
+
+    support_response = client.post(
+        "/dashboard/journal/context-candidates",
+        json={"message": "What happened this week?"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+    assert support_response.status_code == 403
+    assert support_response.get_json()["error"] == "support_view_read_only"
 
 
 def test_dashboard_mt5_card_uses_trial_setup_capacity_copy(app_ctx, client):
@@ -796,6 +982,14 @@ def test_dashboard_journal_create_session_returns_inline_json_for_admin(app_ctx,
     )
     assert day_response.status_code == 200
     _assert_dashboard_journal_session_payload(day_response.get_json())
+
+    week_response = client.post(
+        "/dashboard/journal/sessions",
+        json={"scope_type": "week", "scope_date": "2026-05-04"},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert week_response.status_code == 200
+    _assert_dashboard_journal_session_payload(week_response.get_json())
 
     freeform_response = client.post(
         "/dashboard/journal/sessions",

@@ -28,6 +28,7 @@ JOURNAL_CHAT_HISTORY_LIMIT = 16
 JOURNAL_ALLOWED_SCOPES = {
     JournalSession.SCOPE_TRADE,
     JournalSession.SCOPE_DAY,
+    JournalSession.SCOPE_WEEK,
     JournalSession.SCOPE_FREEFORM,
 }
 JOURNAL_ALLOWED_FEEDBACK = {
@@ -289,12 +290,13 @@ def create_journal_session_from_incoming(user, incoming):
         if trade is None:
             return None, {"error": "trade_not_found", "message": "That trade was not found."}
         trade_account_id = trade.trade_account_id
-    elif scope_type == JournalSession.SCOPE_DAY:
+    elif scope_type in (JournalSession.SCOPE_DAY, JournalSession.SCOPE_WEEK):
         raw_date = str(incoming.get("scope_date") or "").strip()
         try:
             scope_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
         except ValueError:
-            return None, {"error": "invalid_date", "message": "Use a valid calendar date."}
+            message = "Use a valid week start date." if scope_type == JournalSession.SCOPE_WEEK else "Use a valid calendar date."
+            return None, {"error": "invalid_date", "message": message}
     elif scope_type == JournalSession.SCOPE_FREEFORM:
         scope_trade_pubkey = None
 
@@ -536,3 +538,14 @@ def end_session(session_id):
         journal_session.ended_at = utcnow_naive()
         db.session.commit()
     return redirect(url_for("admin_journal.view_session", session_id=journal_session.id))
+
+
+@bp.route("/sessions/<int:session_id>/purge", methods=["POST"])
+@_admin_journal_required
+@login_required
+def purge_session(session_id):
+    user = _current_user()
+    journal_session = _session_or_404(user.id, session_id)
+    db.session.delete(journal_session)
+    db.session.commit()
+    return redirect(url_for("admin_journal.journal_home"))

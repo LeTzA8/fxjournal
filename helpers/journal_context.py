@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from datetime import datetime, time
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import selectinload
 
@@ -17,6 +18,7 @@ from trading import classify_trading_session
 
 MAX_FREEFORM_TRADES = 20
 MAX_DAY_SCOPE_TRADES = 50
+WEEKLY_MARKET_TIMEZONE = ZoneInfo("America/New_York")
 
 
 def _safe_float(value):
@@ -203,6 +205,45 @@ def build_journal_payload(user, session) -> dict:
             payload["summary"]["day_trades_in_payload"] = shown
             payload["summary"]["day_scope_truncation"] = (
                 f"showing {shown} of {day_closed_trade_total} trades (UTC day, chronological)"
+            )
+        payload["trades"] = [
+            _trade_dict(trade, f"T{index}", market_depth="minimal")
+            for index, trade in enumerate(trades, start=1)
+        ]
+        return payload
+
+    if scope_type == JournalSession.SCOPE_WEEK:
+        scope_date = getattr(session, "scope_date", None)
+        if scope_date is None:
+            payload["summary"] = {"error": "scope_date_required"}
+            return payload
+        local_start = datetime.combine(scope_date, time.min, tzinfo=WEEKLY_MARKET_TIMEZONE)
+        local_end = local_start + timedelta(days=7)
+        period_start_utc = local_start.astimezone(timezone.utc).replace(tzinfo=None)
+        period_end_utc = local_end.astimezone(timezone.utc).replace(tzinfo=None)
+        trades = (
+            _closed_trade_query(user_id, trade_account_id)
+            .filter(Trade.closed_at >= period_start_utc, Trade.closed_at < period_end_utc)
+            .order_by(Trade.closed_at.asc(), Trade.id.asc())
+            .all()
+        )
+        week_closed_trade_total = len(trades)
+        truncated = week_closed_trade_total > MAX_DAY_SCOPE_TRADES
+        if truncated:
+            trades = trades[:MAX_DAY_SCOPE_TRADES]
+        payload["summary"] = {
+            "market_week_start": scope_date.isoformat(),
+            "market_week_timezone": str(WEEKLY_MARKET_TIMEZONE),
+            "period_start_utc": period_start_utc.isoformat(),
+            "period_end_utc": period_end_utc.isoformat(),
+            **_summary_for_trades(trades),
+        }
+        if truncated:
+            shown = len(trades)
+            payload["summary"]["week_closed_trade_total"] = week_closed_trade_total
+            payload["summary"]["week_trades_in_payload"] = shown
+            payload["summary"]["week_scope_truncation"] = (
+                f"showing {shown} of {week_closed_trade_total} trades (New York market week, chronological)"
             )
         payload["trades"] = [
             _trade_dict(trade, f"T{index}", market_depth="minimal")

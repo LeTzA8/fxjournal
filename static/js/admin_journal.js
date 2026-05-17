@@ -112,22 +112,18 @@
         return bubble;
     };
 
-    function bindAdminJournalSessionRoot(root) {
-        const form = root.querySelector("[data-journal-chat-form]");
-        const input = root.querySelector("[data-journal-chat-input]");
+    async function sendJournalMessage(root, message, options) {
+        const settings = options || {};
+        const input = settings.input || root.querySelector("[data-journal-chat-input]");
         const log = root.querySelector("[data-journal-chat-log]");
         const error = root.querySelector("[data-journal-chat-error]");
-        const meta = root.querySelector("[data-journal-tags-form]");
-        const saveState = root.querySelector("[data-journal-save-state]");
-
-        const showError = (message) => {
+        const showError = (text) => {
             if (!error) {
                 return;
             }
-            error.textContent = message;
+            error.textContent = text;
             error.hidden = false;
         };
-
         const clearError = () => {
             if (!error) {
                 return;
@@ -135,6 +131,76 @@
             error.textContent = "";
             error.hidden = true;
         };
+        const normalized = String(message || "").trim();
+        if (!normalized) {
+            showError("Ask a journal question first.");
+            if (input) {
+                input.focus();
+            }
+            return false;
+        }
+        if (!log) {
+            return false;
+        }
+
+        clearError();
+        const userBubble = createBubble("user", normalized);
+        const loadingBubble = createLoadingBubble();
+        log.appendChild(userBubble);
+        log.appendChild(loadingBubble);
+        if (input) {
+            input.value = "";
+            input.disabled = true;
+        }
+
+        try {
+            const response = await fetch(root.dataset.chatUrl || "", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": root.dataset.csrfToken || "",
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                body: JSON.stringify({ message: normalized }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.error || "Could not answer that right now.");
+            }
+            loadingBubble.remove();
+            const assistantBubble = createBubble(
+                "assistant",
+                payload.reply || "",
+                payload.segments || [],
+                payload.message_id,
+                root,
+            );
+            log.appendChild(assistantBubble);
+            const feedbackRow = assistantBubble.querySelector(".admin-journal-feedback");
+            if (feedbackRow && payload.message_id) {
+                bindFeedback(feedbackRow, payload.message_id, root);
+            }
+            return true;
+        } catch (err) {
+            loadingBubble.remove();
+            userBubble.remove();
+            showError(err.message || "Could not answer that right now.");
+            return false;
+        } finally {
+            if (input) {
+                input.disabled = false;
+                input.focus();
+            }
+        }
+    }
+
+    function bindAdminJournalSessionRoot(root) {
+        const form = root.querySelector("[data-journal-chat-form]");
+        const input = root.querySelector("[data-journal-chat-input]");
+        const log = root.querySelector("[data-journal-chat-log]");
+        const meta = root.querySelector("[data-journal-tags-form]");
+        const saveState = root.querySelector("[data-journal-save-state]");
 
         const saveMeta = async () => {
             if (!meta || !root.dataset.tagsUrl) {
@@ -187,55 +253,7 @@
         form.addEventListener("submit", async (event) => {
             event.preventDefault();
             const message = input.value.trim();
-            if (!message) {
-                showError("Ask a journal question first.");
-                input.focus();
-                return;
-            }
-            clearError();
-            const userBubble = createBubble("user", message);
-            const loadingBubble = createLoadingBubble();
-            log.appendChild(userBubble);
-            log.appendChild(loadingBubble);
-            input.value = "";
-            input.disabled = true;
-
-            try {
-                const response = await fetch(root.dataset.chatUrl || "", {
-                    method: "POST",
-                    credentials: "same-origin",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRFToken": root.dataset.csrfToken || "",
-                        "X-Requested-With": "XMLHttpRequest",
-                    },
-                    body: JSON.stringify({ message }),
-                });
-                const payload = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                    throw new Error(payload.error || "Could not answer that right now.");
-                }
-                loadingBubble.remove();
-                const assistantBubble = createBubble(
-                    "assistant",
-                    payload.reply || "",
-                    payload.segments || [],
-                    payload.message_id,
-                    root,
-                );
-                log.appendChild(assistantBubble);
-                const feedbackRow = assistantBubble.querySelector(".admin-journal-feedback");
-                if (feedbackRow && payload.message_id) {
-                    bindFeedback(feedbackRow, payload.message_id, root);
-                }
-            } catch (err) {
-                loadingBubble.remove();
-                userBubble.remove();
-                showError(err.message || "Could not answer that right now.");
-            } finally {
-                input.disabled = false;
-                input.focus();
-            }
+            await sendJournalMessage(root, message, { input });
         });
     }
 
@@ -244,5 +262,5 @@
     window.FXJAppendJournalMessageBubble = (root, log, role, text, segments, messageId) => {
         log.appendChild(createBubble(role, text, segments, messageId, root));
     };
+    window.FXJSendJournalMessage = sendJournalMessage;
 })();
-

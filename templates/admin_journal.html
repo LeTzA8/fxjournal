@@ -63,7 +63,7 @@
                             <th>Title</th>
                             <th>Tags</th>
                             <th>Last message</th>
-                            <th></th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -81,7 +81,19 @@
                                 {% endfor %}
                             </td>
                             <td>{{ row.last_message_preview or "-" }}</td>
-                            <td><a class="view-btn" href="{{ url_for('admin_journal.view_session', session_id=item.id) }}">Open</a></td>
+                            <td>
+                                <div class="admin-journal-row-actions">
+                                    <a class="view-btn" href="{{ url_for('admin_journal.view_session', session_id=item.id) }}">Open</a>
+                                    <form
+                                        action="{{ url_for('admin_journal.purge_session', session_id=item.id) }}"
+                                        method="post"
+                                        onsubmit="return confirm('Permanently purge this AI journal session and its messages?');"
+                                    >
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="admin-journal-purge-btn">Purge</button>
+                                    </form>
+                                </div>
+                            </td>
                         </tr>
                         {% else %}
                         <tr>

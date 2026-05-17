@@ -1102,6 +1102,7 @@ class JournalSession(db.Model):
 
     SCOPE_TRADE = "trade"
     SCOPE_DAY = "day"
+    SCOPE_WEEK = "week"
     SCOPE_FREEFORM = "freeform"
 
     id = db.Column(db.Integer, primary_key=True)

@@ -1623,6 +1623,7 @@
                         class="ai-journal-product-surface"
                         data-dashboard-ai-journal
                         data-create-session-url="{{ url_for('dashboard.dashboard_journal_create_session') }}"
+                        data-context-candidates-url="{{ url_for('dashboard.dashboard_journal_context_candidates') }}"
                         data-csrf-token="{{ csrf_token() }}"
                         data-journal-session-url-pattern="{{ url_for('dashboard.dashboard_journal_session_detail', session_id=journal_session_url_ph) }}"
                         data-journal-session-url-placeholder="{{ journal_session_url_ph }}"
@@ -1630,31 +1631,18 @@
                         <div class="ai-journal-product-main ai-hero-card">
                             <p class="insight-title">AI Journal</p>
                             <h3>Reflect on the trades behind the week</h3>
-                            <p class="insight-body">Start a scoped conversation from a trade, a day, or your latest closed trades. Replies stay tied to structured journal data and the feedback buttons become research signal.</p>
+                            <p class="insight-body">Ask naturally first. MyFXJournal will suggest the trade, day, or review week before sending structured context into the chat.</p>
                             <p class="bad" data-dashboard-journal-error role="alert" hidden></p>
                             <div data-dashboard-journal-start-panel>
-                                <div class="ai-journal-start-grid">
-                                    <form action="#" method="post" class="ai-journal-start-form" data-dashboard-journal-start-form data-journal-scope="trade">
-                                        <label for="dashboardJournalTrade">Trade</label>
-                                        <select id="dashboardJournalTrade" name="scope_trade_pubkey" required>
-                                            <option value="">Choose a closed trade</option>
-                                            {% for trade in weekly_journal_preview.trade_options %}
-                                            <option value="{{ trade.pubkey }}">{{ trade.label }}</option>
-                                            {% endfor %}
-                                        </select>
-                                        <button type="submit">Reflect</button>
-                                    </form>
-                                    <form action="#" method="post" class="ai-journal-start-form" data-dashboard-journal-start-form data-journal-scope="day">
-                                        <label for="dashboardJournalDay">Day</label>
-                                        <input id="dashboardJournalDay" type="date" name="scope_date" value="{{ now_local.strftime('%Y-%m-%d') }}" required>
-                                        <button type="submit">Reflect</button>
-                                    </form>
-                                    <form action="#" method="post" class="ai-journal-start-form" data-dashboard-journal-start-form data-journal-scope="freeform">
-                                        <label>Open reflection</label>
-                                        <span class="soft">Last 20 closed trades</span>
-                                        <button type="submit">Open</button>
-                                    </form>
-                                </div>
+                                <form action="#" method="post" class="ai-journal-start-form ai-journal-start-form--unified" data-dashboard-journal-resolve-form>
+                                    <label for="dashboardJournalPrompt">Start with your question</label>
+                                    <textarea id="dashboardJournalPrompt" data-dashboard-journal-resolve-input rows="4" maxlength="1200" placeholder="Ask about a trade, a rough day, this week, or whatever you want to unpack."></textarea>
+                                    <div class="ai-journal-start-actions">
+                                        <span class="soft">You will confirm context before AI sees trade data.</span>
+                                        <button type="submit">Find context</button>
+                                    </div>
+                                </form>
+                                <div class="ai-journal-context-candidates" data-dashboard-journal-candidates hidden></div>
                             </div>
                             <div data-dashboard-journal-session-panel hidden></div>
                         </div>
@@ -2961,10 +2949,11 @@
 
     .ai-journal-start-form {
         display: grid;
-        grid-template-columns: minmax(6rem, 0.45fr) minmax(0, 1fr) auto;
+        grid-template-columns: 1fr;
         gap: 0.55rem;
-        align-items: center;
-        padding: 0.55rem;
+        align-items: stretch;
+        margin-top: 1rem;
+        padding: 0.7rem;
         border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
         border-radius: 12px;
         background: color-mix(in srgb, var(--surface) 76%, transparent);
@@ -2979,16 +2968,40 @@
     }
 
     .ai-journal-start-form select,
-    .ai-journal-start-form input {
+    .ai-journal-start-form input,
+    .ai-journal-start-form textarea {
         min-width: 0;
         width: 100%;
         border: 1px solid var(--border);
         border-radius: 10px;
-        padding: 0.45rem 0.55rem;
-        background: var(--card);
+        padding: 0.65rem 0.75rem;
+        background: color-mix(in srgb, var(--card) 86%, black 14%);
         color: var(--ink);
         font: inherit;
         font-size: 0.84rem;
+    }
+
+    .ai-journal-start-form textarea {
+        min-height: 7rem;
+        resize: vertical;
+    }
+
+    .ai-journal-start-form textarea::placeholder {
+        color: color-mix(in srgb, var(--muted) 82%, var(--ink));
+    }
+
+    .ai-journal-start-form textarea:focus {
+        outline: none;
+        border-color: color-mix(in srgb, var(--accent) 64%, var(--border));
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+    }
+
+    .ai-journal-start-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
     }
 
     .ai-journal-start-form button {
@@ -3001,6 +3014,71 @@
         font-size: 0.78rem;
         font-weight: 800;
         cursor: pointer;
+    }
+
+    .ai-journal-start-form button:disabled,
+    .ai-journal-context-card button:disabled {
+        opacity: 0.6;
+        cursor: wait;
+    }
+
+    .ai-journal-context-candidates {
+        display: grid;
+        gap: 0.65rem;
+        margin-top: 0.75rem;
+    }
+
+    .ai-journal-context-heading {
+        margin: 0.15rem 0 0;
+        color: var(--ink);
+        font-weight: 800;
+    }
+
+    .ai-journal-context-card {
+        display: grid;
+        gap: 0.55rem;
+        padding: 0.75rem;
+        border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--card) 78%, black 22%);
+    }
+
+    .ai-journal-context-card h4 {
+        margin: 0;
+        color: var(--ink);
+        font-size: 0.96rem;
+        letter-spacing: 0;
+    }
+
+    .ai-journal-context-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.86rem;
+        line-height: 1.5;
+    }
+
+    .ai-journal-context-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        align-items: center;
+    }
+
+    .ai-journal-context-actions button {
+        border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
+        border-radius: 999px;
+        padding: 0.45rem 0.75rem;
+        background: color-mix(in srgb, var(--accent) 14%, var(--card));
+        color: var(--ink);
+        font: inherit;
+        font-size: 0.78rem;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .ai-journal-context-actions button[data-dashboard-journal-show-alternatives] {
+        border-color: color-mix(in srgb, var(--border) 82%, transparent);
+        background: color-mix(in srgb, var(--surface) 80%, transparent);
     }
 
     .ai-journal-signal-grid {

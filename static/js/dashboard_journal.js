@@ -5,6 +5,7 @@
     }
 
     const createUrl = surface.dataset.createSessionUrl || "";
+    const contextCandidatesUrl = surface.dataset.contextCandidatesUrl || "";
     const csrfToken = surface.dataset.csrfToken || "";
     const sessionUrlPattern = surface.dataset.journalSessionUrlPattern || "";
     const sessionUrlPlaceholder = surface.dataset.journalSessionUrlPlaceholder || "";
@@ -12,6 +13,7 @@
     const startPanel = surface.querySelector("[data-dashboard-journal-start-panel]");
     const sessionPanel = surface.querySelector("[data-dashboard-journal-session-panel]");
     const sessionError = surface.querySelector("[data-dashboard-journal-error]");
+    const candidatesPanel = surface.querySelector("[data-dashboard-journal-candidates]");
 
     const sessionDetailUrl = (sessionId) => {
         if (sessionUrlPattern && sessionUrlPlaceholder) {
@@ -48,6 +50,10 @@
         }
         if (startPanel) {
             startPanel.hidden = false;
+        }
+        if (candidatesPanel) {
+            candidatesPanel.innerHTML = "";
+            candidatesPanel.hidden = true;
         }
         clearSurfaceError();
     };
@@ -130,7 +136,7 @@
 
     const openSessionPayload = (payload) => {
         if (!sessionPanel || !startPanel) {
-            return;
+            return null;
         }
         clearSurfaceError();
         startPanel.hidden = true;
@@ -158,6 +164,7 @@
         if (chatInput) {
             chatInput.focus();
         }
+        return section;
     };
 
     const postJson = async (url, body) => {
@@ -196,34 +203,157 @@
         return data;
     };
 
-    surface.querySelectorAll("[data-dashboard-journal-start-form]").forEach((form) => {
+    const sessionBodyForCandidate = (candidate) => {
+        if (candidate && candidate.session_payload) {
+            return candidate.session_payload;
+        }
+        const scopeType = candidate ? candidate.scope_type : "";
+        const body = { scope_type: scopeType };
+        if (candidate && candidate.scope_trade_pubkey) {
+            body.scope_trade_pubkey = candidate.scope_trade_pubkey;
+        }
+        if (candidate && candidate.scope_date) {
+            body.scope_date = candidate.scope_date;
+        }
+        return body;
+    };
+
+    const sendInitialMessage = async (section, message) => {
+        if (!section || !message) {
+            return;
+        }
+        if (typeof window.FXJSendJournalMessage === "function") {
+            await window.FXJSendJournalMessage(section, message, {
+                input: section.querySelector("[data-journal-chat-input]"),
+            });
+            return;
+        }
+        const input = section.querySelector("[data-journal-chat-input]");
+        const form = section.querySelector("[data-journal-chat-form]");
+        if (input && form) {
+            input.value = message;
+            form.requestSubmit();
+        }
+    };
+
+    const confirmCandidate = async (candidate, message, root) => {
+        if (!candidate) {
+            return;
+        }
+        clearSurfaceError();
+        const buttons = root ? root.querySelectorAll("button") : [];
+        buttons.forEach((button) => {
+            button.disabled = true;
+        });
+        try {
+            const payload = await postJson(createUrl, sessionBodyForCandidate(candidate));
+            const section = openSessionPayload(payload);
+            await sendInitialMessage(section, message);
+        } catch (err) {
+            showSurfaceError(err.message || "Could not start reflection.");
+            buttons.forEach((button) => {
+                button.disabled = false;
+            });
+        }
+    };
+
+    const renderCandidateCard = (candidate, message, options) => {
+        const settings = options || {};
+        const card = document.createElement("article");
+        card.className = "ai-journal-context-card";
+        const title = document.createElement("h4");
+        title.textContent = candidate.label || "Suggested context";
+        const reason = document.createElement("p");
+        reason.textContent = candidate.reason || "";
+        const actions = document.createElement("div");
+        actions.className = "ai-journal-context-actions";
+
+        const useButton = document.createElement("button");
+        useButton.type = "button";
+        useButton.textContent = "Use this context";
+        useButton.addEventListener("click", () => confirmCandidate(candidate, message, card));
+        actions.appendChild(useButton);
+
+        if (settings.showAlternativesButton) {
+            const chooseButton = document.createElement("button");
+            chooseButton.type = "button";
+            chooseButton.textContent = "Choose another";
+            chooseButton.setAttribute("data-dashboard-journal-show-alternatives", "");
+            chooseButton.addEventListener("click", () => {
+                renderCandidates(settings.payload, message, true);
+            });
+            actions.appendChild(chooseButton);
+        }
+
+        card.appendChild(title);
+        card.appendChild(reason);
+        card.appendChild(actions);
+        return card;
+    };
+
+    function renderCandidates(payload, message, showAll) {
+        if (!candidatesPanel) {
+            return;
+        }
+        const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+        const recommended = payload.recommended || candidates[0];
+        candidatesPanel.innerHTML = "";
+        candidatesPanel.hidden = false;
+
+        const heading = document.createElement("p");
+        heading.className = "ai-journal-context-heading";
+        heading.textContent = showAll ? "Choose the context for this reflection" : "I think you mean...";
+        candidatesPanel.appendChild(heading);
+
+        if (!candidates.length || !recommended) {
+            const empty = document.createElement("p");
+            empty.className = "soft";
+            empty.textContent = "No context candidates were found. Try naming a trade, day, or week.";
+            candidatesPanel.appendChild(empty);
+            return;
+        }
+
+        const visibleCandidates = showAll ? candidates : [recommended];
+        visibleCandidates.forEach((candidate) => {
+            candidatesPanel.appendChild(
+                renderCandidateCard(candidate, message, {
+                    payload,
+                    showAlternativesButton: !showAll && candidates.length > 1,
+                }),
+            );
+        });
+    }
+
+    surface.querySelectorAll("[data-dashboard-journal-resolve-form]").forEach((form) => {
         form.addEventListener("submit", async (event) => {
             event.preventDefault();
             clearSurfaceError();
-            const scope = (form.dataset.journalScope || "").trim().toLowerCase();
-            const body = { scope_type: scope };
-            if (scope === "trade") {
-                const sel = form.querySelector("select[name='scope_trade_pubkey']");
-                const v = sel ? String(sel.value || "").trim() : "";
-                if (!v) {
-                    showSurfaceError("Choose a closed trade first.");
-                    return;
+            if (candidatesPanel) {
+                candidatesPanel.innerHTML = "";
+                candidatesPanel.hidden = true;
+            }
+            const input = form.querySelector("[data-dashboard-journal-resolve-input]");
+            const message = input ? String(input.value || "").trim() : "";
+            if (!message) {
+                showSurfaceError("Type what you want to reflect on first.");
+                if (input) {
+                    input.focus();
                 }
-                body.scope_trade_pubkey = v;
-            } else if (scope === "day") {
-                const inp = form.querySelector("input[name='scope_date']");
-                const v = inp ? String(inp.value || "").trim() : "";
-                if (!v) {
-                    showSurfaceError("Pick a date.");
-                    return;
-                }
-                body.scope_date = v;
+                return;
+            }
+            const submit = form.querySelector("button[type='submit']");
+            if (submit) {
+                submit.disabled = true;
             }
             try {
-                const payload = await postJson(createUrl, body);
-                openSessionPayload(payload);
+                const payload = await postJson(contextCandidatesUrl, { message });
+                renderCandidates(payload, message, false);
             } catch (err) {
-                showSurfaceError(err.message || "Could not start reflection.");
+                showSurfaceError(err.message || "Could not resolve journal context.");
+            } finally {
+                if (submit) {
+                    submit.disabled = false;
+                }
             }
         });
     });

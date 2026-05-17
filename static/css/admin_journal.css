@@ -24,6 +24,35 @@
     overflow-x: auto;
 }
 
+.admin-journal-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+}
+
+.admin-journal-row-actions form {
+    margin: 0;
+}
+
+.admin-journal-purge-btn {
+    min-height: 2rem;
+    border: 1px solid color-mix(in srgb, var(--bad) 48%, var(--border));
+    border-radius: 7px;
+    padding: 0.35rem 0.62rem;
+    background: color-mix(in srgb, var(--bad) 12%, var(--card));
+    color: color-mix(in srgb, var(--bad) 82%, white 18%);
+    font: inherit;
+    font-size: 0.76rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.admin-journal-purge-btn:hover {
+    border-color: color-mix(in srgb, var(--bad) 62%, var(--border));
+    background: color-mix(in srgb, var(--bad) 18%, var(--card));
+}
+
 .admin-journal-chip,
 .admin-journal-ref-pill {
     display: inline-flex;
@@ -121,6 +150,10 @@
     border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.12);
+}
+
+.admin-journal-chat-log:empty {
+    display: none;
 }
 
 .admin-journal-bubble {

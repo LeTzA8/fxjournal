@@ -1,6 +1,7 @@
 import json
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from flask import Blueprint, current_app, g, jsonify, render_template, request, session, url_for
 from sqlalchemy import or_
@@ -2049,6 +2050,242 @@ def _dashboard_journal_urls(session_id):
         "tags_url": url_for("dashboard.dashboard_journal_tags", session_id=session_id),
         "feedback_url_template": url_for("dashboard.dashboard_journal_feedback", message_id=0),
     }
+
+
+_DASHBOARD_JOURNAL_MARKET_TZ = ZoneInfo("America/New_York")
+_DASHBOARD_JOURNAL_DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2})\b")
+_DASHBOARD_JOURNAL_UPPER_TOKEN_RE = re.compile(r"\b[A-Z0-9]{4,12}\b")
+
+
+def _dashboard_journal_normalize_symbol(value):
+    return re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+
+
+def _dashboard_journal_parse_dates(message):
+    dates = []
+    seen = set()
+    for raw in _DASHBOARD_JOURNAL_DATE_RE.findall(message or ""):
+        try:
+            parsed = datetime.strptime(raw, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if parsed in seen:
+            continue
+        dates.append(parsed)
+        seen.add(parsed)
+    return dates
+
+
+def _dashboard_journal_trade_label(trade):
+    symbol = str(getattr(trade, "symbol", "") or "").strip() or "Trade"
+    closed_at = getattr(trade, "closed_at", None)
+    date_label = closed_at.strftime("%Y-%m-%d") if closed_at else "open"
+    pnl = getattr(trade, "pnl", None)
+    pnl_label = ""
+    if pnl is not None:
+        try:
+            pnl_label = f" ({float(pnl):+.2f})"
+        except (TypeError, ValueError):
+            pnl_label = ""
+    return f"{symbol} {date_label}{pnl_label}"
+
+
+def _dashboard_journal_candidate(candidate_id, scope_type, label, reason, session_payload, score):
+    return {
+        "id": candidate_id,
+        "scope_type": scope_type,
+        "label": label,
+        "reason": reason,
+        "session_payload": session_payload,
+        "score": score,
+    }
+
+
+def _dashboard_journal_week_scope_date(user_id, trade_account_id):
+    period = (
+        get_latest_trade_week_period(user_id=user_id, trade_account_id=trade_account_id)
+        or get_weekly_dashboard_period()
+    )
+    start_utc = period.get("period_start_utc") if isinstance(period, dict) else None
+    if not isinstance(start_utc, datetime):
+        return utcnow_naive().date()
+    if start_utc.tzinfo is None:
+        start_utc = start_utc.replace(tzinfo=timezone.utc)
+    else:
+        start_utc = start_utc.astimezone(timezone.utc)
+    return start_utc.astimezone(_DASHBOARD_JOURNAL_MARKET_TZ).date()
+
+
+def _dashboard_journal_week_candidate(user_id, trade_account_id, score=50):
+    week_start = _dashboard_journal_week_scope_date(user_id, trade_account_id)
+    return _dashboard_journal_candidate(
+        f"week:{week_start.isoformat()}",
+        JournalSession.SCOPE_WEEK,
+        f"Dashboard review week starting {week_start.isoformat()}",
+        "Best default when the first message is broad or exploratory.",
+        {"scope_type": JournalSession.SCOPE_WEEK, "scope_date": week_start.isoformat()},
+        score,
+    )
+
+
+def _dashboard_journal_freeform_candidate(score=40, *, reason=None):
+    return _dashboard_journal_candidate(
+        "freeform:recent",
+        JournalSession.SCOPE_FREEFORM,
+        "Open reflection with recent closed trades",
+        reason or "Use recent closed trades when no exact trade or day is clear.",
+        {"scope_type": JournalSession.SCOPE_FREEFORM},
+        score,
+    )
+
+
+def _dashboard_journal_context_candidates(user, message):
+    active_account = get_active_trade_account_for_user(user.id)
+    trade_account_id = getattr(active_account, "id", None)
+    raw_message = str(message or "")
+    compact_message = _dashboard_journal_normalize_symbol(raw_message)
+    parsed_dates = _dashboard_journal_parse_dates(raw_message)
+    explicit_unknown_token = any(
+        token not in {"WHAT", "WHEN", "WEEK", "THIS", "THAT", "TRADE", "TRADES", "REFLECT", "ABOUT"}
+        for token in _DASHBOARD_JOURNAL_UPPER_TOKEN_RE.findall(raw_message)
+    )
+
+    query = Trade.query.filter(
+        Trade.user_id == user.id,
+        Trade.closed_at.isnot(None),
+    )
+    if trade_account_id is not None:
+        query = query.filter(Trade.trade_account_id == trade_account_id)
+    trades = query.order_by(Trade.closed_at.desc(), Trade.id.desc()).limit(200).all()
+
+    matched_symbols = {
+        _dashboard_journal_normalize_symbol(trade.symbol)
+        for trade in trades
+        if _dashboard_journal_normalize_symbol(trade.symbol)
+        and _dashboard_journal_normalize_symbol(trade.symbol) in compact_message
+    }
+    date_set = set(parsed_dates)
+    primary_candidates = []
+
+    symbol_date_matches = [
+        trade
+        for trade in trades
+        if _dashboard_journal_normalize_symbol(trade.symbol) in matched_symbols
+        and getattr(trade, "closed_at", None) is not None
+        and trade.closed_at.date() in date_set
+    ]
+    for trade in symbol_date_matches[:3]:
+        closed_date = trade.closed_at.date().isoformat()
+        primary_candidates.append(
+            _dashboard_journal_candidate(
+                f"trade:{trade.pubkey}",
+                JournalSession.SCOPE_TRADE,
+                _dashboard_journal_trade_label(trade),
+                f"Matched {trade.symbol} and {closed_date} in your message.",
+                {"scope_type": JournalSession.SCOPE_TRADE, "scope_trade_pubkey": trade.pubkey},
+                95,
+            )
+        )
+
+    if not primary_candidates and matched_symbols:
+        for trade in trades:
+            symbol_key = _dashboard_journal_normalize_symbol(trade.symbol)
+            if symbol_key not in matched_symbols:
+                continue
+            primary_candidates.append(
+                _dashboard_journal_candidate(
+                    f"trade:{trade.pubkey}",
+                    JournalSession.SCOPE_TRADE,
+                    _dashboard_journal_trade_label(trade),
+                    f"Matched the {trade.symbol} symbol and chose the latest closed trade.",
+                    {"scope_type": JournalSession.SCOPE_TRADE, "scope_trade_pubkey": trade.pubkey},
+                    85,
+                )
+            )
+            break
+
+    if not primary_candidates and parsed_dates:
+        for parsed_date in parsed_dates[:3]:
+            day_trades = [
+                trade
+                for trade in trades
+                if getattr(trade, "closed_at", None) is not None and trade.closed_at.date() == parsed_date
+            ]
+            if len(day_trades) == 1:
+                trade = day_trades[0]
+                primary_candidates.append(
+                    _dashboard_journal_candidate(
+                        f"trade:{trade.pubkey}",
+                        JournalSession.SCOPE_TRADE,
+                        _dashboard_journal_trade_label(trade),
+                        f"Only one closed trade matched {parsed_date.isoformat()}.",
+                        {"scope_type": JournalSession.SCOPE_TRADE, "scope_trade_pubkey": trade.pubkey},
+                        82,
+                    )
+                )
+            elif len(day_trades) > 1:
+                primary_candidates.append(
+                    _dashboard_journal_candidate(
+                        f"day:{parsed_date.isoformat()}",
+                        JournalSession.SCOPE_DAY,
+                        f"{parsed_date.isoformat()} trading day",
+                        f"Matched {len(day_trades)} closed trades on that date.",
+                        {"scope_type": JournalSession.SCOPE_DAY, "scope_date": parsed_date.isoformat()},
+                        80,
+                    )
+                )
+
+    fallback_candidates = [
+        _dashboard_journal_week_candidate(user.id, trade_account_id),
+        _dashboard_journal_freeform_candidate(
+            reason="No exact trade or day matched, so use recent closed trades instead."
+            if parsed_dates or explicit_unknown_token
+            else None
+        ),
+    ]
+    candidates = []
+    seen_ids = set()
+    for candidate in [*primary_candidates, *fallback_candidates]:
+        if candidate["id"] in seen_ids:
+            continue
+        candidates.append(candidate)
+        seen_ids.add(candidate["id"])
+
+    if primary_candidates:
+        recommended = primary_candidates[0]
+    elif parsed_dates or explicit_unknown_token:
+        recommended = next(
+            (candidate for candidate in candidates if candidate["scope_type"] == JournalSession.SCOPE_FREEFORM),
+            candidates[0] if candidates else None,
+        )
+    else:
+        recommended = next(
+            (candidate for candidate in candidates if candidate["scope_type"] == JournalSession.SCOPE_WEEK),
+            candidates[0] if candidates else None,
+        )
+    return {"recommended": recommended, "candidates": candidates}
+
+
+@bp.route("/dashboard/journal/context-candidates", methods=["POST"])
+@login_required
+def dashboard_journal_context_candidates():
+    if is_support_view_session_active():
+        return _dashboard_journal_support_blocked()
+    user_id = get_effective_user_id()
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"error": "not_found", "message": "User not found."}), 404
+    deny = _dashboard_journal_admin_only(user)
+    if deny:
+        return deny
+    payload = request.get_json(silent=True) or {}
+    message = str(payload.get("message") or "").strip()
+    if not message:
+        return jsonify({"error": "message_required", "message": "Type a reflection prompt first."}), 400
+    if len(message) > 1200:
+        return jsonify({"error": "message_too_long", "message": "Keep messages under 1200 characters."}), 400
+    result = _dashboard_journal_context_candidates(user, message)
+    return jsonify({"message": message, **result})
 
 
 @bp.route("/dashboard/journal/sessions", methods=["POST"])

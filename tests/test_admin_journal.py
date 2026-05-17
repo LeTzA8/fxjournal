@@ -269,6 +269,39 @@ def test_journal_end_session_sets_ended_at(app_ctx, client):
     assert db.session.get(JournalSession, journal_session.id).ended_at is not None
 
 
+def test_admin_can_purge_own_journal_session_and_messages(app_ctx, client):
+    admin = _create_user("journal-admin-purge", "journal-admin-purge@example.com", is_admin=True)
+    account = _create_account(admin)
+    journal_session = JournalSession(
+        user_id=admin.id,
+        trade_account_id=account.id,
+        scope_type=JournalSession.SCOPE_FREEFORM,
+        started_at=datetime(2026, 5, 9, 9, 0),
+    )
+    db.session.add(journal_session)
+    db.session.flush()
+    message = JournalMessage(
+        session_id=journal_session.id,
+        user_id=admin.id,
+        role=JournalMessage.ROLE_USER,
+        content="purge this",
+    )
+    db.session.add(message)
+    db.session.commit()
+    session_id = journal_session.id
+    message_id = message.id
+    _login_as(client, admin)
+
+    page = client.get("/admin/journal")
+    assert page.status_code == 200
+    assert f"/admin/journal/sessions/{session_id}/purge".encode() in page.data
+    response = client.post(f"/admin/journal/sessions/{session_id}/purge")
+
+    assert response.status_code == 302
+    assert db.session.get(JournalSession, session_id) is None
+    assert db.session.get(JournalMessage, message_id) is None
+
+
 def test_day_scope_payload_caps_chronologically_with_truncation_note(app_ctx):
     admin = _create_user("journal-day-cap", "journal-day-cap@example.com", is_admin=True)
     account = _create_account(admin)
@@ -302,6 +335,60 @@ def test_day_scope_payload_caps_chronologically_with_truncation_note(app_ctx):
     assert payload["summary"]["day_trades_in_payload"] == MAX_DAY_SCOPE_TRADES
     assert payload["summary"]["trade_count"] == MAX_DAY_SCOPE_TRADES
     assert f"showing {MAX_DAY_SCOPE_TRADES} of {total}" in payload["summary"]["day_scope_truncation"]
+
+
+def test_week_scope_payload_uses_active_account_new_york_market_week(app_ctx):
+    admin = _create_user("journal-week-scope", "journal-week-scope@example.com", is_admin=True)
+    account = _create_account(admin)
+    other_account = _create_account(admin, is_default=False)
+    before_week = _create_trade(
+        admin,
+        account,
+        symbol="EURUSD",
+        closed_at=datetime(2026, 5, 4, 3, 30),
+    )
+    in_week = _create_trade(
+        admin,
+        account,
+        symbol="BTCUSD",
+        closed_at=datetime(2026, 5, 4, 4, 30),
+    )
+    later_in_week = _create_trade(
+        admin,
+        account,
+        symbol="XAUUSD",
+        closed_at=datetime(2026, 5, 8, 15, 0),
+    )
+    other_account_trade = _create_trade(
+        admin,
+        other_account,
+        symbol="GBPJPY",
+        closed_at=datetime(2026, 5, 8, 15, 0),
+    )
+    after_week = _create_trade(
+        admin,
+        account,
+        symbol="US30",
+        closed_at=datetime(2026, 5, 11, 4, 1),
+    )
+    db.session.commit()
+
+    journal_session = JournalSession(
+        user_id=admin.id,
+        trade_account_id=account.id,
+        scope_type=JournalSession.SCOPE_WEEK,
+        scope_date=date(2026, 5, 4),
+        started_at=datetime(2026, 5, 12, 9, 0),
+    )
+    payload = build_journal_payload(admin, journal_session)
+
+    trade_pubkeys = [trade["trade_pubkey"] for trade in payload["trades"]]
+    assert trade_pubkeys == [in_week.pubkey, later_in_week.pubkey]
+    assert before_week.pubkey not in trade_pubkeys
+    assert other_account_trade.pubkey not in trade_pubkeys
+    assert after_week.pubkey not in trade_pubkeys
+    assert payload["summary"]["market_week_start"] == "2026-05-04"
+    assert payload["summary"]["trade_count"] == 2
 
 
 def test_admin_a_cannot_access_admin_b_journal_session(app_ctx, client):
@@ -397,6 +484,7 @@ def test_admin_a_cannot_update_admin_b_session_tags_or_end(app_ctx, client):
         == 404
     )
     assert client.post(f"/admin/journal/sessions/{journal_session_b.id}/end").status_code == 404
+    assert client.post(f"/admin/journal/sessions/{journal_session_b.id}/purge").status_code == 404
     reloaded = db.session.get(JournalSession, journal_session_b.id)
     assert reloaded.title is None
     assert reloaded.ended_at is None
@@ -467,3 +555,4 @@ def test_non_admin_cannot_hit_journal_endpoints_with_guessed_ids(app_ctx, client
     )
     assert client.post(f"/admin/journal/messages/{mid}/feedback", json={"feedback": "useful"}).status_code == 404
     assert client.post(f"/admin/journal/sessions/{sid}/end").status_code == 404
+    assert client.post(f"/admin/journal/sessions/{sid}/purge").status_code == 404
