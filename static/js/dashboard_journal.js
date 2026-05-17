@@ -66,6 +66,8 @@
         section.dataset.tagsUrl = payload.tags_url || "";
         section.dataset.feedbackTemplate = payload.feedback_url_template || "";
         section.dataset.csrfToken = csrfToken;
+        // Dashboard journal is the user-facing chat: skip the research feedback row.
+        section.dataset.hideFeedback = "1";
 
         const ctx = payload.context_summary || {};
         const refs = Array.isArray(ctx.refs) ? ctx.refs : [];
@@ -103,25 +105,29 @@
         }
         details.appendChild(refList);
 
+        const chat = document.createElement("div");
+        chat.className = "dashboard-journal-chat";
+
         const log = document.createElement("div");
         log.className = "admin-journal-chat-log";
         log.setAttribute("data-journal-chat-log", "");
 
         const form = document.createElement("form");
-        form.className = "admin-journal-chat-form";
+        form.className = "dashboard-journal-chat-form";
         form.setAttribute("data-journal-chat-form", "");
         form.innerHTML = `
-            <label for="dashboardJournalInlineChat">Message</label>
-            <textarea id="dashboardJournalInlineChat" data-journal-chat-input rows="3" maxlength="1200" placeholder="Ask about this scoped set of trades"></textarea>
-            <div class="admin-journal-chat-actions">
-                <p class="bad admin-journal-error" data-journal-chat-error hidden></p>
-                <button type="submit" class="submit-btn">Send</button>
+            <p class="bad dashboard-journal-chat-error" data-journal-chat-error hidden></p>
+            <div class="dashboard-journal-composer">
+                <textarea id="dashboardJournalInlineChat" data-journal-chat-input rows="1" maxlength="1200" placeholder="Reply to keep reflecting..." aria-label="Message"></textarea>
+                <button type="submit" class="dashboard-journal-send">Send</button>
             </div>
         `;
 
+        chat.appendChild(log);
+        chat.appendChild(form);
+
         section.appendChild(details);
-        section.appendChild(log);
-        section.appendChild(form);
+        section.appendChild(chat);
 
         const appendBubble = window.FXJAppendJournalMessageBubble;
         if (typeof appendBubble === "function" && Array.isArray(payload.messages)) {
@@ -161,7 +167,28 @@
         }
 
         const chatInput = section.querySelector("[data-journal-chat-input]");
+        const chatForm = section.querySelector("[data-journal-chat-form]");
         if (chatInput) {
+            const maxComposerHeight = 176;
+            const resizeComposer = () => {
+                chatInput.style.height = "auto";
+                chatInput.style.height = `${Math.min(chatInput.scrollHeight, maxComposerHeight)}px`;
+            };
+            chatInput.addEventListener("input", resizeComposer);
+            chatInput.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    if (chatForm) {
+                        chatForm.requestSubmit();
+                    }
+                }
+            });
+            if (chatForm) {
+                chatForm.addEventListener("submit", () => {
+                    window.setTimeout(resizeComposer, 0);
+                });
+            }
+            resizeComposer();
             chatInput.focus();
         }
         return section;

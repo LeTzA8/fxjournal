@@ -2,6 +2,13 @@
 
 Last Updated: 2026-05-17
 
+## Dashboard AI journal chat UX cleanup (2026-05-17)
+
+- Reworked the dashboard AI journal slide so the inline session reads like an actual chat. The message log and composer are now wrapped in one bordered `.dashboard-journal-chat` container: the log no longer has its own border/scroll box, the "Message" label is gone, and the textarea + Send button sit inline as a composer that auto-grows and supports Enter-to-send / Shift+Enter newline. (`static/js/dashboard_journal.js`, `templates/index.html`)
+- Removed the per-message research feedback row (`Useful` / `Generic` / `Missing context` / `Missing feature` buttons plus the Optional note field) from the user-facing dashboard journal. `dashboard_journal.js` marks its session root with `data-hide-feedback` and `admin_journal.js` `createBubble` skips the feedback controls when that flag is set; the standalone `/admin/journal` research page still keeps feedback. (`static/js/dashboard_journal.js`, `static/js/admin_journal.js`)
+- Replaced the "Research Signals" side panel (sessions / feedback clicks / missing-data note counts) with a simpler "Recent reflections" list — a short hint plus the recent session rows (now up to 6). Dropped the now-unused `session_count` / `feedback_count` / `missing_signal_count` from `_build_weekly_journal_preview` and the unused `JournalMessage` import. (`routes/dashboard.py`, `templates/index.html`)
+- Fixed double-scrolling on the AI journal slide: on desktop the journal `ai-hero-card` height clamp (`max-height` + `overflow:auto`) is overridden so the panel grows with the page instead of nesting a scroll box inside a scroll box. (`templates/index.html` styles)
+
 ## Dashboard AI journal + trial copy alignment (2026-05-17)
 
 - AI journal trade payloads now carry the actual strategy, not just its name. `helpers/journal_context._trade_dict` adds `strategy_description` (from `TradeProfileVersion.short_description`) and `strategy_version` alongside the existing `strategy` name, and the prompt-line serializer emits them, so the journal model sees the real strategy text. The trade query already eager-loads `trade_profile_version`, so no extra queries. (`helpers/journal_context.py`)

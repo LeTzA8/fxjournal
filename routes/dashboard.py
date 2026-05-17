@@ -80,7 +80,6 @@ from helpers.utils import login_required, utcnow_naive
 from models import (
     AccountCashFlow,
     AIGeneratedResponse,
-    JournalMessage,
     JournalSession,
     Trade,
     User,
@@ -143,9 +142,6 @@ def _build_weekly_journal_preview(user_id, trade_account_id, user_trades, timezo
         return {
             "trade_options": [],
             "recent_sessions": [],
-            "session_count": 0,
-            "feedback_count": 0,
-            "missing_signal_count": 0,
         }
 
     closed_trades = [
@@ -185,36 +181,12 @@ def _build_weekly_journal_preview(user_id, trade_account_id, user_trades, timezo
     recent_sessions = (
         JournalSession.query.filter_by(user_id=user_id)
         .order_by(JournalSession.started_at.desc(), JournalSession.id.desc())
-        .limit(3)
+        .limit(6)
         .all()
-    )
-    feedback_count = (
-        db.session.query(JournalMessage.id)
-        .filter(
-            JournalMessage.user_id == user_id,
-            JournalMessage.feedback.isnot(None),
-        )
-        .count()
-    )
-    missing_signal_count = (
-        db.session.query(JournalMessage.id)
-        .filter(
-            JournalMessage.user_id == user_id,
-            JournalMessage.feedback.in_(
-                [
-                    JournalMessage.FEEDBACK_NEEDED_MORE_CONTEXT,
-                    JournalMessage.FEEDBACK_MISSING_FEATURE,
-                ]
-            ),
-        )
-        .count()
     )
     return {
         "trade_options": trade_options,
         "recent_sessions": recent_sessions,
-        "session_count": JournalSession.query.filter_by(user_id=user_id).count(),
-        "feedback_count": feedback_count,
-        "missing_signal_count": missing_signal_count,
     }
 
 

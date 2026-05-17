@@ -1647,12 +1647,8 @@
                             <div data-dashboard-journal-session-panel hidden></div>
                         </div>
                         <aside class="ai-journal-product-side ai-hero-card">
-                            <p class="insight-title">Research Signals</p>
-                            <div class="ai-journal-signal-grid">
-                                <span><strong>{{ weekly_journal_preview.session_count }}</strong> sessions</span>
-                                <span><strong>{{ weekly_journal_preview.feedback_count }}</strong> feedback clicks</span>
-                                <span><strong>{{ weekly_journal_preview.missing_signal_count }}</strong> missing-data notes</span>
-                            </div>
+                            <p class="insight-title">Recent reflections</p>
+                            <p class="insight-body ai-journal-side-hint">Pick up where you left off, or start a new one above.</p>
                             <div class="ai-journal-session-list">
                                 {% for item in weekly_journal_preview.recent_sessions %}
                                 <button type="button" class="ai-journal-session-row" data-dashboard-journal-open-session="{{ item.id }}">
@@ -1660,7 +1656,7 @@
                                     <small>{{ item.started_at.strftime("%d %b %H:%M") if item.started_at else "" }}</small>
                                 </button>
                                 {% else %}
-                                <p class="soft">No AI journal sessions yet.</p>
+                                <p class="soft">No reflections yet. Ask a question above to start one.</p>
                                 {% endfor %}
                             </div>
                         </aside>
@@ -3081,14 +3077,13 @@
         background: color-mix(in srgb, var(--surface) 80%, transparent);
     }
 
-    .ai-journal-signal-grid {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 0.5rem;
-        margin-top: 0.75rem;
+    .ai-journal-side-hint {
+        margin-top: 0.4rem !important;
+        font-size: 0.85rem !important;
+        line-height: 1.5 !important;
+        color: var(--muted);
     }
 
-    .ai-journal-signal-grid span,
     .ai-journal-session-list a,
     .ai-journal-session-list button.ai-journal-session-row {
         display: flex;
@@ -3106,9 +3101,10 @@
         width: 100%;
     }
 
-    .ai-journal-signal-grid strong {
-        font-size: 1.12rem;
-        color: color-mix(in srgb, var(--accent) 70%, white 30%);
+    .ai-journal-session-list a:hover,
+    .ai-journal-session-list button.ai-journal-session-row:hover {
+        border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+        background: color-mix(in srgb, var(--accent) 10%, var(--surface));
     }
 
     .ai-journal-session-list {
@@ -3124,6 +3120,106 @@
 
     .dashboard-journal-inline-toolbar {
         margin-bottom: 0.65rem;
+    }
+
+    /* AI journal panel: let the panel grow with the page instead of
+       nesting a scroll box inside the height-clamped hero card. */
+    @media (min-width: 1081px) {
+        .ai-journal-product-main.ai-hero-card,
+        .ai-journal-product-side.ai-hero-card {
+            max-height: none;
+            overflow: visible;
+        }
+    }
+
+    /* Unified journal chat: log + composer read as one continuous chat. */
+    .dashboard-journal-chat {
+        margin-top: 0.85rem;
+        border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--card) 84%, black 16%);
+        overflow: hidden;
+    }
+
+    .dashboard-journal-chat .admin-journal-chat-log {
+        min-height: 0;
+        max-height: none;
+        overflow: visible;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        padding: 0.95rem 0.95rem 0.4rem;
+    }
+
+    .dashboard-journal-chat .admin-journal-chat-log:empty {
+        display: none;
+    }
+
+    .dashboard-journal-chat-form {
+        display: grid;
+        gap: 0.5rem;
+        padding: 0.7rem 0.75rem;
+        border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+        background: color-mix(in srgb, var(--surface) 70%, transparent);
+    }
+
+    .dashboard-journal-composer {
+        display: flex;
+        align-items: flex-end;
+        gap: 0.55rem;
+    }
+
+    .dashboard-journal-chat-form textarea {
+        flex: 1;
+        min-width: 0;
+        min-height: 2.7rem;
+        max-height: 11rem;
+        resize: none;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 0.6rem 0.75rem;
+        background: color-mix(in srgb, var(--card) 92%, var(--surface));
+        color: var(--ink);
+        font: inherit;
+        font-size: 0.88rem;
+        line-height: 1.5;
+    }
+
+    .dashboard-journal-chat-form textarea::placeholder {
+        color: color-mix(in srgb, var(--muted) 82%, var(--ink));
+    }
+
+    .dashboard-journal-chat-form textarea:focus {
+        outline: none;
+        border-color: color-mix(in srgb, var(--accent) 64%, var(--border));
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+    }
+
+    .dashboard-journal-send {
+        flex: 0 0 auto;
+        border: 1px solid color-mix(in srgb, var(--accent) 52%, var(--border));
+        border-radius: 999px;
+        padding: 0.6rem 1.05rem;
+        background: color-mix(in srgb, var(--accent) 18%, var(--card));
+        color: color-mix(in srgb, var(--accent) 76%, white 24%);
+        font: inherit;
+        font-size: 0.82rem;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .dashboard-journal-send:hover {
+        background: color-mix(in srgb, var(--accent) 26%, var(--card));
+    }
+
+    .dashboard-journal-send:disabled {
+        opacity: 0.6;
+        cursor: wait;
+    }
+
+    .dashboard-journal-chat-form .dashboard-journal-chat-error {
+        margin: 0;
+        font-size: 0.82rem;
     }
 
     .ai-review-structured {

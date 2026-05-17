@@ -98,7 +98,8 @@
         body.className = "admin-journal-bubble-body";
         fillSegments(body, text, segments);
         bubble.appendChild(body);
-        if (role === "assistant" && messageId) {
+        const hideFeedback = root && root.dataset && root.dataset.hideFeedback;
+        if (role === "assistant" && messageId && !hideFeedback) {
             bubble.appendChild(createFeedbackControls(messageId));
         }
         return bubble;
