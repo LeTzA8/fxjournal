@@ -25,6 +25,7 @@ from models import (
     TradeAccount,
     TradeBars,
     TradeInterpretation,
+    UpgradeWaitlistEntry,
     User,
     UserProfile,
     db,
@@ -1968,6 +1969,10 @@ def register_public_auth_routes(
             "admin_users": int(totals[5] or 0),
             "signup_codes": db.session.query(func.count(SignupCode.id)).scalar() or 0,
             "mt5_accounts": db.session.query(func.count(MT5Account.id)).scalar() or 0,
+            "waitlist_people": db.session.query(
+                func.count(func.distinct(UpgradeWaitlistEntry.email))
+            ).scalar()
+            or 0,
         }
 
     def build_admin_page_context(

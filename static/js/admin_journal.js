@@ -113,6 +113,13 @@
         return bubble;
     };
 
+    const scrollChatToBottom = (log) => {
+        if (!log) {
+            return;
+        }
+        log.scrollTop = log.scrollHeight;
+    };
+
     async function sendJournalMessage(root, message, options) {
         const settings = options || {};
         const input = settings.input || root.querySelector("[data-journal-chat-input]");
@@ -149,6 +156,7 @@
         const loadingBubble = createLoadingBubble();
         log.appendChild(userBubble);
         log.appendChild(loadingBubble);
+        scrollChatToBottom(log);
         if (input) {
             input.value = "";
             input.disabled = true;
@@ -182,6 +190,7 @@
             if (feedbackRow && payload.message_id) {
                 bindFeedback(feedbackRow, payload.message_id, root);
             }
+            scrollChatToBottom(log);
             return true;
         } catch (err) {
             loadingBubble.remove();
@@ -262,6 +271,7 @@
     window.FXJBindAdminJournalSessionRoot = bindAdminJournalSessionRoot;
     window.FXJAppendJournalMessageBubble = (root, log, role, text, segments, messageId) => {
         log.appendChild(createBubble(role, text, segments, messageId, root));
+        scrollChatToBottom(log);
     };
     window.FXJSendJournalMessage = sendJournalMessage;
 })();

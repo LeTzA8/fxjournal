@@ -725,7 +725,8 @@ def test_dashboard_journal_unified_start_source_confirms_context_then_posts_mess
     assert "Open reflection" not in template
     assert "data-dashboard-journal-resolve-form" in template
     assert "data-dashboard-journal-candidates" in template
-    assert "I think you mean..." in script
+    assert "Choose the context for this reflection" in script
+    assert "const visibleCandidates = candidates;" in script
     assert "postJson(createUrl, sessionBodyForCandidate(candidate))" in script
     assert "FXJSendJournalMessage" in script
 
@@ -800,6 +801,8 @@ def test_dashboard_journal_context_candidates_vague_message_defaults_to_review_w
     payload = response.get_json()
     assert payload["recommended"]["scope_type"] == JournalSession.SCOPE_WEEK
     assert payload["recommended"]["session_payload"]["scope_date"] == "2026-05-11"
+    assert any(candidate["scope_type"] == JournalSession.SCOPE_FREEFORM for candidate in payload["candidates"])
+    assert any(candidate["scope_type"] == JournalSession.SCOPE_TRADE for candidate in payload["candidates"])
 
 
 def test_dashboard_journal_context_candidates_unmatched_specific_ask_uses_open_context(app_ctx, client):

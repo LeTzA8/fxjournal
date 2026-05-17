@@ -2,7 +2,7 @@ from itertools import count
 
 import pytest
 
-from models import User, db
+from models import UpgradeWaitlistEntry, User, db
 from helpers.app_settings import MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, get_bool_app_setting
 
 
@@ -172,6 +172,45 @@ def test_admin_users_list_accepts_sort_query(app_ctx, client, monkeypatch):
     assert response.status_code == 200
     assert b"Sort" in response.data
     assert b"Created: newest first" in response.data
+
+
+def test_admin_users_list_shows_distinct_waitlist_people_count(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "admin-waitlist-count@example.com")
+    admin = _create_user(
+        username="admin-waitlist-count",
+        email="admin-waitlist-count@example.com",
+        is_admin=True,
+    )
+    db.session.add_all(
+        [
+            UpgradeWaitlistEntry(
+                email="one@example.com",
+                tier_intent="trader",
+                source="pricing_page",
+                feature_interest="advanced_replay",
+            ),
+            UpgradeWaitlistEntry(
+                email="two@example.com",
+                tier_intent="pro",
+                source="pricing_page",
+                feature_interest="advanced_replay",
+            ),
+            UpgradeWaitlistEntry(
+                email="one@example.com",
+                tier_intent="pro",
+                source="pricing_page",
+                feature_interest="mt5_sync",
+            ),
+        ]
+    )
+    db.session.commit()
+    _login_as(client, admin)
+
+    response = client.get("/dashboard/admin/access/users")
+
+    assert response.status_code == 200
+    assert b"Waitlist" in response.data
+    assert b'<span class="admin-stat-value">2</span>' in response.data
 
 
 def test_admin_mt5_list_accepts_sort_query(app_ctx, client, monkeypatch):

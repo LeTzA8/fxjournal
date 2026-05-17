@@ -214,13 +214,15 @@ Runtime env-file loading is shared by Flask and Celery: `FXJ_ENV_FILE` first, th
 - Follow-up chat is scoped to a single persisted weekly review and its trades. It refuses support-view writes, enforces ownership/account scope, validates length, and applies DB-backed non-admin caps.
 - Follow-up chat can cite the same weekly-review trade/bundle refs internally, returns clean text plus citation segments, and reuses dashboard trade/bundle highlight behavior.
 - Visible "Ask about this review" prompt bubbles are generated from the displayed insight/evidence, with legacy static prompts as fallback.
+- Dashboard AI journal context selection is user-directed during the admin preview: after a natural prompt, the user chooses full active-account context, the current review week, parsed trading-day context, or a recent specific trade before AI receives trade data. The current "full" context is still capped to recent closed trades; future paid entitlement should gate true full/all-history context and context outside the current week.
+- Planned macro/regime context should enter AI as bounded evidence, not causal certainty. Candidate signals include high-impact economic calendar proximity, FOMC/central-bank/inflation/employment events, broad risk-on/risk-off tone, USD/yields pressure for FX/gold, and crypto/index correlation or beta. AI language should prefer "may have contributed," "macro volatility was elevated," or "the setup likely needed more confirmation/risk adjustment" rather than claiming macro caused wins or losses.
 
 ### Admin, Support, Legal, And Growth
 
 - Root admins have a read-only support view that swaps request context to a target user for approved GET routes, blocks user-facing writes centrally, and shows an exit banner/account switcher.
 - Weekly review chat POSTs are blocked in support view and return JSON errors for API/chat paths.
 - Root admins can delete non-root users with related data cleanup.
-- Admin panel uses sidebar navigation, contextual stat tiles, section-scoped quick filters, server-side search/sort for Users and MT5, admin weekly report links, and a root-admin CFD aliases tab.
+- Admin panel uses sidebar navigation, contextual stat tiles, section-scoped quick filters, server-side search/sort for Users and MT5, admin weekly report links, a root-admin CFD aliases tab, and a Users-section waitlist tile counting distinct waitlist email addresses.
 - Admin MT5 panel owns batch open/expand/close, submitted MT5 accounts, setup actions, reset/archive/delete, recalibration, clear-all-bars, manual sync, backfill bars, and queue diagnostics.
 - Public landing, auth, and SEO pages emphasize review-first positioning, the 14-day premium workflow trial, MT5 setup capacity when available, import-first fallback when not, and lower signup friction.
 - Legal docs cover weekly-review follow-up chat, sync/import fallibility, optional Google OAuth, processors, live/real-funded MT5 account risk, read-only support access, and service availability expectations.
@@ -411,6 +413,8 @@ Sensitive areas: auth/admin/support view, `models.py`, migrations, MT5 credentia
 - Decide whether to keep or retire legacy admin approve/reject endpoints for old MT5 request rows.
 - Verify MT5-ready email trigger path against live worker/email config.
 - Review live conversion response to the landing/auth messaging refresh.
+- Add paid entitlement gates for dashboard AI journal full/all-history context and any context outside the current review week when billing access is live.
+- Design macro/regime evidence for weekly AI and AI journal: source reliable calendar/market context, store deterministic tags around trade entry/exit and review weeks, and keep AI interpretation evidence-bounded.
 - Fill in infrastructure plan/region/cost table with real billing facts.
 
 ## Tech Stack

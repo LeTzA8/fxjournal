@@ -2104,11 +2104,27 @@ def _dashboard_journal_freeform_candidate(score=40, *, reason=None):
     return _dashboard_journal_candidate(
         "freeform:recent",
         JournalSession.SCOPE_FREEFORM,
-        "Open reflection with recent closed trades",
-        reason or "Use recent closed trades when no exact trade or day is clear.",
+        "Full account context",
+        reason or "Use broad active-account context. For now this uses the latest closed trades.",
         {"scope_type": JournalSession.SCOPE_FREEFORM},
         score,
     )
+
+
+def _dashboard_journal_recent_trade_candidates(trades, *, limit=6):
+    candidates = []
+    for trade in trades[:limit]:
+        candidates.append(
+            _dashboard_journal_candidate(
+                f"trade:{trade.pubkey}",
+                JournalSession.SCOPE_TRADE,
+                _dashboard_journal_trade_label(trade),
+                "Use only this closed trade as context.",
+                {"scope_type": JournalSession.SCOPE_TRADE, "scope_trade_pubkey": trade.pubkey},
+                35,
+            )
+        )
+    return candidates
 
 
 def _dashboard_journal_context_candidates(user, message):
@@ -2207,17 +2223,33 @@ def _dashboard_journal_context_candidates(user, message):
                     )
                 )
 
+    dated_context_candidates = []
+    for parsed_date in parsed_dates[:3]:
+        if any(candidate["id"] == f"day:{parsed_date.isoformat()}" for candidate in primary_candidates):
+            continue
+        dated_context_candidates.append(
+            _dashboard_journal_candidate(
+                f"day:{parsed_date.isoformat()}",
+                JournalSession.SCOPE_DAY,
+                f"{parsed_date.isoformat()} trading day",
+                "Use the closed trades from this UTC date as context.",
+                {"scope_type": JournalSession.SCOPE_DAY, "scope_date": parsed_date.isoformat()},
+                55,
+            )
+        )
+
     fallback_candidates = [
         _dashboard_journal_week_candidate(user.id, trade_account_id),
         _dashboard_journal_freeform_candidate(
-            reason="No exact trade or day matched, so use recent closed trades instead."
+            reason="Use broad active-account context when you want the journal to look across recent trades."
             if parsed_dates or explicit_unknown_token
             else None
         ),
+        *_dashboard_journal_recent_trade_candidates(trades),
     ]
     candidates = []
     seen_ids = set()
-    for candidate in [*primary_candidates, *fallback_candidates]:
+    for candidate in [*primary_candidates, *dated_context_candidates, *fallback_candidates]:
         if candidate["id"] in seen_ids:
             continue
         candidates.append(candidate)

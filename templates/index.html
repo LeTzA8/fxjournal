@@ -1631,15 +1631,15 @@
                         <div class="ai-journal-product-main ai-hero-card">
                             <p class="insight-title">AI Journal</p>
                             <h3>Reflect on the trades behind the week</h3>
-                            <p class="insight-body">Ask naturally first. MyFXJournal will suggest the trade, day, or review week before sending structured context into the chat.</p>
+                            <p class="insight-body">Ask naturally first, then choose whether the chat should use full account context, the current review week, a trading day, or a specific trade.</p>
                             <p class="bad" data-dashboard-journal-error role="alert" hidden></p>
                             <div data-dashboard-journal-start-panel>
                                 <form action="#" method="post" class="ai-journal-start-form ai-journal-start-form--unified" data-dashboard-journal-resolve-form>
                                     <label for="dashboardJournalPrompt">Start with your question</label>
                                     <textarea id="dashboardJournalPrompt" data-dashboard-journal-resolve-input rows="4" maxlength="1200" placeholder="Ask about a trade, a rough day, this week, or whatever you want to unpack."></textarea>
                                     <div class="ai-journal-start-actions">
-                                        <span class="soft">You will confirm context before AI sees trade data.</span>
-                                        <button type="submit">Find context</button>
+                                        <span class="soft">You choose the context before AI sees trade data.</span>
+                                        <button type="submit">Choose context</button>
                                     </div>
                                 </form>
                                 <div class="ai-journal-context-candidates" data-dashboard-journal-candidates hidden></div>
@@ -3122,18 +3122,34 @@
         margin-bottom: 0.65rem;
     }
 
-    /* AI journal panel: let the panel grow with the page instead of
-       nesting a scroll box inside the height-clamped hero card. */
     @media (min-width: 1081px) {
         .ai-journal-product-main.ai-hero-card,
         .ai-journal-product-side.ai-hero-card {
             max-height: none;
             overflow: visible;
         }
+
+        .ai-journal-product-main.ai-hero-card:has([data-dashboard-journal-session-panel]:not([hidden])) {
+            display: flex;
+            flex-direction: column;
+            max-height: clamp(540px, calc(100vh - 190px), 760px);
+            overflow: hidden;
+        }
+
+        .ai-journal-product-main.ai-hero-card:has([data-dashboard-journal-session-panel]:not([hidden])) [data-dashboard-journal-session-panel] {
+            display: flex;
+            flex: 1 1 auto;
+            min-height: 0;
+            flex-direction: column;
+        }
     }
 
     /* Unified journal chat: log + composer read as one continuous chat. */
     .dashboard-journal-chat {
+        display: flex;
+        flex: 1 1 auto;
+        min-height: 0;
+        flex-direction: column;
         margin-top: 0.85rem;
         border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
         border-radius: 14px;
@@ -3142,9 +3158,12 @@
     }
 
     .dashboard-journal-chat .admin-journal-chat-log {
-        min-height: 0;
-        max-height: none;
-        overflow: visible;
+        flex: 1 1 auto;
+        min-height: 14rem;
+        max-height: clamp(260px, 42vh, 520px);
+        overflow-y: auto;
+        overflow-x: hidden;
+        overscroll-behavior: contain;
         border: 0;
         border-radius: 0;
         background: transparent;

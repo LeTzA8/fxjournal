@@ -329,7 +329,7 @@
 
         const heading = document.createElement("p");
         heading.className = "ai-journal-context-heading";
-        heading.textContent = showAll ? "Choose the context for this reflection" : "I think you mean...";
+        heading.textContent = "Choose the context for this reflection";
         candidatesPanel.appendChild(heading);
 
         if (!candidates.length || !recommended) {
@@ -340,12 +340,12 @@
             return;
         }
 
-        const visibleCandidates = showAll ? candidates : [recommended];
+        const visibleCandidates = candidates;
         visibleCandidates.forEach((candidate) => {
             candidatesPanel.appendChild(
                 renderCandidateCard(candidate, message, {
                     payload,
-                    showAlternativesButton: !showAll && candidates.length > 1,
+                    showAlternativesButton: false,
                 }),
             );
         });
