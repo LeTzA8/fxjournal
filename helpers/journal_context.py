@@ -86,14 +86,21 @@ def _minimal_market_context(trade, market_context=None):
     }
 
 
-def _trade_strategy_name(trade):
+def _trade_strategy(trade):
     profile = getattr(trade, "trade_profile", None)
     version = getattr(trade, "trade_profile_version", None)
-    return (
+    name = (
         str(getattr(version, "name", "") or "").strip()
         or str(getattr(profile, "name", "") or "").strip()
         or None
     )
+    description = str(getattr(version, "short_description", "") or "").strip() or None
+    version_number = getattr(version, "version_number", None)
+    return {
+        "name": name,
+        "description": description,
+        "version": int(version_number) if version_number is not None else None,
+    }
 
 
 def _trade_dict(trade, ref, *, market_depth="none"):
@@ -103,6 +110,7 @@ def _trade_dict(trade, ref, *, market_depth="none"):
     elif market_depth == "minimal":
         market_context = _minimal_market_context(trade)
 
+    strategy = _trade_strategy(trade)
     payload = {
         "ref": ref,
         "trade_pubkey": getattr(trade, "pubkey", None),
@@ -118,7 +126,9 @@ def _trade_dict(trade, ref, *, market_depth="none"):
         "closed_at": _iso(getattr(trade, "closed_at", None)),
         "duration_minutes": _duration_minutes(trade),
         "session": classify_trading_session(getattr(trade, "opened_at", None)),
-        "strategy": _trade_strategy_name(trade),
+        "strategy": strategy["name"],
+        "strategy_version": strategy["version"],
+        "strategy_description": strategy["description"],
         "behavior_flags": interpretation_snapshot(trade),
     }
     if market_depth == "deep":
@@ -291,6 +301,8 @@ def _trade_prompt_line(trade):
         "duration_minutes",
         "session",
         "strategy",
+        "strategy_version",
+        "strategy_description",
         "behavior_flags",
         "market_context",
     ]
