@@ -1578,18 +1578,29 @@ def _resolve_email_from_header():
     return raw
 
 
+def _resolve_email_reply_to():
+    """Return the address user replies should go to (even when From is noreply)."""
+    return (
+        os.getenv("EMAIL_REPLY_TO", "").strip()
+        or os.getenv("FEEDBACK_TO_EMAIL", "").strip()
+        or "support@myfxjournal.com"
+    )
+
+
 def send_email_placeholder(to_email, subject, text_body, html_body=None):
     provider = os.getenv("EMAIL_PROVIDER", "placeholder").strip().lower()
     sender = _resolve_email_from_header()
+    reply_to = _resolve_email_reply_to()
     send_enabled = os.getenv("EMAIL_SEND_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     api_key = os.getenv("RESEND_API_KEY", "").strip() or os.getenv("EMAIL_API_KEY", "").strip()
     log_email_bodies = _should_log_email_bodies()
 
     if provider in {"console", "placeholder"} or not send_enabled:
         current_app.logger.info(
-            "Email placeholder (console/disabled) -> to=%s from=%s subject=%s",
+            "Email placeholder (console/disabled) -> to=%s from=%s reply_to=%s subject=%s",
             to_email,
             sender,
+            reply_to,
             subject,
         )
         if log_email_bodies:
@@ -1628,6 +1639,7 @@ def send_email_placeholder(to_email, subject, text_body, html_body=None):
             payload = {
                 "from": sender,
                 "to": [to_email],
+                "reply_to": reply_to,
                 "subject": subject,
                 "html": html_payload,
             }
@@ -1731,6 +1743,8 @@ def register_public_auth_routes(
             "Welcome to MyFXJournal",
             (
                 f"Hi {user.username}, your MyFXJournal account is ready. "
+                "Core journaling is free to start, and premium workflow features "
+                "include a 14-day trial with no credit card required. "
                 "Head to your dashboard to get started."
             ),
             html_body=welcome_html,
@@ -2330,7 +2344,9 @@ def register_public_auth_routes(
             send_email_placeholder(
                 email,
                 f"You're on the waitlist — MyFXJournal {tier_label}",
-                f"You're on the MyFXJournal {tier_label} waitlist. We'll reach out when early access opens.",
+                f"You're on the MyFXJournal {tier_label} waitlist. We'll reach out when early access opens. "
+                "Core journaling stays free, and premium workflow features include a 14-day trial "
+                "with no credit card required.",
                 html_body=html_body,
             )
         except Exception:

@@ -17,7 +17,7 @@
     <td class="email-surface" style="border-radius:14px;background-color:#eef4ff;border:1px solid #dce4f0;padding:18px 20px;">
       <p class="email-accent" style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#3658e8;letter-spacing:0.7px;text-transform:uppercase;">What happens next</p>
       <p class="email-text" style="margin:0 0 6px 0;font-size:14px;font-weight:700;color:#182538;">{% if setup_queued %}We are preparing the MT5 connection now.{% else %}Setup still needs a retry from our side.{% endif %}</p>
-      <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">{% if setup_queued %}Most setups are ready within 1-2 business days. If any account detail needs clarification, we will reach out by email.{% else %}Your details are still stored securely. If anything needs clarification, or if you want us to retry setup, reply to this email or contact support.{% endif %}</p>
+      <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">{% if setup_queued %}Most setups are ready within 1-2 business days. If any account detail needs clarification, we will reach out by email.{% else %}Your details are still stored securely. If anything needs clarification, or if you want us to retry setup, email us at <a href="mailto:{{ support_email|default('support@myfxjournal.com') }}" class="email-accent" style="color:#3658e8;text-decoration:none;">{{ support_email|default("support@myfxjournal.com") }}</a>.{% endif %}</p>
     </td>
   </tr>
 </table>
@@ -38,5 +38,5 @@
   <tr><td class="email-divider" style="height:1px;background-color:#dce4f0;"></td></tr>
 </table>
 <p class="email-muted" style="margin:0 0 8px 0;font-size:13px;color:#66758f;text-align:center;line-height:1.6;">You can keep using the journal normally while we set this up.</p>
-<p class="email-muted" style="margin:0;font-size:13px;color:#66758f;text-align:center;line-height:1.6;">If you submitted anything incorrectly, reply to this email and we can help sort it out.</p>
+<p class="email-muted" style="margin:0;font-size:13px;color:#66758f;text-align:center;line-height:1.6;">If you submitted anything incorrectly, email us at <a href="mailto:{{ support_email|default('support@myfxjournal.com') }}" class="email-accent" style="color:#3658e8;text-decoration:none;">{{ support_email|default("support@myfxjournal.com") }}</a> and we can help sort it out.</p>
 {% endblock %}

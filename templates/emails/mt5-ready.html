@@ -38,5 +38,5 @@
   <tr><td class="email-divider" style="height:1px;background-color:#dce4f0;"></td></tr>
 </table>
 <p class="email-muted" style="margin:0 0 8px 0;font-size:13px;color:#66758f;text-align:center;line-height:1.6;">Connected account number: <strong class="email-text" style="color:#182538;">{{ account_number }}</strong>.</p>
-<p class="email-muted" style="margin:0;font-size:13px;color:#66758f;text-align:center;line-height:1.6;">If anything looks off, reply to this email and we can help you sort it out.</p>
+<p class="email-muted" style="margin:0;font-size:13px;color:#66758f;text-align:center;line-height:1.6;">If anything looks off, email us at <a href="mailto:{{ support_email|default('support@myfxjournal.com') }}" class="email-accent" style="color:#3658e8;text-decoration:none;">{{ support_email|default("support@myfxjournal.com") }}</a> and we can help you sort it out.</p>
 {% endblock %}

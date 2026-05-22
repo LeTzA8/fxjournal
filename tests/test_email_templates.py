@@ -42,7 +42,7 @@ import pytest
                 "dashboard_url": "https://example.com/dashboard",
                 "setup_queued": True,
             },
-            ["MT5 setup started", "Request Account"],
+            ["MT5 setup started", "Request Account", "support@myfxjournal.com"],
         ),
         (
             "emails/mt5-ready.html",
@@ -52,7 +52,7 @@ import pytest
                 "account_number": "77112233",
                 "dashboard_url": "https://example.com/dashboard",
             },
-            ["Your MT5 sync is ready.", "77112233"],
+            ["Your MT5 sync is ready.", "77112233", "support@myfxjournal.com"],
         ),
         (
             "emails/welcome.html",
@@ -61,7 +61,16 @@ import pytest
                 "dashboard_url": "https://example.com/dashboard",
                 "unsubscribe_url": "",
             },
-            ["welcome to MyFXJournal", "Go to Dashboard"],
+            ["welcome to MyFXJournal", "Go to Dashboard", "14-day trial", "waitlist"],
+        ),
+        (
+            "emails/waitlist-confirmation.html",
+            {
+                "name": "Template Tester",
+                "tier_label": "Trader",
+                "dashboard_url": "https://example.com/dashboard",
+            },
+            ["You're on the list", "14-day trial", "waitlist", "no credit card"],
         ),
         (
             "emails/weekly-review.html",
@@ -76,7 +85,7 @@ import pytest
                 "unsubscribe_url": "",
                 "dashboard_url": "https://example.com/dashboard",
             },
-            ["your review is ready", "View Full Review"],
+            ["your review is ready", "View Full Review", "14-day free trial", "waitlist"],
         ),
         (
             "emails/free-trial-expired.html",
@@ -104,3 +113,5 @@ def test_user_email_templates_render_with_shared_shell(app_ctx, template_name, c
     assert "myfxjournal.com" in html
     for snippet in expected_snippets:
         assert snippet in html
+    assert "reply to this email" not in html.lower()
+    assert "open beta" not in html.lower()

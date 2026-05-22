@@ -11,7 +11,7 @@
   </tr>
 </table>
 <p class="email-text" style="margin:0 0 8px 0;font-size:24px;font-weight:700;color:#182538;letter-spacing:-0.3px;">Hi {{ name }}, welcome to MyFXJournal.</p>
-<p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#66758f;line-height:1.7;">Your account is ready. Start importing trades now so your dashboard and weekly review have real data to work with.</p>
+<p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#66758f;line-height:1.7;">Your account is ready. Core journaling is free to start, and premium workflow features include a 14-day trial with no credit card required. Import trades now so your dashboard and weekly review have real data to work with.</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
   <tr><td class="email-divider" style="height:1px;background-color:#dce4f0;"></td></tr>
 </table>
@@ -54,7 +54,7 @@
 {% endblock %}
 
 {% block footer %}
-<p class="email-muted" style="margin:0 0 8px 0;font-size:13px;color:#66758f;">Core journal stays free; premium workflow trial needs no credit card.</p>
+{% include "emails/_trial_footer_note.html" %}
 <p class="email-muted" style="margin:0;font-size:12px;color:#66758f;">
   <a href="{{ site_url|default('https://myfxjournal.com') }}" class="email-accent" style="color:#3658e8;text-decoration:none;">{{ site_label|default("myfxjournal.com") }}</a>
   &nbsp;&middot;&nbsp;

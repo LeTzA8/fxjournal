@@ -55,7 +55,7 @@
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;background-color:#f6f8fb;border-radius:10px;">
   <tr>
     <td style="padding:16px 20px;">
-      <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">Core journaling stays free. When Trader tier launches, you'll hear first — along with an early-access rate as a thank-you for being here early.</p>
+      <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">Core journaling stays free. Premium workflow features include a 14-day trial with no credit card required. You're on the waitlist for early access when paid tiers open — including an early-access rate as a thank-you for joining now.</p>
     </td>
   </tr>
 </table>
@@ -76,7 +76,7 @@
 {% endblock %}
 
 {% block footer %}
-<p class="email-muted" style="margin:0 0 8px 0;font-size:13px;color:#66758f;">Core journal stays free; premium workflow trial needs no credit card.</p>
+{% include "emails/_trial_footer_note.html" %}
 <p class="email-muted" style="margin:0;font-size:12px;color:#66758f;">
   <a href="{{ site_url|default('https://myfxjournal.com') }}" class="email-accent" style="color:#3658e8;text-decoration:none;">{{ site_label|default("myfxjournal.com") }}</a>
   &nbsp;&middot;&nbsp;
