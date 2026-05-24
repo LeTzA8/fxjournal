@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from celery_workers.worker_monitor import get_vm_id
 from helpers.admin_mt5_ops import build_admin_mt5_vm_overview
 from models import MT5Account, TradeAccount, User, db
 
@@ -23,6 +24,12 @@ def _create_user_with_account(*, username, email):
     db.session.add(trade_account)
     db.session.commit()
     return user, trade_account
+
+
+def test_get_vm_id_prefers_computername_over_celery_hostname(monkeypatch):
+    monkeypatch.delenv("VM_ID", raising=False)
+    monkeypatch.setenv("COMPUTERNAME", "MYFXJOURNAL-SG")
+    assert get_vm_id("mt5-sync@MYFXJOURNAL-SG") == "MYFXJOURNAL-SG"
 
 
 def test_build_admin_mt5_vm_overview_groups_accounts_by_vm(app_ctx, monkeypatch):

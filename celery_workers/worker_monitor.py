@@ -30,11 +30,12 @@ def _isoformat(value=None):
 
 
 def get_vm_id(default_hostname=None):
+    """Return the machine id used for account vm_id stamping and worker monitor keys."""
     for candidate in (
         os.getenv("VM_ID", "").strip(),
-        str(default_hostname or "").strip(),
         os.getenv("COMPUTERNAME", "").strip(),
         socket.gethostname().strip(),
+        str(default_hostname or "").strip(),
     ):
         if candidate:
             return candidate

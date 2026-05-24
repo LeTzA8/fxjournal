@@ -1079,9 +1079,12 @@ def sync_mt5_account(
         if not sync_secret:
             raise RuntimeError("MT5_SYNC_SECRET is required for MT5 sync.")
 
+        from celery_workers.worker_monitor import get_vm_id
+
         sync_payload = {
             "mt5_account_id": mt5_account_id,
             "trades": trades,
+            "vm_id": get_vm_id(),
             "timing_context": vm_timing_context,
             "mt5_server_delta_minutes": mt5_server_delta_minutes,
             "applied_time_offset_minutes": applied_offset_minutes,

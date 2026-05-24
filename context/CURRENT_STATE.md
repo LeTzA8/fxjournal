@@ -7,6 +7,7 @@ Last Updated: 2026-05-24
 - Users & approvals now defaults to the **Approved** tab instead of Pending. Pending spotlight remains at the top for quick review. (`auth_account.py`, `templates/admin_signup_access.html`, tests)
 - MT5 sync admin removed the batch management panel (create/open/add slots/close). Batch backend routes remain for legacy compatibility but are no longer surfaced in admin UI. (`auth_account.py`, `templates/admin_signup_access.html`, `templates/partials/admin_shell_start.html`)
 - MT5 sync admin now shows a **Worker VMs** panel: accounts grouped by `vm_id`, optional region/provider/label from worker env or `FXJ_MT5_VM_PROFILES`, live sync/setup worker heartbeat status, queue depths, expandable per-account lists, and a VM column on the accounts table. (`helpers/admin_mt5_ops.py`, `celery_workers/worker_monitor.py`, `static/css/admin_panel.css`, tests)
+- MT5 `vm_id` now stamps on **setup success** and every **successful sync POST**, using Windows `COMPUTERNAME` (before Celery hostname) so Hyonix host names like `MYFXJOURNAL-SG` align worker telemetry and account grouping in admin. (`celery_workers/worker_monitor.py`, `celery_workers/mt5_setup_tasks.py`, `celery_workers/mt5_sync_tasks.py`, tests)
 
 ## User last-active tracking (2026-05-24)
 

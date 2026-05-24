@@ -751,6 +751,9 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         account.is_active = True
         account.connection_status = "connected"
         account.connection_error_message = None
+        from celery_workers.worker_monitor import get_vm_id
+
+        account.vm_id = get_vm_id()
         db.session.commit()
         if not was_active:
             _send_mt5_ready_email(account)

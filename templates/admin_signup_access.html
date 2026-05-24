@@ -352,10 +352,9 @@
                         <p class="helper-note">
                             Accounts are grouped by the last handling <code>vm_id</code> stamped on successful sync.
                             Worker heartbeat and queue depth come from Redis monitor state when available.
-                            Set optional VM metadata on each worker with
-                            <code>FXJ_MT5_VM_REGION</code>, <code>FXJ_MT5_VM_PROVIDER</code>, and
-                            <code>FXJ_MT5_VM_LABEL</code>, or override display with
-                            <code>FXJ_MT5_VM_PROFILES</code> JSON on the web app.
+                            VM identity uses the Windows <code>COMPUTERNAME</code> (e.g. Hyonix host name), stamped on setup and sync.
+                            Optional overrides: worker env <code>FXJ_MT5_VM_REGION</code> / <code>FXJ_MT5_VM_PROVIDER</code> / <code>FXJ_MT5_VM_LABEL</code>,
+                            or web app <code>FXJ_MT5_VM_PROFILES</code> JSON.
                         </p>
                     </div>
                     <span class="soft">
