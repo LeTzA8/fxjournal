@@ -2,6 +2,12 @@
 
 Last Updated: 2026-05-24
 
+## Admin panel: approved default + MT5 VM overview (2026-05-24)
+
+- Users & approvals now defaults to the **Approved** tab instead of Pending. Pending spotlight remains at the top for quick review. (`auth_account.py`, `templates/admin_signup_access.html`, tests)
+- MT5 sync admin removed the batch management panel (create/open/add slots/close). Batch backend routes remain for legacy compatibility but are no longer surfaced in admin UI. (`auth_account.py`, `templates/admin_signup_access.html`, `templates/partials/admin_shell_start.html`)
+- MT5 sync admin now shows a **Worker VMs** panel: accounts grouped by `vm_id`, optional region/provider/label from worker env or `FXJ_MT5_VM_PROFILES`, live sync/setup worker heartbeat status, queue depths, expandable per-account lists, and a VM column on the accounts table. (`helpers/admin_mt5_ops.py`, `celery_workers/worker_monitor.py`, `static/css/admin_panel.css`, tests)
+
 ## User last-active tracking (2026-05-24)
 
 - Added `User.last_active_at` with Alembic migration `20260524_0059_user_last_active_at.py`. Authenticated requests now stamp this field at most once every five minutes, while keeping `last_login_at` as the login-only signal. Static, internal MT5, and read-only support-view traffic are skipped so admin support browsing does not pollute activity data. The admin users table can display and sort by Last active. Audit follow-up: stamp failures log-and-continue instead of failing the request; weekly AI `require_recent_login` now prefers `last_active_at` with `last_login_at` fallback; regression tests cover interval rewrite, session cache, MT5 skip, and login-only separation. (`models.py`, `app.py`, `auth_account.py`, `ai_service.py`, `templates/admin_signup_access.html`, `tests/test_auth.py`, `tests/test_admin_route_gating.py`, `tests/test_ai_service.py`)

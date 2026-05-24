@@ -41,6 +41,19 @@ def get_vm_id(default_hostname=None):
     return "unknown"
 
 
+def _vm_profile_fields():
+    fields = {}
+    for env_key, field_key in (
+        ("FXJ_MT5_VM_REGION", "vm_region"),
+        ("FXJ_MT5_VM_PROVIDER", "vm_provider"),
+        ("FXJ_MT5_VM_LABEL", "vm_label"),
+    ):
+        value = os.getenv(env_key, "").strip()
+        if value:
+            fields[field_key] = value
+    return fields
+
+
 def _worker_kind_from_hostname(hostname):
     hostname_text = str(hostname or "").strip().lower()
     if hostname_text.startswith("mt5-sync@"):
@@ -108,6 +121,8 @@ def _update_monitor_state(
 ):
     worker_fields = worker_fields or {}
     queue_fields = queue_fields or {}
+    profile_fields = _vm_profile_fields()
+    worker_fields = {**profile_fields, **worker_fields}
     try:
         if worker_kind:
             set_worker_state(

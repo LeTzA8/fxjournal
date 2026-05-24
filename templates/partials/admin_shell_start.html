@@ -89,10 +89,16 @@
           </span>
         </div>
         {% elif section == 'mt5' %}
+        {% set vm_overview = mt5_vm_overview or {} %}
+        {% set queue_depths = vm_overview.get('queue_depths') or {} %}
         <div class="admin-stat-row">
           <span class="admin-stat-tile admin-stat-tile--static">
             <span class="admin-stat-label">MT5 accounts</span>
             <span class="admin-stat-value">{{ overview.mt5_accounts }}</span>
+          </span>
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">VMs seen</span>
+            <span class="admin-stat-value">{{ vm_overview.get('vm_count', 0) }}</span>
           </span>
           {% if failed_mt5_count is defined and failed_mt5_count %}
           <span class="admin-stat-tile admin-stat-tile--alert">
@@ -107,15 +113,13 @@
           </span>
           {% endif %}
           <span class="admin-stat-tile admin-stat-tile--static">
-            <span class="admin-stat-label">Open batch</span>
-            <span class="admin-stat-value {% if active_mt5_batch %}good{% else %}soft{% endif %}">{{ (active_mt5_batch.name or "Unnamed") if active_mt5_batch else "None" }}</span>
+            <span class="admin-stat-label">Sync queue</span>
+            <span class="admin-stat-value">{{ queue_depths.get('mt5_sync', 0) + queue_depths.get('mt5_priority', 0) }}</span>
           </span>
-          {% if active_mt5_batch %}
           <span class="admin-stat-tile admin-stat-tile--static">
-            <span class="admin-stat-label">Slots left</span>
-            <span class="admin-stat-value">{{ active_mt5_batch.slots_remaining }}</span>
+            <span class="admin-stat-label">Setup queue</span>
+            <span class="admin-stat-value">{{ queue_depths.get('mt5_setup', 0) }}</span>
           </span>
-          {% endif %}
         </div>
         {% elif section == 'cfd_symbols' %}
         <div class="admin-stat-row">

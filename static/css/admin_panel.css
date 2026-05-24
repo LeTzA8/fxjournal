@@ -851,6 +851,63 @@ a.admin-stat-tile:hover {
     grid-column: 1 / -1;
 }
 
+.admin-mt5-layout .mt5-vms-panel {
+    grid-column: 1 / -1;
+}
+
+.mt5-vm-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 0.85rem;
+}
+
+.mt5-vm-card--unknown {
+    border-color: color-mix(in srgb, var(--border) 80%, var(--bad) 20%);
+}
+
+.mt5-vm-meta-grid {
+    display: grid;
+    gap: 0.2rem;
+    margin-top: 0.55rem;
+}
+
+.mt5-vm-accounts-details {
+    margin-top: 0.85rem;
+}
+
+.mt5-vm-accounts-summary {
+    cursor: pointer;
+    font-size: 0.84rem;
+    color: var(--accent);
+}
+
+.mt5-vm-account-list {
+    list-style: none;
+    margin: 0.65rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.55rem;
+}
+
+.mt5-vm-account-item {
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    border-radius: 10px;
+    padding: 0.55rem 0.65rem;
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+}
+
+.mt5-vm-account-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.15rem;
+}
+
+.mt5-vm-orphans {
+    margin-top: 0.5rem;
+}
+
 .admin-cfd-symbols-layout .cfd-aliases-panel {
     grid-column: 1 / -1;
 }

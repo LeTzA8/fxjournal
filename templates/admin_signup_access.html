@@ -337,115 +337,135 @@
         </section>
         {% elif section == "mt5" %}
         {% set mt5_sort = mt5_sort|default('created_desc') %}
+        {% set vm_overview = mt5_vm_overview or {} %}
         <section class="panel-grid admin-main-grid admin-mt5-layout">
             <article
-                class="panel codes-panel mt5-batches-panel"
+                class="panel codes-panel mt5-vms-panel"
                 data-admin-filter-panel
-                data-admin-filter-key="mt5_batches"
-                data-admin-filter-label="MT5 batches"
-                data-admin-filter-item-selector=".code-card"
+                data-admin-filter-key="mt5_vms"
+                data-admin-filter-label="MT5 VMs"
+                data-admin-filter-item-selector=".mt5-vm-card"
             >
-                <div class="panel-head">
-                    <h2>MT5 Sync Batches</h2>
+                <div class="panel-head panel-head-stack">
+                    <div>
+                        <h2>MT5 Worker VMs</h2>
+                        <p class="helper-note">
+                            Accounts are grouped by the last handling <code>vm_id</code> stamped on successful sync.
+                            Worker heartbeat and queue depth come from Redis monitor state when available.
+                            Set optional VM metadata on each worker with
+                            <code>FXJ_MT5_VM_REGION</code>, <code>FXJ_MT5_VM_PROVIDER</code>, and
+                            <code>FXJ_MT5_VM_LABEL</code>, or override display with
+                            <code>FXJ_MT5_VM_PROFILES</code> JSON on the web app.
+                        </p>
+                    </div>
                     <span class="soft">
-                        {% if active_mt5_batch %}
-                        {{ active_mt5_batch.slots_remaining }} left in {{ active_mt5_batch.name }}
-                        {% else %}
-                        No open batch
+                        {{ vm_overview.get('vm_count', 0) }} VM bucket{{ "" if vm_overview.get('vm_count', 0) == 1 else "s" }}
+                        {% if not vm_overview.get('monitor_available', True) %}
+                        · monitor unavailable
                         {% endif %}
                     </span>
                 </div>
-                <p class="helper-note">Open one batch at a time to control how many new MT5 sync submissions can start immediately. If no batches exist yet, MT5 sync stays in legacy open-access mode.</p>
-                {% if active_mt5_batch or mt5_batches_history %}
+                {% if vm_overview.get('vms') %}
                 <div class="admin-panel-filter" role="search">
                     <div class="admin-panel-filter-head">
-                        <label class="admin-panel-filter-label" for="adminMt5BatchesFilter">Quick filter</label>
-                        <span class="admin-panel-filter-meta soft">Batch cards only</span>
+                        <label class="admin-panel-filter-label" for="adminMt5VmsFilter">Quick filter</label>
+                        <span class="admin-panel-filter-meta soft">VM cards only</span>
                     </div>
                     <div class="admin-panel-filter-row">
                         <input
                             type="search"
-                            id="adminMt5BatchesFilter"
+                            id="adminMt5VmsFilter"
                             class="admin-panel-filter-input"
-                            placeholder="Filter open and historical batches…"
+                            placeholder="Filter VM id, region, provider, or account labels…"
                             autocomplete="off"
                             spellcheck="false"
                             data-admin-filter-input
-                            aria-describedby="adminMt5BatchesFilterHint adminMt5BatchesFilterStatus"
+                            aria-describedby="adminMt5VmsFilterHint adminMt5VmsFilterStatus"
                         >
                         <button type="button" class="ghost-btn admin-panel-filter-clear" data-admin-filter-clear hidden>Clear</button>
                     </div>
-                    <p class="admin-panel-filter-hint soft" id="adminMt5BatchesFilterHint">
-                        Matches batch names, notes, open or closed state, and capacity details in this panel.
+                    <p class="admin-panel-filter-hint soft" id="adminMt5VmsFilterHint">
+                        Matches VM id, label, region, provider, worker status, and linked account details.
                     </p>
-                    <p class="admin-panel-filter-status soft" id="adminMt5BatchesFilterStatus" data-admin-filter-status role="status" aria-live="polite" hidden></p>
+                    <p class="admin-panel-filter-status soft" id="adminMt5VmsFilterStatus" data-admin-filter-status role="status" aria-live="polite" hidden></p>
                 </div>
-                {% endif %}
-                {% if is_root_admin %}
-                    {% if active_mt5_batch %}
-                    <article class="code-card">
+                <div class="mt5-vm-grid">
+                    {% for vm in vm_overview.get('vms', []) %}
+                    <article class="code-card mt5-vm-card{% if vm.is_unknown_bucket %} mt5-vm-card--unknown{% endif %}">
                         <div class="code-head">
-                            <p class="code-value">{{ active_mt5_batch.name }}</p>
-                            <span class="chip success-chip">Open</span>
+                            <div>
+                                <p class="code-value">{{ vm.label or vm.vm_id }}</p>
+                                <p class="pending-line soft">VM ID: {{ vm.vm_id }}</p>
+                            </div>
+                            <span class="chip{% if vm.is_unknown_bucket %} default{% else %} success-chip{% endif %}">
+                                {{ vm.account_count }} account{{ "" if vm.account_count == 1 else "s" }}
+                            </span>
                         </div>
-                        <p class="pending-line">Capacity: {{ active_mt5_batch.capacity_total }}</p>
-                        <p class="pending-line">Active slots used: {{ active_mt5_batch.active_slots_used }}</p>
-                        <p class="pending-line">Slots remaining: {{ active_mt5_batch.slots_remaining }}</p>
-                        <p class="pending-line">Total slots ever claimed: {{ active_mt5_batch.total_slots_claimed }}</p>
-                        <p class="pending-line">Opened: {{ active_mt5_batch.opened_at.strftime("%Y-%m-%d %H:%M UTC") if active_mt5_batch.opened_at else "-" }}</p>
-                        <p class="pending-line">Notes: {{ active_mt5_batch.notes or "-" }}</p>
-                        <div class="inline-actions" style="margin-top: 0.75rem; flex-wrap: wrap;">
-                            <form action="{{ url_for('admin_mt5_add_batch_slots', batch_id=active_mt5_batch.id) }}" method="post" class="code-form" style="display:grid; gap:0.45rem; min-width: 220px;">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <label for="mt5_batch_add_slots">Add Slots</label>
-                                <input id="mt5_batch_add_slots" name="additional_slots" type="number" min="1" step="1" placeholder="e.g. 5" required>
-                                <button type="submit" class="submit-btn">Add Slots</button>
-                            </form>
-                            <form action="{{ url_for('admin_mt5_close_batch', batch_id=active_mt5_batch.id) }}" method="post" onsubmit="return confirm('Close this MT5 sync batch? New submissions will stop until you open another one.');">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="ghost-btn danger-btn">Close Batch</button>
-                            </form>
+                        <div class="mt5-vm-meta-grid">
+                            <p class="pending-line">Region: {{ vm.region or "Unknown" }}</p>
+                            <p class="pending-line">Provider: {{ vm.provider or "Unknown" }}</p>
+                            <p class="pending-line">Active accounts: {{ vm.active_account_count }}</p>
+                            <p class="pending-line">
+                                Sync worker:
+                                <span class="{{ 'good' if vm.sync_worker_online else 'bad' }}">
+                                    {{ "Online" if vm.sync_worker_online else "Offline / stale" }}
+                                </span>
+                            </p>
+                            <p class="pending-line">
+                                Setup worker:
+                                <span class="{{ 'good' if vm.setup_worker_online else 'bad' }}">
+                                    {{ "Online" if vm.setup_worker_online else "Offline / stale" }}
+                                </span>
+                            </p>
+                            <p class="pending-line">Sync heartbeat: {{ vm.sync_last_heartbeat_label }}</p>
+                            <p class="pending-line">Setup heartbeat: {{ vm.setup_last_heartbeat_label }}</p>
+                            {% if vm.notes %}
+                            <p class="pending-line">Notes: {{ vm.notes }}</p>
+                            {% endif %}
                         </div>
-                    </article>
-                    {% else %}
-                    <form action="{{ url_for('admin_mt5_create_batch') }}" method="post" class="code-form" data-themed-validation>
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-                        <label for="mt5_batch_name">Batch Name</label>
-                        <input id="mt5_batch_name" name="name" type="text" maxlength="120" placeholder="e.g. April Beta Batch">
-
-                        <label for="mt5_batch_capacity_total">Slots</label>
-                        <input id="mt5_batch_capacity_total" name="capacity_total" type="number" min="1" step="1" placeholder="e.g. 10" required>
-
-                        <label for="mt5_batch_notes">Notes (optional)</label>
-                        <input id="mt5_batch_notes" name="notes" type="text" maxlength="1000" placeholder="e.g. Open to first 10 MT5 users this week">
-
-                        <button type="submit" class="submit-btn">Open Batch</button>
-                    </form>
-                    {% endif %}
-                {% endif %}
-
-                {% if mt5_batches_history %}
-                <div class="codes-list" style="margin-top: 1rem;">
-                    <p class="soft" style="margin: 0 0 0.5rem; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase;">Other batches</p>
-                    {% for batch in mt5_batches_history %}
-                    <article class="code-card">
-                        <div class="code-head">
-                            <p class="code-value">{{ batch.name }}</p>
-                            <span class="chip{% if batch.is_open %} success-chip{% else %} default{% endif %}">{{ "Open" if batch.is_open else "Closed" }}</span>
-                        </div>
-                        <p class="pending-line">Capacity: {{ batch.capacity_total }}</p>
-                        <p class="pending-line">Active slots used: {{ batch.active_slots_used }}</p>
-                        <p class="pending-line">Slots remaining: {{ batch.slots_remaining }}</p>
-                        <p class="pending-line">Total slots ever claimed: {{ batch.total_slots_claimed }}</p>
-                        <p class="pending-line">Opened: {{ batch.opened_at.strftime("%Y-%m-%d %H:%M UTC") if batch.opened_at else "-" }}</p>
-                        <p class="pending-line">Closed: {{ batch.closed_at.strftime("%Y-%m-%d %H:%M UTC") if batch.closed_at else ("Still open" if batch.is_open else "-") }}</p>
-                        <p class="pending-line">Notes: {{ batch.notes or "-" }}</p>
+                        {% if vm.accounts %}
+                        <details class="mt5-vm-accounts-details">
+                            <summary class="mt5-vm-accounts-summary">
+                                View {{ vm.account_count }} linked account{{ "" if vm.account_count == 1 else "s" }}
+                            </summary>
+                            <ul class="mt5-vm-account-list">
+                                {% for account in vm.accounts %}
+                                <li class="mt5-vm-account-item">
+                                    <div class="mt5-vm-account-head">
+                                        <strong>{{ account.user_label }}</strong>
+                                        <span class="chip {{ account.status_chip_class }}">{{ account.status_label }}</span>
+                                    </div>
+                                    <p class="pending-line">{{ account.trade_account_name }} · MT5 {{ account.account_number }} · {{ account.server }}</p>
+                                    <p class="pending-line">Last sync: {{ account.last_synced_label }} · MT5 row ID {{ account.id }}</p>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </details>
+                        {% else %}
+                        <p class="helper-note">No MT5 accounts are currently attributed to this VM.</p>
+                        {% endif %}
                     </article>
                     {% endfor %}
                 </div>
-                {% elif not mt5_batches %}
-                <p class="helper-note">No MT5 sync batches created yet.</p>
+                {% else %}
+                <p class="helper-note">No VM buckets yet. Accounts will appear here after successful sync stamps a vm_id, or after a worker publishes monitor state.</p>
+                {% endif %}
+
+                {% if vm_overview.get('orphaned_accounts') %}
+                <div class="mt5-vm-orphans">
+                    <p class="soft" style="margin: 1rem 0 0.5rem; font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase;">Cleanup-only records</p>
+                    <ul class="mt5-vm-account-list">
+                        {% for account in vm_overview.get('orphaned_accounts', []) %}
+                        <li class="mt5-vm-account-item">
+                            <div class="mt5-vm-account-head">
+                                <strong>MT5 row {{ account.id }}</strong>
+                                <span class="chip {{ account.status_chip_class }}">{{ account.status_label }}</span>
+                            </div>
+                            <p class="pending-line">{{ account.account_number }} · {{ account.server }}</p>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
                 {% endif %}
             </article>
             <article
@@ -537,6 +557,7 @@
                                 <th>User</th>
                                 <th>Trade Account</th>
                                 <th>MT5</th>
+                                <th>VM</th>
                                 <th>Status</th>
                                 <th>Last synced</th>
                                 <th>Last full history</th>
@@ -591,6 +612,9 @@
                                         <span>Marked for cleanup: {{ account.cleanup_marked_at.strftime("%Y-%m-%d %H:%M UTC") if account.cleanup_marked_at else "Pending timestamp" }}</span>
                                         {% endif %}
                                     </div>
+                                </td>
+                                <td>
+                                    <span class="soft">{{ account.vm_id or "unknown" }}</span>
                                 </td>
                                 <td>
                                     <span class="chip {{ status_meta.chip_class }}">

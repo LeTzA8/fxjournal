@@ -45,6 +45,7 @@ from helpers.core import (
     queue_mt5_account_cleanup,
     sanitize_error_message,
 )
+from helpers.admin_mt5_ops import build_admin_mt5_vm_overview
 from helpers.celery_dispatch import describe_celery_broker, dispatch_celery_task
 from helpers.trade_bars import has_complete_m5_chart_coverage
 from helpers.app_settings import (
@@ -3191,7 +3192,7 @@ def register_public_auth_routes(
     def admin_signup_users():
         admin_user = get_current_admin_user()
 
-        status_filter = request.args.get("status", "pending").strip().lower()
+        status_filter = request.args.get("status", "approved").strip().lower()
         if status_filter not in {
             "pending",
             "approved",
@@ -3200,7 +3201,7 @@ def register_public_auth_routes(
             "admins",
             "all",
         }:
-            status_filter = "pending"
+            status_filter = "approved"
         search_query = (request.args.get("q") or "").strip()
         users_sort = normalize_admin_users_sort(request.args.get("sort"))
         page = request.args.get("page", 1, type=int) or 1
@@ -3817,51 +3818,10 @@ def register_public_auth_routes(
             if getattr(account, "connection_status", None) == "failed"
             and not account.is_orphaned
         )
-        mt5_batches = (
-            MT5SyncBatch.query.order_by(
-                MT5SyncBatch.created_at.desc(),
-                MT5SyncBatch.id.desc(),
-            ).all()
+        mt5_vm_overview = build_admin_mt5_vm_overview(
+            mt5_accounts=mt5_accounts,
+            mt5_statuses_by_account_id=mt5_statuses_by_account_id,
         )
-        batch_usage_by_id = {}
-        batch_ids = [batch.id for batch in mt5_batches]
-        if batch_ids:
-            batch_usage_by_id = dict(
-                db.session.query(
-                    MT5AccessRequest.batch_id,
-                    func.count(MT5AccessRequest.id),
-                )
-                .filter(
-                    MT5AccessRequest.batch_id.in_(batch_ids),
-                    MT5AccessRequest.status.in_(
-                        [
-                            MT5AccessRequest.STATUS_PENDING,
-                            MT5AccessRequest.STATUS_APPROVED,
-                        ]
-                    ),
-                )
-                .group_by(MT5AccessRequest.batch_id)
-                .all()
-            )
-        active_mt5_batch = None
-        for batch in mt5_batches:
-            batch.active_slots_used = int(batch_usage_by_id.get(batch.id, 0) or 0)
-            batch.claimed_slots = max(
-                int(batch.total_slots_claimed or 0),
-                batch.active_slots_used,
-            )
-            batch.slots_remaining = max(
-                int(batch.capacity_total or 0) - batch.claimed_slots,
-                0,
-            )
-            if batch.is_open and active_mt5_batch is None:
-                active_mt5_batch = batch
-        # List below the open-batch card should not repeat the active row.
-        mt5_batches_history = [
-            b
-            for b in mt5_batches
-            if active_mt5_batch is None or b.id != active_mt5_batch.id
-        ]
         return render_admin_page(
             admin_user=admin_user,
             section="mt5",
@@ -3871,9 +3831,7 @@ def register_public_auth_routes(
             mt5_statuses_by_account_id=mt5_statuses_by_account_id,
             orphaned_mt5_count=orphaned_mt5_count,
             failed_mt5_count=failed_mt5_count,
-            mt5_batches=mt5_batches,
-            mt5_batches_history=mt5_batches_history,
-            active_mt5_batch=active_mt5_batch,
+            mt5_vm_overview=mt5_vm_overview,
         )
 
     @app.route("/dashboard/admin/access/mt5/auto-bar-sync", methods=["POST"])
