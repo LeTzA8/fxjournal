@@ -1,8 +1,15 @@
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
-from celery_workers.cache import CacheUnavailableError, get_queue_depth, list_worker_states
+from celery_workers.cache import (
+    CacheUnavailableError,
+    get_admin_mt5_monitor_cache,
+    get_queue_depths,
+    list_mt5_worker_states,
+    set_admin_mt5_monitor_cache,
+)
 from helpers.mt5_dispatch import (
     configured_monitor_vm_ids,
     is_mt5_multi_vm_enabled,
@@ -14,9 +21,37 @@ from helpers.mt5_dispatch import (
 )
 
 
+_CELERY_VM_ID_PREFIX = re.compile(r"^mt5-(?:sync|setup)@(.+)$", re.IGNORECASE)
+
+
 def _normalize_admin_vm_id(value):
     text_value = str(value or "").strip()
+    match = _CELERY_VM_ID_PREFIX.match(text_value)
+    if match:
+        text_value = match.group(1).strip()
     return text_value[:64] or "unknown"
+
+
+def _worker_state_freshness(row):
+    best = 0.0
+    for field in (
+        "last_celery_heartbeat_at",
+        "last_worker_ready_at",
+        "last_task_processed_at",
+        "last_task_started_at",
+    ):
+        stamp = _parse_monitor_timestamp((row or {}).get(field))
+        if stamp is not None:
+            best = max(best, stamp.timestamp())
+    return best
+
+
+def _merge_worker_state(existing, incoming):
+    if not existing:
+        return incoming
+    if not incoming:
+        return existing
+    return incoming if _worker_state_freshness(incoming) >= _worker_state_freshness(existing) else existing
 
 
 def _parse_vm_profiles_env():
@@ -108,24 +143,129 @@ def _summarize_account(account, *, status_meta):
     }
 
 
-def collect_admin_selectable_vm_ids(*, mt5_accounts=()):
+def collect_admin_selectable_vm_ids(*, mt5_accounts=(), vm_ids=(), worker_states_by_vm=None):
     """VM ids admins may target for setup/cleanup (configured, account, worker)."""
+    selectable = []
+    seen = set()
+
+    def _append_vm_id(raw_value):
+        normalized = _normalize_admin_vm_id(raw_value)
+        if not normalized or normalized == "unknown":
+            return
+        key = normalized.casefold()
+        if key in seen:
+            return
+        seen.add(key)
+        selectable.append(normalized)
+
+    for vm_id in configured_monitor_vm_ids(mt5_accounts=mt5_accounts):
+        _append_vm_id(vm_id)
+    for vm_id in vm_ids or ():
+        _append_vm_id(vm_id)
+
+    if worker_states_by_vm is not None:
+        for vm_id in worker_states_by_vm:
+            _append_vm_id(vm_id)
+    else:
+        try:
+            grouped = list_mt5_worker_states()
+            for rows in grouped.values():
+                for row in rows:
+                    _append_vm_id(row.get("vm_id") or row.get("worker_id"))
+        except CacheUnavailableError:
+            pass
+    return selectable
+
+
+def _worker_states_by_vm_from_rows(grouped_worker_states):
+    worker_states_by_vm = {}
+    for worker_kind, rows in (grouped_worker_states or {}).items():
+        for row in rows or []:
+            vm_id = _normalize_admin_vm_id(row.get("vm_id") or row.get("worker_id"))
+            workers = worker_states_by_vm.setdefault(vm_id, {})
+            workers[worker_kind] = _merge_worker_state(workers.get(worker_kind), row)
+    return worker_states_by_vm
+
+
+def _monitor_vm_ids_for_queue_depths(*, mt5_accounts):
     vm_ids = configured_monitor_vm_ids(mt5_accounts=mt5_accounts)
     seen = {vm_id.casefold() for vm_id in vm_ids}
+    for account in mt5_accounts or ():
+        vm_id = _normalize_admin_vm_id(getattr(account, "vm_id", None))
+        if not vm_id or vm_id == "unknown":
+            continue
+        key = vm_id.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        vm_ids.append(vm_id)
+    return vm_ids
+
+
+def _fetch_admin_mt5_monitor_snapshot(*, mt5_accounts):
+    monitor_available = True
+    worker_states_by_vm = {}
+    queue_depths = {}
+    scoped_queue_depths = {}
+
     try:
-        for worker_kind in ("mt5_sync", "mt5_setup"):
-            for row in list_worker_states(worker_kind):
-                vm_id = _normalize_admin_vm_id(row.get("vm_id") or row.get("worker_id"))
-                if not vm_id or vm_id == "unknown":
-                    continue
-                key = vm_id.casefold()
-                if key in seen:
-                    continue
-                seen.add(key)
-                vm_ids.append(vm_id)
+        grouped_worker_states = list_mt5_worker_states()
+        worker_states_by_vm = _worker_states_by_vm_from_rows(grouped_worker_states)
+    except CacheUnavailableError:
+        monitor_available = False
+        grouped_worker_states = {}
+
+    queue_names = ["mt5_sync", "mt5_priority", "mt5_setup"]
+    if is_mt5_multi_vm_enabled():
+        for vm_id in _monitor_vm_ids_for_queue_depths(mt5_accounts=mt5_accounts):
+            queue_names.extend(
+                [
+                    mt5_sync_queue(vm_id),
+                    mt5_priority_queue(vm_id),
+                    mt5_setup_queue(vm_id),
+                ]
+            )
+
+    try:
+        depth_values = get_queue_depths(queue_names)
+        queue_depths = {
+            queue_name: int(depth_values.get(queue_name) or 0)
+            for queue_name in ("mt5_sync", "mt5_priority", "mt5_setup")
+        }
+        if is_mt5_multi_vm_enabled():
+            for vm_id in _monitor_vm_ids_for_queue_depths(mt5_accounts=mt5_accounts):
+                scoped_queue_depths[vm_id] = {
+                    "mt5_sync": int(depth_values.get(mt5_sync_queue(vm_id)) or 0),
+                    "mt5_priority": int(depth_values.get(mt5_priority_queue(vm_id)) or 0),
+                    "mt5_setup": int(depth_values.get(mt5_setup_queue(vm_id)) or 0),
+                }
+    except CacheUnavailableError:
+        monitor_available = False
+        queue_depths = {}
+        scoped_queue_depths = {}
+
+    return {
+        "worker_states_by_vm": worker_states_by_vm,
+        "queue_depths": queue_depths,
+        "scoped_queue_depths": scoped_queue_depths,
+        "monitor_available": monitor_available,
+    }
+
+
+def load_admin_mt5_monitor_snapshot(*, mt5_accounts):
+    try:
+        cached = get_admin_mt5_monitor_cache()
+        if cached is not None:
+            return cached
     except CacheUnavailableError:
         pass
-    return vm_ids
+
+    snapshot = _fetch_admin_mt5_monitor_snapshot(mt5_accounts=mt5_accounts)
+    try:
+        set_admin_mt5_monitor_cache(snapshot)
+    except CacheUnavailableError:
+        pass
+    return snapshot
 
 
 def resolve_admin_target_vm_id(raw_value, *, selectable_vm_ids=()):
@@ -179,34 +319,14 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         accounts_by_vm.setdefault(vm_key, []).append(account)
 
     vm_ids = set(accounts_by_vm.keys())
-    worker_states_by_vm = {}
-    monitor_available = True
-    try:
-        for worker_kind in ("mt5_sync", "mt5_setup"):
-            for row in list_worker_states(worker_kind):
-                vm_id = _normalize_admin_vm_id(row.get("vm_id") or row.get("worker_id"))
-                vm_ids.add(vm_id)
-                worker_states_by_vm.setdefault(vm_id, {})[worker_kind] = row
-    except CacheUnavailableError:
-        monitor_available = False
+    monitor_snapshot = load_admin_mt5_monitor_snapshot(mt5_accounts=mt5_accounts)
+    worker_states_by_vm = monitor_snapshot.get("worker_states_by_vm") or {}
+    monitor_available = bool(monitor_snapshot.get("monitor_available", True))
+    queue_depths = monitor_snapshot.get("queue_depths") or {}
+    scoped_queue_depths = monitor_snapshot.get("scoped_queue_depths") or {}
 
-    queue_depths = {}
-    scoped_queue_depths = {}
-    try:
-        for queue_name in ("mt5_sync", "mt5_priority", "mt5_setup"):
-            queue_depths[queue_name] = int(get_queue_depth(queue_name) or 0)
-        if is_mt5_multi_vm_enabled():
-            monitor_vm_ids = configured_monitor_vm_ids(mt5_accounts=mt5_accounts)
-            for vm_id in monitor_vm_ids:
-                scoped_queue_depths[vm_id] = {
-                    "mt5_sync": int(get_queue_depth(mt5_sync_queue(vm_id)) or 0),
-                    "mt5_priority": int(get_queue_depth(mt5_priority_queue(vm_id)) or 0),
-                    "mt5_setup": int(get_queue_depth(mt5_setup_queue(vm_id)) or 0),
-                }
-    except CacheUnavailableError:
-        monitor_available = False
-        queue_depths = {}
-        scoped_queue_depths = {}
+    for vm_id in worker_states_by_vm:
+        vm_ids.add(vm_id)
 
     vm_rows = []
     for vm_id in sorted(vm_ids):
@@ -215,6 +335,15 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         sync_worker = workers.get("mt5_sync") or {}
         setup_worker = workers.get("mt5_setup") or {}
         vm_accounts = accounts_by_vm.get(vm_id, [])
+        is_unknown_bucket = vm_id == "unknown"
+        if (
+            not is_unknown_bucket
+            and not vm_accounts
+            and not _worker_is_online(sync_worker, now=now)
+            and not _worker_is_online(setup_worker, now=now)
+        ):
+            # Drop monitor-only ghost buckets with no linked accounts.
+            continue
         account_summaries = [
             _summarize_account(
                 account,
@@ -230,7 +359,6 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
             )
         ]
         active_count = sum(1 for row in vm_accounts if getattr(row, "is_active", False))
-        is_unknown_bucket = vm_id == "unknown"
         vm_scoped_depths = scoped_queue_depths.get(vm_id, {})
         worker_missing = (
             not is_unknown_bucket
@@ -292,7 +420,10 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         )
     )
 
-    selectable_vm_ids = collect_admin_selectable_vm_ids(mt5_accounts=mt5_accounts)
+    selectable_vm_ids = collect_admin_selectable_vm_ids(
+        mt5_accounts=mt5_accounts,
+        worker_states_by_vm=worker_states_by_vm,
+    )
 
     return {
         "vms": vm_rows,

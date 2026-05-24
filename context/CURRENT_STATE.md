@@ -2,9 +2,19 @@
 
 Last Updated: 2026-05-25
 
+## Admin MT5 panel load performance (2026-05-25)
+
+- MT5 sync admin page no longer blocks on repeated Redis SCAN/LLEN round-trips per request. Worker monitor state is fetched with one SCAN (`list_mt5_worker_states`), queue depths use a Redis pipeline (`get_queue_depths`), and the combined monitor snapshot is cached for 20s (`admin_mt5_monitor_snapshot`).
+- VM overview reuses cached worker buckets for selectable VM ids instead of scanning Redis again. POST action VM selectors load distinct `vm_id` values only (not full MT5 account rows).
+- MT5 account list eager-loads `user` and `trade_account`; latest access-request status uses one grouped subquery instead of loading full request history.
+
+## Admin MT5: Delete VM files replaces Reset Terminal (2026-05-25)
+
+- Per-account **Delete VM files** (`POST …/mt5/<id>/delete-vm-files`) queues terminal/AppData cleanup only via `delete_mt5_account_vm_files`. It clears stored `terminal_path` / `appdata_hash` and sets `is_active=false`, but keeps credentials, `vm_id`, connection errors, and does **not** set `cleanup_marked_at`, so **Setup Terminal** is not blocked afterward. Rejects active accounts, rows with account cleanup pending, and target VM overrides that disagree with stored `vm_id`. Flash/confirm copy warns admins to wait for VM cleanup before Setup.
+
 ## Admin MT5: VM-targeted cleanup + setup selector (2026-05-25)
 
-- Admin MT5 panel exposes a reusable **Target VM** selector when multi-VM is enabled or more than one VM is configured/observed. Applies to **Setup Terminal**, **Reactivate**, **Reset Terminal**, **Archive**, and **Delete** so cleanup/setup routes to the chosen worker queue. Submissions are validated against configured/account/worker VM ids.
+- Admin MT5 panel exposes a reusable **Target VM** selector when multi-VM is enabled or more than one VM is configured/observed. Applies to **Setup Terminal**, **Reactivate**, **Delete VM files**, **Archive**, and **Delete** so cleanup/setup routes to the chosen worker queue. Submissions are validated against configured/account/worker VM ids.
 - Each Worker VM card includes **Delete VM files** — queues terminal/AppData cleanup for **inactive or archived** MT5 accounts on that VM with stored runtime paths, then clears `terminal_path` / `appdata_hash` / `is_active` in the DB. Active accounts are skipped.
 - Delete/reset/archive now return **errors** when cleanup cannot be queued but VM artifacts still exist (multi-VM missing `vm_id` or invalid target VM). Delete no longer marks cleanup-only state when dispatch fails.
 - Backend: `queue_mt5_account_cleanup(..., target_vm_id=)`, `queue_mt5_accounts_cleanup_for_vm`, `collect_admin_selectable_vm_ids`, `resolve_admin_target_vm_id`, route `POST /dashboard/admin/access/mt5/vm-delete-files`. (`helpers/core.py`, `helpers/admin_mt5_ops.py`, `auth_account.py`, `templates/admin_signup_access.html`, `static/css/admin_panel.css`, tests)
@@ -16,7 +26,7 @@ Last Updated: 2026-05-25
 ## Audit fixes: MT5 shortlist XSS, dispatch skips, waitlist CSRF (2026-05-25)
 
 - Fixed stored admin XSS in MT5 server seed shortlist confirm dialogs by JSON-escaping server names with `tojson` instead of inline single-quoted strings. (`templates/admin_signup_access.html`, tests)
-- Multi-VM dispatch skips (`missing vm_id`) now surface as errors/warnings at callers: `queue_mt5_account_cleanup`, `reset_mt5_terminal_state`, and admin MT5 sync/recalibrate/backfill routes check `mt5_dispatch_was_skipped()` before reporting success. (`helpers/mt5_dispatch.py`, `helpers/core.py`, `auth_account.py`, tests)
+- Multi-VM dispatch skips (`missing vm_id`) now surface as errors/warnings at callers: `queue_mt5_account_cleanup`, `delete_mt5_account_vm_files`, and admin MT5 sync/recalibrate/backfill routes check `mt5_dispatch_was_skipped()` before reporting success. (`helpers/mt5_dispatch.py`, `helpers/core.py`, `auth_account.py`, tests)
 - Dashboard MT5 capacity waitlist fetch now sends `X-CSRFToken`; `/pricing/waitlist` rejects support-view sessions; notify button hidden in support view. (`templates/index.html`, `auth_account.py`, tests)
 - Restored decision D-007 (weekly AI persistence) alongside D-008 in `context/DECISIONS.md`.
 

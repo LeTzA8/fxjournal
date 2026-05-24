@@ -336,17 +336,9 @@
             </article>
         </section>
         {% elif section == "mt5" %}
-        {% macro mt5_vm_target_select(selected=None, default_label='Default routing') %}
+        {% macro mt5_vm_target_hidden() %}
         {% if vm_overview.get('show_vm_target_selector') and vm_overview.get('selectable_vm_ids') %}
-        <label class="soft admin-inline-select-label">
-            Target VM
-            <select name="target_vm_id" class="admin-inline-select admin-sort-select">
-                <option value=""{% if not selected %} selected{% endif %}>{{ default_label }}</option>
-                {% for vm_option in vm_overview.selectable_vm_ids %}
-                <option value="{{ vm_option }}"{% if selected == vm_option %} selected{% endif %}>{{ vm_option }}</option>
-                {% endfor %}
-            </select>
-        </label>
+        <input type="hidden" name="target_vm_id" value="" class="mt5-row-target-vm-input">
         {% endif %}
         {% endmacro %}
         {% set mt5_sort = mt5_sort|default('created_desc') %}
@@ -666,7 +658,7 @@
                                 <th>User</th>
                                 <th>Trade Account</th>
                                 <th>MT5</th>
-                                <th>VM</th>
+                                <th>VM / target</th>
                                 <th>Status</th>
                                 <th>Last synced</th>
                                 <th>Last full history</th>
@@ -678,7 +670,7 @@
                             {% set trade_count = mt5_trade_counts_by_account.get(account.id, 0) %}
                             {% set is_orphaned = account.is_orphaned %}
                             {% set status_meta = mt5_statuses_by_account_id.get(account.id, {"label": "Setting Up", "chip_class": "warning-chip"}) %}
-                            <tr>
+                            <tr data-mt5-account-row="{{ account.id }}">
                                 <td>
                                     <div class="user-cell">
                                         <strong>{{ account.user.username if account.user else "Cleanup-only MT5 record" }}</strong>
@@ -695,17 +687,10 @@
                                     </div>
                                 </td>
                                 <td>
-                                    <div class="user-cell">
+                                    <div class="user-cell mt5-account-details">
                                         <div class="mt5-account-title-row">
                                             <strong>{{ account.account_number }}</strong>
                                             <span class="user-id-inline">MT5 ID: {{ account.id }}</span>
-                                            <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
-                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                {% if not is_orphaned %}
-                                                {{ mt5_vm_target_select(selected=account.vm_id, default_label='Account VM (or default)') }}
-                                                {% endif %}
-                                                <button type="submit" class="ghost-btn danger-btn inline-btn-compact">Delete</button>
-                                            </form>
                                         </div>
                                         <span>{{ account.server }}</span>
                                         <span>{{ account.terminal_path or "Terminal not set up yet" }}</span>
@@ -717,7 +702,7 @@
                                         <span>Archived due to inactivity: {{ account.archived_at.strftime("%Y-%m-%d %H:%M UTC") if account.archived_at else "Pending timestamp" }}</span>
                                         {% endif %}
                                         {% if account.cleanup_marked_at and not is_orphaned %}
-                                        <span>Reset cleanup queued: {{ account.cleanup_marked_at.strftime("%Y-%m-%d %H:%M UTC") }}</span>
+                                        <span>Account cleanup queued: {{ account.cleanup_marked_at.strftime("%Y-%m-%d %H:%M UTC") }}</span>
                                         {% endif %}
                                         {% if is_orphaned %}
                                         <span>Cleanup-only record awaiting manual delete</span>
@@ -725,8 +710,21 @@
                                         {% endif %}
                                     </div>
                                 </td>
-                                <td>
-                                    <span class="soft">{{ account.vm_id or "unknown" }}</span>
+                                <td class="mt5-vm-cell">
+                                    <div class="mt5-vm-cell-stack">
+                                        <p class="mt5-vm-current soft">Current: <strong>{{ account.vm_id or "unknown" }}</strong></p>
+                                        {% if vm_overview.get('show_vm_target_selector') and vm_overview.get('selectable_vm_ids') and not is_orphaned %}
+                                        <label class="admin-mt5-row-vm-label">
+                                            <span class="soft">Target VM for setup/cleanup</span>
+                                            <select class="admin-mt5-row-vm-select admin-sort-select" data-mt5-row-vm-select aria-label="Target VM for MT5 account {{ account.id }}">
+                                                <option value=""{% if not account.vm_id %} selected{% endif %}>Default routing</option>
+                                                {% for vm_option in vm_overview.selectable_vm_ids %}
+                                                <option value="{{ vm_option }}"{% if account.vm_id == vm_option %} selected{% endif %}>{{ vm_option }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </label>
+                                        {% endif %}
+                                    </div>
                                 </td>
                                 <td>
                                     <span class="chip {{ status_meta.chip_class }}">
@@ -736,14 +734,12 @@
                                 <td>{{ account.last_synced_at.strftime("%Y-%m-%d %H:%M UTC") if account.last_synced_at else "Never" }}</td>
                                 <td>{{ account.last_full_history_sync_at.strftime("%Y-%m-%d %H:%M UTC") if account.last_full_history_sync_at else "Never" }}</td>
                                 <td class="actions-cell">
-                                    <div class="inline-actions">
-                                        <form action="{{ url_for('admin_mt5_reactivate_account', mt5_account_id=account.id) if account.is_archived else url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            {{ mt5_vm_target_select(
-                                                selected=account.vm_id,
-                                                default_label=('Default (' ~ vm_overview.selectable_vm_ids[0] ~ ')' if vm_overview.get('selectable_vm_ids') else 'Default routing')
-                                            ) }}
-                                            <button
+                                    <div class="mt5-account-actions">
+                                        <div class="mt5-account-actions-group inline-actions">
+                                            <form action="{{ url_for('admin_mt5_reactivate_account', mt5_account_id=account.id) if account.is_archived else url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                {{ mt5_vm_target_hidden() }}
+                                                <button
                                                 type="submit"
                                                 class="submit-btn"
                                                 {% if is_orphaned or account.cleanup_marked_at %}
@@ -752,11 +748,17 @@
                                                 title="{{ 'Cleanup-only MT5 records cannot be set up.' if is_orphaned else 'VM cleanup is still running for this MT5 account.' }}"
                                                 {% endif %}
                                             >{{ "Reactivate" if account.is_archived else "Setup Terminal" }}</button>
-                                        </form>
-                                        <form action="{{ url_for('admin_mt5_archive_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Archive this MT5 account due to inactivity? The VM terminal files will be removed, but the saved read-only credentials will stay available for reactivation.');">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            {{ mt5_vm_target_select(selected=account.vm_id, default_label='Account VM (or default)') }}
-                                            <button
+                                            </form>
+                                            <form action="{{ url_for('admin_mt5_trigger_sync', mt5_account_id=account.id) }}" method="post">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <button type="submit" class="submit-btn" {% if not account.is_active or is_orphaned %}disabled aria-disabled="true"{% if is_orphaned %} title="Cleanup-only MT5 records cannot be synced."{% endif %}{% endif %}>Trigger Sync</button>
+                                            </form>
+                                        </div>
+                                        <div class="mt5-account-actions-group inline-actions">
+                                            <form action="{{ url_for('admin_mt5_archive_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Archive this MT5 account due to inactivity? The VM terminal files will be removed, but the saved read-only credentials will stay available for reactivation.');">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                {{ mt5_vm_target_hidden() }}
+                                                <button
                                                 type="submit"
                                                 class="ghost-btn"
                                                 {% if is_orphaned or account.is_archived or (not account.is_active and not account.terminal_path and not account.appdata_hash) %}
@@ -765,24 +767,27 @@
                                                 title="Only linked MT5 accounts with active or existing VM artifacts can be archived."
                                                 {% endif %}
                                             >Archive</button>
-                                        </form>
-                                        <form action="{{ url_for('admin_mt5_reset_terminal', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Reset terminal state for this MT5 account? VM terminal files will be queued for removal and all terminal-related DB fields will be cleared. Wait for cleanup to finish before running Setup Terminal again. Credentials and account details are kept.');">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            {{ mt5_vm_target_select(selected=account.vm_id, default_label='Account VM (or default)') }}
-                                            <button
+                                            </form>
+                                            <form action="{{ url_for('admin_mt5_delete_account_vm_files', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this account&#39;s MT5 terminal folder and AppData on the VM? Saved credentials are kept. Wait for VM cleanup to finish before running Setup Terminal.');">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                {{ mt5_vm_target_hidden() }}
+                                                <button
                                                 type="submit"
-                                                class="ghost-btn"
-                                                {% if is_orphaned or account.cleanup_marked_at %}
+                                                class="ghost-btn danger-btn"
+                                                {% if is_orphaned or account.cleanup_marked_at or account.is_active or (not account.terminal_path and not account.appdata_hash) %}
                                                 disabled
                                                 aria-disabled="true"
-                                                title="{{ 'Cleanup-only MT5 records cannot be reset.' if is_orphaned else 'VM cleanup is still running for this MT5 account.' }}"
+                                                title="{{ 'Cleanup-only MT5 records have no VM files to delete.' if is_orphaned else ('This account already has account cleanup pending.' if account.cleanup_marked_at else ('Archive this account before deleting VM files while it is still active.' if account.is_active else 'No terminal paths or AppData hash are stored for this account.')) }}"
                                                 {% endif %}
-                                            >Reset Terminal</button>
-                                        </form>
-                                        <form action="{{ url_for('admin_mt5_trigger_sync', mt5_account_id=account.id) }}" method="post">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="submit-btn" {% if not account.is_active or is_orphaned %}disabled aria-disabled="true"{% if is_orphaned %} title="Cleanup-only MT5 records cannot be synced."{% endif %}{% endif %}>Trigger Sync</button>
-                                        </form>
+                                            >Delete VM files</button>
+                                            </form>
+                                            <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                {{ mt5_vm_target_hidden() }}
+                                                <button type="submit" class="ghost-btn danger-btn" {% if is_orphaned %}disabled aria-disabled="true" title="Cleanup-only records: delete removes the DB row only."{% endif %}>Delete</button>
+                                            </form>
+                                        </div>
+                                        <div class="mt5-account-actions-group inline-actions">
                                         <form
                                             action="{{ url_for('admin_mt5_recalibrate_trade_times', mt5_account_id=account.id) }}"
                                             method="post"
@@ -799,6 +804,7 @@
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <button type="submit" class="ghost-btn danger-btn" {% if is_orphaned %}disabled aria-disabled="true" title="Cannot clear bars for cleanup-only accounts."{% endif %}>Clear Bars</button>
                                         </form>
+                                        </div>
                                     </div>
                                 </td>
                             </tr>
@@ -811,6 +817,7 @@
                 {% endif %}
             </article>
         </section>
+        <script defer src="{{ url_for('static', filename='js/admin_mt5_accounts.js') }}"></script>
         {% elif section == "cfd_symbols" %}
         <section class="panel-grid admin-main-grid admin-cfd-symbols-layout">
             <article

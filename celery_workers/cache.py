@@ -15,6 +15,8 @@ AI_STATUS_QUEUED_TTL = 900
 AI_STATUS_RUNNING_TTL = 900
 AI_STATUS_FAILED_TTL = 600
 WORKER_MONITOR_TTL = 60 * 60 * 24
+ADMIN_MT5_MONITOR_TTL = 20
+ADMIN_MT5_MONITOR_CACHE_KEY = "admin_mt5_monitor_snapshot"
 
 # Shared across MT5 setup + sync workers on the VM so only one MT5 runtime
 # operation (bootstrap, login, sync, bar fetch, terminal cleanup) runs at a
@@ -208,6 +210,63 @@ def list_worker_states(worker_kind):
         worker_states.append({"worker_id": worker_id, **state})
     worker_states.sort(key=lambda row: row.get("worker_id", ""))
     return worker_states
+
+
+def list_mt5_worker_states():
+    """Return mt5_sync and mt5_setup worker rows using one Redis SCAN."""
+    grouped = {"mt5_sync": [], "mt5_setup": []}
+    prefix = "worker_state:"
+    for key in _scan_keys(f"{prefix}*"):
+        key_text = str(key)
+        if not key_text.startswith(prefix):
+            continue
+        remainder = key_text[len(prefix):]
+        worker_kind, _, worker_id = remainder.partition(":")
+        if worker_kind not in grouped or not worker_id:
+            continue
+        state = _read_hash(key)
+        if not state:
+            continue
+        grouped[worker_kind].append({"worker_id": worker_id, **state})
+    for rows in grouped.values():
+        rows.sort(key=lambda row: row.get("worker_id", ""))
+    return grouped
+
+
+def get_queue_depths(queue_names):
+    names = [str(name) for name in (queue_names or []) if str(name or "").strip()]
+    if not names:
+        return {}
+
+    def _read():
+        client = _client()
+        pipe = client.pipeline(transaction=False)
+        for name in names:
+            pipe.llen(name)
+        values = pipe.execute()
+        return {name: int(value or 0) for name, value in zip(names, values)}
+
+    return _run_redis(_read)
+
+
+def get_admin_mt5_monitor_cache():
+    raw = _run_redis(lambda: _client().get(ADMIN_MT5_MONITOR_CACHE_KEY))
+    return json.loads(raw) if raw else None
+
+
+def set_admin_mt5_monitor_cache(data, ttl=ADMIN_MT5_MONITOR_TTL):
+    payload = json.dumps(data, separators=(",", ":"))
+    _run_redis(
+        lambda: _client().setex(
+            ADMIN_MT5_MONITOR_CACHE_KEY,
+            int(ttl),
+            payload,
+        )
+    )
+
+
+def clear_admin_mt5_monitor_cache():
+    _run_redis(lambda: _client().delete(ADMIN_MT5_MONITOR_CACHE_KEY))
 
 
 def set_queue_monitor_state(queue_name, mapping, ttl=WORKER_MONITOR_TTL):

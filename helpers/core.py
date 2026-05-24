@@ -719,6 +719,30 @@ def get_mt5_sync_batch_state(*, for_update=False):
     return state
 
 
+def resolve_mt5_cleanup_target_vm(*, mt5_account, target_vm_id=None):
+    """
+    Resolve which VM should run cleanup and reject admin overrides that disagree
+    with a known account ``vm_id``.
+
+    Returns ``(vm_id, error_message)``. Empty explicit input falls back to the
+    account's stored VM affinity.
+    """
+    from helpers.mt5_dispatch import normalize_vm_id
+
+    stored = normalize_vm_id(getattr(mt5_account, "vm_id", None))
+    explicit = (
+        normalize_vm_id(target_vm_id)
+        if str(target_vm_id or "").strip()
+        else ""
+    )
+    if explicit and stored and explicit.casefold() != stored.casefold():
+        return None, (
+            f"Target VM {explicit} does not match this account's VM ({stored}). "
+            "Use default routing or the account's current VM."
+        )
+    return explicit or stored or None, None
+
+
 def queue_mt5_account_cleanup(
     *,
     mt5_account,
@@ -858,7 +882,7 @@ def queue_mt5_accounts_cleanup_for_vm(*, vm_id, mt5_accounts, log_context="admin
         if skipped_active:
             message = (
                 f"{message} Skipped {skipped_active} active account{'s' if skipped_active != 1 else ''}; "
-                "use Reset Terminal or Delete on those rows instead."
+                "use Delete VM files or Delete on those rows instead."
             )
         if skipped_cleanup_pending:
             message = (
@@ -924,10 +948,16 @@ def archive_mt5_account(
 
     cleanup_warning = None
     if terminal_exists:
+        resolved_vm_id, vm_error = resolve_mt5_cleanup_target_vm(
+            mt5_account=mt5_account,
+            target_vm_id=target_vm_id,
+        )
+        if vm_error:
+            return False, vm_error
         cleanup_warning = queue_mt5_account_cleanup(
             mt5_account=mt5_account,
             log_context=log_context,
-            target_vm_id=target_vm_id,
+            target_vm_id=resolved_vm_id,
         )
         if cleanup_warning:
             return False, cleanup_warning
@@ -1006,122 +1036,63 @@ def reactivate_mt5_account(*, mt5_account, log_context="reactivate", target_vm_i
     return True, "MT5 reactivation started. We'll email you when your sync is ready again."
 
 
-def reset_mt5_terminal_state(*, mt5_account, log_context="reset-terminal", target_vm_id=None):
+def delete_mt5_account_vm_files(*, mt5_account, log_context="admin delete-vm-files", target_vm_id=None):
     """
-    Reset per-user terminal state so setup can be retried from a clean slate.
+    Queue VM cleanup for an MT5 account's terminal/AppData artifacts only.
 
-    Queues VM cleanup for any existing terminal/AppData directories, then clears
-    only the terminal-runtime DB fields.  Credentials, user links, account number,
-    server, and consent are untouched — the MT5Account row stays and Setup Terminal
-    can be re-run immediately afterwards.
-
-    *target_vm_id* overrides the account's stored ``vm_id`` when routing cleanup.
-
-    Fields reset: terminal_path, appdata_hash, vm_id, is_active,
-    connection_status, connection_error_message, archived_at, archive_reason,
-    cleanup_marked_at.
+    Clears stored runtime paths in the DB after cleanup is queued but keeps
+    credentials, vm attribution, and connection error context. Does not mark the
+    account cleanup-only and does not block Setup Terminal.
     """
     if mt5_account is None:
         return False, "MT5 account not found."
     if mt5_account.is_orphaned:
-        return False, "Cleanup-only MT5 records cannot be reset."
-    if not str(mt5_account.investor_password_encrypted or "").strip():
+        return False, "Cleanup-only MT5 records have no VM files to delete."
+    if getattr(mt5_account, "cleanup_marked_at", None) is not None:
         return (
             False,
-            "That MT5 account no longer has saved credentials, so terminal reset is not possible.",
+            "That MT5 account is already waiting on account cleanup. "
+            "Use Delete on that row or wait for cleanup to finish.",
         )
-    if mt5_account.cleanup_marked_at is not None:
+    if getattr(mt5_account, "is_active", False) and not getattr(mt5_account, "is_archived", False):
         return (
             False,
-            "That MT5 account is still waiting for VM cleanup to finish. Try Setup Terminal again after cleanup completes.",
+            "That MT5 account is still active on the VM. Archive it first before deleting its terminal files.",
         )
-
-    from flask import current_app
-
-    from helpers.mt5_dispatch import normalize_vm_id
 
     terminal_path = str(getattr(mt5_account, "terminal_path", "") or "").strip()
     appdata_hash = str(getattr(mt5_account, "appdata_hash", "") or "").strip()
-    account_vm_id = normalize_vm_id(getattr(mt5_account, "vm_id", None)) or None
-    cleanup_vm_id = normalize_vm_id(target_vm_id) or account_vm_id
-    has_runtime_state = bool(terminal_path or appdata_hash)
-    cleanup_marked_at = utcnow_naive() if has_runtime_state else None
+    if not terminal_path and not appdata_hash:
+        return False, "That MT5 account has no terminal paths or AppData hash stored — nothing to delete on the VM."
+
+    resolved_vm_id, vm_error = resolve_mt5_cleanup_target_vm(
+        mt5_account=mt5_account,
+        target_vm_id=target_vm_id,
+    )
+    if vm_error:
+        return False, vm_error
+
+    cleanup_warning = queue_mt5_account_cleanup(
+        mt5_account=mt5_account,
+        log_context=log_context,
+        target_vm_id=resolved_vm_id,
+    )
+    if cleanup_warning:
+        return False, cleanup_warning
 
     try:
         mt5_account.terminal_path = None
         mt5_account.appdata_hash = None
-        mt5_account.vm_id = None
         mt5_account.is_active = False
-        mt5_account.archived_at = None
-        mt5_account.archive_reason = None
-        mt5_account.cleanup_marked_at = cleanup_marked_at
-        mt5_account.connection_status = MT5Account.CONNECTION_STATUS_PENDING
-        mt5_account.connection_error_message = None
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()
-        return False, "Could not reset that MT5 account right now. Please try again."
+        return False, "VM file cleanup was queued but account state could not be updated. Please refresh and retry."
 
-    cleanup_warning = None
-    if has_runtime_state:
-        try:
-            from celery_workers.mt5_setup_tasks import cleanup_mt5_terminal
-            from helpers.mt5_dispatch import (
-                MT5_DISPATCH_SKIPPED_MISSING_VM_MSG,
-                dispatch_mt5_cleanup,
-                mt5_dispatch_was_skipped,
-            )
-
-            dispatch_result = dispatch_mt5_cleanup(
-                cleanup_mt5_terminal,
-                terminal_path,
-                appdata_hash,
-                account_vm_id=cleanup_vm_id,
-                kwargs={
-                    "mt5_account_id": mt5_account.id,
-                    "delete_account_row": False,
-                    "clear_cleanup_mark": True,
-                    "cleanup_marked_at": cleanup_marked_at.isoformat() if cleanup_marked_at else None,
-                },
-                label=f"mt5_reset_cleanup_{log_context}",
-                extra={
-                    "mt5_account_id": mt5_account.id,
-                    "log_context": log_context,
-                    "target_vm_id": cleanup_vm_id or None,
-                },
-            )
-            if mt5_dispatch_was_skipped(dispatch_result):
-                cleanup_warning = MT5_DISPATCH_SKIPPED_MISSING_VM_MSG
-        except Exception as exc:
-            current_app.logger.warning(
-                "MT5 cleanup queue failed for %s mt5_account_id=%s: %s",
-                log_context,
-                getattr(mt5_account, "id", None),
-                sanitize_error_message(exc),
-            )
-            cleanup_warning = (
-                "Cleanup could not be queued; VM terminal files may need manual removal before Setup Terminal is run again."
-            )
-            try:
-                mt5_account.cleanup_marked_at = None
-                db.session.commit()
-            except (OperationalError, IntegrityError):
-                db.session.rollback()
-                current_app.logger.warning(
-                    "MT5 reset cleanup mark rollback failed for %s mt5_account_id=%s",
-                    log_context,
-                    getattr(mt5_account, "id", None),
-                )
-
-    if has_runtime_state and not cleanup_warning:
-        message = (
-            "Terminal reset started. VM cleanup is running; wait for it to finish before clicking Setup Terminal again."
-        )
-    else:
-        message = "Terminal state reset. Run Setup Terminal to retry from a clean slate."
-    if cleanup_warning:
-        message = f"{message} {cleanup_warning}"
-    return True, message
+    return (
+        True,
+        "VM terminal file cleanup queued. Wait for cleanup to finish on the VM before running Setup Terminal.",
+    )
 
 
 def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
@@ -1147,7 +1118,7 @@ def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
     if mt5_account.is_orphaned:
         return False, "MT5 sync is not available for this account."
 
-    # Queue cleanup BEFORE marking — mark_for_cleanup clears terminal_path.
+    # Queue cleanup BEFORE marking — paths are read from the account at queue time.
     cleanup_warning = queue_mt5_account_cleanup(
         mt5_account=mt5_account,
         log_context="user unlink",

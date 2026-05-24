@@ -1498,18 +1498,18 @@ def test_root_admin_can_archive_mt5_account_and_keep_reactivation_path(app_ctx, 
     assert b"Archived" in response.data
 
 
-def test_root_admin_can_reset_mt5_account_with_only_terminal_path(app_ctx, client, monkeypatch):
+def test_root_admin_can_delete_vm_files_for_mt5_account_with_terminal_path(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     _root_user, _ = _log_in_root_admin(
         client,
-        email="mt5-reset-root@example.com",
-        username="mt5-reset-root",
+        email="mt5-delete-files-root@example.com",
+        username="mt5-delete-files-root",
     )
 
     user, trade_account = _create_user_with_account(
-        username="mt5-reset-user",
-        email="mt5-reset-user@example.com",
-        account_name="Reset Target",
+        username="mt5-delete-files-user",
+        email="mt5-delete-files-user@example.com",
+        account_name="Delete Files Target",
     )
     mt5_account = MT5Account(
         user_id=user.id,
@@ -1519,7 +1519,8 @@ def test_root_admin_can_reset_mt5_account_with_only_terminal_path(app_ctx, clien
         server="Broker-Reset",
         terminal_path=r"C:\MT5 User Terminals\reset\terminal64.exe",
         appdata_hash=None,
-        is_active=True,
+        vm_id="MYFXJOURNAL-SG",
+        is_active=False,
         connection_status=MT5Account.CONNECTION_STATUS_FAILED,
         connection_error_message="Old setup failed",
     )
@@ -1530,7 +1531,7 @@ def test_root_admin_can_reset_mt5_account_with_only_terminal_path(app_ctx, clien
     _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
 
     response = client.post(
-        f"/dashboard/admin/access/mt5/{mt5_account.id}/reset-terminal",
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/delete-vm-files",
         data={},
         follow_redirects=True,
     )
@@ -1540,42 +1541,226 @@ def test_root_admin_can_reset_mt5_account_with_only_terminal_path(app_ctx, clien
     assert response.status_code == 200
     assert refreshed.terminal_path is None
     assert refreshed.appdata_hash is None
-    assert refreshed.vm_id is None
+    assert refreshed.vm_id == "MYFXJOURNAL-SG"
     assert refreshed.is_active is False
-    assert refreshed.cleanup_marked_at is not None
-    assert refreshed.connection_status == MT5Account.CONNECTION_STATUS_PENDING
-    assert refreshed.connection_error_message is None
+    assert refreshed.cleanup_marked_at is None
+    assert refreshed.connection_status == MT5Account.CONNECTION_STATUS_FAILED
+    assert refreshed.connection_error_message == "Old setup failed"
     assert cleanup_calls == [
         {
             "args": [r"C:\MT5 User Terminals\reset\terminal64.exe", ""],
-            "kwargs": {
-                "mt5_account_id": mt5_account.id,
-                "delete_account_row": False,
-                "clear_cleanup_mark": True,
-                "cleanup_marked_at": refreshed.cleanup_marked_at.isoformat(),
-            },
-            "account_vm_id": None,
+            "kwargs": {"mt5_account_id": None},
+            "account_vm_id": "MYFXJOURNAL-SG",
             "queue": "mt5_setup",
         }
     ]
-    assert (
-        b"Terminal reset started. VM cleanup is running; wait for it to finish before clicking Setup Terminal again."
-        in response.data
-    )
+    assert b"VM terminal file cleanup queued" in response.data
+    assert b"Wait for cleanup to finish on the VM" in response.data
 
 
-def test_root_admin_can_reset_mt5_account_with_only_appdata_hash(app_ctx, client, monkeypatch):
+def test_root_admin_delete_vm_files_rejects_active_account(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     _root_user, _ = _log_in_root_admin(
         client,
-        email="mt5-reset-hash-root@example.com",
-        username="mt5-reset-hash-root",
+        email="mt5-delete-files-active-root@example.com",
+        username="mt5-delete-files-active-root",
     )
 
     user, trade_account = _create_user_with_account(
-        username="mt5-reset-hash-user",
-        email="mt5-reset-hash-user@example.com",
-        account_name="Reset Hash Target",
+        username="mt5-delete-files-active-user",
+        email="mt5-delete-files-active-user@example.com",
+        account_name="Delete Files Active Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119997",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Active",
+        terminal_path=r"C:\MT5 User Terminals\active\terminal64.exe",
+        vm_id="MYFXJOURNAL-SG",
+        is_active=True,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/delete-vm-files",
+        data={},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert response.status_code == 200
+    assert cleanup_calls == []
+    assert refreshed.is_active is True
+    assert refreshed.terminal_path is not None
+    assert b"Archive it first before deleting its terminal files" in response.data
+
+
+def test_root_admin_delete_vm_files_rejects_cleanup_pending_with_artifacts(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-delete-files-pending-root@example.com",
+        username="mt5-delete-files-pending-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-delete-files-pending-user",
+        email="mt5-delete-files-pending-user@example.com",
+        account_name="Delete Files Pending Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119998",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Pending",
+        terminal_path=r"C:\MT5 User Terminals\pending\terminal64.exe",
+        is_active=False,
+        cleanup_marked_at=utcnow_naive(),
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/delete-vm-files",
+        data={},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert cleanup_calls == []
+    assert b"already waiting on account cleanup" in response.data
+
+
+def test_root_admin_delete_vm_files_rejects_target_vm_mismatch(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "MYFXJOURNAL-SG,VM-OTHER")
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-delete-files-mismatch-root@example.com",
+        username="mt5-delete-files-mismatch-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-delete-files-mismatch-user",
+        email="mt5-delete-files-mismatch-user@example.com",
+        account_name="Delete Files Mismatch Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119999",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Mismatch",
+        terminal_path=r"C:\MT5 User Terminals\mismatch\terminal64.exe",
+        vm_id="MYFXJOURNAL-SG",
+        is_active=False,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/delete-vm-files",
+        data={"target_vm_id": "VM-OTHER"},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert response.status_code == 200
+    assert cleanup_calls == []
+    assert refreshed.terminal_path is not None
+    assert b"does not match" in response.data
+
+
+def test_root_admin_can_setup_after_delete_vm_files(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-delete-then-setup-root@example.com",
+        username="mt5-delete-then-setup-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-delete-then-setup-user",
+        email="mt5-delete-then-setup-user@example.com",
+        account_name="Delete Then Setup Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70120000",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Delete-Setup",
+        terminal_path=r"C:\MT5 User Terminals\delete-setup\terminal64.exe",
+        vm_id="MYFXJOURNAL-SG",
+        is_active=False,
+        connection_status=MT5Account.CONNECTION_STATUS_FAILED,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
+    setup_calls = []
+
+    def _fake_admin_setup_dispatch(task, mt5_account_id, **options):
+        setup_calls.append(
+            {
+                "args": [mt5_account_id],
+                "kwargs": {
+                    key: value
+                    for key, value in options.items()
+                    if key not in {"label", "extra", "log"}
+                },
+            }
+        )
+        return type("Result", (), {"id": "test-setup-task"})()
+
+    monkeypatch.setattr("auth_account.dispatch_mt5_setup", _fake_admin_setup_dispatch)
+
+    delete_response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/delete-vm-files",
+        data={},
+        follow_redirects=True,
+    )
+    assert delete_response.status_code == 200
+    assert cleanup_calls
+
+    setup_response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/setup",
+        data={},
+        follow_redirects=True,
+    )
+
+    assert setup_response.status_code == 200
+    assert setup_calls
+    assert b"MT5 terminal setup queued" in setup_response.data
+
+
+def test_root_admin_can_delete_vm_files_for_mt5_account_with_only_appdata_hash(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-delete-files-hash-root@example.com",
+        username="mt5-delete-files-hash-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-delete-files-hash-user",
+        email="mt5-delete-files-hash-user@example.com",
+        account_name="Delete Files Hash Target",
     )
     mt5_account = MT5Account(
         user_id=user.id,
@@ -1596,7 +1781,7 @@ def test_root_admin_can_reset_mt5_account_with_only_appdata_hash(app_ctx, client
     _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
 
     response = client.post(
-        f"/dashboard/admin/access/mt5/{mt5_account.id}/reset-terminal",
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/delete-vm-files",
         data={},
         follow_redirects=True,
     )
@@ -1607,29 +1792,20 @@ def test_root_admin_can_reset_mt5_account_with_only_appdata_hash(app_ctx, client
     assert refreshed.terminal_path is None
     assert refreshed.appdata_hash is None
     assert refreshed.is_active is False
-    assert refreshed.cleanup_marked_at is not None
-    assert refreshed.connection_status == MT5Account.CONNECTION_STATUS_PENDING
-    assert refreshed.connection_error_message is None
+    assert refreshed.cleanup_marked_at is None
+    assert refreshed.connection_status == MT5Account.CONNECTION_STATUS_FAILED
     assert cleanup_calls == [
         {
             "args": ["", "A" * 32],
-            "kwargs": {
-                "mt5_account_id": mt5_account.id,
-                "delete_account_row": False,
-                "clear_cleanup_mark": True,
-                "cleanup_marked_at": refreshed.cleanup_marked_at.isoformat(),
-            },
-            "account_vm_id": None,
+            "kwargs": {"mt5_account_id": None},
+            "account_vm_id": "",
             "queue": "mt5_setup",
         }
     ]
-    assert (
-        b"Terminal reset started. VM cleanup is running; wait for it to finish before clicking Setup Terminal again."
-        in response.data
-    )
+    assert b"VM terminal file cleanup queued" in response.data
 
 
-def test_root_admin_cannot_setup_mt5_account_while_reset_cleanup_is_pending(app_ctx, client, monkeypatch):
+def test_root_admin_cannot_setup_mt5_account_while_account_cleanup_is_pending(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     _root_user, _ = _log_in_root_admin(
         client,
@@ -1682,29 +1858,28 @@ def test_root_admin_cannot_setup_mt5_account_while_reset_cleanup_is_pending(app_
     )
 
 
-def test_root_admin_cannot_reset_mt5_account_while_reset_cleanup_is_pending(app_ctx, client, monkeypatch):
+def test_root_admin_delete_vm_files_noop_when_no_artifacts(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     _root_user, _ = _log_in_root_admin(
         client,
-        email="mt5-reset-pending-reset-root@example.com",
-        username="mt5-reset-pending-reset-root",
+        email="mt5-delete-files-empty-root@example.com",
+        username="mt5-delete-files-empty-root",
     )
 
     user, trade_account = _create_user_with_account(
-        username="mt5-reset-pending-reset-user",
-        email="mt5-reset-pending-reset-user@example.com",
-        account_name="Reset Pending Reset Target",
+        username="mt5-delete-files-empty-user",
+        email="mt5-delete-files-empty-user@example.com",
+        account_name="Delete Files Empty Target",
     )
     mt5_account = MT5Account(
         user_id=user.id,
         trade_account_id=trade_account.id,
         account_number="70119996",
         investor_password_encrypted=encrypt_password("investor-pass"),
-        server="Broker-Reset-Pending-Reset",
+        server="Broker-Empty",
         terminal_path=None,
         appdata_hash=None,
         is_active=False,
-        cleanup_marked_at=utcnow_naive(),
         connection_status=MT5Account.CONNECTION_STATUS_PENDING,
     )
     db.session.add(mt5_account)
@@ -1714,20 +1889,55 @@ def test_root_admin_cannot_reset_mt5_account_while_reset_cleanup_is_pending(app_
     _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
 
     response = client.post(
-        f"/dashboard/admin/access/mt5/{mt5_account.id}/reset-terminal",
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/delete-vm-files",
         data={},
         follow_redirects=True,
     )
 
-    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert response.status_code == 200
+    assert cleanup_calls == []
+    assert b"nothing to delete on the VM" in response.data
+
+
+def test_root_admin_delete_vm_files_rejects_cleanup_pending_without_artifacts(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-delete-files-pending-empty-root@example.com",
+        username="mt5-delete-files-pending-empty-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-delete-files-pending-empty-user",
+        email="mt5-delete-files-pending-empty-user@example.com",
+        account_name="Delete Files Pending Empty Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70120001",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Pending-Empty",
+        terminal_path=None,
+        appdata_hash=None,
+        is_active=False,
+        cleanup_marked_at=utcnow_naive(),
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/delete-vm-files",
+        data={},
+        follow_redirects=True,
+    )
 
     assert response.status_code == 200
     assert cleanup_calls == []
-    assert refreshed.cleanup_marked_at is not None
-    assert (
-        b"That MT5 account is still waiting for VM cleanup to finish. Try Setup Terminal again after cleanup completes."
-        in response.data
-    )
+    assert b"already waiting on account cleanup" in response.data
 
 
 def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, monkeypatch):

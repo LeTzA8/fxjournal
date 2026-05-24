@@ -813,8 +813,8 @@ a.admin-stat-tile:hover {
 }
 
 .admin-table .actions-cell {
-    min-width: 0;
-    max-width: 280px;
+    min-width: 220px;
+    max-width: none;
 }
 
 .admin-table .actions-cell .inline-actions {
@@ -928,14 +928,48 @@ a.admin-stat-tile:hover {
     max-width: 100%;
 }
 
-.admin-table .inline-actions .admin-inline-select-label {
-    flex: 1 1 100%;
+.mt5-vm-cell {
+    min-width: 9.5rem;
+    vertical-align: top;
 }
 
-.mt5-account-title-row form {
+.mt5-vm-cell-stack {
     display: grid;
+    gap: 0.45rem;
+}
+
+.mt5-vm-current {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.35;
+}
+
+.admin-mt5-row-vm-label {
+    display: grid;
+    gap: 0.25rem;
+    margin: 0;
+    font-size: 0.72rem;
+    letter-spacing: 0.02em;
+}
+
+.admin-mt5-row-vm-label .admin-sort-select {
+    max-width: 100%;
+    min-width: 0;
+    font-size: 0.82rem;
+    padding: 0.45rem 0.55rem;
+}
+
+.mt5-account-details .mt5-account-title-row {
+    margin-bottom: 0.15rem;
+}
+
+.mt5-account-actions {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.mt5-account-actions-group {
     gap: 0.35rem;
-    margin-top: 0.35rem;
 }
 
 .admin-cfd-symbols-layout .cfd-aliases-panel {

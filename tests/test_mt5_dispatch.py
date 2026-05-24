@@ -110,6 +110,36 @@ def test_mt5_dispatch_was_skipped():
     assert mt5_dispatch_was_skipped(type("Result", (), {"id": "task-id"})()) is False
 
 
+def test_resolve_mt5_cleanup_target_vm_rejects_mismatch(app_ctx):
+    from helpers.core import resolve_mt5_cleanup_target_vm
+    from models import MT5Account, TradeAccount, User, db
+
+    user = User(username="resolve-vm-user", email="resolve-vm@example.com", password="hashed")
+    db.session.add(user)
+    db.session.flush()
+    trade_account = TradeAccount(user_id=user.id, name="Acct", account_type="CFD", is_default=True)
+    db.session.add(trade_account)
+    db.session.flush()
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="12345",
+        server="Test-Live",
+        investor_password_encrypted="enc",
+        vm_id="VM-A",
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    vm_id, error = resolve_mt5_cleanup_target_vm(mt5_account=mt5_account, target_vm_id="VM-B")
+    assert vm_id is None
+    assert "does not match" in error
+
+    vm_id, error = resolve_mt5_cleanup_target_vm(mt5_account=mt5_account, target_vm_id="")
+    assert vm_id == "VM-A"
+    assert error is None
+
+
 def test_queue_mt5_account_cleanup_reports_missing_vm_skip(app_ctx, monkeypatch):
     from helpers.core import queue_mt5_account_cleanup
     from models import MT5Account, TradeAccount, User, db
