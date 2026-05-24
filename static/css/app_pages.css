@@ -396,6 +396,97 @@ body.app-layout .app-guided-empty-text {
     color: var(--muted);
 }
 
+body.app-layout .app-workbench-empty {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.85fr);
+    gap: 1.35rem;
+    align-items: start;
+    padding: 1.15rem 1.25rem;
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+    background:
+        radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%),
+        linear-gradient(145deg, color-mix(in srgb, var(--card) 97%, transparent), color-mix(in srgb, var(--surface) 94%, transparent));
+}
+
+body.app-layout .app-workbench-empty-main {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+body.app-layout .app-workbench-empty-title {
+    margin: 0;
+    font-size: clamp(1.05rem, 2vw, 1.28rem);
+    font-weight: 800;
+    color: var(--ink);
+    line-height: 1.25;
+}
+
+body.app-layout .app-workbench-empty-text {
+    margin: 0.15rem 0 0;
+    max-width: 42rem;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: var(--muted);
+}
+
+body.app-layout .app-workbench-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.65rem;
+}
+
+body.app-layout .app-workbench-empty-side {
+    border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+    border-radius: 12px;
+    padding: 0.85rem 0.95rem;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+body.app-layout .app-workbench-empty-side-label {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+body.app-layout .app-workbench-empty-checklist {
+    margin: 0.55rem 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.42rem;
+}
+
+body.app-layout .app-workbench-empty-checklist li {
+    position: relative;
+    padding-left: 1.05rem;
+    font-size: 0.84rem;
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--ink) 82%, var(--muted));
+}
+
+body.app-layout .app-workbench-empty-checklist li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.48em;
+    width: 0.42rem;
+    height: 0.42rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 72%, var(--ink));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+@media (max-width: 760px) {
+    body.app-layout .app-workbench-empty {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
 /* --- Global action-dialog accent (dialogs sit inside page wrappers) --- */
 body.app-layout .action-dialog .confirm-dialog-shell {
     border-color: color-mix(in srgb, var(--accent) 24%, var(--border));

@@ -169,4 +169,5 @@ def test_strategies_page_empty_state_keeps_first_use_education(app_ctx, client):
 
     assert response.status_code == 200
     assert b"Create your first strategy" in response.data
-    assert b"Strategies are tags used in the trade log and imports." in response.data
+    assert b"Strategies tag setups in your trade log and imports" in response.data
+    assert b"Shows up in" in response.data

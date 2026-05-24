@@ -37,6 +37,7 @@
             data-trade-profiles-page
             data-initial-edit-pubkey="{% if edit_target %}{{ edit_target.pubkey }}{% endif %}"
         >
+            {% if strategy_cards %}
             <article class="panel profile-list-panel">
                 <div class="panel-head panel-head--compact">
                     <h2>Strategy library</h2>
@@ -46,7 +47,6 @@
                     <span class="soft">Usage across all accounts</span>
                     {% endif %}
                 </div>
-                {% if strategy_cards %}
                 <div class="profile-list">
                     {% for card in strategy_cards %}
                     {% set profile = card.profile %}
@@ -111,16 +111,38 @@
                     </article>
                     {% endfor %}
                 </div>
-                {% else %}
-                <div class="app-guided-empty" role="status">
-                    <p class="app-guided-empty-kicker">Start here</p>
-                    <h3 class="app-guided-empty-title">Create your first strategy</h3>
-                    <p class="app-guided-empty-text">
-                        Strategies are tags used in the trade log and imports. Add a short name and a brief playbook note with New Strategy above.
-                    </p>
-                </div>
-                {% endif %}
             </article>
+            {% else %}
+            <article class="panel app-workbench-empty app-workbench-empty--strategies" role="status">
+                <div class="app-workbench-empty-main">
+                    <p class="app-guided-empty-kicker">What's next</p>
+                    <h2 class="app-workbench-empty-title">Create your first strategy</h2>
+                    <p class="app-workbench-empty-text">
+                        Strategies tag setups in your trade log and imports so you can see which playbooks are working. Start with a short name and a brief note on the entry model or rules you want to track.
+                    </p>
+                    <div class="app-workbench-empty-actions">
+                        <button
+                            type="button"
+                            class="submit-btn"
+                            data-open-strategy-editor
+                            data-editor-mode="create"
+                            aria-haspopup="dialog"
+                            aria-controls="strategyEditorDialog"
+                        >
+                            New Strategy
+                        </button>
+                    </div>
+                </div>
+                <aside class="app-workbench-empty-side" aria-label="Where strategies appear">
+                    <p class="app-workbench-empty-side-label">Shows up in</p>
+                    <ul class="app-workbench-empty-checklist">
+                        <li>Manual trade entry</li>
+                        <li>MT5 and broker imports</li>
+                        <li>Analytics and weekly review</li>
+                    </ul>
+                </aside>
+            </article>
+            {% endif %}
         </section>
     </div>
 </section>
