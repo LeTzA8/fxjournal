@@ -84,7 +84,10 @@ function Start-Mt5SetupLauncher {
     $launcherPath = Join-Path $RepoRoot "scripts\windows\run_mt5_setup_worker.ps1"
     $resolvedWindowStyle = $LauncherWindowStyle
     if (-not $resolvedWindowStyle) {
-        $envWindowStyle = ($env:FXJ_MT5_SETUP_LAUNCHER_WINDOW_STYLE | ForEach-Object { $_.Trim() })
+        $envWindowStyle = [string]$env:FXJ_MT5_SETUP_LAUNCHER_WINDOW_STYLE
+        if ($envWindowStyle) {
+            $envWindowStyle = $envWindowStyle.Trim()
+        }
         if ($envWindowStyle) {
             $resolvedWindowStyle = $envWindowStyle
         } else {
