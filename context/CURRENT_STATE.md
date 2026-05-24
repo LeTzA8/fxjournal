@@ -2,6 +2,11 @@
 
 Last Updated: 2026-05-24
 
+## MT5 beat self-paced dispatch (2026-05-24)
+
+- Beat no longer fans out every active MT5 account every 30s. `sync_all_active_mt5_accounts` now self-paces: skip when `mt5_sync` already has work, pick the stalest eligible account (`last_synced_at` nulls-first), skip per-account sync locks, and enqueue **one** task with `expires=600`. (`celery_workers/mt5_sync_tasks.py`, tests)
+- Worker sync POSTs now include `trigger_source`; beat-triggered noop ingests skip automatic bar-fetch sweeps (`skipped_reason=beat_noop`) so priority queue work does not starve scheduled sync on the solo VM worker. Manual/admin ingest and beat ingests with saved/updated trades still queue auto bar sync. (`routes/mt5_internal.py`, `celery_workers/mt5_sync_tasks.py`, tests)
+
 ## Admin panel: approved default + MT5 VM overview (2026-05-24)
 
 - Users & approvals now defaults to the **Approved** tab instead of Pending. Pending spotlight remains at the top for quick review. (`auth_account.py`, `templates/admin_signup_access.html`, tests)

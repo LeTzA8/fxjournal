@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 MT5_SYNC_QUEUE_NAME = "mt5_sync"
 MT5_PRIORITY_QUEUE_NAME = "mt5_priority"
-MT5_SYNC_BEAT_EXPIRES_SECONDS = 28
+MT5_SYNC_BEAT_EXPIRES_SECONDS = 600
 MT5_SYNC_BEAT_MAX_QUEUE_DEPTH = 150
 MT5_SERVER_OFFSET_STALE_TICK_SECONDS = 6 * 3600
 MT5_SERVER_OFFSET_HOUR_TOLERANCE_SECONDS = 5 * 60
@@ -1085,6 +1085,7 @@ def sync_mt5_account(
             "mt5_account_id": mt5_account_id,
             "trades": trades,
             "vm_id": get_vm_id(),
+            "trigger_source": trigger_label,
             "timing_context": vm_timing_context,
             "mt5_server_delta_minutes": mt5_server_delta_minutes,
             "applied_time_offset_minutes": applied_offset_minutes,
@@ -1688,6 +1689,20 @@ def fetch_trade_bars_batch(self, mt5_account_id, trade_ids):
     return response.json()
 
 
+def _select_next_beat_mt5_account(accounts):
+    """Pick the stalest eligible account, skipping per-account sync locks."""
+    from celery_workers.cache import CacheUnavailableError, peek_lock_holder
+
+    for account in accounts:
+        try:
+            if peek_lock_holder(_sync_lock_key(account.id)):
+                continue
+        except CacheUnavailableError:
+            pass
+        return account
+    return None
+
+
 @celery.task
 def sync_all_active_mt5_accounts():
     from models import MT5Account
@@ -1707,6 +1722,13 @@ def sync_all_active_mt5_accounts():
                 MT5_SYNC_BEAT_MAX_QUEUE_DEPTH,
             )
             return
+        if sync_queue_depth > 0:
+            logger.info(
+                "MT5 beat skipped sync_queue_busy sync_queue_depth=%s priority_queue_depth=%s",
+                sync_queue_depth,
+                priority_queue_depth,
+            )
+            return
     except CacheUnavailableError as exc:
         logger.warning("MT5 beat queue-depth guard unavailable: %s", exc)
 
@@ -1718,13 +1740,25 @@ def sync_all_active_mt5_accounts():
     if mt5_trial_columns_available():
         filters.append(MT5Account.sync_paused_at.is_(None))
 
-    accounts = MT5Account.query.filter(*filters).all()
+    accounts = (
+        MT5Account.query.filter(*filters)
+        .order_by(MT5Account.last_synced_at.asc().nullsfirst(), MT5Account.id.asc())
+        .all()
+    )
     if not accounts:
         return
-    for account in accounts:
-        sync_mt5_account.apply_async(
-            args=[account.id],
-            kwargs={"trigger_source": "beat"},
-            queue=MT5_SYNC_QUEUE_NAME,
-            expires=MT5_SYNC_BEAT_EXPIRES_SECONDS,
+
+    account = _select_next_beat_mt5_account(accounts)
+    if account is None:
+        logger.info(
+            "MT5 beat skipped all_active_accounts_locked eligible=%s",
+            len(accounts),
         )
+        return
+
+    sync_mt5_account.apply_async(
+        args=[account.id],
+        kwargs={"trigger_source": "beat"},
+        queue=MT5_SYNC_QUEUE_NAME,
+        expires=MT5_SYNC_BEAT_EXPIRES_SECONDS,
+    )

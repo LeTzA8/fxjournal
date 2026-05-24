@@ -199,9 +199,10 @@ def test_sync_all_active_mt5_accounts_skips_orphaned_accounts(app_ctx, monkeypat
         captured_ids.append((args[0], queue))
 
     monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+    monkeypatch.setattr("celery_workers.cache.get_queue_depth", lambda queue_name: 0)
+    monkeypatch.setattr("celery_workers.cache.peek_lock_holder", lambda lock_key: None)
 
     mt5_sync_module.sync_all_active_mt5_accounts.run()
-
     enqueued_mt5_ids = [args_id for args_id, q in captured_ids if q == "mt5_sync"]
     assert active_account.id in enqueued_mt5_ids
     assert orphan_account.id not in enqueued_mt5_ids

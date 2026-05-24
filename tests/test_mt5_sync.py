@@ -3071,9 +3071,77 @@ def test_internal_mt5_sync_auto_queues_bars_for_existing_closed_trade_on_empty_b
     monkeypatch.setattr("routes.mt5_internal.dispatch_celery_task", _fake_dispatch)
     response = client.post(
         "/api/internal/mt5/sync",
-        json={"mt5_account_id": mt5_account.id, "trades": []},
+        json={
+            "mt5_account_id": mt5_account.id,
+            "trades": [],
+            "trigger_source": "beat",
+        },
         headers={"X-Sync-Secret": "sync-secret"},
     )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["auto_bar_sync_queued"] == 0
+    assert payload["auto_bar_sync"]["skipped_reason"] == "beat_noop"
+    assert queued == []
+
+
+def test_internal_mt5_sync_beat_with_new_trade_still_queues_bars(app_ctx, client, monkeypatch):
+    key = Fernet.generate_key().decode("utf-8")
+    monkeypatch.setenv("ENCRYPTION_KEY", key)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-auto-bars-beat-ingest-user",
+        email="mt5-auto-bars-beat-ingest@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="67676767",
+    )
+    set_bool_app_setting(MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, True)
+    db.session.commit()
+
+    queued = []
+
+    def _fake_dispatch(task, *, args=None, kwargs=None, queue=None, log=None, label=None, extra=None):
+        queued.append({"args": args, "queue": queue, "label": label})
+        return SimpleNamespace(id=f"queued-{len(queued)}")
+
+    monkeypatch.setattr("routes.mt5_internal.dispatch_celery_task", _fake_dispatch)
+    response = client.post(
+        "/api/internal/mt5/sync",
+        json={
+            "mt5_account_id": mt5_account.id,
+            "trigger_source": "beat",
+            "trades": [
+                {
+                    "symbol": "EURUSD",
+                    "side": "buy",
+                    "entry_price": 1.085,
+                    "exit_price": 1.09,
+                    "lot_size": 0.01,
+                    "pnl": 48.5,
+                    "commission": -0.5,
+                    "swap": -0.1,
+                    "stop_loss": None,
+                    "take_profit": None,
+                    "opened_at": "2026-03-22T08:00:00+00:00",
+                    "closed_at": "2026-03-22T10:00:00+00:00",
+                    "mt5_position": 67676767,
+                    "trade_note": "closed",
+                    "is_open": False,
+                }
+            ],
+        },
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    trade = Trade.query.filter_by(
+        trade_account_id=trade_account.id,
+        mt5_position="67676767",
+    ).one()
 
     assert response.status_code == 200
     assert response.get_json()["auto_bar_sync_queued"] == 1
@@ -3744,6 +3812,7 @@ def test_sync_all_active_mt5_accounts_uses_sync_queue_with_short_expiry(app_ctx,
     import celery_workers.mt5_sync_tasks as mt5_sync_module
 
     monkeypatch.setattr("celery_workers.cache.get_queue_depth", lambda queue_name: 0)
+    monkeypatch.setattr("celery_workers.cache.peek_lock_holder", lambda lock_key: None)
     monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
 
     mt5_sync_module.sync_all_active_mt5_accounts.run()
@@ -3753,9 +3822,158 @@ def test_sync_all_active_mt5_accounts_uses_sync_queue_with_short_expiry(app_ctx,
             "args": [mt5_account.id],
             "kwargs": {"trigger_source": "beat"},
             "queue": "mt5_sync",
-            "expires": 28,
+            "expires": 600,
         }
     ]
+
+
+def test_sync_all_active_mt5_accounts_dispatches_one_stalest_account(app_ctx, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    for existing_account in MT5Account.query.all():
+        existing_account.is_active = False
+    db.session.commit()
+
+    user, trade_account = _create_user_with_account(
+        username="beat-one-user",
+        email="beat-one-user@example.com",
+    )
+    stale_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="85858581",
+    )
+    stale_account.last_synced_at = datetime(2024, 1, 1, 12, 0, 0)
+    fresh_trade_account = TradeAccount(
+        user_id=user.id,
+        name="Fresh MT5",
+        account_type="CFD",
+    )
+    db.session.add(fresh_trade_account)
+    db.session.commit()
+    fresh_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=fresh_trade_account.id,
+        account_number="85858582",
+    )
+    fresh_account.last_synced_at = datetime(2026, 1, 1, 12, 0, 0)
+    db.session.commit()
+
+    captured = []
+
+    def _fake_apply_async(*, args, kwargs=None, queue, expires=None):
+        captured.append(
+            {
+                "args": args,
+                "kwargs": kwargs,
+                "queue": queue,
+                "expires": expires,
+            }
+        )
+
+    import celery_workers.mt5_sync_tasks as mt5_sync_module
+
+    monkeypatch.setattr("celery_workers.cache.get_queue_depth", lambda queue_name: 0)
+    monkeypatch.setattr("celery_workers.cache.peek_lock_holder", lambda lock_key: None)
+    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+
+    mt5_sync_module.sync_all_active_mt5_accounts.run()
+
+    assert captured == [
+        {
+            "args": [stale_account.id],
+            "kwargs": {"trigger_source": "beat"},
+            "queue": "mt5_sync",
+            "expires": 600,
+        }
+    ]
+
+
+def test_sync_all_active_mt5_accounts_skips_when_sync_queue_busy(app_ctx, monkeypatch, caplog):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    for existing_account in MT5Account.query.all():
+        existing_account.is_active = False
+    db.session.commit()
+
+    user, trade_account = _create_user_with_account(
+        username="beat-busy-user",
+        email="beat-busy-user@example.com",
+    )
+    _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="85858583",
+    )
+
+    captured = []
+
+    def _fake_apply_async(*, args, kwargs=None, queue, expires=None):
+        captured.append({"args": args})
+
+    def _fake_get_queue_depth(queue_name):
+        if queue_name == "mt5_sync":
+            return 1
+        return 0
+
+    import celery_workers.mt5_sync_tasks as mt5_sync_module
+
+    monkeypatch.setattr("celery_workers.cache.get_queue_depth", _fake_get_queue_depth)
+    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+    caplog.set_level(logging.INFO, logger="celery_workers.mt5_sync_tasks")
+
+    mt5_sync_module.sync_all_active_mt5_accounts.run()
+
+    assert captured == []
+    assert "MT5 beat skipped sync_queue_busy" in caplog.text
+
+
+def test_sync_all_active_mt5_accounts_skips_locked_account_and_picks_next(app_ctx, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    for existing_account in MT5Account.query.all():
+        existing_account.is_active = False
+    db.session.commit()
+
+    user, trade_account = _create_user_with_account(
+        username="beat-lock-user",
+        email="beat-lock-user@example.com",
+    )
+    locked_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="85858584",
+    )
+    locked_account.last_synced_at = datetime(2024, 1, 1, 12, 0, 0)
+    next_trade_account = TradeAccount(
+        user_id=user.id,
+        name="Next MT5",
+        account_type="CFD",
+    )
+    db.session.add(next_trade_account)
+    db.session.commit()
+    next_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=next_trade_account.id,
+        account_number="85858585",
+    )
+    next_account.last_synced_at = datetime(2025, 1, 1, 12, 0, 0)
+    db.session.commit()
+
+    captured = []
+
+    def _fake_apply_async(*, args, kwargs=None, queue, expires=None):
+        captured.append({"args": args})
+
+    def _fake_peek_lock_holder(lock_key):
+        return "busy" if lock_key == f"mt5_sync_lock:{locked_account.id}" else None
+
+    import celery_workers.mt5_sync_tasks as mt5_sync_module
+
+    monkeypatch.setattr("celery_workers.cache.get_queue_depth", lambda queue_name: 0)
+    monkeypatch.setattr("celery_workers.cache.peek_lock_holder", _fake_peek_lock_holder)
+    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+
+    mt5_sync_module.sync_all_active_mt5_accounts.run()
+
+    assert captured == [{"args": [next_account.id]}]
 
 
 def test_sync_all_active_mt5_accounts_skips_paused_accounts(app_ctx, monkeypatch):
@@ -3804,6 +4022,7 @@ def test_sync_all_active_mt5_accounts_skips_paused_accounts(app_ctx, monkeypatch
     import celery_workers.mt5_sync_tasks as mt5_sync_module
 
     monkeypatch.setattr("celery_workers.cache.get_queue_depth", lambda queue_name: 0)
+    monkeypatch.setattr("celery_workers.cache.peek_lock_holder", lambda lock_key: None)
     monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
 
     mt5_sync_module.sync_all_active_mt5_accounts.run()
@@ -3813,7 +4032,7 @@ def test_sync_all_active_mt5_accounts_skips_paused_accounts(app_ctx, monkeypatch
             "args": [active_account.id],
             "kwargs": {"trigger_source": "beat"},
             "queue": "mt5_sync",
-            "expires": 28,
+            "expires": 600,
         }
     ]
 

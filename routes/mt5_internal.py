@@ -672,8 +672,15 @@ def sync_mt5_trades():
             "max_tasks_per_sync": 20,
             "queue": None,
         }
+        sync_trigger_source = str(payload.get("trigger_source") or "").strip().lower()
+        ingest_changed = (saved_count + updated_count) > 0
         try:
-            auto_bar_sync_status = _queue_auto_trade_bar_sync(account)
+            if sync_trigger_source == "beat" and not ingest_changed:
+                auto_bar_sync_status["skipped_reason"] = "beat_noop"
+                if get_bool_app_setting(MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, False):
+                    auto_bar_sync_status["enabled"] = True
+            else:
+                auto_bar_sync_status = _queue_auto_trade_bar_sync(account)
         except Exception as exc:
             current_app.logger.warning(
                 "MT5 automatic bar sync queue failed mt5_account_id=%s touched_candidates=%s: %s",
