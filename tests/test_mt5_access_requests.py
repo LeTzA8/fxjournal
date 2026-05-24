@@ -117,6 +117,7 @@ def _stub_mt5_cleanup_queue(monkeypatch, captured=None, *, should_raise=False):
                 {
                     "args": [terminal_path, appdata_hash],
                     "kwargs": dict(options.get("kwargs") or {}),
+                    "account_vm_id": options.get("account_vm_id"),
                     "queue": "mt5_setup",
                 }
             )
@@ -1489,6 +1490,7 @@ def test_root_admin_can_archive_mt5_account_and_keep_reactivation_path(app_ctx, 
                 "ARCHIVEHASH123",
             ],
             "kwargs": {"mt5_account_id": None},
+            "account_vm_id": "",
             "queue": "mt5_setup",
         }
     ]
@@ -1552,6 +1554,7 @@ def test_root_admin_can_reset_mt5_account_with_only_terminal_path(app_ctx, clien
                 "clear_cleanup_mark": True,
                 "cleanup_marked_at": refreshed.cleanup_marked_at.isoformat(),
             },
+            "account_vm_id": None,
             "queue": "mt5_setup",
         }
     ]
@@ -1616,6 +1619,7 @@ def test_root_admin_can_reset_mt5_account_with_only_appdata_hash(app_ctx, client
                 "clear_cleanup_mark": True,
                 "cleanup_marked_at": refreshed.cleanup_marked_at.isoformat(),
             },
+            "account_vm_id": None,
             "queue": "mt5_setup",
         }
     ]
@@ -1868,3 +1872,154 @@ def test_user_cannot_unlink_mt5_for_foreign_trade_account_pubkey(app_ctx, client
     assert response.status_code == 200
     assert MT5Account.query.filter_by(trade_account_id=owner_account.id).count() == 1
     assert b"Trade account not found." in response.data
+
+
+def test_root_admin_delete_mt5_fails_when_cleanup_cannot_queue(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-delete-skip-root@example.com",
+        username="mt5-delete-skip-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-delete-skip-user",
+        email="mt5-delete-skip-user@example.com",
+        account_name="Delete Skip Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70129991",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Delete",
+        terminal_path=r"C:\MT5 User Terminals\delete\terminal64.exe",
+        appdata_hash="DELETEHASH123",
+        is_active=True,
+        vm_id=None,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+    mt5_account_id = mt5_account.id
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account_id}/delete",
+        data={},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account_id)
+    assert response.status_code == 200
+    assert refreshed is not None
+    assert refreshed.user_id == user.id
+    assert b"could not be queued" in response.data
+
+
+def test_root_admin_delete_mt5_passes_target_vm_id(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
+    monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "VM-TARGET,VM-OTHER")
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-delete-target-root@example.com",
+        username="mt5-delete-target-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-delete-target-user",
+        email="mt5-delete-target-user@example.com",
+        account_name="Delete Target VM",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70129992",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Delete",
+        terminal_path=r"C:\MT5 User Terminals\delete2\terminal64.exe",
+        appdata_hash="DELETEHASH456",
+        is_active=True,
+        vm_id=None,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/delete",
+        data={"target_vm_id": "VM-TARGET"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert cleanup_calls
+    assert cleanup_calls[0]["account_vm_id"] == "VM-TARGET"
+    assert b"marked for cleanup" in response.data
+
+
+def test_root_admin_vm_delete_files_clears_runtime_fields(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "VM-BULK")
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-bulk-root@example.com",
+        username="mt5-bulk-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-bulk-user",
+        email="mt5-bulk-user@example.com",
+        account_name="Bulk Cleanup",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70129993",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Bulk",
+        terminal_path=r"C:\MT5 User Terminals\bulk\terminal64.exe",
+        appdata_hash="BULKHASH123",
+        is_active=False,
+        vm_id="VM-BULK",
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
+
+    response = client.post(
+        "/dashboard/admin/access/mt5/vm-delete-files",
+        data={"vm_id": "VM-BULK"},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert response.status_code == 200
+    assert cleanup_calls
+    assert refreshed.terminal_path is None
+    assert refreshed.appdata_hash is None
+    assert refreshed.is_active is False
+    assert b"cleared their terminal runtime fields" in response.data
+
+
+def test_root_admin_vm_delete_files_rejects_unknown_vm(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "VM-BULK")
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-bulk-invalid-root@example.com",
+        username="mt5-bulk-invalid-root",
+    )
+
+    response = client.post(
+        "/dashboard/admin/access/mt5/vm-delete-files",
+        data={"vm_id": "VM-NOT-REAL"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Unknown target VM" in response.data

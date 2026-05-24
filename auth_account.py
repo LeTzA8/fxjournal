@@ -45,9 +45,14 @@ from helpers.core import (
     reactivate_mt5_account,
     reset_mt5_terminal_state,
     queue_mt5_account_cleanup,
+    queue_mt5_accounts_cleanup_for_vm,
     sanitize_error_message,
 )
-from helpers.admin_mt5_ops import build_admin_mt5_vm_overview
+from helpers.admin_mt5_ops import (
+    build_admin_mt5_vm_overview,
+    collect_admin_selectable_vm_ids,
+    resolve_admin_target_vm_id,
+)
 from helpers.celery_dispatch import describe_celery_broker, dispatch_celery_task
 from helpers.mt5_dispatch import (
     MT5_DISPATCH_SKIPPED_MISSING_VM_MSG,
@@ -1962,6 +1967,23 @@ def register_public_auth_routes(
         if message:
             flash(message, status)
         return redirect(url_for(endpoint))
+
+    def _admin_selectable_vm_ids():
+        return collect_admin_selectable_vm_ids(mt5_accounts=MT5Account.query.all())
+
+    def _parse_admin_target_vm_id():
+        vm_id, error = resolve_admin_target_vm_id(
+            request.form.get("target_vm_id"),
+            selectable_vm_ids=_admin_selectable_vm_ids(),
+        )
+        return vm_id, error
+
+    def _parse_admin_vm_id_field(field_name):
+        vm_id, error = resolve_admin_target_vm_id(
+            request.form.get(field_name),
+            selectable_vm_ids=_admin_selectable_vm_ids(),
+        )
+        return vm_id, error
 
     def build_admin_overview():
         # One aggregation round-trip for user breakdown; separate counts for other tables.
@@ -4242,6 +4264,9 @@ def register_public_auth_routes(
             )
 
         setup_broker = "unknown"
+        target_vm_id, target_vm_error = _parse_admin_target_vm_id()
+        if target_vm_error:
+            return build_admin_redirect("mt5", target_vm_error, "error")
         try:
             from celery_workers.mt5_setup_tasks import setup_mt5_terminal
             setup_broker = describe_celery_broker(setup_mt5_terminal)
@@ -4249,7 +4274,8 @@ def register_public_auth_routes(
             dispatch_result = dispatch_mt5_setup(
                 setup_mt5_terminal,
                 mt5_account.id,
-                allow_failover=True,
+                target_vm_id=target_vm_id,
+                allow_failover=not bool(target_vm_id),
                 label="admin_mt5_add_and_setup",
                 extra={
                     "mt5_account_id": mt5_account.id,
@@ -4307,7 +4333,9 @@ def register_public_auth_routes(
             )
 
         setup_broker = "unknown"
-        target_vm_id = (request.form.get("target_vm_id") or "").strip() or None
+        target_vm_id, target_vm_error = _parse_admin_target_vm_id()
+        if target_vm_error:
+            return build_admin_redirect("mt5", target_vm_error, "error")
         try:
             from celery_workers.mt5_setup_tasks import setup_mt5_terminal
             setup_broker = describe_celery_broker(setup_mt5_terminal)
@@ -4352,14 +4380,42 @@ def register_public_auth_routes(
             "success",
         )
 
+    @app.route("/dashboard/admin/access/mt5/vm-delete-files", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_vm_delete_files():
+        vm_id, vm_error = _parse_admin_vm_id_field("vm_id")
+        if vm_error:
+            return build_admin_redirect("mt5", vm_error, "error")
+        if not vm_id:
+            return build_admin_redirect("mt5", "Choose a VM before queueing terminal file cleanup.", "error")
+
+        mt5_accounts = MT5Account.query.all()
+        queued, message = queue_mt5_accounts_cleanup_for_vm(
+            vm_id=vm_id,
+            mt5_accounts=mt5_accounts,
+            log_context="admin vm delete-files",
+        )
+        if queued:
+            current_app.logger.info(
+                "Admin queued VM terminal cleanup vm_id=%s queued=%s admin_user_id=%s",
+                vm_id,
+                queued,
+                session.get("user_id"),
+            )
+        return build_admin_redirect("mt5", message, "success" if queued else "error")
+
     @app.route("/dashboard/admin/access/mt5/<int:mt5_account_id>/archive", methods=["POST"])
     @root_admin_required
     def admin_mt5_archive_account(mt5_account_id):
         account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        target_vm_id, target_vm_error = _parse_admin_target_vm_id()
+        if target_vm_error:
+            return build_admin_redirect("mt5", target_vm_error, "error")
         ok, message = archive_mt5_account(
             mt5_account=account,
             archive_reason=MT5Account.ARCHIVE_REASON_INACTIVITY,
             log_context="admin archive",
+            target_vm_id=target_vm_id,
         )
         if ok:
             message = (
@@ -4375,9 +4431,13 @@ def register_public_auth_routes(
     @root_admin_required
     def admin_mt5_reactivate_account(mt5_account_id):
         account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        target_vm_id, target_vm_error = _parse_admin_target_vm_id()
+        if target_vm_error:
+            return build_admin_redirect("mt5", target_vm_error, "error")
         ok, message = reactivate_mt5_account(
             mt5_account=account,
             log_context="admin reactivate",
+            target_vm_id=target_vm_id,
         )
         if ok:
             current_app.logger.info(
@@ -4394,9 +4454,13 @@ def register_public_auth_routes(
     @root_admin_required
     def admin_mt5_reset_terminal(mt5_account_id):
         account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        target_vm_id, target_vm_error = _parse_admin_target_vm_id()
+        if target_vm_error:
+            return build_admin_redirect("mt5", target_vm_error, "error")
         ok, message = reset_mt5_terminal_state(
             mt5_account=account,
             log_context="admin reset-terminal",
+            target_vm_id=target_vm_id,
         )
         if ok:
             current_app.logger.info(
@@ -5025,12 +5089,21 @@ def register_public_auth_routes(
             )
 
         # Queue cleanup BEFORE marking — mark_for_cleanup clears terminal_path.
+        had_runtime_artifacts = bool(
+            str(account.terminal_path or "").strip() or str(account.appdata_hash or "").strip()
+        )
+        target_vm_id, target_vm_error = _parse_admin_target_vm_id()
+        if target_vm_error:
+            return build_admin_redirect("mt5", target_vm_error, "error")
+
         cleanup_warning = queue_mt5_account_cleanup(
             mt5_account=account,
             log_context="admin delete",
             delete_row_on_success=True,
+            target_vm_id=target_vm_id,
         )
-        cleanup_suffix = f" {cleanup_warning}" if cleanup_warning else ""
+        if cleanup_warning:
+            return build_admin_redirect("mt5", cleanup_warning, "error")
 
         account_number = account.account_number
 
@@ -5045,9 +5118,17 @@ def register_public_auth_routes(
                 "error",
             )
 
+        if had_runtime_artifacts:
+            success_message = (
+                f"MT5 account {account_number} marked for cleanup. "
+                "DB row will be removed after terminal cleanup succeeds."
+            )
+        else:
+            success_message = f"MT5 account {account_number} marked for cleanup."
+
         return build_admin_redirect(
             "mt5",
-            f"MT5 account {account_number} marked for cleanup. DB row will be removed after terminal cleanup succeeds.{cleanup_suffix}",
+            success_message,
             "success",
         )
 

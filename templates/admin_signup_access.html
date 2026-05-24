@@ -336,6 +336,19 @@
             </article>
         </section>
         {% elif section == "mt5" %}
+        {% macro mt5_vm_target_select(selected=None, default_label='Default routing') %}
+        {% if vm_overview.get('show_vm_target_selector') and vm_overview.get('selectable_vm_ids') %}
+        <label class="soft admin-inline-select-label">
+            Target VM
+            <select name="target_vm_id" class="admin-inline-select admin-sort-select">
+                <option value=""{% if not selected %} selected{% endif %}>{{ default_label }}</option>
+                {% for vm_option in vm_overview.selectable_vm_ids %}
+                <option value="{{ vm_option }}"{% if selected == vm_option %} selected{% endif %}>{{ vm_option }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        {% endif %}
+        {% endmacro %}
         {% set mt5_sort = mt5_sort|default('created_desc') %}
         {% set vm_overview = mt5_vm_overview or {} %}
         {% set server_seed_shortlist = mt5_server_seed_shortlist or [] %}
@@ -506,6 +519,19 @@
                             <p class="pending-line">Notes: {{ vm.notes }}</p>
                             {% endif %}
                         </div>
+                        {% if not vm.is_unknown_bucket %}
+                        <div class="mt5-vm-actions">
+                            <form
+                                action="{{ url_for('admin_mt5_vm_delete_files') }}"
+                                method="post"
+                                onsubmit='return confirm({{ ("Delete VM terminal files on " ~ vm.vm_id ~ " for inactive/non-archived MT5 accounts that still have stored terminal paths or AppData hashes? Active accounts are skipped.")|tojson }});'
+                            >
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="vm_id" value="{{ vm.vm_id }}">
+                                <button type="submit" class="ghost-btn danger-btn">Delete VM files</button>
+                            </form>
+                        </div>
+                        {% endif %}
                         {% if vm.accounts %}
                         <details class="mt5-vm-accounts-details">
                             <summary class="mt5-vm-accounts-summary">
@@ -675,6 +701,9 @@
                                             <span class="user-id-inline">MT5 ID: {{ account.id }}</span>
                                             <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                {% if not is_orphaned %}
+                                                {{ mt5_vm_target_select(selected=account.vm_id, default_label='Account VM (or default)') }}
+                                                {% endif %}
                                                 <button type="submit" class="ghost-btn danger-btn inline-btn-compact">Delete</button>
                                             </form>
                                         </div>
@@ -710,17 +739,10 @@
                                     <div class="inline-actions">
                                         <form action="{{ url_for('admin_mt5_reactivate_account', mt5_account_id=account.id) if account.is_archived else url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            {% if not account.is_archived and vm_overview.get('setup_vm_ids') %}
-                                            <label class="soft admin-inline-select-label">
-                                                Target VM
-                                                <select name="target_vm_id" class="admin-inline-select">
-                                                    <option value="">Default ({{ vm_overview.setup_vm_ids[0] }})</option>
-                                                    {% for setup_vm_id in vm_overview.setup_vm_ids %}
-                                                    <option value="{{ setup_vm_id }}"{% if account.vm_id == setup_vm_id %} selected{% endif %}>{{ setup_vm_id }}</option>
-                                                    {% endfor %}
-                                                </select>
-                                            </label>
-                                            {% endif %}
+                                            {{ mt5_vm_target_select(
+                                                selected=account.vm_id,
+                                                default_label=('Default (' ~ vm_overview.selectable_vm_ids[0] ~ ')' if vm_overview.get('selectable_vm_ids') else 'Default routing')
+                                            ) }}
                                             <button
                                                 type="submit"
                                                 class="submit-btn"
@@ -733,6 +755,7 @@
                                         </form>
                                         <form action="{{ url_for('admin_mt5_archive_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Archive this MT5 account due to inactivity? The VM terminal files will be removed, but the saved read-only credentials will stay available for reactivation.');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            {{ mt5_vm_target_select(selected=account.vm_id, default_label='Account VM (or default)') }}
                                             <button
                                                 type="submit"
                                                 class="ghost-btn"
@@ -745,6 +768,7 @@
                                         </form>
                                         <form action="{{ url_for('admin_mt5_reset_terminal', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Reset terminal state for this MT5 account? VM terminal files will be queued for removal and all terminal-related DB fields will be cleared. Wait for cleanup to finish before running Setup Terminal again. Credentials and account details are kept.');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            {{ mt5_vm_target_select(selected=account.vm_id, default_label='Account VM (or default)') }}
                                             <button
                                                 type="submit"
                                                 class="ghost-btn"

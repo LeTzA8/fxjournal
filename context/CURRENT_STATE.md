@@ -2,6 +2,17 @@
 
 Last Updated: 2026-05-25
 
+## Admin MT5: VM-targeted cleanup + setup selector (2026-05-25)
+
+- Admin MT5 panel exposes a reusable **Target VM** selector when multi-VM is enabled or more than one VM is configured/observed. Applies to **Setup Terminal**, **Reactivate**, **Reset Terminal**, **Archive**, and **Delete** so cleanup/setup routes to the chosen worker queue. Submissions are validated against configured/account/worker VM ids.
+- Each Worker VM card includes **Delete VM files** — queues terminal/AppData cleanup for **inactive or archived** MT5 accounts on that VM with stored runtime paths, then clears `terminal_path` / `appdata_hash` / `is_active` in the DB. Active accounts are skipped.
+- Delete/reset/archive now return **errors** when cleanup cannot be queued but VM artifacts still exist (multi-VM missing `vm_id` or invalid target VM). Delete no longer marks cleanup-only state when dispatch fails.
+- Backend: `queue_mt5_account_cleanup(..., target_vm_id=)`, `queue_mt5_accounts_cleanup_for_vm`, `collect_admin_selectable_vm_ids`, `resolve_admin_target_vm_id`, route `POST /dashboard/admin/access/mt5/vm-delete-files`. (`helpers/core.py`, `helpers/admin_mt5_ops.py`, `auth_account.py`, `templates/admin_signup_access.html`, `static/css/admin_panel.css`, tests)
+
+## VM Task Scheduler XML: portable logon trigger (2026-05-25)
+
+- All four `manual VM scripts/FX Journal MT5 *.xml` exports now use an **any-user** `LogonTrigger` (no `UserId`) and run as `.\Administrator` with `InteractiveToken`, so imports work on any Hyonix VM without editing `COMPUTERNAME`. Repo paths remain `C:\Users\Administrator\fxjournal`. Re-import on each VM after pulling; run `reencode_task_xml_utf16.py` if you edit XML locally.
+
 ## Audit fixes: MT5 shortlist XSS, dispatch skips, waitlist CSRF (2026-05-25)
 
 - Fixed stored admin XSS in MT5 server seed shortlist confirm dialogs by JSON-escaping server names with `tojson` instead of inline single-quoted strings. (`templates/admin_signup_access.html`, tests)

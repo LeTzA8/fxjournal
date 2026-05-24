@@ -108,6 +108,58 @@ def _summarize_account(account, *, status_meta):
     }
 
 
+def collect_admin_selectable_vm_ids(*, mt5_accounts=()):
+    """VM ids admins may target for setup/cleanup (configured, account, worker)."""
+    vm_ids = configured_monitor_vm_ids(mt5_accounts=mt5_accounts)
+    seen = {vm_id.casefold() for vm_id in vm_ids}
+    try:
+        for worker_kind in ("mt5_sync", "mt5_setup"):
+            for row in list_worker_states(worker_kind):
+                vm_id = _normalize_admin_vm_id(row.get("vm_id") or row.get("worker_id"))
+                if not vm_id or vm_id == "unknown":
+                    continue
+                key = vm_id.casefold()
+                if key in seen:
+                    continue
+                seen.add(key)
+                vm_ids.append(vm_id)
+    except CacheUnavailableError:
+        pass
+    return vm_ids
+
+
+def resolve_admin_target_vm_id(raw_value, *, selectable_vm_ids=()):
+    """
+    Normalize an admin-submitted VM id and optionally restrict it to known VMs.
+
+    Returns ``(vm_id, error_message)``. Empty input yields ``(None, None)``.
+    """
+    vm_id = _normalize_admin_vm_id(raw_value) if str(raw_value or "").strip() else ""
+    if not vm_id or vm_id == "unknown":
+        if str(raw_value or "").strip():
+            return None, "Choose a valid target VM."
+        return None, None
+
+    selectable = []
+    seen = set()
+    for value in selectable_vm_ids or ():
+        normalized = _normalize_admin_vm_id(value)
+        if not normalized or normalized == "unknown":
+            continue
+        key = normalized.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        selectable.append(normalized)
+    if not selectable:
+        return vm_id, None
+
+    allowed = {value.casefold(): value for value in selectable}
+    if vm_id.casefold() not in allowed:
+        return None, f"Unknown target VM {vm_id}. Choose one of: {', '.join(selectable)}."
+    return allowed[vm_id.casefold()], None
+
+
 def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
     now = datetime.now(timezone.utc)
     vm_profiles = _parse_vm_profiles_env()
@@ -240,6 +292,8 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         )
     )
 
+    selectable_vm_ids = collect_admin_selectable_vm_ids(mt5_accounts=mt5_accounts)
+
     return {
         "vms": vm_rows,
         "vm_count": len(vm_rows),
@@ -250,5 +304,7 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         "multi_vm_enabled": is_mt5_multi_vm_enabled(),
         "listen_legacy_queues": listen_legacy_mt5_queues(),
         "setup_vm_ids": parse_setup_vm_ids_env(),
+        "selectable_vm_ids": selectable_vm_ids,
+        "show_vm_target_selector": is_mt5_multi_vm_enabled() or len(selectable_vm_ids) > 1,
         "monitor_available": monitor_available,
     }

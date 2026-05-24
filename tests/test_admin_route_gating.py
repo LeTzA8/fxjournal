@@ -41,6 +41,7 @@ ALL_ADMIN_ROUTES = [
     ("post", "/dashboard/admin/access/mt5/requests/1/approve"),
     ("post", "/dashboard/admin/access/mt5/requests/1/reject"),
     ("post", "/dashboard/admin/access/mt5/1/delete"),
+    ("post", "/dashboard/admin/access/mt5/vm-delete-files"),
     ("post", "/dashboard/admin/access/codes/create"),
     ("post", "/dashboard/admin/access/codes/1/toggle"),
     ("get", "/admin/journal"),
@@ -81,6 +82,7 @@ ROOT_ONLY_ADMIN_ROUTES = [
     ("post", "/dashboard/admin/access/mt5/requests/1/approve"),
     ("post", "/dashboard/admin/access/mt5/requests/1/reject"),
     ("post", "/dashboard/admin/access/mt5/1/delete"),
+    ("post", "/dashboard/admin/access/mt5/vm-delete-files"),
     ("post", "/dashboard/admin/access/codes/create"),
     ("post", "/dashboard/admin/access/codes/1/toggle"),
 ]

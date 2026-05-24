@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 
 from celery_workers.worker_monitor import get_vm_id
-from helpers.admin_mt5_ops import build_admin_mt5_vm_overview
+from helpers.admin_mt5_ops import (
+    build_admin_mt5_vm_overview,
+    resolve_admin_target_vm_id,
+)
 from models import MT5Account, TradeAccount, User, db
 
 
@@ -94,6 +97,37 @@ def test_build_admin_mt5_vm_overview_groups_accounts_by_vm(app_ctx, monkeypatch)
     assert vm_by_id["vm-east"]["sync_worker_online"] is True
     assert vm_by_id["unknown"]["account_count"] == 1
     assert vm_by_id["unknown"]["accounts"][0]["account_number"] == "222222"
+    assert "vm-east" in overview["selectable_vm_ids"]
+    assert overview["show_vm_target_selector"] is (len(overview["selectable_vm_ids"]) > 1)
+
+
+def test_build_admin_mt5_vm_overview_exposes_vm_selector_when_multi_vm(app_ctx, monkeypatch):
+    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
+    monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "VM-A,VM-B")
+
+    overview = build_admin_mt5_vm_overview(
+        mt5_accounts=[],
+        mt5_statuses_by_account_id={},
+    )
+
+    assert overview["selectable_vm_ids"] == ["VM-A", "VM-B"]
+    assert overview["show_vm_target_selector"] is True
+
+
+def test_resolve_admin_target_vm_id_rejects_unknown_vm(app_ctx, monkeypatch):
+    monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "VM-A,VM-B")
+
+    vm_id, error = resolve_admin_target_vm_id("VM-Z", selectable_vm_ids=["VM-A", "VM-B"])
+    assert vm_id is None
+    assert "Unknown target VM" in error
+
+    vm_id, error = resolve_admin_target_vm_id("", selectable_vm_ids=["VM-A", "VM-B"])
+    assert vm_id is None
+    assert error is None
+
+    vm_id, error = resolve_admin_target_vm_id("VM-B", selectable_vm_ids=["VM-A", "VM-B"])
+    assert vm_id == "VM-B"
+    assert error is None
 
 
 def test_admin_users_default_status_is_approved(app_ctx, client, monkeypatch):

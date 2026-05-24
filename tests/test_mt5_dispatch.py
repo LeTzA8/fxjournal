@@ -139,6 +139,174 @@ def test_queue_mt5_account_cleanup_reports_missing_vm_skip(app_ctx, monkeypatch)
     assert warning == MT5_DISPATCH_SKIPPED_MISSING_VM_MSG
 
 
+def test_queue_mt5_account_cleanup_uses_target_vm_override(app_ctx, monkeypatch):
+    from helpers.core import queue_mt5_account_cleanup
+    from models import MT5Account, TradeAccount, User, db
+
+    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
+    captured = {}
+
+    class _Task:
+        name = "cleanup"
+
+        @property
+        def app(self):
+            class _App:
+                conf = type("Conf", (), {"broker_url": "memory://"})()
+
+            return _App()
+
+        def apply_async(self, **kwargs):
+            captured.update(kwargs)
+            return type("Result", (), {"id": "task-id"})()
+
+    monkeypatch.setattr("celery_workers.mt5_setup_tasks.cleanup_mt5_terminal", _Task())
+
+    user = User(username="cleanup-target-user", email="cleanup-target@example.com", password="hashed")
+    db.session.add(user)
+    db.session.flush()
+    trade_account = TradeAccount(user_id=user.id, name="Acct", account_type="CFD", is_default=True)
+    db.session.add(trade_account)
+    db.session.flush()
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="12345",
+        server="Test-Live",
+        investor_password_encrypted="enc",
+        terminal_path="C:\\terminals\\12345",
+        appdata_hash="abc123",
+        vm_id=None,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    warning = queue_mt5_account_cleanup(
+        mt5_account=mt5_account,
+        log_context="test",
+        target_vm_id="VM-TARGET",
+    )
+    assert warning is None
+    assert captured["queue"] == "mt5_setup.vm-target"
+    assert captured["kwargs"]["target_vm_id"] == "VM-TARGET"
+
+
+def test_queue_mt5_accounts_cleanup_for_vm_queues_matching_accounts(app_ctx, monkeypatch):
+    from helpers.core import queue_mt5_accounts_cleanup_for_vm
+    from models import MT5Account, TradeAccount, User, db
+
+    calls = []
+
+    def _fake_queue(*, mt5_account, log_context, target_vm_id=None, delete_row_on_success=False):
+        calls.append((mt5_account.id, target_vm_id, log_context))
+        return None
+
+    monkeypatch.setattr("helpers.core.queue_mt5_account_cleanup", _fake_queue)
+
+    user = User(username="bulk-vm-user", email="bulk-vm@example.com", password="hashed")
+    db.session.add(user)
+    db.session.flush()
+    trade_a = TradeAccount(user_id=user.id, name="Acct A", account_type="CFD", is_default=True)
+    trade_b = TradeAccount(user_id=user.id, name="Acct B", account_type="CFD", is_default=False)
+    trade_c = TradeAccount(user_id=user.id, name="Acct C", account_type="CFD", is_default=False)
+    trade_d = TradeAccount(user_id=user.id, name="Acct D", account_type="CFD", is_default=False)
+    db.session.add_all([trade_a, trade_b, trade_c, trade_d])
+    db.session.flush()
+    match = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_a.id,
+        account_number="111",
+        server="Test-Live",
+        investor_password_encrypted="enc",
+        terminal_path="C:\\terminals\\111",
+        appdata_hash="hash111",
+        vm_id="VM-A",
+        is_active=False,
+    )
+    skip_vm = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_b.id,
+        account_number="222",
+        server="Test-Live",
+        investor_password_encrypted="enc",
+        terminal_path="C:\\terminals\\222",
+        appdata_hash="hash222",
+        vm_id="VM-B",
+        is_active=False,
+    )
+    skip_empty = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_c.id,
+        account_number="333",
+        server="Test-Live",
+        investor_password_encrypted="enc",
+        vm_id="VM-A",
+        is_active=False,
+    )
+    skip_active = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_d.id,
+        account_number="444",
+        server="Test-Live",
+        investor_password_encrypted="enc",
+        terminal_path="C:\\terminals\\444",
+        appdata_hash="hash444",
+        vm_id="VM-A",
+        is_active=True,
+    )
+    db.session.add_all([match, skip_vm, skip_empty, skip_active])
+    db.session.commit()
+
+    queued, message = queue_mt5_accounts_cleanup_for_vm(
+        vm_id="VM-A",
+        mt5_accounts=[match, skip_vm, skip_empty, skip_active],
+    )
+    assert queued == 1
+    assert "VM-A" in message
+    assert "cleared their terminal runtime fields" in message
+    assert "Skipped 1 active account" in message
+    assert calls == [(match.id, "VM-A", "admin vm delete-files")]
+
+    db.session.refresh(match)
+    assert match.terminal_path is None
+    assert match.appdata_hash is None
+    assert match.is_active is False
+
+
+def test_queue_mt5_accounts_cleanup_for_vm_skips_active_only(app_ctx, monkeypatch):
+    from helpers.core import queue_mt5_accounts_cleanup_for_vm
+    from models import MT5Account, TradeAccount, User, db
+
+    monkeypatch.setattr(
+        "helpers.core.queue_mt5_account_cleanup",
+        lambda **kwargs: pytest.fail("should not queue cleanup for active accounts"),
+    )
+
+    user = User(username="bulk-active-user", email="bulk-active@example.com", password="hashed")
+    db.session.add(user)
+    db.session.flush()
+    trade_account = TradeAccount(user_id=user.id, name="Active", account_type="CFD", is_default=True)
+    db.session.add(trade_account)
+    db.session.flush()
+    active = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="999",
+        server="Test-Live",
+        investor_password_encrypted="enc",
+        terminal_path="C:\\terminals\\999",
+        appdata_hash="hash999",
+        vm_id="VM-A",
+        is_active=True,
+    )
+    db.session.add(active)
+    db.session.commit()
+
+    queued, message = queue_mt5_accounts_cleanup_for_vm(vm_id="VM-A", mt5_accounts=[active])
+    assert queued == 0
+    assert "active account" in message.lower()
+
+
 def test_dispatch_mt5_sync_skips_missing_vm_id_when_multi_vm(monkeypatch, caplog):
     monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
 

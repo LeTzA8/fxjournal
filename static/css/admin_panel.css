@@ -908,6 +908,36 @@ a.admin-stat-tile:hover {
     margin-top: 0.5rem;
 }
 
+.mt5-vm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-top: 0.65rem;
+}
+
+.admin-inline-select-label {
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.78rem;
+    letter-spacing: 0.02em;
+    margin: 0 0 0.35rem;
+}
+
+.admin-inline-select {
+    min-width: 10rem;
+    max-width: 100%;
+}
+
+.admin-table .inline-actions .admin-inline-select-label {
+    flex: 1 1 100%;
+}
+
+.mt5-account-title-row form {
+    display: grid;
+    gap: 0.35rem;
+    margin-top: 0.35rem;
+}
+
 .admin-cfd-symbols-layout .cfd-aliases-panel {
     grid-column: 1 / -1;
 }
