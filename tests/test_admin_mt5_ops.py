@@ -64,6 +64,7 @@ def test_build_admin_mt5_vm_overview_groups_accounts_by_vm(app_ctx, monkeypatch)
     }
 
     now = datetime.now(timezone.utc)
+    monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "vm-east")
     monkeypatch.setattr(
         "helpers.admin_mt5_ops.list_mt5_worker_states",
         lambda: {
@@ -102,7 +103,7 @@ def test_build_admin_mt5_vm_overview_groups_accounts_by_vm(app_ctx, monkeypatch)
     assert vm_by_id["unknown"]["account_count"] == 1
     assert vm_by_id["unknown"]["accounts"][0]["account_number"] == "222222"
     assert "vm-east" in overview["selectable_vm_ids"]
-    assert overview["show_vm_target_selector"] is (len(overview["selectable_vm_ids"]) > 1)
+    assert overview["show_vm_target_selector"] is bool(overview["selectable_vm_ids"])
 
 
 def test_build_admin_mt5_vm_overview_exposes_vm_selector_when_multi_vm(app_ctx, monkeypatch):

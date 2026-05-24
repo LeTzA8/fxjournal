@@ -118,7 +118,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\windows\watch_mt5_sync_worker
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\watch_mt5_setup_worker.ps1
 ```
 
-VM after reboot: use Task Scheduler exports in `manual VM scripts/`. Pick watchdog or direct per queue, never both for the same queue. Setup and sync should run in the logged-on Administrator interactive desktop session so MetaTrader can open visible terminals.
+VM after reboot: use Task Scheduler exports in `manual VM scripts/`. **Worker Direct** tasks are primary (enabled); **Watchdog (Legacy)** tasks are disabled by default — pick one per queue, never both. Setup and sync should run in the logged-on Administrator interactive desktop session so MetaTrader can open visible terminals.
 
 Local dev:
 

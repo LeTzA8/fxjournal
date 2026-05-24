@@ -10,7 +10,7 @@ Last Updated: 2026-05-25
 
 ## Admin MT5: Delete VM files replaces Reset Terminal (2026-05-25)
 
-- Per-account **Delete VM files** (`POST …/mt5/<id>/delete-vm-files`) queues terminal/AppData cleanup only via `delete_mt5_account_vm_files`. It clears stored `terminal_path` / `appdata_hash` and sets `is_active=false`, but keeps credentials, `vm_id`, connection errors, and does **not** set `cleanup_marked_at`, so **Setup Terminal** is not blocked afterward. Rejects active accounts, rows with account cleanup pending, and target VM overrides that disagree with stored `vm_id`. Flash/confirm copy warns admins to wait for VM cleanup before Setup.
+- Per-account **Delete VM files** (`POST …/mt5/<id>/delete-vm-files`) queues terminal/AppData cleanup only via `delete_mt5_account_vm_files`. It clears stored `terminal_path` / `appdata_hash` and sets `is_active=false`, but keeps credentials, `vm_id`, connection errors, and does **not** set `cleanup_marked_at`, so **Setup Terminal** is not blocked afterward. Rejects actively syncing accounts (still allows failed-connection rows with VM artifacts), rows with account cleanup pending, VM id mismatches, and missing target VM in multi-VM mode. Flash/confirm copy warns admins to wait for VM cleanup before Setup.
 
 ## Admin MT5: VM-targeted cleanup + setup selector (2026-05-25)
 
@@ -18,6 +18,12 @@ Last Updated: 2026-05-25
 - Each Worker VM card includes **Delete VM files** — queues terminal/AppData cleanup for **inactive or archived** MT5 accounts on that VM with stored runtime paths, then clears `terminal_path` / `appdata_hash` / `is_active` in the DB. Active accounts are skipped.
 - Delete/reset/archive now return **errors** when cleanup cannot be queued but VM artifacts still exist (multi-VM missing `vm_id` or invalid target VM). Delete no longer marks cleanup-only state when dispatch fails.
 - Backend: `queue_mt5_account_cleanup(..., target_vm_id=)`, `queue_mt5_accounts_cleanup_for_vm`, `collect_admin_selectable_vm_ids`, `resolve_admin_target_vm_id`, route `POST /dashboard/admin/access/mt5/vm-delete-files`. (`helpers/core.py`, `helpers/admin_mt5_ops.py`, `auth_account.py`, `templates/admin_signup_access.html`, `static/css/admin_panel.css`, tests)
+
+## VM Task Scheduler XML: direct workers primary, watchdogs legacy (2026-05-25)
+
+- **Primary:** `FX Journal MT5 Setup Worker Direct.xml` + `FX Journal MT5 Sync Worker Direct.xml` — portable any-user `LogonTrigger` + `InteractiveToken` as `.\Administrator`; enabled by default.
+- **Legacy (disabled by default):** `FX Journal MT5 Setup Watchdog (Legacy).xml` + `FX Journal MT5 Sync Watchdog (Legacy).xml` — superseded by Worker Direct; import only if you still want health-check supervision.
+- Re-import on each VM after pulling; run `python "manual VM scripts/reencode_task_xml_utf16.py"` after editing XML locally. Paths stay `C:\Users\Administrator\fxjournal`.
 
 ## VM Task Scheduler XML: portable logon trigger (2026-05-25)
 

@@ -670,6 +670,8 @@
                             {% set trade_count = mt5_trade_counts_by_account.get(account.id, 0) %}
                             {% set is_orphaned = account.is_orphaned %}
                             {% set status_meta = mt5_statuses_by_account_id.get(account.id, {"label": "Setting Up", "chip_class": "warning-chip"}) %}
+                            {% set has_vm_artifacts = account.terminal_path or account.appdata_hash %}
+                            {% set blocks_active_delete = account.is_active and not account.is_archived and account.connection_status != 'failed' %}
                             <tr data-mt5-account-row="{{ account.id }}">
                                 <td>
                                     <div class="user-cell">
@@ -717,9 +719,9 @@
                                         <label class="admin-mt5-row-vm-label">
                                             <span class="soft">Target VM for setup/cleanup</span>
                                             <select class="admin-mt5-row-vm-select admin-sort-select" data-mt5-row-vm-select aria-label="Target VM for MT5 account {{ account.id }}">
-                                                <option value=""{% if not account.vm_id %} selected{% endif %}>Default routing</option>
+                                                <option value=""{% if account.vm_id or (vm_overview.get('multi_vm_enabled') and vm_overview.get('selectable_vm_ids')) %}{% else %} selected{% endif %}>Default routing</option>
                                                 {% for vm_option in vm_overview.selectable_vm_ids %}
-                                                <option value="{{ vm_option }}"{% if account.vm_id == vm_option %} selected{% endif %}>{{ vm_option }}</option>
+                                                <option value="{{ vm_option }}"{% if account.vm_id == vm_option or (not account.vm_id and vm_overview.get('multi_vm_enabled') and loop.first) %} selected{% endif %}>{{ vm_option }}</option>
                                                 {% endfor %}
                                             </select>
                                         </label>
@@ -774,10 +776,10 @@
                                                 <button
                                                 type="submit"
                                                 class="ghost-btn danger-btn"
-                                                {% if is_orphaned or account.cleanup_marked_at or account.is_active or (not account.terminal_path and not account.appdata_hash) %}
+                                                {% if is_orphaned or account.cleanup_marked_at or blocks_active_delete or not has_vm_artifacts %}
                                                 disabled
                                                 aria-disabled="true"
-                                                title="{{ 'Cleanup-only MT5 records have no VM files to delete.' if is_orphaned else ('This account already has account cleanup pending.' if account.cleanup_marked_at else ('Archive this account before deleting VM files while it is still active.' if account.is_active else 'No terminal paths or AppData hash are stored for this account.')) }}"
+                                                title="{{ 'Cleanup-only MT5 records have no VM files to delete.' if is_orphaned else ('This account already has account cleanup pending.' if account.cleanup_marked_at else ('Archive this account before deleting VM files while it is still actively syncing.' if blocks_active_delete else 'No terminal paths or AppData hash are stored for this account.')) }}"
                                                 {% endif %}
                                             >Delete VM files</button>
                                             </form>

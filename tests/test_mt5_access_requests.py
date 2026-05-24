@@ -1580,6 +1580,7 @@ def test_root_admin_delete_vm_files_rejects_active_account(app_ctx, client, monk
         terminal_path=r"C:\MT5 User Terminals\active\terminal64.exe",
         vm_id="MYFXJOURNAL-SG",
         is_active=True,
+        connection_status=MT5Account.CONNECTION_STATUS_CONNECTED,
     )
     db.session.add(mt5_account)
     db.session.commit()
@@ -1599,6 +1600,47 @@ def test_root_admin_delete_vm_files_rejects_active_account(app_ctx, client, monk
     assert refreshed.is_active is True
     assert refreshed.terminal_path is not None
     assert b"Archive it first before deleting its terminal files" in response.data
+
+
+def test_root_admin_can_delete_vm_files_for_active_failed_connection(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-delete-files-failed-active-root@example.com",
+        username="mt5-delete-files-failed-active-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-delete-files-failed-active-user",
+        email="mt5-delete-files-failed-active-user@example.com",
+        account_name="Delete Files Failed Active Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119992",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Failed-Active",
+        terminal_path=r"C:\MT5 User Terminals\failed-active\terminal64.exe",
+        vm_id="MYFXJOURNAL-SG",
+        is_active=True,
+        connection_status=MT5Account.CONNECTION_STATUS_FAILED,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/delete-vm-files",
+        data={},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert cleanup_calls
+    assert b"VM terminal file cleanup queued" in response.data
 
 
 def test_root_admin_delete_vm_files_rejects_cleanup_pending_with_artifacts(app_ctx, client, monkeypatch):

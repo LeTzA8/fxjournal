@@ -727,11 +727,11 @@ def resolve_mt5_cleanup_target_vm(*, mt5_account, target_vm_id=None):
     Returns ``(vm_id, error_message)``. Empty explicit input falls back to the
     account's stored VM affinity.
     """
-    from helpers.mt5_dispatch import normalize_vm_id
+    from helpers.mt5_dispatch import canonical_monitor_vm_id, is_mt5_multi_vm_enabled
 
-    stored = normalize_vm_id(getattr(mt5_account, "vm_id", None))
+    stored = canonical_monitor_vm_id(getattr(mt5_account, "vm_id", None))
     explicit = (
-        normalize_vm_id(target_vm_id)
+        canonical_monitor_vm_id(target_vm_id)
         if str(target_vm_id or "").strip()
         else ""
     )
@@ -740,7 +740,10 @@ def resolve_mt5_cleanup_target_vm(*, mt5_account, target_vm_id=None):
             f"Target VM {explicit} does not match this account's VM ({stored}). "
             "Use default routing or the account's current VM."
         )
-    return explicit or stored or None, None
+    resolved = explicit or stored or None
+    if is_mt5_multi_vm_enabled() and not resolved:
+        return None, "Choose a target VM for this account before deleting VM files."
+    return resolved, None
 
 
 def queue_mt5_account_cleanup(
@@ -823,9 +826,9 @@ def queue_mt5_accounts_cleanup_for_vm(*, vm_id, mt5_accounts, log_context="admin
     Returns ``(queued_count, message)`` where *message* is an error summary when
     nothing was queued or every dispatch failed.
     """
-    from helpers.mt5_dispatch import normalize_vm_id
+    from helpers.mt5_dispatch import canonical_monitor_vm_id
 
-    normalized_vm = normalize_vm_id(vm_id)
+    normalized_vm = canonical_monitor_vm_id(vm_id)
     if not normalized_vm:
         return 0, "Choose a VM before queueing terminal file cleanup."
 
@@ -837,7 +840,7 @@ def queue_mt5_accounts_cleanup_for_vm(*, vm_id, mt5_accounts, log_context="admin
     accounts_to_clear = []
 
     for account in mt5_accounts or ():
-        if normalize_vm_id(getattr(account, "vm_id", None)) != normalized_vm:
+        if canonical_monitor_vm_id(getattr(account, "vm_id", None)) != normalized_vm:
             continue
         terminal_path = str(getattr(account, "terminal_path", "") or "").strip()
         appdata_hash = str(getattr(account, "appdata_hash", "") or "").strip()
@@ -1055,10 +1058,12 @@ def delete_mt5_account_vm_files(*, mt5_account, log_context="admin delete-vm-fil
             "Use Delete on that row or wait for cleanup to finish.",
         )
     if getattr(mt5_account, "is_active", False) and not getattr(mt5_account, "is_archived", False):
-        return (
-            False,
-            "That MT5 account is still active on the VM. Archive it first before deleting its terminal files.",
-        )
+        connection_status = str(getattr(mt5_account, "connection_status", "") or "").strip().lower()
+        if connection_status != MT5Account.CONNECTION_STATUS_FAILED:
+            return (
+                False,
+                "That MT5 account is still active on the VM. Archive it first before deleting its terminal files.",
+            )
 
     terminal_path = str(getattr(mt5_account, "terminal_path", "") or "").strip()
     appdata_hash = str(getattr(mt5_account, "appdata_hash", "") or "").strip()

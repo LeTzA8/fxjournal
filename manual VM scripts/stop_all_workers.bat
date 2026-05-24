@@ -12,6 +12,8 @@ REM --- 1) Scheduled-task watchdogs + direct worker tasks (stops Task Scheduler 
 echo [1/4] Stopping Task Scheduler MT5 tasks...
 schtasks /End /TN "FX Journal MT5 Sync Watchdog" >nul 2>&1
 schtasks /End /TN "FX Journal MT5 Setup Watchdog" >nul 2>&1
+schtasks /End /TN "FX Journal MT5 Sync Watchdog (Legacy)" >nul 2>&1
+schtasks /End /TN "FX Journal MT5 Setup Watchdog (Legacy)" >nul 2>&1
 schtasks /End /TN "FX Journal MT5 Sync Worker Direct" >nul 2>&1
 schtasks /End /TN "FX Journal MT5 Setup Worker Direct" >nul 2>&1
 echo       Done.
@@ -71,7 +73,7 @@ echo.
 echo ============================================
 echo  All MT5 worker-related processes stopped.
 echo  MT5 terminals were not stopped.
-echo  Task Scheduler watchdogs will NOT restart
+echo  Task Scheduler legacy watchdogs will NOT restart
 echo  until triggered again (reboot or manual).
 echo  To restart manually, run:
 echo    watch_mt5_sync_worker.ps1

@@ -319,6 +319,12 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         accounts_by_vm.setdefault(vm_key, []).append(account)
 
     vm_ids = set(accounts_by_vm.keys())
+    configured_vm_ids = {
+        _normalize_admin_vm_id(vm_id)
+        for vm_id in parse_setup_vm_ids_env()
+        if _normalize_admin_vm_id(vm_id) not in {"", "unknown"}
+    }
+    vm_ids.update(configured_vm_ids)
     monitor_snapshot = load_admin_mt5_monitor_snapshot(mt5_accounts=mt5_accounts)
     worker_states_by_vm = monitor_snapshot.get("worker_states_by_vm") or {}
     monitor_available = bool(monitor_snapshot.get("monitor_available", True))
@@ -338,6 +344,7 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         is_unknown_bucket = vm_id == "unknown"
         if (
             not is_unknown_bucket
+            and vm_id not in configured_vm_ids
             and not vm_accounts
             and not _worker_is_online(sync_worker, now=now)
             and not _worker_is_online(setup_worker, now=now)
@@ -436,6 +443,6 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         "listen_legacy_queues": listen_legacy_mt5_queues(),
         "setup_vm_ids": parse_setup_vm_ids_env(),
         "selectable_vm_ids": selectable_vm_ids,
-        "show_vm_target_selector": is_mt5_multi_vm_enabled() or len(selectable_vm_ids) > 1,
+        "show_vm_target_selector": bool(selectable_vm_ids),
         "monitor_available": monitor_available,
     }

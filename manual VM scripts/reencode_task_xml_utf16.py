@@ -13,9 +13,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_FILES = (
-    "FX Journal MT5 Setup Watchdog.xml",
+    "FX Journal MT5 Setup Watchdog (Legacy).xml",
     "FX Journal MT5 Setup Worker Direct.xml",
-    "FX Journal MT5 Sync Watchdog.xml",
+    "FX Journal MT5 Sync Watchdog (Legacy).xml",
     "FX Journal MT5 Sync Worker Direct.xml",
 )
 

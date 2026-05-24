@@ -57,9 +57,24 @@ def vm_id_to_queue_slug(vm_id) -> str:
     return slug[:_QUEUE_SLUG_MAX_LEN]
 
 
+_CELERY_VM_ID_PREFIX = re.compile(r"^mt5-(?:sync|setup)@(.+)$", re.IGNORECASE)
+
+
 def normalize_vm_id(value) -> str:
     text = str(value or "").strip()
     return text[:64] if text else ""
+
+
+def canonical_monitor_vm_id(value) -> str:
+    """Normalize admin/worker VM ids for comparison and routing (strips Celery host prefix)."""
+    text = str(value or "").strip()
+    match = _CELERY_VM_ID_PREFIX.match(text)
+    if match:
+        text = match.group(1).strip()
+    text = text[:64] if text else ""
+    if text.casefold() == "unknown":
+        return ""
+    return text
 
 
 def current_vm_id(default_hostname=None) -> str:
