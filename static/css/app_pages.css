@@ -205,6 +205,142 @@ body.app-layout .app-hub-tips li::before {
     background: color-mix(in srgb, var(--accent) 48%, var(--muted));
 }
 
+/* --- Settings workbench header (Trade Accounts, Strategies) --- */
+body.app-layout .app-workbench-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.85rem 1.1rem;
+    flex-wrap: wrap;
+    margin: 0 0 0.85rem;
+    padding: 0.72rem 0.05rem 0.15rem;
+}
+
+body.app-layout .app-workbench-header-main {
+    flex: 1 1 240px;
+    min-width: 0;
+}
+
+body.app-layout .app-workbench-title {
+    margin: 0;
+    font-size: clamp(1.28rem, 2.1vw, 1.72rem);
+    font-weight: 800;
+    color: var(--ink);
+    font-family: var(--font-display, "Sora", "Manrope", sans-serif);
+}
+
+body.app-layout .app-workbench-meta {
+    margin: 0.28rem 0 0;
+    font-size: 0.86rem;
+    line-height: 1.45;
+    color: var(--muted);
+}
+
+body.app-layout .app-workbench-meta strong {
+    color: var(--ink);
+    font-weight: 800;
+}
+
+body.app-layout .app-workbench-meta-warn {
+    color: var(--warning-ink);
+    font-weight: 650;
+}
+
+body.app-layout .app-workbench-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+body.app-layout .workbench-grid {
+    align-items: start;
+}
+
+body.app-layout .workbench-grid--single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+body.app-layout .panel-head--compact {
+    margin-bottom: 0.55rem;
+}
+
+body.app-layout .workbench-side-panel {
+    display: grid;
+    gap: 0.72rem;
+}
+
+body.app-layout .workbench-side-block {
+    display: grid;
+    gap: 0.45rem;
+}
+
+body.app-layout .workbench-side-ok {
+    margin: 0;
+    padding: 0.62rem 0.72rem;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--good) 28%, var(--border));
+    background: color-mix(in srgb, var(--good) 7%, var(--surface));
+    font-size: 0.84rem;
+    font-weight: 650;
+    color: color-mix(in srgb, var(--good) 72%, var(--ink));
+}
+
+body.app-layout .workbench-side-empty {
+    margin: 0;
+    font-size: 0.82rem;
+}
+
+body.app-layout .workbench-attention-list,
+body.app-layout .workbench-activity-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.48rem;
+}
+
+body.app-layout .workbench-attention-item {
+    border: 1px solid color-mix(in srgb, var(--warning-ink) 18%, var(--border));
+    border-radius: 10px;
+    padding: 0.55rem 0.62rem;
+    background: color-mix(in srgb, var(--warning-ink) 5%, var(--surface));
+    display: grid;
+    gap: 0.22rem;
+}
+
+body.app-layout .workbench-attention-account,
+body.app-layout .workbench-activity-account {
+    font-size: 0.78rem;
+    font-weight: 800;
+    color: var(--ink);
+}
+
+body.app-layout .workbench-attention-message,
+body.app-layout .workbench-activity-message {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.42;
+    color: var(--muted);
+}
+
+body.app-layout .workbench-attention-cta {
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+body.app-layout .workbench-activity-item {
+    display: grid;
+    gap: 0.12rem;
+    padding: 0.42rem 0.05rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+body.app-layout .workbench-activity-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
 /* Keep Strategies / Trade accounts readable on ultrawide; trade log + management stay full width */
 body.app-layout .strategies-page .dash-content,
 body.app-layout .trade-accounts-page .dash-content {
@@ -337,6 +473,47 @@ body.app-layout .strategies-page .profile-description,
 body.app-layout .strategies-page .empty-copy {
     font-size: 0.9rem;
     line-height: 1.5;
+}
+
+body.app-layout .strategies-page .profile-description--multiline {
+    margin: 0.45rem 0 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+body.app-layout .strategies-page .profile-stat-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem 0.85rem;
+    margin: 0.55rem 0 0;
+    padding: 0.55rem 0 0;
+    border-top: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+body.app-layout .strategies-page .profile-stat {
+    display: grid;
+    gap: 0.08rem;
+    min-width: 0;
+}
+
+body.app-layout .strategies-page .profile-stat dt {
+    margin: 0;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+body.app-layout .strategies-page .profile-stat dd {
+    margin: 0;
+    font-size: 0.84rem;
+    font-weight: 750;
+    color: var(--ink);
+}
+
+body.app-layout .strategies-page .profile-card-identity h3 {
+    margin: 0 0 0.12rem;
 }
 
 body.app-layout .strategies-page .profile-card-actions {
@@ -472,10 +649,101 @@ body.app-layout .trade-accounts-page .account-list {
 body.app-layout .trade-accounts-page .account-card {
     border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
     border-radius: 12px;
-    padding: 0.52rem 0.62rem;
+    padding: 0.62rem 0.72rem;
     background: color-mix(in srgb, var(--surface) 95%, transparent);
     display: grid;
-    gap: 0.42rem;
+    gap: 0.48rem;
+}
+
+body.app-layout .trade-accounts-page .account-type-label {
+    margin: 0.12rem 0 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+body.app-layout .trade-accounts-page .account-stat-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem 0.85rem;
+    margin: 0;
+    padding: 0.48rem 0 0;
+    border-top: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+body.app-layout .trade-accounts-page .account-stat {
+    display: grid;
+    gap: 0.08rem;
+    min-width: 0;
+}
+
+body.app-layout .trade-accounts-page .account-stat dt {
+    margin: 0;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+body.app-layout .trade-accounts-page .account-stat dd {
+    margin: 0;
+    font-size: 0.84rem;
+    font-weight: 750;
+    color: var(--ink);
+}
+
+body.app-layout .trade-accounts-page .account-mt5-state {
+    display: grid;
+    gap: 0.35rem;
+}
+
+body.app-layout .trade-accounts-page .account-mt5-oneliner {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.42;
+    color: var(--muted);
+}
+
+body.app-layout .trade-accounts-page .account-mt5-oneliner--error {
+    color: color-mix(in srgb, var(--bad) 78%, var(--ink));
+    font-weight: 650;
+}
+
+body.app-layout .trade-accounts-page .account-mt5-cta {
+    font-size: 0.78rem;
+    font-weight: 700;
+    justify-self: start;
+}
+
+body.app-layout .trade-accounts-page .account-card-actions {
+    padding-top: 0.08rem;
+}
+
+body.app-layout .trade-accounts-page .account-mt5-manage-form {
+    margin: 0;
+}
+
+body.app-layout .trade-accounts-page .account-list-footer {
+    margin-top: 0.55rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+body.app-layout .trade-accounts-page .account-delete-all-btn {
+    width: 100%;
+}
+
+body.app-layout .trade-accounts-page .chip.chip--warn {
+    border-color: color-mix(in srgb, var(--warning-ink) 34%, var(--border));
+    color: var(--warning-ink);
+}
+
+body.app-layout .trade-accounts-page .chip.chip--ok {
+    border-color: color-mix(in srgb, var(--good) 34%, var(--border));
+    color: color-mix(in srgb, var(--good) 74%, var(--ink));
 }
 
 body.app-layout .trade-accounts-page .account-btn-switch {

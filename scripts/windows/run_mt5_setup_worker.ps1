@@ -82,6 +82,26 @@ if (-not $env:FXJ_ASCII_LOG_LINE_MAX) {
     $env:FXJ_ASCII_LOG_LINE_MAX = "100"
 }
 
+function Get-Mt5VmQueueSlug {
+    $name = [string]$env:COMPUTERNAME
+    if (-not $name) {
+        return "unknown"
+    }
+    $slug = $name.ToLowerInvariant()
+    $slug = [regex]::Replace($slug, '[^a-z0-9]+', '-')
+    $slug = [regex]::Replace($slug, '-+', '-').Trim('-')
+    if ($slug.Length -gt 48) {
+        $slug = $slug.Substring(0, 48)
+    }
+    if (-not $slug) {
+        return "unknown"
+    }
+    return $slug
+}
+
+$VmSlug = Get-Mt5VmQueueSlug
+$SetupQueues = "mt5_setup.$VmSlug,mt5_setup"
+
 while ($true) {
     Set-ConsoleTitleSafely "MT5 Setup Window | Starting..."
     $startedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -91,7 +111,7 @@ while ($true) {
         --pool=solo `
         --concurrency=1 `
         --loglevel=$LogLevel `
-        --queues=mt5_setup `
+        --queues=$SetupQueues `
         --hostname="mt5-setup@$env:COMPUTERNAME"
 
     $exitCode = $LASTEXITCODE

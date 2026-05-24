@@ -267,6 +267,93 @@ def _classify_setup_error(error_str: str) -> str:
     return "Connection failed. Check your server name, account number, and investor password, then retry."
 
 
+def _attempt_setup_failover(
+    *,
+    mt5_account_id,
+    current_target_vm_id,
+    setup_attempt_index,
+    allow_failover,
+    terminal_exe,
+    appdata_hash,
+    exc,
+):
+    if not allow_failover:
+        return None
+    from helpers.mt5_dispatch import (
+        current_vm_id,
+        dispatch_mt5_cleanup,
+        dispatch_mt5_setup,
+        is_setup_failover_eligible_error,
+        next_setup_failover_vm_id,
+        resolve_setup_target_vm_id,
+    )
+
+    if not is_setup_failover_eligible_error(exc):
+        return None
+
+    resolved_current_vm_id = resolve_setup_target_vm_id(current_target_vm_id)
+    next_vm_id = next_setup_failover_vm_id(setup_attempt_index=setup_attempt_index)
+    if not next_vm_id:
+        return None
+
+    if terminal_exe or appdata_hash:
+        try:
+            dispatch_mt5_cleanup(
+                cleanup_mt5_terminal,
+                terminal_exe or "",
+                appdata_hash or "",
+                account_vm_id=current_vm_id(),
+                label="mt5_setup_failover_cleanup",
+                extra={"mt5_account_id": mt5_account_id},
+            )
+        except Exception as cleanup_exc:
+            logger.warning(
+                "MT5 setup failover cleanup queue failed mt5_account_id=%s: %s",
+                mt5_account_id,
+                cleanup_exc,
+            )
+
+    try:
+        from models import MT5Account, db
+
+        account = db.session.get(MT5Account, mt5_account_id)
+        if account is not None:
+            account.terminal_path = None
+            account.appdata_hash = None
+            account.vm_id = None
+            db.session.commit()
+    except Exception as clear_exc:
+        db.session.rollback()
+        logger.warning(
+            "MT5 setup failover partial state clear failed mt5_account_id=%s: %s",
+            mt5_account_id,
+            clear_exc,
+        )
+
+    dispatch_mt5_setup(
+        setup_mt5_terminal,
+        mt5_account_id,
+        target_vm_id=next_vm_id,
+        allow_failover=True,
+        setup_attempt_index=max(int(setup_attempt_index or 0), 0) + 1,
+        label="mt5_setup_failover",
+        extra={
+            "mt5_account_id": mt5_account_id,
+            "from_vm_id": resolved_current_vm_id,
+            "next_vm_id": next_vm_id,
+            "error": str(exc),
+        },
+    )
+    logger.warning(
+        "MT5 setup failovered mt5_account_id=%s from_vm_id=%s next_vm_id=%s error=%s",
+        mt5_account_id,
+        resolved_current_vm_id,
+        next_vm_id,
+        exc,
+    )
+    return {"failover": True, "next_vm_id": next_vm_id}
+
+
 def _write_mt5_account_status(mt5_account_id: int, status: str, error_message=None):
     """Write connection_status (and optional error message) to the MT5Account row."""
     from models import MT5Account, db
@@ -552,7 +639,14 @@ def _verify_mt5_terminal_login(
 
 
 @celery.task(bind=True, max_retries=2, default_retry_delay=30, queue="mt5_setup")
-def setup_mt5_terminal(self, mt5_account_id: int):
+def setup_mt5_terminal(
+    self,
+    mt5_account_id: int,
+    target_vm_id=None,
+    allow_failover=True,
+    setup_attempt_index=0,
+    _wrong_vm_redispatch_count=0,
+):
     """
     Set up a new MT5 terminal for a user account.
     Copies base MT5 installation and verifies login via Python API.
@@ -572,6 +666,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
     terminal_exe = None
     was_active = None
     appdata_hash = None
+    post_bootstrap = False
 
     try:
         if os.name != "nt":
@@ -600,6 +695,28 @@ def setup_mt5_terminal(self, mt5_account_id: int):
             return {"error": "MT5Account not found"}
         if account.is_orphaned:
             raise PermanentSetupError("setup_mt5_terminal cannot run for an orphaned MT5 account")
+
+        from helpers.mt5_dispatch import (
+            guard_wrong_vm_task,
+            resolve_setup_target_vm_id,
+        )
+
+        resolved_target_vm_id = resolve_setup_target_vm_id(target_vm_id)
+        guard_result = guard_wrong_vm_task(
+            self,
+            target_vm_id=resolved_target_vm_id,
+            redispatch=lambda queue, kwargs: setup_mt5_terminal.apply_async(
+                args=[mt5_account_id],
+                kwargs={
+                    "allow_failover": allow_failover,
+                    "setup_attempt_index": setup_attempt_index,
+                    **kwargs,
+                },
+                queue=queue,
+            ),
+        )
+        if guard_result is not None:
+            return guard_result
 
         was_active = bool(account.is_active)
         user_id = account.user_id
@@ -681,6 +798,8 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                 shutil.copy2(src_servers, os.path.join(dst_config, "servers.dat"))
                 shutil.copy2(src_servers, os.path.join(terminal_config, "servers.dat"))
 
+            post_bootstrap = True
+
             account.appdata_hash = new_hash
             appdata_hash = new_hash
         finally:
@@ -755,6 +874,19 @@ def setup_mt5_terminal(self, mt5_account_id: int):
 
         account.vm_id = get_vm_id()
         db.session.commit()
+        try:
+            from helpers.mt5_server_seed_shortlist import (
+                resolve_mt5_server_seed_shortlist_on_success,
+            )
+
+            resolve_mt5_server_seed_shortlist_on_success(server_name=server)
+        except Exception as shortlist_exc:
+            logger.warning(
+                "MT5 server seed shortlist resolve skipped mt5_account_id=%s server=%s error=%s",
+                mt5_account_id,
+                server,
+                shortlist_exc,
+            )
         if not was_active:
             _send_mt5_ready_email(account)
 
@@ -813,9 +945,15 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         # 2. Queue terminal file cleanup (same path as account delete).
         if terminal_exe:
             try:
-                cleanup_mt5_terminal.apply_async(
-                    args=[terminal_exe, appdata_hash or ""],
-                    queue="mt5_setup",
+                from helpers.mt5_dispatch import current_vm_id, dispatch_mt5_cleanup
+
+                dispatch_mt5_cleanup(
+                    cleanup_mt5_terminal,
+                    terminal_exe,
+                    appdata_hash or "",
+                    account_vm_id=current_vm_id(),
+                    label="mt5_setup_trading_password_cleanup",
+                    extra={"mt5_account_id": mt5_account_id},
                 )
             except Exception as cleanup_exc:
                 logger.warning(
@@ -864,6 +1002,30 @@ def setup_mt5_terminal(self, mt5_account_id: int):
     except PermanentSetupError as exc:
         db.session.rollback()
         finished_at = datetime.now(timezone.utc)
+        failover_result = _attempt_setup_failover(
+            mt5_account_id=mt5_account_id,
+            current_target_vm_id=target_vm_id,
+            setup_attempt_index=setup_attempt_index,
+            allow_failover=allow_failover,
+            terminal_exe=terminal_exe,
+            appdata_hash=appdata_hash,
+            exc=exc,
+        )
+        if failover_result is not None:
+            log_ascii_table(
+                logger,
+                "MT5 Setup Failover",
+                [
+                    ("Finished", finished_at),
+                    ("Duration", duration_label(started_at, finished_at)),
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("Next VM ID", failover_result.get("next_vm_id")),
+                    ("Error", exc),
+                ],
+                level=logging.WARNING,
+            )
+            return failover_result
         log_ascii_table(
             logger,
             "MT5 Setup Failed",
@@ -912,6 +1074,30 @@ def setup_mt5_terminal(self, mt5_account_id: int):
         current_retry = getattr(getattr(self, "request", None), "retries", 0)
         at_max_retries = current_retry >= getattr(self, "max_retries", 2)
         if at_max_retries:
+            failover_result = _attempt_setup_failover(
+                mt5_account_id=mt5_account_id,
+                current_target_vm_id=target_vm_id,
+                setup_attempt_index=setup_attempt_index,
+                allow_failover=allow_failover,
+                terminal_exe=terminal_exe,
+                appdata_hash=appdata_hash,
+                exc=exc,
+            )
+            if failover_result is not None:
+                log_ascii_table(
+                    logger,
+                    "MT5 Setup Failover",
+                    [
+                        ("Finished", finished_at),
+                        ("Duration", duration_label(started_at, finished_at)),
+                        ("Task ID", task_id),
+                        ("MT5 Account ID", mt5_account_id),
+                        ("Next VM ID", failover_result.get("next_vm_id")),
+                        ("Error", exc),
+                    ],
+                    level=logging.WARNING,
+                )
+                return failover_result
             logger.error(
                 "MT5 setup exhausted retries — marking failed. task_id=%s mt5_account_id=%s user_id=%s",
                 task_id,
@@ -937,6 +1123,29 @@ def setup_mt5_terminal(self, mt5_account_id: int):
                     mt5_account_id,
                     email_exc,
                 )
+            if server and post_bootstrap:
+                try:
+                    from helpers.mt5_server_seed_shortlist import (
+                        is_possible_missing_servers_dat_failure,
+                        record_possible_servers_dat_shortlist,
+                    )
+
+                    if is_possible_missing_servers_dat_failure(
+                        str(exc),
+                        post_bootstrap=True,
+                    ):
+                        record_possible_servers_dat_shortlist(
+                            server_name=server,
+                            error_message=str(exc),
+                            mt5_account_id=mt5_account_id,
+                        )
+                except Exception as shortlist_exc:
+                    logger.warning(
+                        "MT5 server seed shortlist record skipped mt5_account_id=%s server=%s error=%s",
+                        mt5_account_id,
+                        server,
+                        shortlist_exc,
+                    )
         else:
             logger.exception(
                 "MT5 setup failed and will retry. task_id=%s mt5_account_id=%s user_id=%s trade_account_id=%s",
@@ -949,7 +1158,7 @@ def setup_mt5_terminal(self, mt5_account_id: int):
 
 
 @celery.task(bind=True, max_retries=2, default_retry_delay=30, queue="mt5_setup")
-def pause_mt5_terminal_process(self, mt5_account_id: int):
+def pause_mt5_terminal_process(self, mt5_account_id: int, target_vm_id=None, _wrong_vm_redispatch_count=0):
     """
     Stops the MT5 terminal process for a trial-expired account.
 
@@ -978,6 +1187,20 @@ def pause_mt5_terminal_process(self, mt5_account_id: int):
             level=logging.WARNING,
         )
         return {"skipped": "account not found"}
+
+    from helpers.mt5_dispatch import guard_wrong_vm_task
+
+    guard_result = guard_wrong_vm_task(
+        self,
+        target_vm_id=target_vm_id or account.vm_id,
+        redispatch=lambda queue, kwargs: pause_mt5_terminal_process.apply_async(
+            args=[mt5_account_id],
+            kwargs=kwargs,
+            queue=queue,
+        ),
+    )
+    if guard_result is not None:
+        return guard_result
 
     terminal_path = account.terminal_path
     log_ascii_table(
@@ -1074,6 +1297,8 @@ def cleanup_mt5_terminal(
     delete_account_row: bool = True,
     clear_cleanup_mark: bool = False,
     cleanup_marked_at=None,
+    target_vm_id=None,
+    _wrong_vm_redispatch_count=0,
 ):
     """
     Clean up MT5 terminal files when an MT5Account is deleted.
@@ -1109,6 +1334,33 @@ def cleanup_mt5_terminal(
                 "db_deleted": False,
                 "cleanup_mark_cleared": False,
             }
+
+        from helpers.mt5_dispatch import guard_wrong_vm_task, normalize_vm_id
+        from models import MT5Account, db
+
+        cleanup_target_vm_id = normalize_vm_id(target_vm_id)
+        if not cleanup_target_vm_id and mt5_account_id is not None:
+            account_for_guard = db.session.get(MT5Account, mt5_account_id)
+            if account_for_guard is not None:
+                cleanup_target_vm_id = normalize_vm_id(account_for_guard.vm_id)
+
+        guard_result = guard_wrong_vm_task(
+            self,
+            target_vm_id=cleanup_target_vm_id,
+            redispatch=lambda queue, kwargs: cleanup_mt5_terminal.apply_async(
+                args=[terminal_path, appdata_hash],
+                kwargs={
+                    "mt5_account_id": mt5_account_id,
+                    "delete_account_row": delete_account_row,
+                    "clear_cleanup_mark": clear_cleanup_mark,
+                    "cleanup_marked_at": cleanup_marked_at,
+                    **kwargs,
+                },
+                queue=queue,
+            ),
+        )
+        if guard_result is not None:
+            return guard_result
 
         terminal_exe = terminal_path
 

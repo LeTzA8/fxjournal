@@ -748,6 +748,8 @@ def sync_mt5_account(
     full_history=False,
     trigger_source="unknown",
     recalibrate_trade_timestamps=False,
+    target_vm_id=None,
+    _wrong_vm_redispatch_count=0,
 ):
     from celery_workers.cache import CacheUnavailableError, claim_lock, release_lock
 
@@ -823,6 +825,26 @@ def sync_mt5_account(
                 level=logging.WARNING,
             )
             return {"error": "MT5Account not found or inactive"}
+
+        from helpers.mt5_dispatch import guard_wrong_vm_task, normalize_vm_id
+
+        guard_result = guard_wrong_vm_task(
+            self,
+            target_vm_id=target_vm_id or account.vm_id,
+            redispatch=lambda queue, kwargs: sync_mt5_account.apply_async(
+                args=[mt5_account_id],
+                kwargs={
+                    "full_history": full_history,
+                    "trigger_source": trigger_source,
+                    "recalibrate_trade_timestamps": recalibrate_trade_timestamps,
+                    **kwargs,
+                },
+                queue=queue,
+            ),
+        )
+        if guard_result is not None:
+            return guard_result
+
         if account.is_orphaned:
             log_ascii_table(
                 logger,
@@ -853,10 +875,15 @@ def sync_mt5_account(
                 if pause_stamped and sync_permission["reason"] == "expired":
                     _send_free_trial_expired_email(account, paused_feature_label="MT5 sync")
                 from celery_workers.mt5_setup_tasks import pause_mt5_terminal_process
+                from helpers.mt5_dispatch import dispatch_mt5_pause
+
                 try:
-                    pause_mt5_terminal_process.apply_async(
-                        args=[mt5_account_id],
-                        queue="mt5_setup",
+                    dispatch_mt5_pause(
+                        pause_mt5_terminal_process,
+                        mt5_account_id,
+                        account_vm_id=account.vm_id,
+                        label="mt5_sync_pause_terminal",
+                        extra={"mt5_account_id": mt5_account_id},
                     )
                 except Exception as dispatch_exc:
                     logger.warning(
@@ -1268,7 +1295,7 @@ def sync_mt5_account(
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def fetch_trade_bars(self, mt5_account_id, trade_id):
+def fetch_trade_bars(self, mt5_account_id, trade_id, target_vm_id=None, _wrong_vm_redispatch_count=0):
     """Fetch OHLC bar data for a single closed trade and store via internal API."""
     from datetime import timedelta
     task_id = getattr(getattr(self, "request", None), "id", None)
@@ -1295,6 +1322,20 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
             level=logging.WARNING,
         )
         return {"skipped": "account unavailable"}
+
+    from helpers.mt5_dispatch import guard_wrong_vm_task
+
+    guard_result = guard_wrong_vm_task(
+        self,
+        target_vm_id=target_vm_id or account.vm_id,
+        redispatch=lambda queue, kwargs: fetch_trade_bars.apply_async(
+            args=[mt5_account_id, trade_id],
+            kwargs=kwargs,
+            queue=queue,
+        ),
+    )
+    if guard_result is not None:
+        return guard_result
 
     trade = db.session.get(Trade, trade_id)
     if trade is None or trade.closed_at is None:
@@ -1485,7 +1526,7 @@ def fetch_trade_bars(self, mt5_account_id, trade_id):
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def fetch_trade_bars_batch(self, mt5_account_id, trade_ids):
+def fetch_trade_bars_batch(self, mt5_account_id, trade_ids, target_vm_id=None, _wrong_vm_redispatch_count=0):
     """Fetch OHLC bars for several closed trades with one MT5 session and one API POST."""
     task_id = getattr(getattr(self, "request", None), "id", None)
     fetch_started_at = datetime.now(timezone.utc)
@@ -1507,6 +1548,20 @@ def fetch_trade_bars_batch(self, mt5_account_id, trade_ids):
             level=logging.WARNING,
         )
         return {"skipped": "account unavailable"}
+
+    from helpers.mt5_dispatch import guard_wrong_vm_task
+
+    guard_result = guard_wrong_vm_task(
+        self,
+        target_vm_id=target_vm_id or account.vm_id,
+        redispatch=lambda queue, kwargs: fetch_trade_bars_batch.apply_async(
+            args=[mt5_account_id, trade_ids],
+            kwargs=kwargs,
+            queue=queue,
+        ),
+    )
+    if guard_result is not None:
+        return guard_result
 
     normalized_trade_ids = []
     for raw_trade_id in trade_ids or []:
@@ -1706,29 +1761,40 @@ def _select_next_beat_mt5_account(accounts):
 @celery.task
 def sync_all_active_mt5_accounts():
     from models import MT5Account
-    from celery_workers.cache import CacheUnavailableError, get_queue_depth
+    from celery_workers.cache import CacheUnavailableError, get_queue_depth, peek_lock_holder
+    from helpers.mt5_dispatch import (
+        dispatch_mt5_sync,
+        is_mt5_multi_vm_enabled,
+        mt5_priority_queue,
+        mt5_sync_queue,
+        normalize_vm_id,
+    )
     from helpers.schema_compat import mt5_trial_columns_available
 
     try:
-        sync_queue_depth = get_queue_depth(MT5_SYNC_QUEUE_NAME)
-        priority_queue_depth = get_queue_depth(MT5_PRIORITY_QUEUE_NAME)
-        total_queue_depth = sync_queue_depth + priority_queue_depth
-        if total_queue_depth > MT5_SYNC_BEAT_MAX_QUEUE_DEPTH:
-            logger.warning(
-                "MT5 beat skipped queue_depth_total=%s sync_queue_depth=%s priority_queue_depth=%s max=%s",
-                total_queue_depth,
-                sync_queue_depth,
-                priority_queue_depth,
-                MT5_SYNC_BEAT_MAX_QUEUE_DEPTH,
-            )
-            return
-        if sync_queue_depth > 0:
-            logger.info(
-                "MT5 beat skipped sync_queue_busy sync_queue_depth=%s priority_queue_depth=%s",
-                sync_queue_depth,
-                priority_queue_depth,
-            )
-            return
+        if is_mt5_multi_vm_enabled():
+            sync_queue_depth = 0
+            priority_queue_depth = 0
+        else:
+            sync_queue_depth = get_queue_depth(MT5_SYNC_QUEUE_NAME)
+            priority_queue_depth = get_queue_depth(MT5_PRIORITY_QUEUE_NAME)
+            total_queue_depth = sync_queue_depth + priority_queue_depth
+            if total_queue_depth > MT5_SYNC_BEAT_MAX_QUEUE_DEPTH:
+                logger.warning(
+                    "MT5 beat skipped queue_depth_total=%s sync_queue_depth=%s priority_queue_depth=%s max=%s",
+                    total_queue_depth,
+                    sync_queue_depth,
+                    priority_queue_depth,
+                    MT5_SYNC_BEAT_MAX_QUEUE_DEPTH,
+                )
+                return
+            if sync_queue_depth > 0:
+                logger.info(
+                    "MT5 beat skipped sync_queue_busy sync_queue_depth=%s priority_queue_depth=%s",
+                    sync_queue_depth,
+                    priority_queue_depth,
+                )
+                return
     except CacheUnavailableError as exc:
         logger.warning("MT5 beat queue-depth guard unavailable: %s", exc)
 
@@ -1748,17 +1814,44 @@ def sync_all_active_mt5_accounts():
     if not accounts:
         return
 
-    account = _select_next_beat_mt5_account(accounts)
+    account = None
+    for candidate in accounts:
+        if is_mt5_multi_vm_enabled() and not normalize_vm_id(candidate.vm_id):
+            continue
+        try:
+            if peek_lock_holder(_sync_lock_key(candidate.id)):
+                continue
+        except CacheUnavailableError:
+            pass
+        if is_mt5_multi_vm_enabled():
+            vm_id = normalize_vm_id(candidate.vm_id)
+            try:
+                scoped_sync_depth = int(get_queue_depth(mt5_sync_queue(vm_id)) or 0)
+                scoped_priority_depth = int(get_queue_depth(mt5_priority_queue(vm_id)) or 0)
+                scoped_total = scoped_sync_depth + scoped_priority_depth
+                if scoped_total > MT5_SYNC_BEAT_MAX_QUEUE_DEPTH:
+                    continue
+                if scoped_sync_depth > 0:
+                    continue
+            except CacheUnavailableError:
+                pass
+        account = candidate
+        break
+
     if account is None:
         logger.info(
-            "MT5 beat skipped all_active_accounts_locked eligible=%s",
+            "MT5 beat skipped no_eligible_account eligible=%s multi_vm=%s",
             len(accounts),
+            is_mt5_multi_vm_enabled(),
         )
         return
 
-    sync_mt5_account.apply_async(
-        args=[account.id],
+    dispatch_mt5_sync(
+        sync_mt5_account,
+        account.id,
+        account_vm_id=account.vm_id,
         kwargs={"trigger_source": "beat"},
-        queue=MT5_SYNC_QUEUE_NAME,
         expires=MT5_SYNC_BEAT_EXPIRES_SECONDS,
+        label="mt5_beat_sync",
+        extra={"mt5_account_id": account.id, "vm_id": account.vm_id},
     )

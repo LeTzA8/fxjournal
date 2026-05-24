@@ -1,115 +1,133 @@
 {% extends "base.html" %}
 
-{% from "_app_page_hero.html" import app_page_hero %}
-
 {% block content %}
 <div class="trade-accounts-page">
 <section class="dash-wrap">
     <div class="dash-content">
-        {{ app_page_hero(
-            "Trade accounts",
-            eyebrow="Account scope",
-            primary_story="Each account keeps its own trades, imports, and analytics. Switch active account here or from the header.",
-            hero_copy="Manage MT5 sync from the dashboard card instead of per-account forms. Create or rename the account here first, then use sync when you want automation.",
-            extra_class="app-page-hero--settings-hub",
-        ) }}
+        <header class="app-workbench-header" aria-label="Trade accounts">
+            <div class="app-workbench-header-main">
+                <h1 class="app-workbench-title">Trade accounts</h1>
+                <p class="app-workbench-meta">
+                    <strong>{{ account_rows|length }}</strong>
+                    account{% if account_rows|length != 1 %}s{% endif %}
+                    {% if active_trade_account %}
+                    · Active: <strong>{{ active_trade_account.name }}</strong>
+                    {% endif %}
+                    {% if default_trade_account %}
+                    · Default: <strong>{{ default_trade_account.name }}</strong>
+                    {% endif %}
+                    {% if not active_trade_account %}
+                    · <span class="app-workbench-meta-warn">No active account selected</span>
+                    {% endif %}
+                </p>
+            </div>
+            <div class="app-workbench-header-actions">
+                <button
+                    type="button"
+                    class="submit-btn"
+                    id="openCreateTradeAccountDialog"
+                    data-open-trade-account-editor
+                    data-editor-mode="create"
+                    aria-haspopup="dialog"
+                    aria-controls="tradeAccountEditorDialog"
+                >
+                    New Account
+                </button>
+            </div>
+        </header>
 
-        <section class="app-hub-summary" aria-label="Accounts overview">
-            <p class="app-hub-summary-lead">
-                <strong>{{ account_rows|length }}</strong>
-                trade account{% if account_rows|length != 1 %}s{% endif %} on file.
-                {% if active_trade_account %}
-                Active book: <strong>{{ active_trade_account.name }}</strong>.
-                {% else %}
-                <span class="app-hub-summary-warn">No active account selected—choose one from the header or a card below.</span>
-                {% endif %}
-            </p>
-            <p class="app-hub-summary-hint">
-                Keep one account per broker/challenge/fund. Default receives imports that do not name an account. Optional default strategy auto-tags MT5 sync and import rows.
-            </p>
-        </section>
+        <p id="tradeAccountAlert" class="account-alert" role="status" hidden></p>
 
         <section
-            class="panel-grid"
+            class="panel-grid workbench-grid"
             data-trade-accounts-page
             data-initial-edit-pubkey="{% if edit_target %}{{ edit_target.pubkey }}{% endif %}"
             data-initial-delete-pubkey="{% if delete_target %}{{ delete_target.pubkey }}{% endif %}"
         >
             <article class="panel accounts-panel">
-                <div class="panel-head">
-                    <h2>🗂️ Current Accounts</h2>
+                <div class="panel-head panel-head--compact">
+                    <h2>Accounts</h2>
                     <span id="tradeAccountTotal" class="soft">{{ account_rows|length }} total</span>
                 </div>
 
-                {% if account_rows %}
+                {% if account_cards %}
                 <div class="account-list" id="tradeAccountList">
-                    {% for trade_account in account_rows %}
-                    {% set pending_mt5_request = pending_mt5_requests_by_trade_account.get(trade_account.id) %}
-                    {% set approved_mt5_request = approved_mt5_requests_by_trade_account.get(trade_account.id) %}
-                    {% set mt5_account = mt5_accounts_by_trade_account.get(trade_account.id) %}
-                    {% set mt5_is_linked = trade_account.id in linked_mt5_trade_account_ids %}
-                    {% set mt5_is_active_linked = trade_account.id in active_mt5_trade_account_ids %}
-                    {% set mt5_is_archived = mt5_account and mt5_account.is_archived %}
-                    {% set mt5_is_failed = mt5_account and mt5_account.is_connection_failed and not mt5_is_active_linked and not mt5_is_archived %}
-                    {% set mt5_has_setup_artifacts = mt5_account and not mt5_is_failed and ((mt5_account.terminal_path or '') or (mt5_account.appdata_hash or '')) %}
-                    {% set mt5_trial_state = mt5_trial_states_by_trade_account.get(trade_account.id) if mt5_trial_states_by_trade_account is defined else none %}
-                    {% set mt5_is_paused = mt5_trial_state and mt5_trial_state.state == "paused" %}
+                    {% for card in account_cards %}
+                    {% set trade_account = card.account %}
+                    {% set mt5 = card.mt5 %}
                     <article
-                        class="account-card {% if active_trade_account and trade_account.id == active_trade_account.id %}active{% endif %}"
+                        class="account-card {% if card.is_active %}active{% endif %}"
                         data-trade-account-card
                         data-trade-account-pubkey="{{ trade_account.pubkey }}"
                     >
                         <div class="account-card-head">
-                            <div>
+                            <div class="account-card-identity">
                                 <p class="account-name">{{ trade_account.name }}</p>
-                                <p class="account-meta">Type: {{ "Futures" if trade_account.account_type == "FUTURES" else "CFD" }}</p>
-                                {% if trade_account.account_size is not none %}
-                                <p class="account-meta">Account Size: ${{ '{:,.2f}'.format(trade_account.account_size) }}</p>
-                                {% endif %}
-                                {% if trade_account.external_account_id %}
-                                <p class="account-meta">External ID: {{ trade_account.external_account_id }}</p>
-                                {% else %}
-                                <p class="account-meta">No external account ID</p>
-                                {% endif %}
-                                {% if trade_account.default_trade_profile %}
-                                <p class="account-meta">Imports &amp; MT5 sync: <strong>{{ trade_account.default_trade_profile.name }}</strong></p>
-                                {% else %}
-                                <p class="account-meta soft">Imports &amp; MT5 sync: no default strategy</p>
-                                {% endif %}
+                                <p class="account-type-label">{{ card.account_type_label }}</p>
                             </div>
                             <div class="chip-wrap">
-                                {% if active_trade_account and trade_account.id == active_trade_account.id %}
+                                {% if card.is_active %}
                                 <span class="chip active-chip">Active</span>
                                 {% else %}
                                 <span class="chip active-chip" hidden>Active</span>
                                 {% endif %}
-                                {% if trade_account.is_default %}
+                                {% if card.is_default %}
                                 <span class="chip default default-chip">Default</span>
                                 {% else %}
                                 <span class="chip default default-chip" hidden>Default</span>
                                 {% endif %}
-                                {% if trade_account.account_type == "CFD" and mt5_is_paused %}
-                                <span class="chip chip--warn">MT5 Sync Paused</span>
-                                {% elif trade_account.account_type == "CFD" and mt5_is_active_linked %}
-                                <span class="chip default">MT5 Linked</span>
-                                {% elif trade_account.account_type == "CFD" and mt5_is_archived %}
-                                <span class="chip default">MT5 Sync Inactive</span>
-                                {% elif trade_account.account_type == "CFD" and mt5_is_failed %}
-                                <span class="chip chip--error">MT5 Connection Failed</span>
-                                {% elif trade_account.account_type == "CFD" and mt5_is_linked and mt5_has_setup_artifacts %}
-                                <span class="chip default">MT5 Setting Up</span>
-                                {% elif trade_account.account_type == "CFD" and mt5_is_linked %}
-                                <span class="chip default">MT5 Setup Queued</span>
-                                {% elif trade_account.account_type == "CFD" and pending_mt5_request %}
-                                <span class="chip default">MT5 Needs Details</span>
-                                {% elif trade_account.account_type == "CFD" and approved_mt5_request %}
-                                <span class="chip default">MT5 Needs Details</span>
+                                {% if mt5.chip_label %}
+                                <span class="chip chip--{{ mt5.chip_tone }}">{{ mt5.chip_label }}</span>
                                 {% endif %}
                             </div>
                         </div>
 
-                        <div class="inline-actions">
-                            {% if not (active_trade_account and trade_account.id == active_trade_account.id) %}
+                        <dl class="account-stat-row">
+                            <div class="account-stat">
+                                <dt>Trades</dt>
+                                <dd>{{ card.trade_count }}</dd>
+                            </div>
+                            <div class="account-stat">
+                                <dt>AI reviews</dt>
+                                <dd>{{ card.review_count }}</dd>
+                            </div>
+                            <div class="account-stat">
+                                <dt>Default strategy</dt>
+                                <dd>{% if card.default_strategy_name %}{{ card.default_strategy_name }}{% else %}<span class="soft">None</span>{% endif %}</dd>
+                            </div>
+                            {% if card.account_size_label %}
+                            <div class="account-stat">
+                                <dt>Account size</dt>
+                                <dd>{{ card.account_size_label }}</dd>
+                            </div>
+                            {% endif %}
+                            {% if card.external_account_id %}
+                            <div class="account-stat">
+                                <dt>External ID</dt>
+                                <dd>{{ card.external_account_id }}</dd>
+                            </div>
+                            {% endif %}
+                            {% if mt5.last_sync_label %}
+                            <div class="account-stat">
+                                <dt>Last sync</dt>
+                                <dd>{{ mt5.last_sync_label }}</dd>
+                            </div>
+                            {% endif %}
+                        </dl>
+
+                        {% if mt5.show_mt5_block %}
+                        <div class="account-mt5-state">
+                            {% if mt5.status_one_liner %}
+                            <p class="account-mt5-oneliner{% if mt5.is_failed %} account-mt5-oneliner--error{% endif %}">{{ mt5.status_one_liner }}</p>
+                            {% endif %}
+                            {% if mt5.dashboard_cta_label %}
+                            <a href="{{ url_for('dashboard.home', _anchor='mt5-access') }}" class="ghost-link btn-link account-mt5-cta">{{ mt5.dashboard_cta_label }}</a>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        <div class="inline-actions account-card-actions">
+                            {% if not card.is_active %}
                             <form action="{{ url_for('trade_accounts.switch_trade_account') }}" method="post" class="switch-account-form">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
@@ -124,7 +142,7 @@
                                 <button type="submit" class="ghost-btn account-btn-switch">Switch</button>
                             </form>
                             {% endif %}
-                            {% if not trade_account.is_default %}
+                            {% if not card.is_default %}
                             <form action="{{ url_for('trade_accounts.set_default_trade_account', trade_account_pubkey=trade_account.pubkey) }}" method="post" class="default-account-form">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="next" value="{{ url_for('trade_accounts.trade_accounts') }}">
@@ -157,159 +175,104 @@
                                 data-open-delete-account-modal
                                 data-delete-account-pubkey="{{ trade_account.pubkey }}"
                                 data-delete-account-name="{{ trade_account.name }}"
-                                data-delete-trade-count="{{ account_trade_counts.get(trade_account.id, 0) }}"
-                                data-delete-review-count="{{ account_review_counts.get(trade_account.id, 0) }}"
+                                data-delete-trade-count="{{ card.trade_count }}"
+                                data-delete-review-count="{{ card.review_count }}"
                                 aria-haspopup="dialog"
                                 aria-controls="deleteTradeAccountDialog"
                             >Delete</a>
                         </div>
 
-                        {% if trade_account.account_type == "CFD" %}
-                        <div class="mt5-request-block">
-                            <p class="account-meta mt5-request-title">MT5 Sync Access</p>
-                            {% if mt5_trial_state and mt5_trial_state.state == "grandfathered" %}
-                            <p class="account-meta mt5-trial-indicator mt5-trial-indicator--ok">
-                                Beta access: <strong>grandfathered for premium workflow features</strong>
-                            </p>
-                            {% endif %}
-                            {% if mt5_trial_state and mt5_trial_state.show_trial_ui %}
-                            {% if mt5_trial_state.state == "active" %}
-                            <p class="account-meta mt5-trial-indicator mt5-trial-indicator--{% if mt5_trial_state.days_remaining <= 7 %}warn{% else %}ok{% endif %}">
-                                Premium workflow trial: <strong>{{ mt5_trial_state.days_remaining }} day{% if mt5_trial_state.days_remaining != 1 %}s{% endif %} remaining</strong>
-                            </p>
-                            {% elif mt5_trial_state.state in ("expired", "paused") %}
-                            <div class="mt5-trial-expired-notice">
-                                <p class="account-meta mt5-trial-indicator mt5-trial-indicator--expired">
-                                    Premium workflow trial ended. Your trade history is safe.
-                                </p>
-                                <a href="{{ url_for('pricing_page') }}" class="ghost-link btn-link">Join Trader waitlist to continue sync &rarr;</a>
-                            </div>
-                            {% elif mt5_trial_state.state == "not_started" %}
-                            <p class="account-meta soft">Premium workflow trial ({{ mt5_trial_state.days_remaining }} days) starts when you first use a premium feature, such as successful MT5 sync.</p>
-                            {% endif %}
-                            {% endif %}
-                            {% if mt5_is_paused %}
-                            <p class="account-meta">MT5 sync is paused for this account. Your trade history is safe.</p>
-                            <a href="{{ url_for('pricing_page') }}" class="ghost-link btn-link">View Trader waitlist &rarr;</a>
-                            {% elif mt5_is_active_linked %}
-                            <p class="account-meta">This trade account already has MT5 sync access configured.</p>
-                            {% elif mt5_is_archived %}
-                            <p class="account-meta">MT5 sync is inactive due to inactivity for this account.</p>
-                            <p class="account-meta">Reactivate it when you want MyFXJournal to rebuild the VM terminal and resume automatic sync.</p>
-                            {% elif mt5_is_failed %}
-                            <p class="account-meta account-meta--error">{{ mt5_account.connection_error_message or 'MT5 connection failed. Fix your details and retry.' }}</p>
-                            <p class="account-meta">Open the dashboard MT5 card to correct your details and retry the connection.</p>
-                            <a href="{{ url_for('dashboard.home', _anchor='mt5-access') }}" class="ghost-link btn-link">Fix on Dashboard</a>
-                            {% elif mt5_is_linked and mt5_has_setup_artifacts %}
-                            <p class="account-meta">Terminal setup is already in progress for this account.</p>
-                            {% if pending_mt5_request and pending_mt5_request.request_note %}
-                            <p class="account-meta">Note: {{ pending_mt5_request.request_note }}</p>
-                            {% endif %}
-                            <p class="account-meta">We'll notify you by email when your MT5 sync is ready.</p>
-                            {% elif mt5_is_linked %}
-                            <p class="account-meta">MT5 details are already saved for this account.</p>
-                            <p class="account-meta">Setup started right away and is queued from the dashboard flow.</p>
-                            {% elif pending_mt5_request or approved_mt5_request %}
-                            {% set mt5_details_request = pending_mt5_request or approved_mt5_request %}
-                            <p class="account-meta">
-                                MT5 details still need to be submitted from the dashboard for this account.
-                            </p>
-                            {% if mt5_details_request and mt5_details_request.request_note %}
-                            <p class="account-meta">Note: {{ mt5_details_request.request_note }}</p>
-                            {% endif %}
-                            <p class="account-meta">Open the dashboard card to finish the one-step MT5 setup form.</p>
-                            {% else %}
-                            <p class="account-meta">Fastest first win is still file import. Use the dashboard card when you want optional MT5 sync later.</p>
-                            <a href="{{ url_for('dashboard.home', _anchor='mt5-access') }}" class="ghost-link btn-link">Open Dashboard MT5 Access</a>
-                            {% endif %}
-                            {% if mt5_account %}
-                            <form
-                                method="post"
-                                action="{{ url_for('trade_accounts.reactivate_mt5_sync') if mt5_is_archived else url_for('trade_accounts.unlink_mt5_sync') }}"
-                                class="mt5-unlink-form"
-                            >
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
-                                <button type="submit" class="{% if mt5_is_archived %}submit-btn{% else %}ghost-btn danger-btn{% endif %}">{% if mt5_is_archived %}Reactivate MT5 sync{% else %}Disconnect MT5 sync{% endif %}</button>
-                            </form>
-                            {% if mt5_is_archived %}
-                            <p class="account-meta soft">Reactivation keeps your saved read-only credentials. Use disconnect instead if you want to remove them completely.</p>
-                            <form
-                                method="post"
-                                action="{{ url_for('trade_accounts.unlink_mt5_sync') }}"
-                                class="mt5-unlink-form"
-                            >
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
-                                <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
-                            </form>
-                            {% else %}
-                            <p class="account-meta soft">
-                                Stops automated sync and removes stored MT5 credentials for this account. Your trades stay in the journal; you can set up MT5 again later from the dashboard.
-                            </p>
-                            {% endif %}
-                            {% endif %}
-                        </div>
+                        {% if mt5.show_disconnect_form %}
+                        <form
+                            method="post"
+                            action="{{ url_for('trade_accounts.reactivate_mt5_sync') if mt5.show_reactivate_form else url_for('trade_accounts.unlink_mt5_sync') }}"
+                            class="mt5-unlink-form account-mt5-manage-form"
+                        >
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
+                            <button type="submit" class="{% if mt5.show_reactivate_form %}ghost-btn{% else %}ghost-btn danger-btn{% endif %}">
+                                {% if mt5.show_reactivate_form %}Reactivate MT5 sync{% else %}Disconnect MT5 sync{% endif %}
+                            </button>
+                        </form>
+                        {% if mt5.show_reactivate_form %}
+                        <form
+                            method="post"
+                            action="{{ url_for('trade_accounts.unlink_mt5_sync') }}"
+                            class="mt5-unlink-form account-mt5-manage-form"
+                        >
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="trade_account_pubkey" value="{{ trade_account.pubkey }}">
+                            <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
+                        </form>
+                        {% endif %}
                         {% endif %}
                     </article>
                     {% endfor %}
                 </div>
+                {% if account_rows|length > 1 %}
+                <div class="account-list-footer">
+                    <button
+                        type="button"
+                        class="ghost-btn danger-btn account-delete-all-btn"
+                        id="openDeleteAllTradeAccountsDialog"
+                        aria-haspopup="dialog"
+                        aria-controls="deleteAllTradeAccountsDialog"
+                    >
+                        Delete all accounts
+                    </button>
+                </div>
+                {% endif %}
                 {% else %}
                 <div class="app-guided-empty" role="status">
                     <p class="app-guided-empty-kicker">What's next</p>
                     <h3 class="app-guided-empty-title">Add your first trade account</h3>
                     <p class="app-guided-empty-text">
-                        Accounts separate prop challenges, live cash, and demos so PnL and reviews never get mixed. Create one below, then set it active from the card or the site header.
+                        Accounts separate prop challenges, live cash, and demos so PnL and reviews never get mixed. Create one with New Account above, then set it active from the card or the site header.
                     </p>
                 </div>
                 {% endif %}
             </article>
 
-            <article class="panel action-panel">
-                <div class="panel-head">
-                    <h2>⚙️ Account actions</h2>
-                    <span class="soft">Create &amp; reset</span>
-                </div>
-                <p id="tradeAccountAlert" class="account-alert" role="status" hidden></p>
-                <p class="helper-note">Use this page to manage the account list. Open create, edit, or delete only when needed.</p>
-                <ul class="app-hub-tips" aria-label="Account tips">
-                    <li><strong>Switch</strong> sets which account dashboard, journal, and analytics use.</li>
-                    <li><strong>Default</strong> receives imports that do not specify an account.</li>
-                    <li>Start with file import first, then launch MT5 setup once per CFD account from the dashboard card if you want automation.</li>
-                </ul>
+            <aside class="panel workbench-side-panel" aria-label="Account status">
+                <section class="workbench-side-block">
+                    <div class="panel-head panel-head--compact">
+                        <h2>Needs attention</h2>
+                    </div>
+                    {% if accounts_sidebar.all_ok %}
+                    <p class="workbench-side-ok" role="status">All accounts OK</p>
+                    {% else %}
+                    <ul class="workbench-attention-list">
+                        {% for item in accounts_sidebar.attention_items %}
+                        <li class="workbench-attention-item">
+                            <p class="workbench-attention-account">{{ item.account_name }}</p>
+                            <p class="workbench-attention-message">{{ item.message }}</p>
+                            {% if item.cta_label %}
+                            <a href="{{ url_for('dashboard.home', _anchor='mt5-access') }}" class="ghost-link btn-link workbench-attention-cta">{{ item.cta_label }}</a>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </section>
 
-                <div class="action-stack">
-                    <button
-                        type="button"
-                        class="submit-btn"
-                        id="openCreateTradeAccountDialog"
-                        data-open-trade-account-editor
-                        data-editor-mode="create"
-                        aria-haspopup="dialog"
-                        aria-controls="tradeAccountEditorDialog"
-                    >
-                        New Account
-                    </button>
-                    <p class="helper-note">Use one account per broker/challenge/fund to keep stats clean.</p>
-                </div>
-
-                <hr class="section-divider">
-                <div class="action-stack">
-                    <p class="helper-note">Edit/delete accounts from each card. Use global delete only for a full reset.</p>
-                    <button
-                        type="button"
-                        class="ghost-btn danger-btn"
-                        id="openDeleteAllTradeAccountsDialog"
-                        aria-haspopup="dialog"
-                        aria-controls="deleteAllTradeAccountsDialog"
-                    >
-                        Delete All Accounts
-                    </button>
-                </div>
-
-                <hr class="section-divider">
-                <p class="helper-note">Tip: use clear names like <strong>Live</strong>, <strong>Demo</strong>, or <strong>Challenge</strong>.</p>
-            </article>
+                <section class="workbench-side-block">
+                    <div class="panel-head panel-head--compact">
+                        <h2>Recent activity</h2>
+                    </div>
+                    {% if accounts_sidebar.activity_items %}
+                    <ul class="workbench-activity-list">
+                        {% for item in accounts_sidebar.activity_items %}
+                        <li class="workbench-activity-item">
+                            <span class="workbench-activity-account">{{ item.account_name }}</span>
+                            <span class="workbench-activity-message">{{ item.message }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="workbench-side-empty soft">No recent sync or trade activity yet.</p>
+                    {% endif %}
+                </section>
+            </aside>
         </section>
     </div>
 </section>

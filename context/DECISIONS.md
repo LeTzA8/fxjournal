@@ -44,9 +44,16 @@ Major decisions with rationale only.
 - Why:
   lowers operational and security risk while keeping broker history useful
 
-## D-007 Weekly AI Output Is Persisted
+## D-007 Weekly AI Reviews Persist Per Account And Week
 
 - Decision:
-  prompt history, payloads, and generated weekly AI output are stored
+  generated weekly AI reviews are stored in durable DB rows scoped to the active trade account and New York market week; the dashboard reuses stored text/metadata until explicit regeneration or a new eligible week
 - Why:
-  supports auditability, admin review, and quality iteration
+  keeps review context stable for citations, follow-up chat, and experiment tracking without regenerating on every dashboard visit
+
+## D-008 MT5 Queue Affinity Uses VM-Scoped Celery Queues
+
+- Decision:
+  when `FXJ_MT5_MULTI_VM=1`, MT5 sync/priority/setup/cleanup/pause tasks publish to `mt5_*.<slug>` queues derived from `MT5Account.vm_id` / setup target VM; workers dual-listen scoped + legacy queues during migration
+- Why:
+  keeps each Hyonix VM on local terminal paths only, enables controlled setup failover, and avoids cross-VM task theft without separate codebases

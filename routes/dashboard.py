@@ -1511,7 +1511,7 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
         else:
             status = "requestable"
             status_label = "Ready to Start"
-            note = "Fill in and submit the form below to queue setup."
+            note = "Connect MT5 below. We handle terminal setup and email you when sync is live."
 
         status_rows.append(
             {
@@ -1776,6 +1776,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         "index.html",
         title=f"MyFXJournal | Dashboard [{username}] (Admin View)" if is_admin_view else "MyFXJournal | Dashboard",
         username=username,
+        user_email=(target_user.email or "") if target_user is not None else "",
         admin_viewer_username=admin_viewer_username,
         active_trade_account=active_trade_account,
         now_local=now_local,

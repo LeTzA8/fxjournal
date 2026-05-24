@@ -3,6 +3,15 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from celery_workers.cache import CacheUnavailableError, get_queue_depth, list_worker_states
+from helpers.mt5_dispatch import (
+    configured_monitor_vm_ids,
+    is_mt5_multi_vm_enabled,
+    listen_legacy_mt5_queues,
+    mt5_priority_queue,
+    mt5_setup_queue,
+    mt5_sync_queue,
+    parse_setup_vm_ids_env,
+)
 
 
 def _normalize_admin_vm_id(value):
@@ -130,12 +139,22 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         monitor_available = False
 
     queue_depths = {}
+    scoped_queue_depths = {}
     try:
         for queue_name in ("mt5_sync", "mt5_priority", "mt5_setup"):
             queue_depths[queue_name] = int(get_queue_depth(queue_name) or 0)
+        if is_mt5_multi_vm_enabled():
+            monitor_vm_ids = configured_monitor_vm_ids(mt5_accounts=mt5_accounts)
+            for vm_id in monitor_vm_ids:
+                scoped_queue_depths[vm_id] = {
+                    "mt5_sync": int(get_queue_depth(mt5_sync_queue(vm_id)) or 0),
+                    "mt5_priority": int(get_queue_depth(mt5_priority_queue(vm_id)) or 0),
+                    "mt5_setup": int(get_queue_depth(mt5_setup_queue(vm_id)) or 0),
+                }
     except CacheUnavailableError:
         monitor_available = False
         queue_depths = {}
+        scoped_queue_depths = {}
 
     vm_rows = []
     for vm_id in sorted(vm_ids):
@@ -159,6 +178,14 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
             )
         ]
         active_count = sum(1 for row in vm_accounts if getattr(row, "is_active", False))
+        is_unknown_bucket = vm_id == "unknown"
+        vm_scoped_depths = scoped_queue_depths.get(vm_id, {})
+        worker_missing = (
+            not is_unknown_bucket
+            and active_count > 0
+            and not _worker_is_online(sync_worker, now=now)
+            and not _worker_is_online(setup_worker, now=now)
+        )
         vm_rows.append(
             {
                 "vm_id": vm_id,
@@ -199,7 +226,9 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
                 "setup_last_processed_label": _format_monitor_timestamp(
                     setup_worker.get("last_task_processed_at")
                 ),
-                "is_unknown_bucket": vm_id == "unknown",
+                "scoped_queue_depths": vm_scoped_depths,
+                "worker_missing_warning": worker_missing,
+                "is_unknown_bucket": is_unknown_bucket,
             }
         )
 
@@ -217,5 +246,9 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         "orphaned_accounts": orphaned_accounts,
         "orphaned_count": len(orphaned_accounts),
         "queue_depths": queue_depths,
+        "scoped_queue_depths": scoped_queue_depths,
+        "multi_vm_enabled": is_mt5_multi_vm_enabled(),
+        "listen_legacy_queues": listen_legacy_mt5_queues(),
+        "setup_vm_ids": parse_setup_vm_ids_env(),
         "monitor_available": monitor_available,
     }

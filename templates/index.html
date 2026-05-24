@@ -63,6 +63,23 @@
             linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--card)) 0%, color-mix(in srgb, var(--surface) 88%, var(--card)) 100%);
     }
 
+    .onboarding-banner--subtle {
+        margin-top: 0.75rem;
+        margin-bottom: 0.75rem;
+        padding: 0.62rem 0.78rem;
+        border-color: color-mix(in srgb, var(--border) 88%, transparent);
+        background: color-mix(in srgb, var(--surface) 92%, var(--card));
+    }
+
+    .onboarding-banner--subtle .onboarding-banner-title {
+        font-size: 0.86rem;
+        font-weight: 650;
+    }
+
+    .onboarding-banner--subtle .onboarding-banner-note {
+        font-size: 0.78rem;
+    }
+
     .workflow-banner.is-bundle {
         border-color: color-mix(in srgb, var(--warning-border) 48%, var(--border));
         background:
@@ -596,9 +613,15 @@
             <div class="head-row">
                 <div>
                     <h1>Trading dashboard</h1>
+                    {% if is_state_one and not has_any_trades %}
+                    <p class="dash-primary-story">Connect MetaTrader 5 once — your trades sync automatically and your weekly AI review builds from real executions.</p>
+                    <p class="welcome">Welcome, {{ username }}.</p>
+                    <p class="subtitle">{% if active_trade_account %}Account <strong>{{ active_trade_account.name }}</strong> — {% endif %}Start with MT5 sync below.</p>
+                    {% else %}
                     <p class="dash-primary-story">This week at a glance: journal, stats, and your weekly AI review.</p>
                     <p class="welcome">Welcome, {{ username }}.</p>
                     <p class="subtitle">{% if active_trade_account %}Account <strong>{{ active_trade_account.name }}</strong> — {% endif %}AI review, check-in, and key stats.</p>
+                    {% endif %}
                 </div>
                 <div class="head-actions">
                     <a href="{{ url_for('dashboard.analytics') }}" class="trades-btn">Analytics</a>
@@ -622,11 +645,15 @@
         {% endif %}
 
         {% if show_whats_next_banner %}
-        <section class="panel journey-banner journey-banner--compact">
+        <section class="panel journey-banner journey-banner--compact{% if is_state_one and not has_any_trades %} journey-banner--mt5-first{% endif %}">
             <div class="journey-banner-copy">
                 <p class="journey-banner-kicker">What's next</p>
                 <h2 class="journey-banner-title">
-                    {% if not has_any_trades %}
+                    {% if is_state_one and not has_any_trades %}
+                    Connect MetaTrader 5
+                    {% elif is_state_two %}
+                    Connect MT5 next
+                    {% elif not has_any_trades %}
                     Add your first trades
                     {% elif not has_closed_trades %}
                     Add closed trades for analytics
@@ -637,8 +664,12 @@
                     {% endif %}
                 </h2>
                 <p class="journey-banner-text">
-                    {% if not has_any_trades %}
-                    Import MT5 or Tradovate, or add a trade manually.
+                    {% if is_state_one and not has_any_trades %}
+                    Connect MT5 first. Import a report while setup runs if you want an early preview.
+                    {% elif is_state_two %}
+                    Nice, your report is in. Connect MT5 next so you do not have to export again.
+                    {% elif not has_any_trades %}
+                    Connect MT5 first, or import MT5 or Tradovate, or add a trade manually.
                     {% elif not has_closed_trades %}
                     Closed positions with realized P&amp;L unlock win rate, equity, and sessions.
                     {% elif weekly_ai_is_generating %}
@@ -647,9 +678,28 @@
                     Keep logging until this account completes a week with enough closes for the full review (step 3).
                     {% endif %}
                 </p>
+                {% if not (is_state_one and not has_any_trades) %}
                 <p class="journey-banner-tip">Tip: use the <strong>?</strong> icons on cards for metric help.</p>
+                {% endif %}
             </div>
             <div class="journey-steps" aria-label="Getting started progress">
+                {% if is_state_one and not has_any_trades %}
+                <article class="journey-step is-current">
+                    <p class="journey-step-label">Step 1</p>
+                    <p class="journey-step-title">Connect MT5</p>
+                    <p class="journey-step-copy">Read-only investor password.</p>
+                </article>
+                <article class="journey-step">
+                    <p class="journey-step-label">Step 2</p>
+                    <p class="journey-step-title">History syncs</p>
+                    <p class="journey-step-copy">Trades flow in automatically.</p>
+                </article>
+                <article class="journey-step">
+                    <p class="journey-step-label">Step 3</p>
+                    <p class="journey-step-title">Weekly AI review</p>
+                    <p class="journey-step-copy">After {{ weekly_ai_min_closed_trades }}+ closes in a finished week.</p>
+                </article>
+                {% else %}
                 <article class="journey-step {% if has_any_trades %}is-complete{% else %}is-current{% endif %}">
                     <p class="journey-step-label">Step 1</p>
                     <p class="journey-step-title">Trades in</p>
@@ -687,39 +737,22 @@
                         {% endif %}
                     </p>
                 </article>
+                {% endif %}
             </div>
-            <div class="journey-actions{% if is_state_one %} guided-focus-panel{% endif %}">
-                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">{% if is_state_one %}Add or import trades{% else %}Import or add trades{% endif %}</a>
+            <div class="journey-actions">
+                {% if is_state_one and not has_any_trades %}
+                <a href="#mt5-access" class="trades-btn">Connect MT5</a>
+                <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Import while setup runs</a>
+                {% elif is_state_two %}
+                <a href="#mt5-access" class="trades-btn">Connect MT5</a>
+                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
+                {% else %}
+                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Import or add trades</a>
                 <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
                 {% if has_closed_trades %}
                 <a href="{{ url_for('dashboard.analytics') }}" class="ghost-btn">View Analytics</a>
                 {% endif %}
-            </div>
-        </section>
-        {% endif %}
-
-        {% if show_onboarding_banner %}
-        <section class="panel onboarding-banner">
-            <div class="onboarding-banner-copy">
-                <p class="onboarding-banner-kicker">Optional Setup</p>
-                <p class="onboarding-banner-title">
-                    {% if onboarding_was_skipped %}
-                    Optional: finish your trading profile later.
-                    {% else %}
-                    Optional: tailor MyFXJournal to how you trade.
-                    {% endif %}
-                </p>
-                <p class="onboarding-banner-note">
-                    {% if onboarding_was_skipped %}
-                    You skipped the questionnaire earlier, which is fine. Add your trading style, main instruments, and experience level whenever you are ready so the AI review tone and coaching feel more like they were written for you.
-                    {% else %}
-                    It takes about 30 seconds and only changes tone, examples, and jargon level. You can do it after your first import if you prefer.
-                    {% endif %}
-                </p>
-            </div>
-            <div class="onboarding-banner-actions">
-                <a href="{{ url_for('onboarding') }}" class="trades-btn">Complete Onboarding</a>
-                <a href="{{ url_for('account.account') }}" class="ghost-btn">Open Account</a>
+                {% endif %}
             </div>
         </section>
         {% endif %}
@@ -761,10 +794,15 @@
         <section class="ai-hero-grid {% if mt5_cfd_accounts %}has-mt5{% else %}no-mt5{% endif %}{% if is_state_one %} state-onboarding{% endif %}" data-reveal-row-step="120" data-reveal-col-step="70">
             <div class="mt5-side-stack">
                 {% if mt5_cfd_accounts %}
-                <article id="mt5-access" class="panel mt5-access-panel mt5-workflow-panel{% if show_mt5_guidance %} is-guided{% endif %}">
+                <article id="mt5-access" class="panel mt5-access-panel mt5-workflow-panel{% if show_mt5_guidance %} is-guided{% endif %}{% if is_state_one and not has_any_trades %} mt5-workflow-panel--onboarding{% endif %}">
                     <div class="panel-head">
                         <div class="panel-title-wrap">
+                            {% if is_state_one and not has_any_trades %}
+                            <h2>Connect MetaTrader 5</h2>
+                            <p class="panel-title-hint">Trades sync automatically. Your weekly AI review builds from real executions — no exports, no spreadsheets.</p>
+                            {% else %}
                             <h2>MT5 sync</h2>
+                            {% endif %}
                             {% if mt5_selected_account %}
                             <p class="panel-account-note">{{ mt5_selected_account.name }}</p>
                             {% else %}
@@ -783,7 +821,7 @@
                             {% elif mt5_selected_status in ("queued", "setting_up") %}
                             Setting Up
                             {% elif mt5_selected_status in ("requestable", "pending") %}
-                            Start MT5 Sync
+                            {% if is_state_one and not has_any_trades %}Step 1 · Connect{% elif is_state_two %}Connect Next{% else %}Start MT5 Sync{% endif %}
                             {% else %}
                             Optional After Import
                             {% endif %}
@@ -800,6 +838,8 @@
                     {% else %}
                     {% set mt5_progress_stage = 1 %}
                     {% endif %}
+                    {% set _mt5_hide_setup_progress = is_state_one and not has_any_trades and mt5_selected_status in ("requestable", "pending") %}
+                    {% if not _mt5_hide_setup_progress %}
                     <div class="mt5-workflow-summary">
                         <ol class="mt5-progress-track" data-mt5-progress data-current-stage="{{ mt5_progress_stage }}" aria-label="MT5 sync progress">
                             {% set _mt5_progress_labels = ["Submit Details", "Setup Queued", "Setting Up", "Sync Paused"] if mt5_selected_status == "paused" else ["Submit Details", "Setup Queued", "Setting Up", "Sync Active"] %}
@@ -824,12 +864,15 @@
                             </span>
                         </div>
                     </div>
+                    {% elif is_state_one and not has_any_trades %}
+                    <p class="mt5-onboarding-trust">Read-only investor password only. Stored encrypted; used solely to pull trade history. We never place trades.</p>
+                    {% endif %}
                     {% endif %}
 
-                    {% if show_mt5_guidance and not (mt5_selected_account and mt5_selected_row and not mt5_selected_row.is_linked and mt5_selected_status in ("requestable", "pending")) %}
+                    {% if show_mt5_guidance and not (mt5_selected_account and mt5_selected_row and not mt5_selected_row.is_linked and mt5_selected_status in ("requestable", "pending")) and not (is_state_one and not has_any_trades) %}
                     <p class="mt5-panel-hint">
                         {% if is_state_one %}
-                        Optional: automatic sync for this account after you have trades.
+                        Turn on automatic sync for this account when you are ready.
                         {% else %}
                         Optional: turn on automatic sync once you have trade history on this account.
                         {% endif %}
@@ -857,13 +900,16 @@
                     {% endif %}
 
                     {% if mt5_selected_account and mt5_selected_row and not mt5_selected_row.is_linked and mt5_selected_status in ("requestable", "pending") %}
+                    {% set _mt5_use_wizard = is_state_one and not has_any_trades %}
                     <div class="mt5-form-shell{% if show_mt5_guidance %} guided-focus-panel{% endif %}" data-mt5-form-shell>
                         <form
                             action="{{ url_for('trade_accounts.request_mt5_access') }}"
                             method="post"
-                            class="mt5-card-form"
+                            class="mt5-card-form{% if _mt5_use_wizard %} mt5-card-form--wizard{% endif %}"
                             data-themed-validation
                             data-mt5-request-form
+                            data-mt5-import-url="{{ url_for('trades.new_trade') }}"
+                            {% if _mt5_use_wizard %}data-mt5-setup-wizard{% endif %}
                         >
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
@@ -877,9 +923,19 @@
 
                             <div class="mt5-request-form-alert" data-mt5-form-alert role="status" hidden></div>
 
-                            <div class="mt5-form-grid">
-                                <div class="mt5-form-field">
+                            {% if _mt5_use_wizard %}
+                            <div class="mt5-wizard-head" aria-live="polite">
+                                <p class="mt5-wizard-kicker">MT5 setup</p>
+                                <p class="mt5-wizard-step-label" data-mt5-wizard-step-label>Step 1 of 4 · Account number</p>
+                            </div>
+                            {% endif %}
+
+                            <div class="mt5-form-grid{% if _mt5_use_wizard %} mt5-form-grid--wizard{% endif %}">
+                                <div class="mt5-form-field{% if _mt5_use_wizard %} mt5-wizard-step is-active{% endif %}"{% if _mt5_use_wizard %} data-mt5-wizard-step="1"{% endif %}>
                                     <label for="mt5_account_number">MT5 account number</label>
+                                    {% if _mt5_use_wizard %}
+                                    <p class="mt5-wizard-field-hint">Your MT5 login ID from MetaTrader 5.</p>
+                                    {% endif %}
                                     <input
                                         id="mt5_account_number"
                                         name="account_number"
@@ -891,15 +947,18 @@
                                     >
                                 </div>
 
-                                <div class="mt5-form-field">
+                                <div class="mt5-form-field{% if _mt5_use_wizard %} mt5-wizard-step{% endif %}"{% if _mt5_use_wizard %} data-mt5-wizard-step="2" hidden{% endif %}>
                                     <label for="mt5_investor_password">Investor password</label>
+                                    {% if _mt5_use_wizard %}
+                                    <p class="mt5-wizard-field-hint">Read-only access only — not your master or trading password.</p>
+                                    {% endif %}
                                     <div class="mt5-password-row">
                                         <input
                                             id="mt5_investor_password"
                                             name="investor_password"
                                             type="password"
-                                        placeholder="Investor access (MT5)"
-                                        required
+                                            placeholder="Investor access (MT5)"
+                                            required
                                         >
                                         <button type="button" class="ghost-btn mt5-password-toggle" data-mt5-password-toggle aria-controls="mt5_investor_password" aria-pressed="false">
                                             Show
@@ -907,7 +966,7 @@
                                     </div>
                                 </div>
 
-                                <div class="mt5-form-field mt5-form-field--server" data-mt5-server-field>
+                                <div class="mt5-form-field mt5-form-field--server{% if _mt5_use_wizard %} mt5-wizard-step{% endif %}" data-mt5-server-field{% if _mt5_use_wizard %} data-mt5-wizard-step="3" hidden{% endif %}>
                                     <div class="mt5-field-label-row">
                                         <label for="mt5_server">MT5 server (NOT your broker name)</label>
                                         <span class="help-tooltip">
@@ -924,9 +983,13 @@
                                             </span>
                                         </span>
                                     </div>
+                                    {% if not _mt5_use_wizard %}
                                     <p id="mt5-server-helper" class="mt5-card-helper" data-mt5-server-helper>
                                         Enter the exact server string from MT5: same spelling <strong>and</strong> capitalization (brokers are case-sensitive). Examples: Exness-MT5Real, ICMarketsSC-Demo. Do NOT enter only your broker name.
                                     </p>
+                                    {% else %}
+                                    <p class="mt5-wizard-field-hint">Paste the exact server string from MT5 — spelling and capitalization must match.</p>
+                                    {% endif %}
                                     <input
                                         id="mt5_server"
                                         name="server"
@@ -938,13 +1001,37 @@
                                         autocapitalize="off"
                                         autocorrect="off"
                                         spellcheck="false"
-                                        aria-describedby="mt5-server-helper"
+                                        {% if not _mt5_use_wizard %}aria-describedby="mt5-server-helper"{% endif %}
                                         aria-invalid="false"
                                         data-mt5-server-input
                                     >
                                     <p id="mt5-server-warning" class="mt5-server-input-warning" role="status" aria-live="polite" hidden data-mt5-server-warning>
                                         This looks like a broker name, not a server. Copy the exact server from MT5, including capitals.
                                     </p>
+                                    {% if _mt5_use_wizard %}
+                                    <details class="mt5-server-help-collapsible">
+                                        <summary>Need help finding your server?</summary>
+                                        <p id="mt5-server-helper" class="mt5-card-helper" data-mt5-server-helper>
+                                            Examples: Exness-MT5Real, ICMarketsSC-Live, Pepperstone-Edge. Do NOT enter only your broker name.
+                                        </p>
+                                        <ul class="mt5-server-examples" aria-label="Broker name versus MT5 server examples">
+                                            <li><span class="mt5-server-examples__wrong">Exness</span> → <span class="mt5-server-examples__ok">Exness-MT5Real</span></li>
+                                            <li><span class="mt5-server-examples__wrong">IC Markets</span> → <span class="mt5-server-examples__ok">ICMarketsSC-Live</span></li>
+                                            <li><span class="mt5-server-examples__wrong">Pepperstone</span> → <span class="mt5-server-examples__ok">Pepperstone-Edge</span></li>
+                                        </ul>
+                                        <div class="mt5-server-howto">
+                                            <p class="mt5-server-howto__title">How to find your server</p>
+                                            <ol class="mt5-server-howto__list">
+                                                <li>Open MetaTrader 5</li>
+                                                <li>Click &lsquo;Login to Trade Account&rsquo;</li>
+                                                <li>Copy the server exactly as shown (upper and lower case must match)</li>
+                                            </ol>
+                                        </div>
+                                        <p class="mt5-server-faq-link">
+                                            <a href="{{ url_for('faq_mt5_server') }}" target="_blank" rel="noopener noreferrer">FAQ: where your server appears in MT5 (desktop &amp; mobile screenshots)</a>
+                                        </p>
+                                    </details>
+                                    {% else %}
                                     <ul class="mt5-server-examples" aria-label="Broker name versus MT5 server examples">
                                         <li><span class="mt5-server-examples__wrong">Exness</span> → <span class="mt5-server-examples__ok">Exness-MT5Real</span></li>
                                         <li><span class="mt5-server-examples__wrong">IC Markets</span> → <span class="mt5-server-examples__ok">ICMarketsSC-Live</span></li>
@@ -961,24 +1048,57 @@
                                     <p class="mt5-server-faq-link">
                                         <a href="{{ url_for('faq_mt5_server') }}" target="_blank" rel="noopener noreferrer">FAQ: where your server appears in MT5 (desktop &amp; mobile screenshots)</a>
                                     </p>
+                                    {% endif %}
                                 </div>
+
+                                {% if _mt5_use_wizard %}
+                                <div class="mt5-form-field mt5-wizard-step" data-mt5-wizard-step="4" hidden>
+                                    <label class="mt5-card-consent" for="mt5_sync_consent">
+                                        <input id="mt5_sync_consent" name="mt5_sync_consent" type="checkbox" value="on" required data-mt5-consent>
+                                        <span>I confirm this is my MT5 <strong>investor</strong> password (read-only), not master or trading password.</span>
+                                    </label>
+                                    <p class="mt5-wizard-field-hint mt5-wizard-field-hint--final">We email you when terminal setup finishes. You can import a report while you wait.</p>
+                                </div>
+                                {% endif %}
                             </div>
 
+                            {% if not _mt5_use_wizard %}
                             <label class="mt5-card-consent" for="mt5_sync_consent">
                                 <input id="mt5_sync_consent" name="mt5_sync_consent" type="checkbox" value="on" required data-mt5-consent>
                                 <span>I confirm this is my MT5 <strong>investor</strong> password (read-only), not master or trading password.</span>
                             </label>
 
                             <button type="submit" class="submit-btn" data-mt5-submit disabled>Start MT5 setup</button>
+                            {% else %}
+                            <div class="mt5-wizard-nav">
+                                <button type="button" class="ghost-btn mt5-wizard-back" data-mt5-wizard-back hidden>Back</button>
+                                <button type="button" class="submit-btn mt5-wizard-next" data-mt5-wizard-next>Continue</button>
+                                <button type="submit" class="submit-btn" data-mt5-submit hidden disabled>Start MT5 setup</button>
+                            </div>
+                            {% endif %}
                         </form>
                     </div>
                     <p class="mt5-card-footnote">Stored encrypted; used only to pull your trade history.</p>
+                    {% if is_state_one and not has_any_trades %}
+                    <aside class="mt5-import-bridge" aria-label="Import while MT5 setup runs">
+                        <p class="mt5-import-bridge-kicker">While setup runs</p>
+                        <p class="mt5-import-bridge-copy">Import an MT5 or Tradovate report to preview stats before sync goes live.</p>
+                        <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Import a report</a>
+                    </aside>
+                    {% endif %}
                     {% elif mt5_selected_status == "queued" and mt5_selected_account %}
                     <p class="mt5-card-empty">MT5 details are saved and setup started right away. We will email you when MT5 sync is ready.</p>
                     <div class="mt5-selected-account-card mt5-selected-account-card--compact">
                         <span class="mt5-selected-account-label">Setup Queued</span>
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
                     </div>
+                    {% if is_state_one and not has_any_trades %}
+                    <aside class="mt5-import-bridge" aria-label="Import while MT5 setup runs">
+                        <p class="mt5-import-bridge-kicker">While setup runs</p>
+                        <p class="mt5-import-bridge-copy">Import an MT5 or Tradovate report to preview stats before sync goes live.</p>
+                        <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Import a report</a>
+                    </aside>
+                    {% endif %}
                     <form
                         method="post"
                         action="{{ url_for('trade_accounts.unlink_mt5_sync') }}"
@@ -1007,6 +1127,13 @@
                         <span class="mt5-selected-account-label">Setting Up</span>
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
                     </div>
+                    {% if is_state_one and not has_any_trades %}
+                    <aside class="mt5-import-bridge" aria-label="Import while MT5 setup runs">
+                        <p class="mt5-import-bridge-kicker">While setup runs</p>
+                        <p class="mt5-import-bridge-copy">Import an MT5 or Tradovate report to preview stats before sync goes live.</p>
+                        <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Import a report</a>
+                    </aside>
+                    {% endif %}
                     <form
                         method="post"
                         action="{{ url_for('trade_accounts.unlink_mt5_sync') }}"
@@ -1041,6 +1168,7 @@
                             class="mt5-card-form"
                             data-themed-validation
                             data-mt5-request-form
+                            data-mt5-import-url="{{ url_for('trades.new_trade') }}"
                         >
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
@@ -1149,11 +1277,21 @@
                     <div class="mt5-selected-account-card">
                         <span class="mt5-selected-account-label">{{ mt5_selected_row.status_label }}</span>
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                        <span class="mt5-selected-account-meta">Import trades now; connect MT5 when setup capacity opens.</span>
+                        <span class="mt5-selected-account-meta">Import a report now, or get notified when MT5 setup capacity opens.</span>
                     </div>
                     <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
-                        <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Open Import</a>
+                        <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Import a report now</a>
+                        {% if not support_view_session_active %}
+                        <button
+                            type="button"
+                            class="ghost-btn"
+                            data-mt5-capacity-notify
+                            data-waitlist-email="{{ user_email }}"
+                            data-csrf-token="{{ csrf_token() }}"
+                        >Notify me when MT5 setup opens</button>
+                        {% endif %}
                     </div>
+                    <p class="mt5-capacity-notify-status" data-mt5-capacity-notify-status role="status" hidden></p>
                     {% elif mt5_selected_status == "archived" and mt5_selected_account %}
                     <p class="mt5-card-empty">This account's MT5 sync is inactive due to inactivity. Reactivate it when you want automatic sync back on.</p>
                     <div class="mt5-selected-account-card">
@@ -1258,16 +1396,21 @@
                     {% endif %}
                 </article>
                 {% else %}
-                <article id="mt5-access" class="panel mt5-access-panel mt5-overview-panel-empty{% if show_mt5_guidance %} is-guided{% endif %}">
+                <article id="mt5-access" class="panel mt5-access-panel mt5-overview-panel-empty{% if show_mt5_guidance %} is-guided{% endif %}{% if is_state_one and not has_any_trades %} mt5-workflow-panel--onboarding{% endif %}">
                     <div class="panel-head">
                         <div class="panel-title-wrap">
+                            {% if is_state_one and not has_any_trades %}
+                            <h2>Connect MetaTrader 5</h2>
+                            <p class="panel-title-hint">Create a CFD trade account first, then connect MT5 for automatic sync.</p>
+                            {% else %}
                             <h2>MT5 sync</h2>
                             <p class="panel-account-note">Create a CFD trade account first, then start MT5 sync setup here.</p>
+                            {% endif %}
                         </div>
-                        <span class="soft">Optional After Import</span>
+                        <span class="soft">{% if is_state_one and not has_any_trades %}Step 1 · Connect{% else %}Optional After Import{% endif %}</span>
                     </div>
-                    {% if show_mt5_guidance %}
-                    <p class="mt5-panel-hint">Optional: Connect MT5 for automatic sync{% if is_state_one %} once this CFD account exists{% endif %} (read-only investor password).</p>
+                    {% if show_mt5_guidance and not (is_state_one and not has_any_trades) %}
+                    <p class="mt5-panel-hint">Optional: Connect MT5 for automatic sync (read-only investor password).</p>
                     {% endif %}
                     <p class="mt5-card-empty">You will see the setup flow here as soon as you have a CFD trade account available.</p>
                     <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
@@ -1439,8 +1582,13 @@
             <article class="panel notes-panel notes-panel-hero{% if is_state_one and not weekly_ai_review %} notes-panel-hero--onboarding{% endif %}">
                 <div class="ai-hero-head">
                     {% if is_state_one and not weekly_ai_review %}
-                    <h2 class="ai-hero-title">Weekly AI Review</h2>
-                    <p class="ai-hero-copy ai-hero-copy--onboarding">Ships after step 3 when you have enough closed trades in a completed week.</p>
+                    <div class="ai-hero-badges">
+                        <span class="ai-hero-badge">Sample</span>
+                        <span class="ai-hero-badge is-muted">Weekly Only</span>
+                    </div>
+                    <p class="ai-hero-kicker">Built from synced trade history</p>
+                    <h2 class="ai-hero-title">Your weekly AI review</h2>
+                    <p class="ai-hero-copy ai-hero-copy--onboarding">Preview below — yours generates automatically once MT5 sync brings in enough closed trades for a finished week.</p>
                     {% else %}
                     <div class="ai-hero-badges">
                         <span class="ai-hero-badge">AI Coach</span>
@@ -1470,6 +1618,8 @@
                             Latest Weekly Review
                             {% elif weekly_ai_is_generating %}
                             Generating Weekly Review
+                            {% elif is_state_one and not weekly_ai_review %}
+                            Sample Weekly Review
                             {% else %}
                             Waiting for Weekly Review
                             {% endif %}
@@ -1507,6 +1657,25 @@
                         <div class="ai-generating-shell" aria-live="polite" aria-busy="true">
                             <span class="ai-loading-orb" aria-hidden="true"></span>
                             <p class="insight-body ai-generating-copy">{{ weekly_ai_empty_message|trim }}</p>
+                        </div>
+                        {% elif is_state_one and not weekly_ai_review %}
+                        <div class="dashboard-ai-preview" aria-label="Sample weekly AI review">
+                            <div class="dashboard-ai-preview-main">
+                                <p class="dashboard-ai-preview-label">🧠 What mattered this week</p>
+                                <p class="dashboard-ai-preview-title">You were profitable. Your risk still leaked.</p>
+                                <p class="dashboard-ai-preview-body">After losses, your next positions got bigger. That one habit created most of the drawdown.</p>
+                            </div>
+                            <div class="dashboard-ai-preview-side">
+                                <article class="dashboard-ai-preview-card dashboard-ai-preview-card--action">
+                                    <p>🎯 Next fix</p>
+                                    <strong>After a loss, trade normal size.</strong>
+                                </article>
+                                <article class="dashboard-ai-preview-card">
+                                    <p>✅ Keep this</p>
+                                    <strong>You cut losers quickly. Do not change that.</strong>
+                                </article>
+                            </div>
+                            <p class="dashboard-ai-preview-note">Sample review — yours uses your actual synced trades once the week completes.</p>
                         </div>
                         {% else %}
                         <p class="insight-body">{{ weekly_ai_empty_message|trim }}</p>
@@ -1789,6 +1958,33 @@
             {% endif %}
             </div>
         </section>
+
+        {% if show_onboarding_banner %}
+        <section class="panel onboarding-banner onboarding-banner--subtle">
+            <div class="onboarding-banner-copy">
+                <p class="onboarding-banner-kicker">Optional Setup</p>
+                <p class="onboarding-banner-title">
+                    {% if onboarding_was_skipped %}
+                    Optional: finish your trading profile later.
+                    {% else %}
+                    Optional: tailor MyFXJournal to how you trade.
+                    {% endif %}
+                </p>
+                <p class="onboarding-banner-note">
+                    {% if onboarding_was_skipped %}
+                    You skipped the questionnaire earlier, which is fine. Add your trading style, main instruments, and experience level whenever you are ready so the AI review tone and coaching feel more like they were written for you.
+                    {% else %}
+                    About 30 seconds — only changes tone, examples, and jargon level. Finish MT5 setup first if you prefer.
+                    {% endif %}
+                </p>
+            </div>
+            <div class="onboarding-banner-actions">
+                <a href="{{ url_for('onboarding') }}" class="ghost-btn">Complete Onboarding</a>
+                <a href="{{ url_for('account.account') }}" class="ghost-btn">Open Account</a>
+            </div>
+        </section>
+        {% endif %}
+
         {% if not is_state_one %}
         <section class="panel-grid" data-reveal-row-step="140" data-reveal-col-step="90">
             <div class="panel-column panel-column-main">
@@ -2385,6 +2581,205 @@
         font-size: 0.7rem;
         line-height: 1.35;
         color: color-mix(in srgb, var(--muted) 92%, var(--ink));
+    }
+
+    .journey-banner--mt5-first {
+        border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+    }
+
+    .journey-banner--mt5-first .journey-banner-title {
+        color: color-mix(in srgb, var(--accent) 42%, var(--ink));
+    }
+
+    .mt5-workflow-panel--onboarding {
+        border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
+    }
+
+    .mt5-onboarding-trust {
+        margin: 0;
+        font-size: 0.78rem;
+        line-height: 1.45;
+        color: color-mix(in srgb, var(--muted) 82%, var(--ink));
+    }
+
+    .mt5-wizard-head {
+        display: grid;
+        gap: 0.12rem;
+    }
+
+    .mt5-wizard-kicker {
+        margin: 0;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--accent) 58%, var(--ink));
+    }
+
+    .mt5-wizard-step-label {
+        margin: 0;
+        font-size: 0.82rem;
+        font-weight: 700;
+        color: color-mix(in srgb, var(--ink) 88%, var(--muted));
+    }
+
+    .mt5-wizard-field-hint {
+        margin: 0.18rem 0 0.42rem;
+        font-size: 0.76rem;
+        line-height: 1.42;
+        color: color-mix(in srgb, var(--muted) 86%, var(--ink));
+    }
+
+    .mt5-wizard-field-hint--final {
+        margin-top: 0.55rem;
+    }
+
+    .mt5-form-grid--wizard {
+        gap: 0;
+    }
+
+    .mt5-wizard-step[hidden] {
+        display: none !important;
+    }
+
+    .mt5-wizard-nav {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+        margin-top: 0.35rem;
+    }
+
+    .mt5-wizard-nav .submit-btn,
+    .mt5-wizard-nav .ghost-btn {
+        min-width: 7.5rem;
+    }
+
+    .mt5-server-help-collapsible {
+        margin-top: 0.55rem;
+        padding: 0.55rem 0.62rem;
+        border-radius: 10px;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        background: color-mix(in srgb, var(--surface) 88%, transparent);
+    }
+
+    .mt5-server-help-collapsible summary {
+        cursor: pointer;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: color-mix(in srgb, var(--accent) 52%, var(--ink));
+    }
+
+    .mt5-server-help-collapsible .mt5-card-helper,
+    .mt5-server-help-collapsible .mt5-server-examples,
+    .mt5-server-help-collapsible .mt5-server-howto,
+    .mt5-server-help-collapsible .mt5-server-faq-link {
+        margin-top: 0.55rem;
+    }
+
+    .mt5-import-bridge {
+        display: grid;
+        gap: 0.42rem;
+        padding: 0.72rem 0.78rem;
+        border-radius: 12px;
+        border: 1px dashed color-mix(in srgb, var(--border) 78%, var(--accent) 22%);
+        background: color-mix(in srgb, var(--surface) 90%, transparent);
+    }
+
+    .mt5-import-bridge-kicker {
+        margin: 0;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--muted) 88%, var(--ink));
+    }
+
+    .mt5-import-bridge-copy {
+        margin: 0;
+        font-size: 0.8rem;
+        line-height: 1.42;
+        color: color-mix(in srgb, var(--muted) 78%, var(--ink));
+    }
+
+    .dashboard-ai-preview {
+        display: grid;
+        gap: 0.72rem;
+        text-align: left;
+    }
+
+    .dashboard-ai-preview-main {
+        display: grid;
+        gap: 0.38rem;
+    }
+
+    .dashboard-ai-preview-label {
+        margin: 0;
+        font-size: 0.72rem;
+        font-weight: 850;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--accent) 58%, var(--ink));
+    }
+
+    .dashboard-ai-preview-title {
+        margin: 0;
+        font-size: 1.02rem;
+        font-weight: 800;
+        line-height: 1.28;
+        color: var(--ink);
+    }
+
+    .dashboard-ai-preview-body {
+        margin: 0;
+        font-size: 0.92rem;
+        line-height: 1.58;
+        color: color-mix(in srgb, var(--muted) 72%, var(--ink));
+    }
+
+    .dashboard-ai-preview-side {
+        display: grid;
+        gap: 0.48rem;
+    }
+
+    .dashboard-ai-preview-card {
+        display: grid;
+        gap: 0.22rem;
+        padding: 0.62rem 0.72rem;
+        border-radius: 12px;
+        border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+        background: color-mix(in srgb, var(--surface) 92%, transparent);
+    }
+
+    .dashboard-ai-preview-card p {
+        margin: 0;
+        font-size: 0.72rem;
+        font-weight: 800;
+        color: color-mix(in srgb, var(--muted) 84%, var(--ink));
+    }
+
+    .dashboard-ai-preview-card strong {
+        font-size: 0.86rem;
+        line-height: 1.38;
+        color: var(--ink);
+    }
+
+    .dashboard-ai-preview-card--action {
+        border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+        background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    }
+
+    .dashboard-ai-preview-note {
+        margin: 0;
+        font-size: 0.72rem;
+        line-height: 1.4;
+        color: color-mix(in srgb, var(--muted) 90%, var(--ink));
+        font-style: italic;
+    }
+
+    .ai-hero-grid.state-onboarding .notes-panel-hero--onboarding .dashboard-ai-preview {
+        max-width: none;
     }
 
     @property --dashboard-focus-angle {
@@ -4081,6 +4476,24 @@
         color: color-mix(in srgb, var(--muted) 90%, var(--ink));
     }
 
+    .mt5-success-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-top: 0.2rem;
+    }
+
+    .mt5-capacity-notify-status {
+        margin: 0.45rem 0 0;
+        font-size: 0.78rem;
+        line-height: 1.45;
+        color: color-mix(in srgb, var(--accent) 44%, var(--ink));
+    }
+
+    .mt5-capacity-notify-status.is-error {
+        color: color-mix(in srgb, var(--danger) 70%, var(--ink));
+    }
+
     .mt5-card-form textarea {
         min-height: 3.9rem;
         resize: vertical;
@@ -5216,4 +5629,71 @@
 })();
 </script>
 {% endif %}
+<script>
+(() => {
+    const notifyButton = document.querySelector("[data-mt5-capacity-notify]");
+    const notifyStatus = document.querySelector("[data-mt5-capacity-notify-status]");
+    if (!notifyButton || typeof window.fetch !== "function") {
+        return;
+    }
+
+    notifyButton.addEventListener("click", async () => {
+        if (notifyButton.disabled) {
+            return;
+        }
+        const email = (notifyButton.getAttribute("data-waitlist-email") || "").trim().toLowerCase();
+        const csrfToken = (notifyButton.getAttribute("data-csrf-token") || "").trim();
+        if (!email) {
+            if (notifyStatus) {
+                notifyStatus.hidden = false;
+                notifyStatus.className = "mt5-capacity-notify-status is-error";
+                notifyStatus.textContent = "Add an email on your account page first, then try again.";
+            }
+            return;
+        }
+
+        notifyButton.disabled = true;
+        if (notifyStatus) {
+            notifyStatus.hidden = true;
+            notifyStatus.className = "mt5-capacity-notify-status";
+        }
+
+        try {
+            const response = await window.fetch("{{ url_for('pricing_waitlist_post') }}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                    "X-CSRFToken": csrfToken,
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({
+                    email,
+                    tier: "trader",
+                    source: "dashboard_mt5_capacity",
+                    feature_interest: "mt5_sync",
+                    cta_context: "mt5_setup_capacity_closed",
+                }),
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload.ok) {
+                throw new Error(payload.error || "Could not save your notification request.");
+            }
+            if (notifyStatus) {
+                notifyStatus.hidden = false;
+                notifyStatus.textContent = "You're on the list. We'll email you when MT5 setup opens.";
+            }
+            notifyButton.textContent = "Notification saved";
+        } catch (error) {
+            notifyButton.disabled = false;
+            if (notifyStatus) {
+                notifyStatus.hidden = false;
+                notifyStatus.className = "mt5-capacity-notify-status is-error";
+                notifyStatus.textContent = error.message || "Something went wrong. Please try again.";
+            }
+        }
+    });
+})();
+</script>
 {% endblock %}

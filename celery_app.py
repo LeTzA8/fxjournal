@@ -232,11 +232,26 @@ def _get_mt5_worker_title_refresh_seconds():
 
 def _get_mt5_worker_window_config(hostname):
     hostname_text = str(hostname or "").strip().lower()
+    from helpers.mt5_dispatch import (
+        current_vm_id,
+        listen_legacy_mt5_queues,
+        mt5_priority_queue,
+        mt5_sync_queue,
+        mt5_setup_queue,
+    )
+
+    vm_id = current_vm_id(default_hostname=hostname)
+    sync_queue_names = [mt5_priority_queue(vm_id), mt5_sync_queue(vm_id)]
+    setup_queue_names = [mt5_setup_queue(vm_id)]
+    if listen_legacy_mt5_queues():
+        sync_queue_names.extend(["mt5_priority", "mt5_sync"])
+        setup_queue_names.append("mt5_setup")
+
     if hostname_text.startswith("mt5-sync@"):
         return {
             "worker_kind": "mt5_sync",
             "queue_name": "mt5_sync",
-            "queue_names": ("mt5_priority", "mt5_sync"),
+            "queue_names": tuple(dict.fromkeys(sync_queue_names)),
             "title_prefix": "MT5 Sync Window",
             "task_prefix": "celery_workers.mt5_sync_tasks.",
             "primary_label": "Accounts Active",
@@ -246,6 +261,7 @@ def _get_mt5_worker_window_config(hostname):
         return {
             "worker_kind": "mt5_setup",
             "queue_name": "mt5_setup",
+            "queue_names": tuple(dict.fromkeys(setup_queue_names)),
             "title_prefix": "MT5 Setup Window",
             "task_prefix": "celery_workers.mt5_setup_tasks.",
             "primary_label": "Pending Setup",

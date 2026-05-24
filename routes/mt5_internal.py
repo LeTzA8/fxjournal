@@ -7,7 +7,6 @@ from sqlalchemy import func
 
 from celery_workers.cache import CacheUnavailableError, invalidate
 from helpers.app_settings import MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, get_bool_app_setting
-from helpers.celery_dispatch import dispatch_celery_task
 from helpers.core import (
     build_normalized_trade_insert_batch,
     queue_bundle_review_if_split_candidates,
@@ -146,18 +145,19 @@ def _queue_auto_trade_bar_sync(account):
     if not trades_to_queue:
         return status
 
-    from celery_workers.mt5_sync_tasks import MT5_PRIORITY_QUEUE_NAME, fetch_trade_bars_batch
+    from celery_workers.mt5_sync_tasks import fetch_trade_bars_batch
+    from helpers.mt5_dispatch import dispatch_mt5_priority, mt5_priority_queue
 
-    status["queue"] = MT5_PRIORITY_QUEUE_NAME
+    status["queue"] = mt5_priority_queue(account.vm_id)
 
     if len(trades_to_queue) > max_tasks_per_sync:
         status["capped"] = True
     queued_trades = trades_to_queue[:max_tasks_per_sync]
-    dispatch_celery_task(
+    dispatch_mt5_priority(
         fetch_trade_bars_batch,
-        args=[account.id, [trade.id for trade in queued_trades]],
-        queue=MT5_PRIORITY_QUEUE_NAME,
-        log=current_app.logger,
+        account.id,
+        [trade.id for trade in queued_trades],
+        account_vm_id=account.vm_id,
         label="mt5_auto_bar_sync_batch_after_ingest",
         extra={
             "mt5_account_id": account.id,
@@ -166,6 +166,7 @@ def _queue_auto_trade_bar_sync(account):
             "trade_account_id": account.trade_account_id,
             "trade_count": len(queued_trades),
         },
+        log=current_app.logger,
     )
     status["queued"] = len(queued_trades)
     status["queued_tasks"] = 1

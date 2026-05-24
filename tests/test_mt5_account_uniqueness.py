@@ -60,10 +60,10 @@ def test_admin_mt5_create_rejects_duplicate_trade_account_link(app_ctx, client, 
 
     captured = []
 
-    def _fake_apply_async(*, args, queue):
-        captured.append((args[0], queue))
+    def _fake_dispatch(task, mt5_account_id, **options):
+        captured.append((mt5_account_id, "mt5_setup"))
 
-    monkeypatch.setattr(mt5_setup_module.setup_mt5_terminal, "apply_async", _fake_apply_async)
+    monkeypatch.setattr("auth_account.dispatch_mt5_setup", _fake_dispatch)
 
     first_response = client.post(
         "/dashboard/admin/access/mt5/create",

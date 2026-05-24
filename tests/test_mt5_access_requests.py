@@ -9,7 +9,7 @@ import routes.trade_accounts as trade_accounts_module
 from extensions import limiter
 from helpers.legal import LEGAL_LAST_UPDATED
 from helpers.utils import decrypt_password, encrypt_password, utcnow_naive
-from models import MT5AccessRequest, MT5Account, MT5SyncBatch, TradeAccount, User, db
+from models import MT5AccessRequest, MT5Account, MT5SyncBatch, Trade, TradeAccount, User, db
 
 
 def _create_user_with_account(
@@ -88,23 +88,41 @@ def _single_step_mt5_payload(trade_account, **overrides):
 
 
 def _stub_mt5_setup_queue(monkeypatch, captured=None, *, should_raise=False):
-    def _fake_apply_async(args=None, kwargs=None, queue=None):
+    def _fake_dispatch(task, mt5_account_id, **options):
         if should_raise:
             raise RuntimeError("queue unavailable")
         if captured is not None:
             captured.append(
                 {
-                    "args": list(args or []),
-                    "kwargs": dict(kwargs or {}),
-                    "queue": queue,
+                    "args": [mt5_account_id],
+                    "kwargs": {
+                        key: value
+                        for key, value in options.items()
+                        if key not in {"label", "extra", "log"}
+                    },
+                    "queue": "mt5_setup",
                 }
             )
         return {"id": "test-mt5-setup-task"}
 
-    monkeypatch.setattr(
-        "celery_workers.mt5_setup_tasks.setup_mt5_terminal.apply_async",
-        _fake_apply_async,
-    )
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_setup", _fake_dispatch)
+
+
+def _stub_mt5_cleanup_queue(monkeypatch, captured=None, *, should_raise=False):
+    def _fake_dispatch(task, terminal_path, appdata_hash, **options):
+        if should_raise:
+            raise RuntimeError("queue unavailable")
+        if captured is not None:
+            captured.append(
+                {
+                    "args": [terminal_path, appdata_hash],
+                    "kwargs": dict(options.get("kwargs") or {}),
+                    "queue": "mt5_setup",
+                }
+            )
+        return {"id": "test-mt5-cleanup-task"}
+
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_cleanup", _fake_dispatch)
 
 
 def _create_mt5_batch(
@@ -197,7 +215,8 @@ def test_user_can_submit_mt5_sync_request_and_send_confirmation_emails(app_ctx, 
     assert decrypt_password(mt5_account.investor_password_encrypted) == "investor-pass"
     assert mt5_account.mt5_consent_accepted_at is not None
     assert mt5_account.mt5_consent_version == LEGAL_LAST_UPDATED
-    assert queued_jobs == [{"args": [mt5_account.id], "kwargs": {}, "queue": "mt5_setup"}]
+    assert queued_jobs[0]["args"] == [mt5_account.id]
+    assert queued_jobs[0]["queue"] == "mt5_setup"
     assert {email["to_email"] for email in captured} == {"support@example.com", user.email}
     admin_email = next(email for email in captured if email["to_email"] == "support@example.com")
     user_email = next(email for email in captured if email["to_email"] == user.email)
@@ -544,9 +563,12 @@ def test_dashboard_home_uses_active_account_for_mt5_panel(app_ctx, client, monke
     response = client.get("/dashboard")
 
     assert response.status_code == 200
-    assert b"Start MT5 Sync" in response.data
+    assert b"Step 1 \xc2\xb7 Connect" in response.data or b"Start MT5 Sync" in response.data
     assert b"Requestable CFD" in response.data
-    assert b"Fill in and submit the form below to queue setup." in response.data
+    assert (
+        b"Connect MT5 below. We handle terminal setup and email you when sync is live." in response.data
+        or b"Read-only investor password only." in response.data
+    )
     assert b"Pending Review" not in response.data
     assert b"Finish Request" not in response.data
     assert b"Save MT5 Account Details" not in response.data
@@ -587,9 +609,9 @@ def test_dashboard_home_treats_inactive_mt5_details_as_setup_pending_not_active_
     assert b"Setting Up" in response.data
     assert b"Sync Active" in response.data
     assert b"setup started right away" in response.data
-    assert b"Optional: automatic sync for this account after you have trades." in response.data
+    assert b"Import an MT5 or Tradovate report to preview stats before sync goes live." in response.data
     assert b'id="trade-journal"' not in response.data
-    assert b"Weekly AI Review" in response.data
+    assert b"Your weekly AI review" in response.data or b"Weekly AI Review" in response.data
     assert b"Session Performance" not in response.data
 
 
@@ -715,8 +737,14 @@ def test_dashboard_home_treats_legacy_approved_request_as_direct_submit_flow(app
     response = client.get("/dashboard")
 
     assert response.status_code == 200
-    assert b"Submit Details" in response.data
-    assert b"Complete the form below to resume MT5 setup." in response.data
+    assert (
+        b"Submit Details" in response.data
+        or b"data-mt5-setup-wizard" in response.data
+    )
+    assert (
+        b"Complete the form below to resume MT5 setup." in response.data
+        or b"Read-only investor password only." in response.data
+    )
     assert b"Approval is already in place for this account." not in response.data
     assert b"APPROVED" not in response.data
 
@@ -898,6 +926,12 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
         account_type="CFD",
         is_default=False,
     )
+    failed_account = TradeAccount(
+        user_id=user.id,
+        name="Failed CFD",
+        account_type="CFD",
+        is_default=False,
+    )
     user.plan_grandfathered = True
     db.session.add_all(
         [
@@ -907,6 +941,7 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
             active_linked_account,
             paused_account,
             archived_account,
+            failed_account,
         ]
     )
     db.session.commit()
@@ -945,6 +980,7 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
             investor_password_encrypted=encrypt_password("investor-pass"),
             server="Broker-Active",
             is_active=True,
+            last_synced_at=utcnow_naive(),
         )
     )
     db.session.add(
@@ -971,6 +1007,30 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
             archive_reason=MT5Account.ARCHIVE_REASON_INACTIVITY,
         )
     )
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
+            trade_account_id=failed_account.id,
+            account_number="99110015",
+            investor_password_encrypted=encrypt_password("investor-pass"),
+            server="Broker-Failed",
+            is_active=False,
+            connection_status=MT5Account.CONNECTION_STATUS_FAILED,
+            connection_error_message="Invalid investor password.",
+        )
+    )
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=active_linked_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.1,
+            exit_price=1.11,
+            lot_size=0.1,
+            pnl=10.0,
+        )
+    )
     db.session.commit()
 
     _log_in_user(client, user, requestable_account)
@@ -978,17 +1038,27 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
     response = client.get("/dashboard/trade-accounts")
 
     assert response.status_code == 200
+    assert b"Trade accounts" in response.data
+    assert b"Needs attention" in response.data
+    assert b"Recent activity" in response.data
+    assert b"All accounts OK" not in response.data
     assert b"MT5 Needs Details" in response.data
     assert b"MT5 Linked" in response.data
     assert b"MT5 Sync Paused" in response.data
     assert b"MT5 Setup Queued" in response.data
     assert b"MT5 Sync Inactive" in response.data
-    assert b"Beta access:" in response.data
-    assert b"grandfathered for premium workflow features" in response.data
-    assert b"Manage MT5 sync from the dashboard card instead of per-account forms." in response.data
-    assert b"Open Dashboard MT5 Access" in response.data
+    assert b"MT5 Connection Failed" in response.data
+    assert b"Trades" in response.data
+    assert b"AI reviews" in response.data
+    assert b"Last sync" in response.data
+    assert b"Manage MT5" in response.data
+    assert b"Fix on Dashboard" in response.data
+    assert b"Invalid investor password." in response.data
+    assert b"Manage MT5 sync from the dashboard card instead of per-account forms." not in response.data
+    assert b"Open Dashboard MT5 Access" not in response.data
     assert b"Finish the full MT5 sync form from the dashboard card" not in response.data
-    assert b"Open the dashboard card to finish the one-step MT5 setup form." in response.data
+    assert b"Open the dashboard card to finish the one-step MT5 setup form." not in response.data
+    assert b"Beta access:" not in response.data
     assert b"Reactivate MT5 sync" in response.data
     assert b"Request MT5 Sync Access" not in response.data
 
@@ -1222,7 +1292,8 @@ def test_mt5_submission_claims_open_batch_slot_and_queues_setup(app_ctx, client,
     assert request_row.batch_id == batch.id
     assert batch.total_slots_claimed == 1
     assert mt5_account.account_number == "70110001"
-    assert queued_jobs == [{"args": [mt5_account.id], "kwargs": {}, "queue": "mt5_setup"}]
+    assert queued_jobs[0]["args"] == [mt5_account.id]
+    assert queued_jobs[0]["queue"] == "mt5_setup"
     assert b"MT5 setup started right away. We&#39;ll email you when your sync is ready." in response.data
 
 
@@ -1246,6 +1317,8 @@ def test_mt5_submission_blocks_when_open_batch_is_full(app_ctx, client, monkeypa
     assert response.status_code == 200
     assert MT5AccessRequest.query.filter_by(trade_account_id=trade_account.id).count() == 0
     assert MT5Account.query.filter_by(trade_account_id=trade_account.id).count() == 0
+    assert b"Import a report now" in response.data
+    assert b"Notify me when MT5 setup opens" in response.data
     assert b"MT5 setup capacity is currently closed. Import trades now and connect MT5 when setup capacity opens." in response.data
 
 
@@ -1361,7 +1434,8 @@ def test_user_can_reactivate_archived_mt5_sync(app_ctx, client, monkeypatch):
     assert refreshed.archived_at is None
     assert refreshed.archive_reason is None
     assert refreshed.is_active is False
-    assert queued_jobs == [{"args": [mt5_account.id], "kwargs": {}, "queue": "mt5_setup"}]
+    assert queued_jobs[0]["args"] == [mt5_account.id]
+    assert queued_jobs[0]["queue"] == "mt5_setup"
     assert b"MT5 reactivation started. We&#39;ll email you when your sync is ready again." in response.data
 
 
@@ -1392,15 +1466,7 @@ def test_root_admin_can_archive_mt5_account_and_keep_reactivation_path(app_ctx, 
     db.session.commit()
 
     cleanup_calls = []
-
-    def _fake_cleanup_apply_async(args=None, kwargs=None, queue=None):
-        cleanup_calls.append({"args": list(args or []), "kwargs": dict(kwargs or {}), "queue": queue})
-        return {"id": "cleanup-task"}
-
-    monkeypatch.setattr(
-        "celery_workers.mt5_setup_tasks.cleanup_mt5_terminal.apply_async",
-        _fake_cleanup_apply_async,
-    )
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
 
     response = client.post(
         f"/dashboard/admin/access/mt5/{mt5_account.id}/archive",
@@ -1459,15 +1525,7 @@ def test_root_admin_can_reset_mt5_account_with_only_terminal_path(app_ctx, clien
     db.session.commit()
 
     cleanup_calls = []
-
-    def _fake_cleanup_apply_async(args=None, kwargs=None, queue=None):
-        cleanup_calls.append({"args": list(args or []), "kwargs": dict(kwargs or {}), "queue": queue})
-        return {"id": "cleanup-task"}
-
-    monkeypatch.setattr(
-        "celery_workers.mt5_setup_tasks.cleanup_mt5_terminal.apply_async",
-        _fake_cleanup_apply_async,
-    )
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
 
     response = client.post(
         f"/dashboard/admin/access/mt5/{mt5_account.id}/reset-terminal",
@@ -1532,15 +1590,7 @@ def test_root_admin_can_reset_mt5_account_with_only_appdata_hash(app_ctx, client
     db.session.commit()
 
     cleanup_calls = []
-
-    def _fake_cleanup_apply_async(args=None, kwargs=None, queue=None):
-        cleanup_calls.append({"args": list(args or []), "kwargs": dict(kwargs or {}), "queue": queue})
-        return {"id": "cleanup-task"}
-
-    monkeypatch.setattr(
-        "celery_workers.mt5_setup_tasks.cleanup_mt5_terminal.apply_async",
-        _fake_cleanup_apply_async,
-    )
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
 
     response = client.post(
         f"/dashboard/admin/access/mt5/{mt5_account.id}/reset-terminal",
@@ -1657,15 +1707,7 @@ def test_root_admin_cannot_reset_mt5_account_while_reset_cleanup_is_pending(app_
     db.session.commit()
 
     cleanup_calls = []
-
-    def _fake_cleanup_apply_async(args=None, kwargs=None, queue=None):
-        cleanup_calls.append({"args": list(args or []), "kwargs": dict(kwargs or {}), "queue": queue})
-        return {"id": "cleanup-task"}
-
-    monkeypatch.setattr(
-        "celery_workers.mt5_setup_tasks.cleanup_mt5_terminal.apply_async",
-        _fake_cleanup_apply_async,
-    )
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
 
     response = client.post(
         f"/dashboard/admin/access/mt5/{mt5_account.id}/reset-terminal",

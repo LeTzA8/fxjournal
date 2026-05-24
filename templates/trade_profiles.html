@@ -1,57 +1,63 @@
 {% extends "base.html" %}
 
-{% from "_app_page_hero.html" import app_page_hero %}
-
 {% block content %}
 <div class="strategies-page">
 <section class="dash-wrap">
     <div class="dash-content">
-        {{ app_page_hero(
-            "Strategies",
-            eyebrow="Setup library",
-            primary_story="Name and version setups you attach to trades so analytics and weekly review use your language.",
-            hero_copy="Edits create a new version. Archives keep past trade history intact.",
-            extra_class="app-page-hero--settings-hub",
-        ) }}
-
-        <section class="app-hub-summary" aria-label="Strategies overview">
-            <p class="app-hub-summary-lead">
-                <strong>{{ trade_profiles|length }}</strong>
-                {% if trade_profiles|length == 1 %}strategy{% else %}strategies{% endif %}
-                in your library
-                {% if active_trade_account %}
-                for <strong>{{ active_trade_account.name }}</strong>.
-                {% else %}
-                <span class="app-hub-summary-warn">—select an active account in the header so tagging targets the right book.</span>
-                {% endif %}
-            </p>
-            <p class="app-hub-summary-hint">
-                Tag trades and imports so analytics and weekly review use your setup names, not generic labels.
-            </p>
-        </section>
+        <header class="app-workbench-header" aria-label="Strategies">
+            <div class="app-workbench-header-main">
+                <h1 class="app-workbench-title">Strategies</h1>
+                <p class="app-workbench-meta">
+                    <strong>{{ trade_profiles|length }}</strong>
+                    {% if trade_profiles|length == 1 %}strategy{% else %}strategies{% endif %}
+                    {% if active_trade_account %}
+                    · Active account: <strong>{{ active_trade_account.name }}</strong>
+                    {% else %}
+                    · <span class="app-workbench-meta-warn">No active account selected</span>
+                    {% endif %}
+                </p>
+            </div>
+            <div class="app-workbench-header-actions">
+                <button
+                    type="button"
+                    class="submit-btn"
+                    id="openCreateStrategyDialog"
+                    data-open-strategy-editor
+                    data-editor-mode="create"
+                    aria-haspopup="dialog"
+                    aria-controls="strategyEditorDialog"
+                >
+                    New Strategy
+                </button>
+            </div>
+        </header>
 
         <section
-            class="profile-grid"
+            class="profile-grid workbench-grid workbench-grid--single"
             data-trade-profiles-page
             data-initial-edit-pubkey="{% if edit_target %}{{ edit_target.pubkey }}{% endif %}"
         >
             <article class="panel profile-list-panel">
-                <div class="panel-head">
-                    <h2>📚 Strategy Library</h2>
-                    <span class="soft">{{ trade_profiles|length }} strategies</span>
+                <div class="panel-head panel-head--compact">
+                    <h2>Strategy library</h2>
+                    {% if usage_scoped_to_active_account and active_trade_account %}
+                    <span class="soft">Usage for {{ active_trade_account.name }}</span>
+                    {% else %}
+                    <span class="soft">Usage across all accounts</span>
+                    {% endif %}
                 </div>
-                {% if trade_profiles %}
+                {% if strategy_cards %}
                 <div class="profile-list">
-                    {% for profile in trade_profiles %}
-                    {% set version = profile_versions.get(profile.id) %}
+                    {% for card in strategy_cards %}
+                    {% set profile = card.profile %}
                     <article class="profile-card{% if edit_target and edit_target.id == profile.id %} is-editing{% endif %}">
                         <div class="profile-card-head">
-                            <div>
+                            <div class="profile-card-identity">
                                 <h3>{{ profile.name }}</h3>
-                                <p class="profile-meta">v{{ profile.current_version_number }}</p>
+                                <p class="profile-meta">v{{ card.version_number }}</p>
                             </div>
                             <div class="profile-card-actions">
-                                {% if active_trade_account and active_trade_account.default_trade_profile_id == profile.id %}
+                                {% if card.is_default_for_active and active_trade_account %}
                                 <span class="chip default">Default for {{ active_trade_account.name }}</span>
                                 {% elif active_trade_account %}
                                 <form action="{{ url_for('trade_profiles.set_default_strategy_for_active_account', profile_pubkey=profile.pubkey) }}" method="post">
@@ -59,7 +65,6 @@
                                     <button type="submit" class="profile-action-btn">Set Default</button>
                                 </form>
                                 {% endif %}
-                                {% set version_description = version.short_description if version and version.short_description else "" %}
                                 <a
                                     href="{{ url_for('trade_profiles.strategies', edit=profile.pubkey) }}"
                                     class="profile-action-btn"
@@ -67,7 +72,7 @@
                                     data-editor-mode="edit"
                                     data-editor-profile-pubkey="{{ profile.pubkey }}"
                                     data-editor-name="{{ profile.name }}"
-                                    data-editor-description="{{ version_description }}"
+                                    data-editor-description="{{ card.description }}"
                                     aria-haspopup="dialog"
                                     aria-controls="strategyEditorDialog"
                                 >Edit</a>
@@ -84,6 +89,25 @@
                                 </button>
                             </div>
                         </div>
+
+                        {% if card.description %}
+                        <p class="profile-description profile-description--multiline">{{ card.description }}</p>
+                        {% endif %}
+
+                        <dl class="profile-stat-row">
+                            <div class="profile-stat">
+                                <dt>Last edited</dt>
+                                <dd>{{ card.last_edited_label or "—" }}</dd>
+                            </div>
+                            <div class="profile-stat">
+                                <dt>Total usage</dt>
+                                <dd>{{ card.usage_total }}</dd>
+                            </div>
+                            <div class="profile-stat">
+                                <dt>Last 7 days</dt>
+                                <dd>{{ card.usage_last_7_days }}</dd>
+                            </div>
+                        </dl>
                     </article>
                     {% endfor %}
                 </div>
@@ -92,36 +116,10 @@
                     <p class="app-guided-empty-kicker">Start here</p>
                     <h3 class="app-guided-empty-title">Create your first strategy</h3>
                     <p class="app-guided-empty-text">
-                        Strategies are tags used in the trade log and imports. Add a short name and a brief playbook note.
+                        Strategies are tags used in the trade log and imports. Add a short name and a brief playbook note with New Strategy above.
                     </p>
                 </div>
                 {% endif %}
-            </article>
-
-            <article class="panel profile-action-panel">
-                <div class="panel-head">
-                    <h2>⚡ Quick actions</h2>
-                    <span class="soft">Create</span>
-                </div>
-                <p class="empty-copy">Use this form to add setups. Edit and archive stay on each library card.</p>
-                <ul class="app-hub-tips" aria-label="Strategy tips">
-                    <li>Use short, memorable names with a brief playbook note.</li>
-                    <li>Archiving keeps past trade labels and version history.</li>
-                    <li>Tag from trade log/import cleanup to keep coaching specific.</li>
-                </ul>
-                <div class="profile-action-stack">
-                    <button
-                        type="button"
-                        class="submit-btn"
-                        id="openCreateStrategyDialog"
-                        data-open-strategy-editor
-                        data-editor-mode="create"
-                        aria-haspopup="dialog"
-                        aria-controls="strategyEditorDialog"
-                    >
-                        New Strategy
-                    </button>
-                </div>
             </article>
         </section>
     </div>

@@ -85,6 +85,66 @@ def test_pricing_waitlist_duplicate_logged_in_submission_enriches_user_id(client
     assert row.user_id == user.id
 
 
+def test_pricing_waitlist_blocks_support_view(client, app_ctx, monkeypatch):
+    from models import TradeAccount
+
+    suffix = "waitlist-support"
+    root_email = f"{suffix}-root@example.com"
+    monkeypatch.setenv("ADMIN_USER_EMAILS", root_email)
+
+    root = User(
+        username=f"{suffix}-root",
+        email=root_email,
+        password="hashed",
+        email_verified=True,
+        signup_status="approved",
+        is_admin=True,
+    )
+    target = User(
+        username=f"{suffix}-target",
+        email=f"{suffix}-target@example.com",
+        password="hashed",
+        email_verified=True,
+        signup_status="approved",
+    )
+    db.session.add_all([root, target])
+    db.session.flush()
+    db.session.add(
+        TradeAccount(
+            user_id=target.id,
+            name="Target Account",
+            account_type="CFD",
+            is_default=True,
+        )
+    )
+    db.session.commit()
+
+    with client.session_transaction() as session_state:
+        session_state["user_id"] = root.id
+        session_state["username"] = root.username
+        session_state["support_view_target_user_id"] = target.id
+        session_state["support_view_admin_user_id"] = root.id
+        session_state["support_view_admin_username"] = root.username
+
+    response = client.post(
+        "/pricing/waitlist",
+        json={
+            "email": target.email,
+            "tier": "trader",
+            "source": "dashboard_mt5_capacity",
+            "feature_interest": "mt5_sync",
+            "cta_context": "mt5_setup_capacity_closed",
+        },
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+
+    assert response.status_code == 403
+    payload = response.get_json()
+    assert payload["ok"] is False
+    assert payload["error"] == "support_view_read_only"
+    assert UpgradeWaitlistEntry.query.filter_by(email=target.email).count() == 0
+
+
 def test_pricing_waitlist_rate_limit_returns_json(client, app_ctx):
     limiter.reset()
     try:

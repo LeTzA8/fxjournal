@@ -17,6 +17,20 @@
     const defaultSubmitText = submitButton ? submitButton.textContent.trim() : "Start MT5 Sync";
     const serverInput = form.querySelector("[data-mt5-server-input]");
     const serverWarning = form.querySelector("[data-mt5-server-warning]");
+    const wizardEnabled = form.hasAttribute("data-mt5-setup-wizard");
+    const wizardSteps = wizardEnabled
+        ? Array.from(form.querySelectorAll("[data-mt5-wizard-step]"))
+        : [];
+    const wizardBackButton = form.querySelector("[data-mt5-wizard-back]");
+    const wizardNextButton = form.querySelector("[data-mt5-wizard-next]");
+    const wizardStepLabel = form.querySelector("[data-mt5-wizard-step-label]");
+    const wizardStepTitles = {
+        1: "Account number",
+        2: "Investor password",
+        3: "MT5 server",
+        4: "Confirm & start",
+    };
+    let wizardCurrentStep = 1;
 
     let isSubmitting = false;
 
@@ -107,6 +121,87 @@
         submitButton.textContent = isSubmitting ? "Saving..." : defaultSubmitText;
     };
 
+    const getWizardStepNode = (stepNumber) =>
+        wizardSteps.find((node) => Number(node.getAttribute("data-mt5-wizard-step")) === stepNumber);
+
+    const getWizardFocusTarget = (stepNode) => {
+        if (!stepNode) {
+            return null;
+        }
+        return stepNode.querySelector("input:not([type='hidden']), textarea, select, button");
+    };
+
+    const validateWizardStep = (stepNumber) => {
+        const stepNode = getWizardStepNode(stepNumber);
+        if (!stepNode) {
+            return true;
+        }
+        const fields = stepNode.querySelectorAll("input, select, textarea");
+        for (const field of fields) {
+            if (typeof field.reportValidity === "function" && !field.reportValidity()) {
+                field.focus();
+                return false;
+            }
+        }
+        if (stepNumber === 3) {
+            syncServerWarning();
+            if (serverInput && serverWarning && !serverWarning.hidden) {
+                serverInput.focus();
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const renderWizardStep = (stepNumber) => {
+        wizardCurrentStep = stepNumber;
+        wizardSteps.forEach((stepNode) => {
+            const stepValue = Number(stepNode.getAttribute("data-mt5-wizard-step"));
+            const isActive = stepValue === stepNumber;
+            stepNode.hidden = !isActive;
+            stepNode.classList.toggle("is-active", isActive);
+        });
+        if (wizardStepLabel) {
+            const title = wizardStepTitles[stepNumber] || "";
+            wizardStepLabel.textContent = `Step ${stepNumber} of ${wizardSteps.length} · ${title}`;
+        }
+        if (wizardBackButton) {
+            wizardBackButton.hidden = stepNumber <= 1;
+        }
+        if (wizardNextButton) {
+            wizardNextButton.hidden = stepNumber >= wizardSteps.length;
+        }
+        if (submitButton) {
+            submitButton.hidden = stepNumber !== wizardSteps.length;
+        }
+        syncSubmitState();
+        const focusTarget = getWizardFocusTarget(getWizardStepNode(stepNumber));
+        if (focusTarget && typeof focusTarget.focus === "function") {
+            focusTarget.focus();
+        }
+    };
+
+    if (wizardEnabled && wizardSteps.length > 0) {
+        renderWizardStep(1);
+        if (wizardNextButton) {
+            wizardNextButton.addEventListener("click", () => {
+                if (!validateWizardStep(wizardCurrentStep)) {
+                    return;
+                }
+                if (wizardCurrentStep < wizardSteps.length) {
+                    renderWizardStep(wizardCurrentStep + 1);
+                }
+            });
+        }
+        if (wizardBackButton) {
+            wizardBackButton.addEventListener("click", () => {
+                if (wizardCurrentStep > 1) {
+                    renderWizardStep(wizardCurrentStep - 1);
+                }
+            });
+        }
+    }
+
     const updateProgressTrack = (node, stage) => {
         if (!node) {
             return;
@@ -136,25 +231,48 @@
         node.textContent = label;
     };
 
-    const buildSuccessCard = (message, accountName) => {
+    const buildSuccessCard = (message, accountName, importUrl) => {
         const card = document.createElement("div");
         card.className = "mt5-success-card";
 
         const title = document.createElement("p");
         title.className = "mt5-success-title";
-        title.textContent = "Setup Queued";
+        title.textContent = "Setup queued";
         card.appendChild(title);
 
         const copy = document.createElement("p");
         copy.className = "mt5-success-copy";
-        copy.textContent = message;
+        copy.textContent = "We'll email you when sync is ready.";
         card.appendChild(copy);
+
+        const bridge = document.createElement("p");
+        bridge.className = "mt5-success-copy";
+        bridge.textContent = "Import a report while setup runs if you want an early preview.";
+        card.appendChild(bridge);
 
         if (accountName) {
             const meta = document.createElement("p");
             meta.className = "mt5-success-meta";
             meta.textContent = `Account: ${accountName}`;
             card.appendChild(meta);
+        }
+
+        if (importUrl) {
+            const actions = document.createElement("div");
+            actions.className = "mt5-success-actions";
+            const importLink = document.createElement("a");
+            importLink.className = "ghost-btn";
+            importLink.href = importUrl;
+            importLink.textContent = "Import a report";
+            actions.appendChild(importLink);
+            card.appendChild(actions);
+        }
+
+        if (message && message !== copy.textContent) {
+            const detail = document.createElement("p");
+            detail.className = "mt5-success-meta";
+            detail.textContent = message;
+            card.appendChild(detail);
         }
 
         return card;
@@ -186,7 +304,14 @@
         }
         event.preventDefault();
 
-        if (!form.reportValidity()) {
+        if (wizardEnabled) {
+            for (let step = 1; step <= wizardSteps.length; step += 1) {
+                if (!validateWizardStep(step)) {
+                    renderWizardStep(step);
+                    return;
+                }
+            }
+        } else if (!form.reportValidity()) {
             return;
         }
 
@@ -228,7 +353,10 @@
 
             if (formShell) {
                 formShell.classList.remove("guided-focus-panel", "guided-focus-panel-pulse");
-                formShell.replaceChildren(buildSuccessCard(payload.message || "", payload.account_name || ""));
+                const importUrl = form.getAttribute("data-mt5-import-url") || "";
+                formShell.replaceChildren(
+                    buildSuccessCard(payload.message || "", payload.account_name || "", importUrl)
+                );
             }
         } catch (_error) {
             setAlert("Could not start MT5 sync setup right now. Please try again.", "error");

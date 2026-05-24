@@ -18,7 +18,7 @@
     <div class="login-card">
         <p class="eyebrow">MyFXJournal</p>
         <h1>Create account</h1>
-        <p class="subtext">Create your MyFXJournal account, upload trades first, and work toward your first weekly review without building another spreadsheet routine.</p>
+        <p class="subtext">Create your MyFXJournal account and connect MT5 on your dashboard first. Import a report while setup runs if you want an early preview.</p>
         {% if success %}
         <p class="notice success">{{ success }}</p>
         {% endif %}
@@ -31,9 +31,9 @@
         <div class="auth-reassurance" aria-label="Signup reassurance">
             <span>14-day trial</span>
             <span>Google or email</span>
-            <span>Upload first</span>
+            <span>MT5 sync first</span>
         </div>
-        <p class="helper-note auth-helper-copy">Fastest first win: upload an MT5 report or add trades after signup. Your first weekly review appears after at least {{ weekly_ai_min_closed_trades }} closed trades land in a finished trade week.</p>
+        <p class="helper-note auth-helper-copy">Start with MT5 sync on your dashboard — connect once and your trades flow in automatically. You can import a report while setup runs if you want an early preview.</p>
         {% if manual_signup_review_enabled %}
         <p class="helper-note auth-helper-copy">New accounts may be reviewed before first login while we onboard carefully.</p>
         {% endif %}
@@ -148,7 +148,7 @@
 
             <button type="submit" {% if registrations_paused %}disabled{% endif %}>Create Free Account</button>
         </form>
-        <p class="helper-note auth-helper-copy">Email verification comes right after signup. Once you're in, upload an MT5 report or add trades on day one.</p>
+        <p class="helper-note auth-helper-copy">Email verification comes right after signup. Once you're in, connect MT5 first — import a report while setup runs if you want an early preview.</p>
         <p class="switch-link">Already have an account? <a href="/login">Log in</a></p>
     </div>
 </section>

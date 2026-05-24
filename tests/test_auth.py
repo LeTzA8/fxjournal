@@ -198,7 +198,7 @@ def test_google_callback_links_existing_user_and_logs_in(app_ctx, client, monkey
     db.session.refresh(user)
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/onboarding")
+    assert response.headers["Location"].endswith("/dashboard")
     assert user.google_sub == "google-sub-123"
     assert user.email_verified is True
     assert user.last_login_at is not None
@@ -439,7 +439,7 @@ def test_google_callback_creates_new_user_from_register_flow(app_ctx, client, mo
     user = User.query.filter_by(email="brandnew@example.com").first()
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/onboarding")
+    assert response.headers["Location"].endswith("/dashboard")
     assert user is not None
     assert user.google_sub == "google-sub-new-456"
     assert user.email_verified is True
@@ -447,3 +447,35 @@ def test_google_callback_creates_new_user_from_register_flow(app_ctx, client, mo
 
     with client.session_transaction() as session_state:
         assert session_state["user_id"] == user.id
+
+
+def test_password_login_redirects_to_dashboard_without_onboarding_gate(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("AUTO_APPROVE_NEW_USERS", "1")
+    user = User(
+        username="dashboard-first-login",
+        email="dashboard-first-login@example.com",
+        password=generate_password_hash("password123"),
+        email_verified=True,
+        signup_status="approved",
+    )
+    db.session.add(user)
+    db.session.commit()
+
+    response = client.post(
+        "/login",
+        data={"email": user.email, "password": "password123"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/dashboard")
+
+
+def test_register_page_uses_mt5_first_copy(app_ctx, client):
+    response = client.get("/register")
+
+    assert response.status_code == 200
+    assert b"upload trades first" not in response.data
+    lowered = response.data.lower()
+    assert b"connect mt5" in lowered
+    assert b"import a report while setup runs" in lowered

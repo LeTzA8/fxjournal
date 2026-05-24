@@ -338,7 +338,69 @@
         {% elif section == "mt5" %}
         {% set mt5_sort = mt5_sort|default('created_desc') %}
         {% set vm_overview = mt5_vm_overview or {} %}
+        {% set server_seed_shortlist = mt5_server_seed_shortlist or [] %}
         <section class="panel-grid admin-main-grid admin-mt5-layout">
+            <article class="panel codes-panel mt5-server-seed-panel">
+                <div class="panel-head panel-head-stack">
+                    <div>
+                        <h2>Server seed shortlist</h2>
+                        <p class="helper-note">
+                            Auto-added when MT5 setup fails after bootstrap with a server or IPC timeout that may mean the broker is missing from the golden-master <code>servers.dat</code>.
+                            RDP to the VM, seed the server on the base terminal (or run broker seeding later), then mark seeded and retry setup.
+                        </p>
+                    </div>
+                    <span class="soft">{{ server_seed_shortlist|length }} active</span>
+                </div>
+                {% if server_seed_shortlist %}
+                <div class="table-wrap">
+                    <table class="admin-table">
+                        <thead>
+                            <tr>
+                                <th>Server</th>
+                                <th>Status</th>
+                                <th>Failures</th>
+                                <th>Last failed</th>
+                                <th>Last error</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in server_seed_shortlist %}
+                            <tr>
+                                <td><code>{{ entry.server_name }}</code></td>
+                                <td>
+                                    {% if entry.status == 'open' %}
+                                    <span class="chip bad-chip">Needs seeding</span>
+                                    {% elif entry.status == 'seeded' %}
+                                    <span class="chip success-chip">Seeded — retry setup</span>
+                                    {% else %}
+                                    <span class="chip default">{{ entry.status }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ entry.failure_count }}</td>
+                                <td>{{ entry.last_failed_at.strftime('%Y-%m-%d %H:%M UTC') if entry.last_failed_at else '-' }}</td>
+                                <td class="soft">{{ entry.last_error_snippet or '-' }}</td>
+                                <td class="admin-table-actions">
+                                    {% if entry.status == 'open' %}
+                                    <form action="{{ url_for('admin_mt5_server_seed_shortlist_mark_seeded', entry_id=entry.id) }}" method="post" onsubmit='return confirm({{ ("Mark " ~ entry.server_name ~ " as seeded on the VM golden master?")|tojson }});'>
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="ghost-btn">Mark seeded</button>
+                                    </form>
+                                    {% endif %}
+                                    <form action="{{ url_for('admin_mt5_server_seed_shortlist_mark_resolved', entry_id=entry.id) }}" method="post" onsubmit='return confirm({{ ("Remove " ~ entry.server_name ~ " from the active shortlist?")|tojson }});'>
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="ghost-btn">Dismiss</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="helper-note">No broker servers are waiting for VM seeding.</p>
+                {% endif %}
+            </article>
             <article
                 class="panel codes-panel mt5-vms-panel"
                 data-admin-filter-panel
@@ -388,6 +450,17 @@
                     </p>
                     <p class="admin-panel-filter-status soft" id="adminMt5VmsFilterStatus" data-admin-filter-status role="status" aria-live="polite" hidden></p>
                 </div>
+                {% if vm_overview.get('queue_depths') %}
+                <p class="helper-note">
+                    Legacy queue depths:
+                    sync {{ vm_overview.queue_depths.get('mt5_sync', 0) }},
+                    priority {{ vm_overview.queue_depths.get('mt5_priority', 0) }},
+                    setup {{ vm_overview.queue_depths.get('mt5_setup', 0) }}
+                    {% if vm_overview.get('multi_vm_enabled') %}
+                    · multi-VM routing enabled
+                    {% endif %}
+                </p>
+                {% endif %}
                 <div class="mt5-vm-grid">
                     {% for vm in vm_overview.get('vms', []) %}
                     <article class="code-card mt5-vm-card{% if vm.is_unknown_bucket %} mt5-vm-card--unknown{% endif %}">
@@ -418,6 +491,17 @@
                             </p>
                             <p class="pending-line">Sync heartbeat: {{ vm.sync_last_heartbeat_label }}</p>
                             <p class="pending-line">Setup heartbeat: {{ vm.setup_last_heartbeat_label }}</p>
+                            {% if vm.worker_missing_warning %}
+                            <p class="pending-line bad">Warning: active accounts on this VM but no online sync/setup worker.</p>
+                            {% endif %}
+                            {% if vm.scoped_queue_depths %}
+                            <p class="pending-line">
+                                Queues:
+                                sync {{ vm.scoped_queue_depths.get('mt5_sync', 0) }},
+                                priority {{ vm.scoped_queue_depths.get('mt5_priority', 0) }},
+                                setup {{ vm.scoped_queue_depths.get('mt5_setup', 0) }}
+                            </p>
+                            {% endif %}
                             {% if vm.notes %}
                             <p class="pending-line">Notes: {{ vm.notes }}</p>
                             {% endif %}
@@ -626,6 +710,17 @@
                                     <div class="inline-actions">
                                         <form action="{{ url_for('admin_mt5_reactivate_account', mt5_account_id=account.id) if account.is_archived else url_for('admin_mt5_setup_terminal', mt5_account_id=account.id) }}" method="post">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            {% if not account.is_archived and vm_overview.get('setup_vm_ids') %}
+                                            <label class="soft admin-inline-select-label">
+                                                Target VM
+                                                <select name="target_vm_id" class="admin-inline-select">
+                                                    <option value="">Default ({{ vm_overview.setup_vm_ids[0] }})</option>
+                                                    {% for setup_vm_id in vm_overview.setup_vm_ids %}
+                                                    <option value="{{ setup_vm_id }}"{% if account.vm_id == setup_vm_id %} selected{% endif %}>{{ setup_vm_id }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </label>
+                                            {% endif %}
                                             <button
                                                 type="submit"
                                                 class="submit-btn"

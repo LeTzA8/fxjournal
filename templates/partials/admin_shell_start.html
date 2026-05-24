@@ -106,6 +106,12 @@
             <span class="admin-stat-value">{{ failed_mt5_count }}</span>
           </span>
           {% endif %}
+          {% if mt5_server_seed_open_count is defined and mt5_server_seed_open_count %}
+          <span class="admin-stat-tile admin-stat-tile--alert">
+            <span class="admin-stat-label">Servers to seed</span>
+            <span class="admin-stat-value">{{ mt5_server_seed_open_count }}</span>
+          </span>
+          {% endif %}
           {% if orphaned_mt5_count is defined and orphaned_mt5_count %}
           <span class="admin-stat-tile admin-stat-tile--static admin-stat-tile--warn">
             <span class="admin-stat-label">Cleanup-only</span>

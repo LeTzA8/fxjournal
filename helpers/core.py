@@ -741,12 +741,23 @@ def queue_mt5_account_cleanup(*, mt5_account, log_context, delete_row_on_success
 
     try:
         from celery_workers.mt5_setup_tasks import cleanup_mt5_terminal
-
-        cleanup_mt5_terminal.apply_async(
-            args=[terminal_path, appdata_hash],
-            kwargs={"mt5_account_id": mt5_account_id if delete_row_on_success else None},
-            queue="mt5_setup",
+        from helpers.mt5_dispatch import (
+            MT5_DISPATCH_SKIPPED_MISSING_VM_MSG,
+            dispatch_mt5_cleanup,
+            mt5_dispatch_was_skipped,
         )
+
+        dispatch_result = dispatch_mt5_cleanup(
+            cleanup_mt5_terminal,
+            terminal_path,
+            appdata_hash,
+            account_vm_id=getattr(mt5_account, "vm_id", None),
+            kwargs={"mt5_account_id": mt5_account_id if delete_row_on_success else None},
+            label=f"mt5_cleanup_{log_context}",
+            extra={"mt5_account_id": mt5_account_id, "log_context": log_context},
+        )
+        if mt5_dispatch_was_skipped(dispatch_result):
+            return MT5_DISPATCH_SKIPPED_MISSING_VM_MSG
     except Exception as exc:
         current_app.logger.warning(
             "MT5 cleanup queue failed for %s mt5_account_id=%s: %s",
@@ -830,10 +841,14 @@ def reactivate_mt5_account(*, mt5_account, log_context="reactivate"):
 
     try:
         from celery_workers.mt5_setup_tasks import setup_mt5_terminal
+        from helpers.mt5_dispatch import dispatch_mt5_setup
 
-        setup_mt5_terminal.apply_async(
-            args=[mt5_account.id],
-            queue="mt5_setup",
+        dispatch_mt5_setup(
+            setup_mt5_terminal,
+            mt5_account.id,
+            allow_failover=True,
+            label="reactivate_mt5_account",
+            extra={"log_context": log_context, "mt5_account_id": mt5_account.id},
         )
     except Exception as exc:
         from flask import current_app
@@ -892,6 +907,7 @@ def reset_mt5_terminal_state(*, mt5_account, log_context="reset-terminal"):
 
     terminal_path = str(getattr(mt5_account, "terminal_path", "") or "").strip()
     appdata_hash = str(getattr(mt5_account, "appdata_hash", "") or "").strip()
+    account_vm_id = str(getattr(mt5_account, "vm_id", "") or "").strip() or None
     has_runtime_state = bool(terminal_path or appdata_hash)
     cleanup_marked_at = utcnow_naive() if has_runtime_state else None
 
@@ -914,17 +930,28 @@ def reset_mt5_terminal_state(*, mt5_account, log_context="reset-terminal"):
     if has_runtime_state:
         try:
             from celery_workers.mt5_setup_tasks import cleanup_mt5_terminal
+            from helpers.mt5_dispatch import (
+                MT5_DISPATCH_SKIPPED_MISSING_VM_MSG,
+                dispatch_mt5_cleanup,
+                mt5_dispatch_was_skipped,
+            )
 
-            cleanup_mt5_terminal.apply_async(
-                args=[terminal_path, appdata_hash],
+            dispatch_result = dispatch_mt5_cleanup(
+                cleanup_mt5_terminal,
+                terminal_path,
+                appdata_hash,
+                account_vm_id=account_vm_id,
                 kwargs={
                     "mt5_account_id": mt5_account.id,
                     "delete_account_row": False,
                     "clear_cleanup_mark": True,
                     "cleanup_marked_at": cleanup_marked_at.isoformat() if cleanup_marked_at else None,
                 },
-                queue="mt5_setup",
+                label=f"mt5_reset_cleanup_{log_context}",
+                extra={"mt5_account_id": mt5_account.id, "log_context": log_context},
             )
+            if mt5_dispatch_was_skipped(dispatch_result):
+                cleanup_warning = MT5_DISPATCH_SKIPPED_MISSING_VM_MSG
         except Exception as exc:
             current_app.logger.warning(
                 "MT5 cleanup queue failed for %s mt5_account_id=%s: %s",

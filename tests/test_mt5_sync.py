@@ -2943,19 +2943,19 @@ def test_internal_mt5_sync_auto_queues_bars_for_public_user_when_enabled(app_ctx
 
     queued = []
 
-    def _fake_dispatch(task, *, args=None, kwargs=None, queue=None, log=None, label=None, extra=None):
+    def _fake_dispatch(task, *args, account_vm_id=None, kwargs=None, label=None, extra=None, log=None):
         queued.append(
             {
                 "task": getattr(task, "name", ""),
-                "args": args,
-                "queue": queue,
+                "args": list(args),
+                "queue": "mt5_priority",
                 "label": label,
                 "extra": extra,
             }
         )
         return SimpleNamespace(id=f"queued-{len(queued)}")
 
-    monkeypatch.setattr("routes.mt5_internal.dispatch_celery_task", _fake_dispatch)
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_priority", _fake_dispatch)
 
     response = client.post(
         "/api/internal/mt5/sync",
@@ -3064,11 +3064,11 @@ def test_internal_mt5_sync_auto_queues_bars_for_existing_closed_trade_on_empty_b
 
     queued = []
 
-    def _fake_dispatch(task, *, args=None, kwargs=None, queue=None, log=None, label=None, extra=None):
-        queued.append({"args": args, "queue": queue, "label": label})
+    def _fake_dispatch(task, *args, account_vm_id=None, kwargs=None, label=None, extra=None, log=None):
+        queued.append({"args": list(args), "queue": "mt5_priority", "label": label})
         return SimpleNamespace(id=f"queued-{len(queued)}")
 
-    monkeypatch.setattr("routes.mt5_internal.dispatch_celery_task", _fake_dispatch)
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_priority", _fake_dispatch)
     response = client.post(
         "/api/internal/mt5/sync",
         json={
@@ -3105,11 +3105,11 @@ def test_internal_mt5_sync_beat_with_new_trade_still_queues_bars(app_ctx, client
 
     queued = []
 
-    def _fake_dispatch(task, *, args=None, kwargs=None, queue=None, log=None, label=None, extra=None):
-        queued.append({"args": args, "queue": queue, "label": label})
+    def _fake_dispatch(task, *args, account_vm_id=None, kwargs=None, label=None, extra=None, log=None):
+        queued.append({"args": list(args), "queue": "mt5_priority", "label": label})
         return SimpleNamespace(id=f"queued-{len(queued)}")
 
-    monkeypatch.setattr("routes.mt5_internal.dispatch_celery_task", _fake_dispatch)
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_priority", _fake_dispatch)
     response = client.post(
         "/api/internal/mt5/sync",
         json={
@@ -3418,13 +3418,11 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
 
     create_captured = {}
 
-    def _fake_create_apply_async(*, args, queue, kwargs=None):
-        create_captured["args"] = args
-        create_captured["queue"] = queue
+    def _fake_dispatch_setup(task, mt5_account_id, **options):
+        create_captured["args"] = [mt5_account_id]
+        create_captured["queue"] = "mt5_setup"
 
-    import celery_workers.mt5_setup_tasks as mt5_setup_module
-
-    monkeypatch.setattr(mt5_setup_module.setup_mt5_terminal, "apply_async", _fake_create_apply_async)
+    monkeypatch.setattr("auth_account.dispatch_mt5_setup", _fake_dispatch_setup)
 
     create_response = client.post(
         "/dashboard/admin/access/mt5/create",
@@ -3443,11 +3441,11 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
 
     setup_captured = {}
 
-    def _fake_setup_apply_async(*, args, queue, kwargs=None):
-        setup_captured["args"] = args
-        setup_captured["queue"] = queue
+    def _fake_dispatch_setup_again(task, mt5_account_id, **options):
+        setup_captured["args"] = [mt5_account_id]
+        setup_captured["queue"] = "mt5_setup"
 
-    monkeypatch.setattr(mt5_setup_module.setup_mt5_terminal, "apply_async", _fake_setup_apply_async)
+    monkeypatch.setattr("auth_account.dispatch_mt5_setup", _fake_dispatch_setup_again)
 
     setup_response = client.post(
         f"/dashboard/admin/access/mt5/{mt5_account.id}/setup",
@@ -3457,12 +3455,11 @@ def test_admin_mt5_create_list_setup_and_trigger_sync(app_ctx, client, monkeypat
 
     sync_captured = {}
 
-    def _fake_sync_apply_async(*, args, queue, kwargs=None):
-        sync_captured["args"] = args
-        sync_captured["queue"] = queue
+    def _fake_dispatch_priority(task, *args, account_vm_id=None, kwargs=None, label=None, extra=None, log=None):
+        sync_captured["args"] = list(args)
+        sync_captured["queue"] = "mt5_priority"
 
-    import celery_workers.mt5_sync_tasks as mt5_sync_module
-    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_sync_apply_async)
+    monkeypatch.setattr("auth_account.dispatch_mt5_priority", _fake_dispatch_priority)
 
     trigger_response = client.post(
         f"/dashboard/admin/access/mt5/{mt5_account.id}/sync",
@@ -3511,14 +3508,12 @@ def test_admin_mt5_manual_trigger_sync_queues_full_history_for_active_account(ap
 
     sync_captured = {}
 
-    def _fake_sync_apply_async(*, args, kwargs=None, queue):
-        sync_captured["args"] = args
+    def _fake_dispatch_priority(task, *args, account_vm_id=None, kwargs=None, label=None, extra=None, log=None):
+        sync_captured["args"] = list(args)
         sync_captured["kwargs"] = kwargs
-        sync_captured["queue"] = queue
+        sync_captured["queue"] = "mt5_priority"
 
-    import celery_workers.mt5_sync_tasks as mt5_sync_module
-
-    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_sync_apply_async)
+    monkeypatch.setattr("auth_account.dispatch_mt5_priority", _fake_dispatch_priority)
 
     trigger_response = client.post(
         f"/dashboard/admin/access/mt5/{mt5_account.id}/sync",
@@ -3662,10 +3657,10 @@ def test_admin_mt5_backfill_bars_queues_only_missing_m5_timeframes(app_ctx, clie
 
     import celery_workers.mt5_sync_tasks as mt5_sync_module
 
-    def _fake_apply_async(*, args, queue):
-        queued.append({"args": args, "queue": queue})
+    def _fake_dispatch_priority(task, *args, account_vm_id=None, kwargs=None, label=None, extra=None, log=None):
+        queued.append({"args": list(args), "queue": "mt5_priority"})
 
-    monkeypatch.setattr(mt5_sync_module.fetch_trade_bars, "apply_async", _fake_apply_async)
+    monkeypatch.setattr("auth_account.dispatch_mt5_priority", _fake_dispatch_priority)
 
     response = client.post(
         f"/dashboard/admin/access/mt5/{mt5_account.id}/backfill-bars",
@@ -3766,10 +3761,10 @@ def test_admin_mt5_backfill_bars_requeues_trade_with_incomplete_recent_m5_covera
 
     import celery_workers.mt5_sync_tasks as mt5_sync_module
 
-    def _fake_apply_async(*, args, queue):
-        queued.append({"args": args, "queue": queue})
+    def _fake_dispatch_priority(task, *args, account_vm_id=None, kwargs=None, label=None, extra=None, log=None):
+        queued.append({"args": list(args), "queue": "mt5_priority"})
 
-    monkeypatch.setattr(mt5_sync_module.fetch_trade_bars, "apply_async", _fake_apply_async)
+    monkeypatch.setattr("auth_account.dispatch_mt5_priority", _fake_dispatch_priority)
 
     response = client.post(
         f"/dashboard/admin/access/mt5/{mt5_account.id}/backfill-bars",
@@ -3799,12 +3794,12 @@ def test_sync_all_active_mt5_accounts_uses_sync_queue_with_short_expiry(app_ctx,
 
     captured = []
 
-    def _fake_apply_async(*, args, kwargs=None, queue, expires=None):
+    def _fake_dispatch_sync(task, mt5_account_id, *, account_vm_id=None, kwargs=None, expires=None, label=None, extra=None, log=None):
         captured.append(
             {
-                "args": args,
+                "args": [mt5_account_id],
                 "kwargs": kwargs,
-                "queue": queue,
+                "queue": "mt5_sync",
                 "expires": expires,
             }
         )
@@ -3813,7 +3808,7 @@ def test_sync_all_active_mt5_accounts_uses_sync_queue_with_short_expiry(app_ctx,
 
     monkeypatch.setattr("celery_workers.cache.get_queue_depth", lambda queue_name: 0)
     monkeypatch.setattr("celery_workers.cache.peek_lock_holder", lambda lock_key: None)
-    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_sync", _fake_dispatch_sync)
 
     mt5_sync_module.sync_all_active_mt5_accounts.run()
 
@@ -3860,12 +3855,12 @@ def test_sync_all_active_mt5_accounts_dispatches_one_stalest_account(app_ctx, mo
 
     captured = []
 
-    def _fake_apply_async(*, args, kwargs=None, queue, expires=None):
+    def _fake_dispatch_sync(task, mt5_account_id, *, account_vm_id=None, kwargs=None, expires=None, label=None, extra=None, log=None):
         captured.append(
             {
-                "args": args,
+                "args": [mt5_account_id],
                 "kwargs": kwargs,
-                "queue": queue,
+                "queue": "mt5_sync",
                 "expires": expires,
             }
         )
@@ -3874,7 +3869,7 @@ def test_sync_all_active_mt5_accounts_dispatches_one_stalest_account(app_ctx, mo
 
     monkeypatch.setattr("celery_workers.cache.get_queue_depth", lambda queue_name: 0)
     monkeypatch.setattr("celery_workers.cache.peek_lock_holder", lambda lock_key: None)
-    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_sync", _fake_dispatch_sync)
 
     mt5_sync_module.sync_all_active_mt5_accounts.run()
 
@@ -3906,8 +3901,8 @@ def test_sync_all_active_mt5_accounts_skips_when_sync_queue_busy(app_ctx, monkey
 
     captured = []
 
-    def _fake_apply_async(*, args, kwargs=None, queue, expires=None):
-        captured.append({"args": args})
+    def _fake_dispatch_sync(task, mt5_account_id, *, account_vm_id=None, kwargs=None, expires=None, label=None, extra=None, log=None):
+        captured.append({"args": [mt5_account_id]})
 
     def _fake_get_queue_depth(queue_name):
         if queue_name == "mt5_sync":
@@ -3917,7 +3912,7 @@ def test_sync_all_active_mt5_accounts_skips_when_sync_queue_busy(app_ctx, monkey
     import celery_workers.mt5_sync_tasks as mt5_sync_module
 
     monkeypatch.setattr("celery_workers.cache.get_queue_depth", _fake_get_queue_depth)
-    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_sync", _fake_dispatch_sync)
     caplog.set_level(logging.INFO, logger="celery_workers.mt5_sync_tasks")
 
     mt5_sync_module.sync_all_active_mt5_accounts.run()
@@ -3959,8 +3954,8 @@ def test_sync_all_active_mt5_accounts_skips_locked_account_and_picks_next(app_ct
 
     captured = []
 
-    def _fake_apply_async(*, args, kwargs=None, queue, expires=None):
-        captured.append({"args": args})
+    def _fake_dispatch_sync(task, mt5_account_id, *, account_vm_id=None, kwargs=None, expires=None, label=None, extra=None, log=None):
+        captured.append({"args": [mt5_account_id]})
 
     def _fake_peek_lock_holder(lock_key):
         return "busy" if lock_key == f"mt5_sync_lock:{locked_account.id}" else None
@@ -3969,7 +3964,7 @@ def test_sync_all_active_mt5_accounts_skips_locked_account_and_picks_next(app_ct
 
     monkeypatch.setattr("celery_workers.cache.get_queue_depth", lambda queue_name: 0)
     monkeypatch.setattr("celery_workers.cache.peek_lock_holder", _fake_peek_lock_holder)
-    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_sync", _fake_dispatch_sync)
 
     mt5_sync_module.sync_all_active_mt5_accounts.run()
 
@@ -4009,12 +4004,12 @@ def test_sync_all_active_mt5_accounts_skips_paused_accounts(app_ctx, monkeypatch
 
     captured = []
 
-    def _fake_apply_async(*, args, kwargs=None, queue, expires=None):
+    def _fake_dispatch_sync(task, mt5_account_id, *, account_vm_id=None, kwargs=None, expires=None, label=None, extra=None, log=None):
         captured.append(
             {
-                "args": args,
+                "args": [mt5_account_id],
                 "kwargs": kwargs,
-                "queue": queue,
+                "queue": "mt5_sync",
                 "expires": expires,
             }
         )
@@ -4023,7 +4018,7 @@ def test_sync_all_active_mt5_accounts_skips_paused_accounts(app_ctx, monkeypatch
 
     monkeypatch.setattr("celery_workers.cache.get_queue_depth", lambda queue_name: 0)
     monkeypatch.setattr("celery_workers.cache.peek_lock_holder", lambda lock_key: None)
-    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_sync", _fake_dispatch_sync)
 
     mt5_sync_module.sync_all_active_mt5_accounts.run()
 
@@ -4064,8 +4059,8 @@ def test_sync_mt5_account_sends_free_trial_expired_email_on_first_pause(app_ctx,
 
     queued_pause_tasks = []
 
-    def _fake_pause_apply_async(*, args, queue):
-        queued_pause_tasks.append({"args": args, "queue": queue})
+    def _fake_dispatch_pause(task, mt5_account_id, *, account_vm_id=None, label=None, extra=None, log=None):
+        queued_pause_tasks.append({"args": [mt5_account_id], "queue": "mt5_setup"})
 
     sent_emails = []
 
@@ -4080,7 +4075,7 @@ def test_sync_mt5_account_sends_free_trial_expired_email_on_first_pause(app_ctx,
         )
         return {"sent": True, "mode": "test"}
 
-    monkeypatch.setattr(mt5_setup_module.pause_mt5_terminal_process, "apply_async", _fake_pause_apply_async)
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_pause", _fake_dispatch_pause)
     monkeypatch.setattr("auth_account.send_email_placeholder", _fake_send_email)
 
     result = mt5_sync_module.sync_mt5_account.run(mt5_account.id)
@@ -4116,12 +4111,12 @@ def test_sync_all_active_mt5_accounts_skips_when_sync_queues_are_backed_up(app_c
 
     captured = []
 
-    def _fake_apply_async(*, args, kwargs=None, queue, expires=None):
+    def _fake_dispatch_sync(task, mt5_account_id, *, account_vm_id=None, kwargs=None, expires=None, label=None, extra=None, log=None):
         captured.append(
             {
-                "args": args,
+                "args": [mt5_account_id],
                 "kwargs": kwargs,
-                "queue": queue,
+                "queue": "mt5_sync",
                 "expires": expires,
             }
         )
@@ -4136,7 +4131,7 @@ def test_sync_all_active_mt5_accounts_skips_when_sync_queues_are_backed_up(app_c
     import celery_workers.mt5_sync_tasks as mt5_sync_module
 
     monkeypatch.setattr("celery_workers.cache.get_queue_depth", _fake_get_queue_depth)
-    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_sync", _fake_dispatch_sync)
     caplog.set_level(logging.WARNING, logger="celery_workers.mt5_sync_tasks")
 
     mt5_sync_module.sync_all_active_mt5_accounts.run()
@@ -4156,10 +4151,10 @@ def test_admin_mt5_create_persists_inactive_account_when_setup_queue_fails(app_c
 
     import celery_workers.mt5_setup_tasks as mt5_setup_module
 
-    def _failing_apply_async(*, args, queue):
+    def _failing_dispatch(task, mt5_account_id, **options):
         raise RuntimeError("queue unavailable")
 
-    monkeypatch.setattr(mt5_setup_module.setup_mt5_terminal, "apply_async", _failing_apply_async)
+    monkeypatch.setattr("auth_account.dispatch_mt5_setup", _failing_dispatch)
 
     response = client.post(
         "/dashboard/admin/access/mt5/create",

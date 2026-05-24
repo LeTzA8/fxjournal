@@ -1,6 +1,48 @@
 # CURRENT_STATE
 
-Last Updated: 2026-05-24
+Last Updated: 2026-05-25
+
+## Audit fixes: MT5 shortlist XSS, dispatch skips, waitlist CSRF (2026-05-25)
+
+- Fixed stored admin XSS in MT5 server seed shortlist confirm dialogs by JSON-escaping server names with `tojson` instead of inline single-quoted strings. (`templates/admin_signup_access.html`, tests)
+- Multi-VM dispatch skips (`missing vm_id`) now surface as errors/warnings at callers: `queue_mt5_account_cleanup`, `reset_mt5_terminal_state`, and admin MT5 sync/recalibrate/backfill routes check `mt5_dispatch_was_skipped()` before reporting success. (`helpers/mt5_dispatch.py`, `helpers/core.py`, `auth_account.py`, tests)
+- Dashboard MT5 capacity waitlist fetch now sends `X-CSRFToken`; `/pricing/waitlist` rejects support-view sessions; notify button hidden in support view. (`templates/index.html`, `auth_account.py`, tests)
+- Restored decision D-007 (weekly AI persistence) alongside D-008 in `context/DECISIONS.md`.
+
+## State + Action UX: Trade Accounts and Strategies workbench (2026-05-24)
+
+- Reframed Trade Accounts and Strategies as returning-user workbenches: compact headers (title, counts, active/default context, primary create action), state-first cards, and education only in empty states plus create/edit/archive dialogs.
+- Trade Accounts cards now show trade count, AI review count, default strategy, account size/external ID when present, MT5 chips, last sync when linked, and MT5 one-liners + dashboard CTAs only when action is needed. Replaced the tips/action side panel with Needs attention / Recent activity derived from MT5 state and timestamps.
+- Strategies cards now show playbook description (preserved line breaks), last edited, total usage, and last-7-days usage scoped to the active trade account when one exists (otherwise all user trades). Removed side-panel tips; no duplicate action in v1.
+- Added `helpers/settings_workbench.py` view-model builders; route render contexts pass `account_cards`, `accounts_sidebar`, and `strategy_cards`. Updated `static/css/app_pages.css`; JS unchanged aside from moved dialog triggers sharing existing IDs.
+- Tests: updated `test_trade_accounts_page_shows_mt5_status_only`; added strategies workbench render tests in `tests/test_trade_profiles_routes.py`. (`routes/trade_accounts.py`, `routes/trade_profiles.py`, `templates/trade_accounts.html`, `templates/trade_profiles.html`, `helpers/settings_workbench.py`, `static/css/app_pages.css`, tests)
+
+## First-run UX: dashboard-first onboarding (2026-05-24)
+
+- Removed the pre-dashboard questionnaire gate: login/signup success now lands on `/dashboard` instead of `/onboarding`. `/onboarding` remains optional via the dashboard banner.
+- Unified MT5-first copy across register, trade accounts, landing, dashboard journey banner, and optional onboarding page. Canonical bridge message: connect MT5 first; import a report while setup runs.
+- State-2 dashboard (trades present, MT5 not connected) now nudges Connect MT5 next in the journey banner and import-success banner on trade entry.
+- MT5 setup capacity closed state now offers Import a report now plus Notify me when MT5 setup opens (reuses `/pricing/waitlist` with `source=dashboard_mt5_capacity`, `feature_interest=mt5_sync`).
+- MT5 AJAX submit success card now shows setup queued, email-when-ready copy, and an import-while-setup-runs action; progress UI still updates from JSON payload.
+- Tests: auth redirect, register copy, state-2 MT5 nudge, capacity-closed actions. (`auth_account.py`, `routes/dashboard.py`, `routes/trades.py`, templates, `static/js/mt5_request_form.js`, tests)
+
+## Multi-VM MT5 queue affinity (2026-05-24)
+
+- Added `helpers/mt5_dispatch.py`: VM slug normalization, scoped queue names, centralized `dispatch_mt5_*` helpers, wrong-VM guard with bounded re-dispatch, setup target/failover helpers. Flag `FXJ_MT5_MULTI_VM` defaults off (legacy queues unchanged until enabled).
+- Producers refactored: beat (per-VM busy check when flag on), sync/bar/pause/cleanup/setup paths in `celery_workers/mt5_sync_tasks.py`, `celery_workers/mt5_setup_tasks.py`, `routes/mt5_internal.py`, `routes/trade_accounts.py`, `auth_account.py`, `helpers/core.py`.
+- Setup failover for public/default setup: cleans partial VM artifacts, clears runtime fields, re-queues on next VM from `FXJ_MT5_SETUP_VM_IDS` up to `FXJ_MT5_SETUP_FAILOVER_MAX_VMS`. Admin targeted setup uses `allow_failover=False` + optional `target_vm_id` selector.
+- `get_vm_id()` now prefers `COMPUTERNAME` over `VM_ID`. PowerShell workers dual-listen scoped + legacy queues. Admin Worker VMs panel shows per-VM scoped queue depths and no-worker warnings. Runbook: `context/MULTI_VM_MT5.md`, decision D-008.
+
+## MT5-first dashboard onboarding (2026-05-24)
+
+- Redesigned state-1 dashboard onboarding to lead with MT5 as the primary path instead of competing import/MT5 signals. Journey banner, header copy, and MT5 panel now frame connect-once automatic sync as step 1; import is a secondary "while setup runs" bridge.
+- Added a 4-step MT5 setup wizard for state-1 (`data-mt5-setup-wizard` in `static/js/mt5_request_form.js`): account number → investor password → server (help collapsed) → confirm/start.
+- Replaced empty Weekly AI Review with a sample preview on state-1 so the right panel sells the moat outcome before data exists.
+- Aligned MT5-first copy on register, trade accounts, landing comparison bullet, and requestable MT5 status note. (`templates/index.html`, `routes/dashboard.py`, `templates/register.html`, `templates/trade_accounts.html`, `templates/landing.html`, tests)
+
+## MT5 server seed shortlist (2026-05-24)
+
+- Added failure-driven `mt5_server_seed_shortlist` table and admin MT5 panel for broker servers that may need golden-master `servers.dat` seeding on the VM. Setup auto-adds rows only after bootstrap when final setup failure looks server/IPC related; successful setup auto-resolves the row. Admin can mark seeded (after RDP/script) or dismiss. Migration `20260524_0060_mt5_server_seed_shortlist.py`. (`models.py`, `helpers/mt5_server_seed_shortlist.py`, `celery_workers/mt5_setup_tasks.py`, `auth_account.py`, `templates/admin_signup_access.html`, tests)
 
 ## MT5 beat self-paced dispatch (2026-05-24)
 

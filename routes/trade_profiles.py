@@ -11,6 +11,10 @@ from helpers.core import (
     create_trade_profile,
     update_trade_profile,
 )
+from helpers.settings_workbench import (
+    build_strategy_card_views,
+    build_strategy_usage_counts,
+)
 from models import db
 from helpers.utils import login_required, utcnow_naive
 
@@ -48,13 +52,31 @@ def strategies():
     for profile in profiles:
         profile_versions[profile.id] = get_trade_profile_version_snapshot(profile)
 
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    scoped_account_id = (
+        active_trade_account.id if active_trade_account is not None else None
+    )
+    total_usage_by_profile, recent_usage_by_profile = build_strategy_usage_counts(
+        user_id,
+        trade_account_id=scoped_account_id,
+    )
+    strategy_cards = build_strategy_card_views(
+        profiles,
+        profile_versions=profile_versions,
+        active_trade_account=active_trade_account,
+        total_usage_by_profile=total_usage_by_profile,
+        recent_usage_by_profile=recent_usage_by_profile,
+    )
+
     return render_template(
         "trade_profiles.html",
         title="MyFXJournal | Strategies",
         username=username,
         trade_profiles=profiles,
+        strategy_cards=strategy_cards,
         profile_versions=profile_versions,
         edit_target=edit_target,
+        usage_scoped_to_active_account=scoped_account_id is not None,
     )
 
 

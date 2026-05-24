@@ -1237,7 +1237,8 @@ def test_dashboard_home_shows_no_trades_weekly_ai_message(app_ctx, client, monke
     response = client.get("/dashboard")
 
     assert response.status_code == 200
-    assert b"No trades this week. Add closed trades to generate your AI review." in response.data
+    assert b"Sample Weekly Review" in response.data
+    assert b"You were profitable. Your risk still leaked." in response.data
 
 
 def test_dashboard_home_shows_too_few_trades_weekly_ai_message(app_ctx, client, monkeypatch):
@@ -1246,6 +1247,21 @@ def test_dashboard_home_shows_too_few_trades_weekly_ai_message(app_ctx, client, 
         username="dashboard-ai-thin-user",
         email="dashboard-ai-thin@example.com",
     )
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.085,
+            exit_price=1.091,
+            lot_size=0.01,
+            pnl=60.0,
+            opened_at=datetime(2026, 3, 22, 8, 0, 0),
+            closed_at=datetime(2026, 3, 22, 10, 0, 0),
+        )
+    )
+    db.session.commit()
     monkeypatch.setattr(
         dashboard_routes,
         "_get_weekly_ai_state",
@@ -1356,9 +1372,14 @@ def test_dashboard_home_uses_state_1_for_active_account_even_when_other_accounts
     assert response.status_code == 200
     assert b'data-dashboard-state="state-1"' in response.data
     assert b"journey-banner journey-banner--compact" in response.data
+    assert b"journey-banner--mt5-first" in response.data
+    assert b"Connect MetaTrader 5" in response.data
+    assert b"data-mt5-setup-wizard" in response.data
+    assert b"Sample Weekly Review" in response.data
+    assert b"Import while setup runs" in response.data
     assert b"mt5-workflow-panel is-guided" in response.data
     assert b'id="trade-journal"' not in response.data
-    assert b"Weekly AI Review" in response.data
+    assert b"Your weekly AI review" in response.data
     assert b"Week on Week" not in response.data
     assert b"Session Performance" not in response.data
 
@@ -1401,7 +1422,9 @@ def test_dashboard_home_uses_state_2_when_active_account_has_trades_without_acti
 
     assert response.status_code == 200
     assert b'data-dashboard-state="state-2"' in response.data
-    assert b"Fill in and submit the form below to queue setup." in response.data
+    assert b"Connect MT5 next" in response.data
+    assert b"Nice, your report is in" in response.data
+    assert b"Connect MT5 below. We handle terminal setup and email you when sync is live." in response.data
     assert b"mt5-workflow-panel is-guided" in response.data
     assert b"journey-banner is-guided" not in response.data
     assert b'id="trade-journal"' in response.data

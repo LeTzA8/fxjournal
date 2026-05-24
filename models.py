@@ -759,6 +759,47 @@ class MT5BrokerServerOffset(db.Model):
     )
 
 
+class MT5ServerSeedShortlist(db.Model):
+    __tablename__ = "mt5_server_seed_shortlist"
+    __table_args__ = (
+        db.Index("ix_mt5_server_seed_shortlist_server_key", "server_key", unique=True),
+        db.Index("ix_mt5_server_seed_shortlist_status_last_failed", "status", "last_failed_at"),
+    )
+
+    STATUS_OPEN = "open"
+    STATUS_SEEDED = "seeded"
+    STATUS_RESOLVED = "resolved"
+
+    id = db.Column(db.Integer, primary_key=True)
+    server_name = db.Column(db.String(100), nullable=False)
+    server_key = db.Column(db.String(100), nullable=False)
+    status = db.Column(db.String(16), nullable=False, default=STATUS_OPEN, index=True)
+    first_failed_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    last_failed_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    failure_count = db.Column(db.Integer, nullable=False, default=1)
+    last_error_snippet = db.Column(db.Text, nullable=True)
+    last_mt5_account_id = db.Column(
+        db.Integer,
+        db.ForeignKey("mt5_account.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    seeded_at = db.Column(db.DateTime, nullable=True)
+    seeded_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    resolved_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+    )
+
+
 class MT5AccessRequest(db.Model):
     __tablename__ = "mt5_access_request"
     __table_args__ = (

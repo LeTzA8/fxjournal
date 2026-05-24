@@ -14,6 +14,7 @@ from helpers.core import (
     build_trade_duplicate_key,
     build_normalized_trade_insert_batch,
     build_unique_trade_pubkey,
+    build_mt5_access_state,
     get_effective_user_id,
     get_effective_username,
     queue_bundle_review_if_split_candidates,
@@ -867,9 +868,16 @@ def import_trade_file():
                 exc,
             )
         if existing_import_count == 0:
+            mt5_access_state = build_mt5_access_state(user_id, [active_trade_account])
+            show_connect_mt5 = (
+                normalize_account_type(active_trade_account.account_type) == "CFD"
+                and active_trade_account.id
+                not in mt5_access_state["active_mt5_trade_account_ids"]
+            )
             session["first_import_nudge"] = {
                 "imported_count": len(insert_batch),
                 "has_closed_trades": any(trade.closed_at is not None for trade in insert_batch),
+                "show_connect_mt5": show_connect_mt5,
             }
 
         status = "success"

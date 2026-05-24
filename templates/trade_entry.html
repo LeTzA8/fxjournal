@@ -49,8 +49,10 @@
                     {{ first_import_nudge.imported_count }} trade{% if first_import_nudge.imported_count != 1 %}s were{% else %} was{% endif %} added to your journal.
                 </h2>
                 <p class="import-success-text">
-                    {% if first_import_nudge.has_closed_trades %}
-                    Your first import is in. Next, open the dashboard to review the early stats, then head to analytics once you want a deeper breakdown.
+                    {% if first_import_nudge.show_connect_mt5 %}
+                    Nice, your report is in. Connect MT5 next so you do not have to export again.
+                    {% elif first_import_nudge.has_closed_trades %}
+                    Your first import is in. Open the dashboard to review early stats, then head to analytics for a deeper breakdown.
                     {% else %}
                     Your first import is in. Review the imported rows in the journal, then add or import closed trades to unlock analytics and equity insights.
                     {% endif %}
@@ -58,6 +60,9 @@
             </div>
             <div class="import-success-actions">
                 <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>
+                {% if first_import_nudge.show_connect_mt5 %}
+                <a href="{{ url_for('dashboard.home', _anchor='mt5-access') }}" class="ghost-btn">Connect MT5</a>
+                {% endif %}
                 <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Review Trades</a>
                 {% if first_import_nudge.has_closed_trades %}
                 <a href="{{ url_for('dashboard.analytics') }}" class="ghost-btn">View Analytics</a>

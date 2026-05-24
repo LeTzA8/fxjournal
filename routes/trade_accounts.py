@@ -27,8 +27,12 @@ from helpers.core import (
 )
 from helpers.legal import LEGAL_LAST_UPDATED
 from models import AccountCashFlow, AIGeneratedResponse, CASH_FLOW_TYPES, MT5AccessRequest, MT5Account, Trade, TradeAccount, User, db
-from trading import get_account_type_choices, normalize_account_type
+from helpers.settings_workbench import (
+    build_trade_account_card_views,
+    build_trade_accounts_sidebar,
+)
 from helpers.utils import TRUE_VALUES, encrypt_password, login_required, utcnow_naive
+from trading import get_account_type_choices, normalize_account_type
 
 bp = Blueprint("trade_accounts", __name__)
 
@@ -330,10 +334,14 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
     setup_queued = False
     try:
         from celery_workers.mt5_setup_tasks import setup_mt5_terminal
+        from helpers.mt5_dispatch import dispatch_mt5_setup
 
-        setup_mt5_terminal.apply_async(
-            args=[mt5_account.id],
-            queue="mt5_setup",
+        dispatch_mt5_setup(
+            setup_mt5_terminal,
+            mt5_account.id,
+            allow_failover=True,
+            label="trade_accounts_mt5_submit",
+            extra={"mt5_account_id": mt5_account.id},
         )
         setup_queued = True
     except Exception as exc:
@@ -772,10 +780,14 @@ def retry_mt5_setup():
     setup_queued = False
     try:
         from celery_workers.mt5_setup_tasks import setup_mt5_terminal
+        from helpers.mt5_dispatch import dispatch_mt5_setup
 
-        setup_mt5_terminal.apply_async(
-            args=[mt5_account.id],
-            queue="mt5_setup",
+        dispatch_mt5_setup(
+            setup_mt5_terminal,
+            mt5_account.id,
+            allow_failover=True,
+            label="trade_accounts_mt5_retry",
+            extra={"mt5_account_id": mt5_account.id},
         )
         setup_queued = True
     except Exception as exc:
@@ -1075,12 +1087,28 @@ def trade_accounts():
         delete_target_ai_review_count = account_review_counts.get(delete_target.id, 0)
     total_trade_count = sum(account_trade_counts.values())
     total_ai_review_count = sum(account_review_counts.values())
+    account_cards = build_trade_account_card_views(
+        account_rows,
+        active_trade_account=active_trade_account,
+        account_trade_counts=account_trade_counts,
+        account_review_counts=account_review_counts,
+        mt5_access_state=mt5_access_state,
+        mt5_trial_states_by_trade_account=mt5_trial_states_by_trade_account,
+    )
+    accounts_sidebar = build_trade_accounts_sidebar(account_cards)
+    default_trade_account = next(
+        (account for account in account_rows if account.is_default),
+        None,
+    )
 
     return render_template(
         "trade_accounts.html",
         title="MyFXJournal | Trade Accounts",
         username=get_effective_username(),
         account_rows=account_rows,
+        account_cards=account_cards,
+        accounts_sidebar=accounts_sidebar,
+        default_trade_account=default_trade_account,
         account_trade_counts=account_trade_counts,
         account_review_counts=account_review_counts,
         account_type_choices=get_account_type_choices(),

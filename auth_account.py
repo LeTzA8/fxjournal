@@ -19,6 +19,7 @@ from models import (
     CFDSymbol,
     MT5Account,
     MT5AccessRequest,
+    MT5ServerSeedShortlist,
     MT5SyncBatch,
     SignupCode,
     Trade,
@@ -40,6 +41,7 @@ from helpers.core import (
     delete_users_with_related_data,
     get_mt5_sync_batch_state,
     is_local_dev_environment as core_is_local_dev_environment,
+    is_support_view_session_active,
     reactivate_mt5_account,
     reset_mt5_terminal_state,
     queue_mt5_account_cleanup,
@@ -47,6 +49,12 @@ from helpers.core import (
 )
 from helpers.admin_mt5_ops import build_admin_mt5_vm_overview
 from helpers.celery_dispatch import describe_celery_broker, dispatch_celery_task
+from helpers.mt5_dispatch import (
+    MT5_DISPATCH_SKIPPED_MISSING_VM_MSG,
+    dispatch_mt5_priority,
+    dispatch_mt5_setup,
+    mt5_dispatch_was_skipped,
+)
 from helpers.trade_bars import has_complete_m5_chart_coverage
 from helpers.app_settings import (
     MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY,
@@ -96,6 +104,7 @@ WAITLIST_ALLOWED_SOURCES = {
     "replay_gate",
     "mt5_trial_expired",
     "dashboard_sidebar",
+    "dashboard_mt5_capacity",
     "ai_review_cta",
 }
 WAITLIST_ALLOWED_FEATURES = {
@@ -1876,9 +1885,6 @@ def register_public_auth_routes(
         active_account, _accounts = resolve_active_trade_account(user.id)
         session["active_trade_account_id"] = active_account.id
         db.session.commit()
-        profile = get_user_profile(user.id)
-        if not user_profile_is_done(profile):
-            return redirect(url_for("onboarding"))
         return redirect(url_for("dashboard.home"))
 
     def finalize_google_authenticated_user(user, *, newly_created=False):
@@ -2236,6 +2242,15 @@ def register_public_auth_routes(
     @limiter.limit("5 per minute;40 per hour")
     def pricing_waitlist_post():
         from models import UpgradeWaitlistEntry
+
+        if is_support_view_session_active():
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "support_view_read_only",
+                    "message": "That action is not available in read-only support view.",
+                }
+            ), 403
 
         try:
             data = request.get_json(silent=True) or {}
@@ -3822,6 +3837,12 @@ def register_public_auth_routes(
             mt5_accounts=mt5_accounts,
             mt5_statuses_by_account_id=mt5_statuses_by_account_id,
         )
+        from helpers.mt5_server_seed_shortlist import list_active_mt5_server_seed_shortlist
+
+        mt5_server_seed_shortlist = list_active_mt5_server_seed_shortlist()
+        mt5_server_seed_open_count = sum(
+            1 for row in mt5_server_seed_shortlist if row.status == MT5ServerSeedShortlist.STATUS_OPEN
+        )
         return render_admin_page(
             admin_user=admin_user,
             section="mt5",
@@ -3832,6 +3853,53 @@ def register_public_auth_routes(
             orphaned_mt5_count=orphaned_mt5_count,
             failed_mt5_count=failed_mt5_count,
             mt5_vm_overview=mt5_vm_overview,
+            mt5_server_seed_shortlist=mt5_server_seed_shortlist,
+            mt5_server_seed_open_count=mt5_server_seed_open_count,
+        )
+
+    @app.route(
+        "/dashboard/admin/access/mt5/server-seed-shortlist/<int:entry_id>/mark-seeded",
+        methods=["POST"],
+    )
+    @root_admin_required
+    def admin_mt5_server_seed_shortlist_mark_seeded(entry_id):
+        from helpers.mt5_server_seed_shortlist import mark_mt5_server_seed_shortlist_seeded
+
+        row = mark_mt5_server_seed_shortlist_seeded(
+            entry_id=entry_id,
+            admin_user_id=session.get("user_id"),
+        )
+        if row is None:
+            return build_admin_redirect(
+                "mt5",
+                "That server seed shortlist entry was not found.",
+                "error",
+            )
+        return build_admin_redirect(
+            "mt5",
+            f"Marked {row.server_name} as seeded on the VM. Retry setup for affected accounts when ready.",
+            "success",
+        )
+
+    @app.route(
+        "/dashboard/admin/access/mt5/server-seed-shortlist/<int:entry_id>/mark-resolved",
+        methods=["POST"],
+    )
+    @root_admin_required
+    def admin_mt5_server_seed_shortlist_mark_resolved(entry_id):
+        from helpers.mt5_server_seed_shortlist import mark_mt5_server_seed_shortlist_resolved
+
+        row = mark_mt5_server_seed_shortlist_resolved(entry_id=entry_id)
+        if row is None:
+            return build_admin_redirect(
+                "mt5",
+                "That server seed shortlist entry was not found.",
+                "error",
+            )
+        return build_admin_redirect(
+            "mt5",
+            f"Cleared {row.server_name} from the active server seed shortlist.",
+            "success",
         )
 
     @app.route("/dashboard/admin/access/mt5/auto-bar-sync", methods=["POST"])
@@ -4178,17 +4246,17 @@ def register_public_auth_routes(
             from celery_workers.mt5_setup_tasks import setup_mt5_terminal
             setup_broker = describe_celery_broker(setup_mt5_terminal)
 
-            dispatch_result = dispatch_celery_task(
+            dispatch_result = dispatch_mt5_setup(
                 setup_mt5_terminal,
-                args=[mt5_account.id],
-                queue="mt5_setup",
-                log=current_app.logger,
+                mt5_account.id,
+                allow_failover=True,
                 label="admin_mt5_add_and_setup",
                 extra={
                     "mt5_account_id": mt5_account.id,
                     "account_number": account_number,
                     "admin_user_id": session.get("user_id"),
                 },
+                log=current_app.logger,
             )
             current_app.logger.info(
                 "Admin queued MT5 setup_terminal mt5_account_id=%s queue=mt5_setup task_id=%s broker=%s",
@@ -4239,24 +4307,28 @@ def register_public_auth_routes(
             )
 
         setup_broker = "unknown"
+        target_vm_id = (request.form.get("target_vm_id") or "").strip() or None
         try:
             from celery_workers.mt5_setup_tasks import setup_mt5_terminal
             setup_broker = describe_celery_broker(setup_mt5_terminal)
 
-            dispatch_result = dispatch_celery_task(
+            dispatch_result = dispatch_mt5_setup(
                 setup_mt5_terminal,
-                args=[mt5_account_id],
-                queue="mt5_setup",
-                log=current_app.logger,
+                mt5_account_id,
+                target_vm_id=target_vm_id,
+                allow_failover=False,
                 label="admin_mt5_setup_terminal",
                 extra={
                     "mt5_account_id": mt5_account_id,
                     "admin_user_id": session.get("user_id"),
+                    "target_vm_id": target_vm_id,
                 },
+                log=current_app.logger,
             )
             current_app.logger.info(
-                "Admin queued MT5 setup_terminal mt5_account_id=%s queue=mt5_setup task_id=%s broker=%s",
+                "Admin queued MT5 setup_terminal mt5_account_id=%s target_vm_id=%s task_id=%s broker=%s",
                 mt5_account_id,
+                target_vm_id or "default",
                 getattr(dispatch_result, "id", None),
                 setup_broker,
             )
@@ -4453,19 +4525,21 @@ def register_public_auth_routes(
             from celery_workers.mt5_sync_tasks import sync_mt5_account
             sync_broker = describe_celery_broker(sync_mt5_account)
 
-            dispatch_result = dispatch_celery_task(
+            dispatch_result = dispatch_mt5_priority(
                 sync_mt5_account,
-                args=[mt5_account_id],
+                mt5_account_id,
+                account_vm_id=account.vm_id,
                 kwargs={"full_history": True, "trigger_source": "manual"},
-                queue="mt5_priority",
-                log=current_app.logger,
                 label="admin_mt5_trigger_sync",
                 extra={
                     "mt5_account_id": mt5_account_id,
                     "admin_user_id": session.get("user_id"),
                     "trigger_source": "manual",
                 },
+                log=current_app.logger,
             )
+            if mt5_dispatch_was_skipped(dispatch_result):
+                return build_admin_redirect("mt5", MT5_DISPATCH_SKIPPED_MISSING_VM_MSG, "error")
             current_app.logger.info(
                 "Admin queued sync_mt5_account mt5_account_id=%s full_history=True trigger=manual task_id=%s broker=%s",
                 mt5_account_id,
@@ -4524,28 +4598,34 @@ def register_public_auth_routes(
             sync_broker = describe_celery_broker(sync_mt5_account)
 
             task_ids = []
+            skipped_vm = 0
             for account in eligible:
-                dispatch_result = dispatch_celery_task(
+                dispatch_result = dispatch_mt5_priority(
                     sync_mt5_account,
-                    args=[account.id],
+                    account.id,
+                    account_vm_id=account.vm_id,
                     kwargs={
                         "full_history": True,
                         "trigger_source": "admin_recalibrate_times",
                         "recalibrate_trade_timestamps": True,
                     },
-                    queue="mt5_priority",
-                    log=current_app.logger,
                     label="admin_mt5_recalibrate_times_all",
                     extra={
                         "mt5_account_id": account.id,
                         "admin_user_id": session.get("user_id"),
                         "trigger_source": "admin_recalibrate_times",
                     },
+                    log=current_app.logger,
                 )
+                if mt5_dispatch_was_skipped(dispatch_result):
+                    skipped_vm += 1
+                    continue
                 task_ids.append(getattr(dispatch_result, "id", None))
+            if skipped_vm and not task_ids:
+                return build_admin_redirect("mt5", MT5_DISPATCH_SKIPPED_MISSING_VM_MSG, "error")
             current_app.logger.info(
                 "Admin queued sync_mt5_account recalibrate_times for %s mt5_account_id(s) task_ids=%s broker=%s",
-                len(eligible),
+                len(task_ids),
                 task_ids,
                 sync_broker,
             )
@@ -4565,7 +4645,7 @@ def register_public_auth_routes(
         return build_admin_redirect(
             "mt5",
             (
-                f"Queued full-history MT5 sync with timestamp recalibration for {len(eligible)} account(s). "
+                f"Queued full-history MT5 sync with timestamp recalibration for {len(task_ids)} account(s). "
                 "Runs on the worker; use Backfill Bars per account if trade charts need refreshing."
             ),
             "success",
@@ -4627,23 +4707,25 @@ def register_public_auth_routes(
             from celery_workers.mt5_sync_tasks import sync_mt5_account
             sync_broker = describe_celery_broker(sync_mt5_account)
 
-            dispatch_result = dispatch_celery_task(
+            dispatch_result = dispatch_mt5_priority(
                 sync_mt5_account,
-                args=[mt5_account_id],
+                mt5_account_id,
+                account_vm_id=account.vm_id,
                 kwargs={
                     "full_history": True,
                     "trigger_source": "admin_recalibrate_times",
                     "recalibrate_trade_timestamps": True,
                 },
-                queue="mt5_priority",
-                log=current_app.logger,
                 label="admin_mt5_recalibrate_times_single",
                 extra={
                     "mt5_account_id": mt5_account_id,
                     "admin_user_id": session.get("user_id"),
                     "trigger_source": "admin_recalibrate_times",
                 },
+                log=current_app.logger,
             )
+            if mt5_dispatch_was_skipped(dispatch_result):
+                return build_admin_redirect("mt5", MT5_DISPATCH_SKIPPED_MISSING_VM_MSG, "error")
             current_app.logger.info(
                 "Admin queued sync_mt5_account mt5_account_id=%s recalibrate_trade_timestamps=True task_id=%s broker=%s",
                 mt5_account_id,
@@ -4761,11 +4843,11 @@ def register_public_auth_routes(
             queued = 0
             task_ids = []
             for trade in trades_to_queue:
-                dispatch_result = dispatch_celery_task(
+                dispatch_result = dispatch_mt5_priority(
                     fetch_trade_bars,
-                    args=[mt5_account_id, trade.id],
-                    queue="mt5_priority",
-                    log=current_app.logger,
+                    mt5_account_id,
+                    trade.id,
+                    account_vm_id=account.vm_id,
                     label="admin_mt5_backfill_bars",
                     extra={
                         "mt5_account_id": mt5_account_id,
@@ -4773,9 +4855,14 @@ def register_public_auth_routes(
                         "admin_user_id": session.get("user_id"),
                         "force_backfill": force_backfill,
                     },
+                    log=current_app.logger,
                 )
+                if mt5_dispatch_was_skipped(dispatch_result):
+                    continue
                 task_ids.append(getattr(dispatch_result, "id", None))
                 queued += 1
+            if queued == 0:
+                return build_admin_redirect("mt5", MT5_DISPATCH_SKIPPED_MISSING_VM_MSG, "error")
             current_app.logger.info(
                 "Admin queued fetch_trade_bars mt5_account_id=%s tasks=%s closed=%s skipped_existing=%s force=%s queue=mt5_priority task_ids=%s broker=%s",
                 mt5_account_id,
