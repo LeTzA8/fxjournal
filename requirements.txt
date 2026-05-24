@@ -28,3 +28,6 @@ Jinja2==3.1.6
 MarkupSafe==3.0.3
 Werkzeug==3.1.6
 pytest==8.4.2
+
+# Windows MT5 workers only (skipped on Linux/Render)
+MetaTrader5==5.0.5735; sys_platform == "win32"
