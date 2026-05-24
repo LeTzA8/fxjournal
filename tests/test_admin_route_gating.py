@@ -1,7 +1,10 @@
+from datetime import datetime
 from itertools import count
 
 import pytest
 
+import app as app_module
+from helpers.core import SUPPORT_VIEW_ADMIN_USER_SESSION_KEY, SUPPORT_VIEW_TARGET_USER_SESSION_KEY
 from models import UpgradeWaitlistEntry, User, db
 from helpers.app_settings import MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, get_bool_app_setting
 
@@ -172,6 +175,52 @@ def test_admin_users_list_accepts_sort_query(app_ctx, client, monkeypatch):
     assert response.status_code == 200
     assert b"Sort" in response.data
     assert b"Created: newest first" in response.data
+
+
+def test_admin_users_list_accepts_last_active_sort(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "admin-users-active-sort@example.com")
+    admin = _create_user(
+        username="admin-users-active-sort",
+        email="admin-users-active-sort@example.com",
+        is_admin=True,
+    )
+    db.session.commit()
+    _login_as(client, admin)
+
+    response = client.get("/dashboard/admin/access/users?sort=active_desc")
+
+    assert response.status_code == 200
+    assert b"Last active: recent first" in response.data
+    assert b"Last active:" in response.data
+
+
+def test_support_view_request_does_not_stamp_last_active_at(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "support-active-admin@example.com")
+    admin = _create_user(
+        username="support-active-admin",
+        email="support-active-admin@example.com",
+        is_admin=True,
+    )
+    target = _create_user(
+        username="support-active-target",
+        email="support-active-target@example.com",
+    )
+    db.session.commit()
+    with client.session_transaction() as session_state:
+        session_state["user_id"] = admin.id
+        session_state["username"] = admin.username
+        session_state[SUPPORT_VIEW_ADMIN_USER_SESSION_KEY] = admin.id
+        session_state[SUPPORT_VIEW_TARGET_USER_SESSION_KEY] = target.id
+
+    monkeypatch.setattr(app_module, "utcnow_naive", lambda: datetime(2026, 5, 24, 8, 0, 0))
+
+    response = client.get("/dashboard", follow_redirects=False)
+
+    db.session.refresh(admin)
+    db.session.refresh(target)
+    assert response.status_code in {200, 302}
+    assert admin.last_active_at is None
+    assert target.last_active_at is None
 
 
 def test_admin_users_list_shows_distinct_waitlist_people_count(app_ctx, client, monkeypatch):

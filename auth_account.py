@@ -148,6 +148,8 @@ ADMIN_USERS_SORT_CHOICES = frozenset(
         "email_desc",
         "login_desc",
         "login_asc",
+        "active_asc",
+        "active_desc",
         "id_desc",
         "id_asc",
     }
@@ -199,6 +201,8 @@ def apply_admin_users_sort(query, sort_key):
         "email_desc": (User.email.desc(), User.id.desc()),
         "login_desc": (User.last_login_at.desc().nulls_last(), User.id.desc()),
         "login_asc": (User.last_login_at.asc().nulls_last(), User.id.asc()),
+        "active_desc": (User.last_active_at.desc().nulls_last(), User.id.desc()),
+        "active_asc": (User.last_active_at.asc().nulls_last(), User.id.asc()),
         "id_desc": (User.id.desc(),),
         "id_asc": (User.id.asc(),),
     }[sort_key]

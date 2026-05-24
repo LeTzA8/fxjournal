@@ -73,6 +73,7 @@ class User(db.Model):
     )
     verification_sent_at = db.Column(db.DateTime, nullable=True)
     last_login_at = db.Column(db.DateTime, nullable=True)
+    last_active_at = db.Column(db.DateTime, nullable=True, index=True)
     # Deferred for migration-compat safety: pre-0056 environments can still
     # render routes that do not actually require entitlement values.
     plan_tier = deferred(

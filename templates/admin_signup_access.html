@@ -125,6 +125,8 @@
                             <option value="email_desc" {% if users_sort == 'email_desc' %}selected{% endif %}>Email Z–A</option>
                             <option value="login_desc" {% if users_sort == 'login_desc' %}selected{% endif %}>Last login: recent first</option>
                             <option value="login_asc" {% if users_sort == 'login_asc' %}selected{% endif %}>Last login: oldest first</option>
+                            <option value="active_desc" {% if users_sort == 'active_desc' %}selected{% endif %}>Last active: recent first</option>
+                            <option value="active_asc" {% if users_sort == 'active_asc' %}selected{% endif %}>Last active: oldest first</option>
                             <option value="id_desc" {% if users_sort == 'id_desc' %}selected{% endif %}>User ID: high to low</option>
                             <option value="id_asc" {% if users_sort == 'id_asc' %}selected{% endif %}>User ID: low to high</option>
                         </select>
@@ -248,6 +250,7 @@
                                 <td>
                                     <div class="user-cell user-metrics">
                                         <span>Last login: {{ user.last_login_at.strftime("%Y-%m-%d %H:%M UTC") if user.last_login_at else "-" }}</span>
+                                        <span>Last active: {{ user.last_active_at.strftime("%Y-%m-%d %H:%M UTC") if user.last_active_at else "-" }}</span>
                                         <span>Last trade: {{ user_stats.get("last_trade_at").strftime("%Y-%m-%d %H:%M UTC") if user_stats.get("last_trade_at") else "-" }}</span>
                                         <span>Trade accounts: {{ user_stats.get("trade_account_count", user_accounts|length) }}</span>
                                         <span>Total trades: {{ user_stats.get("total_trades", 0) }}</span>

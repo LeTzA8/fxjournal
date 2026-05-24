@@ -2077,12 +2077,13 @@ def should_generate_weekly_dashboard_advice(
     if require_recent_login:
         current_utc = _to_utc_naive(datetime.now(timezone.utc))
         active_cutoff = current_utc - timedelta(days=WEEKLY_ACTIVITY_LOOKBACK_DAYS)
-        user_last_login_at = (
-            db.session.query(User.last_login_at)
+        last_active_at, last_login_at = (
+            db.session.query(User.last_active_at, User.last_login_at)
             .filter(User.id == user_id)
-            .scalar()
+            .one()
         )
-        if user_last_login_at is None or user_last_login_at < active_cutoff:
+        recent_activity_at = last_active_at or last_login_at
+        if recent_activity_at is None or recent_activity_at < active_cutoff:
             return False
     return True
 

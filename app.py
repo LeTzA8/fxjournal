@@ -1,7 +1,7 @@
 import os
 import re
 import sqlite3
-from datetime import timedelta
+from datetime import datetime, timedelta
 from urllib.parse import urlparse
 from flask import Flask, current_app, flash, g, jsonify, redirect, render_template, request, session, url_for
 from flask_migrate import Migrate
@@ -70,6 +70,7 @@ SUPPORT_VIEW_READ_ONLY_BLUEPRINTS = {
     "trade_profiles",
     "trades",
 }
+USER_ACTIVITY_STAMP_INTERVAL = timedelta(minutes=5)
 
 
 @event.listens_for(Engine, "connect")
@@ -265,6 +266,56 @@ def load_support_view_context():
     g.support_view_target_user = target_user
     g.support_view_admin_user = admin_user
     g.support_view_active = request.endpoint in SUPPORT_VIEW_ROUTE_ENDPOINTS
+    return None
+
+
+@app.before_request
+def stamp_authenticated_user_activity():
+    if request.endpoint in {None, "static"}:
+        return None
+    if request.blueprint == mt5_internal_bp.name:
+        return None
+    if getattr(g, "support_view_session_active", False):
+        return None
+
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+
+    try:
+        normalized_user_id = int(str(user_id).strip())
+    except (TypeError, ValueError):
+        return None
+
+    now = utcnow_naive()
+    cached_stamp = session.get("last_active_at_stamp")
+    if cached_stamp:
+        try:
+            cached_at = datetime.fromisoformat(cached_stamp)
+        except (TypeError, ValueError):
+            cached_at = None
+        if cached_at and now - cached_at < USER_ACTIVITY_STAMP_INTERVAL:
+            return None
+
+    user = db.session.get(User, normalized_user_id)
+    if user is None:
+        return None
+
+    if user.last_active_at and now - user.last_active_at < USER_ACTIVITY_STAMP_INTERVAL:
+        session["last_active_at_stamp"] = user.last_active_at.isoformat()
+        return None
+
+    try:
+        user.last_active_at = now
+        session["last_active_at_stamp"] = now.isoformat()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.warning(
+            "Failed to stamp user activity for user_id=%s",
+            normalized_user_id,
+            exc_info=True,
+        )
     return None
 
 

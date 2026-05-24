@@ -1,7 +1,9 @@
+from datetime import datetime, timedelta
+
+import app as app_module
 import auth_account
 from werkzeug.security import generate_password_hash
 
-import auth_account
 from auth_account import (
     generate_auth_token,
     generate_email_change_token,
@@ -13,6 +15,12 @@ from auth_account import (
 )
 from extensions import limiter
 from models import User, db
+
+
+def _login_session_as(client, user):
+    with client.session_transaction() as session_state:
+        session_state["user_id"] = user.id
+        session_state["username"] = user.username
 
 
 class _FakeOAuth:
@@ -194,11 +202,139 @@ def test_google_callback_links_existing_user_and_logs_in(app_ctx, client, monkey
     assert user.google_sub == "google-sub-123"
     assert user.email_verified is True
     assert user.last_login_at is not None
+    assert user.last_active_at is None
 
     with client.session_transaction() as session_state:
         assert session_state["user_id"] == user.id
         assert session_state["username"] == user.username
         assert session_state["active_trade_account_id"]
+
+
+def test_authenticated_request_stamps_last_active_at(app_ctx, client, monkeypatch):
+    user = User(
+        username="active-stamp-user",
+        email="active-stamp@example.com",
+        password=generate_password_hash("password123"),
+        email_verified=True,
+        signup_status="approved",
+    )
+    db.session.add(user)
+    db.session.commit()
+    _login_session_as(client, user)
+
+    stamp = datetime(2026, 5, 24, 7, 30, 0)
+    monkeypatch.setattr(app_module, "utcnow_naive", lambda: stamp)
+
+    response = client.get("/login")
+
+    db.session.refresh(user)
+    assert response.status_code in {200, 302}
+    assert user.last_active_at == stamp
+
+
+def test_authenticated_request_does_not_rewrite_recent_last_active_at(app_ctx, client, monkeypatch):
+    original_stamp = datetime(2026, 5, 24, 7, 30, 0)
+    user = User(
+        username="active-throttle-user",
+        email="active-throttle@example.com",
+        password=generate_password_hash("password123"),
+        email_verified=True,
+        signup_status="approved",
+        last_active_at=original_stamp,
+    )
+    db.session.add(user)
+    db.session.commit()
+    _login_session_as(client, user)
+
+    monkeypatch.setattr(
+        app_module,
+        "utcnow_naive",
+        lambda: original_stamp + timedelta(minutes=2),
+    )
+
+    response = client.get("/login")
+
+    db.session.refresh(user)
+    assert response.status_code in {200, 302}
+    assert user.last_active_at == original_stamp
+
+
+def test_authenticated_request_rewrites_last_active_at_after_interval(app_ctx, client, monkeypatch):
+    original_stamp = datetime(2026, 5, 24, 7, 0, 0)
+    user = User(
+        username="active-rewrite-user",
+        email="active-rewrite@example.com",
+        password=generate_password_hash("password123"),
+        email_verified=True,
+        signup_status="approved",
+        last_active_at=original_stamp,
+    )
+    db.session.add(user)
+    db.session.commit()
+    _login_session_as(client, user)
+
+    new_stamp = original_stamp + timedelta(minutes=6)
+    monkeypatch.setattr(app_module, "utcnow_naive", lambda: new_stamp)
+
+    response = client.get("/login")
+
+    db.session.refresh(user)
+    assert response.status_code in {200, 302}
+    assert user.last_active_at == new_stamp
+
+
+def test_authenticated_request_session_cache_skips_second_stamp(app_ctx, client, monkeypatch):
+    stamp = datetime(2026, 5, 24, 7, 30, 0)
+    user = User(
+        username="active-cache-user",
+        email="active-cache@example.com",
+        password=generate_password_hash("password123"),
+        email_verified=True,
+        signup_status="approved",
+        last_active_at=stamp,
+    )
+    db.session.add(user)
+    db.session.commit()
+    _login_session_as(client, user)
+    with client.session_transaction() as session_state:
+        session_state["last_active_at_stamp"] = stamp.isoformat()
+
+    monkeypatch.setattr(
+        app_module,
+        "utcnow_naive",
+        lambda: stamp + timedelta(minutes=2),
+    )
+
+    response = client.get("/login")
+
+    db.session.refresh(user)
+    assert response.status_code in {200, 302}
+    assert user.last_active_at == stamp
+
+
+def test_mt5_internal_request_does_not_stamp_last_active_at(app_ctx, client, monkeypatch):
+    user = User(
+        username="active-mt5-skip-user",
+        email="active-mt5-skip@example.com",
+        password=generate_password_hash("password123"),
+        email_verified=True,
+        signup_status="approved",
+    )
+    db.session.add(user)
+    db.session.commit()
+    _login_session_as(client, user)
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+    monkeypatch.setattr(app_module, "utcnow_naive", lambda: datetime(2026, 5, 24, 8, 0, 0))
+
+    response = client.post(
+        "/api/internal/mt5/sync",
+        json={},
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    db.session.refresh(user)
+    assert response.status_code in {400, 403, 404}
+    assert user.last_active_at is None
 
 
 def test_google_register_start_requires_legal_consent(app_ctx, client, monkeypatch):

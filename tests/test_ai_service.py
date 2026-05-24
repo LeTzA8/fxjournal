@@ -1794,6 +1794,57 @@ def test_get_latest_trade_week_period_falls_back_when_all_trades_are_after_dashb
     assert period["period_end_utc"] is not None
 
 
+def test_should_generate_weekly_dashboard_advice_uses_last_active_when_login_stale(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-recent-active-user",
+        email="ai-recent-active@example.com",
+    )
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    user.last_login_at = now_utc - timedelta(days=10)
+    user.last_active_at = now_utc - timedelta(hours=1)
+    db.session.commit()
+
+    assert ai_service.should_generate_weekly_dashboard_advice(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        require_recent_login=True,
+    ) is True
+
+
+def test_should_generate_weekly_dashboard_advice_rejects_stale_activity(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-stale-active-user",
+        email="ai-stale-active@example.com",
+    )
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    user.last_login_at = now_utc - timedelta(days=10)
+    user.last_active_at = now_utc - timedelta(days=10)
+    db.session.commit()
+
+    assert ai_service.should_generate_weekly_dashboard_advice(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        require_recent_login=True,
+    ) is False
+
+
+def test_should_generate_weekly_dashboard_advice_falls_back_to_last_login(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-login-fallback-user",
+        email="ai-login-fallback@example.com",
+    )
+    now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    user.last_login_at = now_utc - timedelta(hours=1)
+    user.last_active_at = None
+    db.session.commit()
+
+    assert ai_service.should_generate_weekly_dashboard_advice(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        require_recent_login=True,
+    ) is True
+
+
 def test_maybe_generate_weekly_dashboard_advice_skips_before_cutoff_for_returning_user(app_ctx, monkeypatch):
     """Accounts that already had a weekly AI wait until Friday 5:30 PM NY for that review week."""
     user, trade_account = _create_user_and_account(
