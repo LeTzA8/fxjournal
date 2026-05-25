@@ -8,7 +8,7 @@ Last Updated: 2026-05-25
 - Regular MT5 **Delete** now remains clickable for cleanup-only/orphaned rows, matching the backend route that deletes those DB-only records. Admin delete no longer requires a target VM when the MT5 row has no stored terminal/AppData artifacts to clean up. Added focused route/render regressions. (`templates/admin_signup_access.html`, `auth_account.py`, `tests/test_mt5_access_requests.py`)
 - Per-account **Delete VM files** is no longer rendered as a disabled button for blocked states. The POST now reaches backend validation and flashes the reason (active account, cleanup pending, no artifacts, cleanup-only) instead of appearing to do nothing.
 - **Delete VM files** cleanup dispatch now always passes `mt5_account_id`, explicit `delete_account_row=False`, and `target_vm_id` in Celery kwargs so multi-VM workers can route/redispatch correctly (including Celery-prefixed `vm_id` values). (`helpers/core.py`, `helpers/mt5_dispatch.py`, `celery_workers/mt5_setup_tasks.py`, tests)
-- Admin **Reactivate** now scopes setup dispatch to the row Target VM dropdown (`strict_target_vm`, `allow_failover=False`), including cross-VM reactivation when multi-VM is enabled. (`helpers/core.py`, `auth_account.py`, `templates/admin_signup_access.html`, tests)
+- Admin **Reactivate** now scopes setup dispatch to the row Target VM dropdown (`strict_target_vm`, `allow_failover=False`), including cross-VM reactivation when multi-VM is enabled. Form submit syncs the current dropdown value instead of resetting to stored `vm_id`; reactivation updates stored `vm_id` to the chosen target. (`helpers/core.py`, `auth_account.py`, `static/js/admin_mt5_accounts.js`, `templates/admin_signup_access.html`, tests)
 
 ## Contact page hero alignment (2026-05-25)
 

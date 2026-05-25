@@ -44,7 +44,7 @@
 
         row.querySelectorAll("form").forEach(function (form) {
             form.addEventListener("submit", function () {
-                ensureRowTargetVmSelected(row);
+                syncRowTargetVm(row);
             });
         });
     });

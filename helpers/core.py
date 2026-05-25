@@ -1071,6 +1071,8 @@ def reactivate_mt5_account(
     try:
         mt5_account.archived_at = None
         mt5_account.archive_reason = None
+        if strict_target_vm and resolved_vm_id:
+            mt5_account.vm_id = resolved_vm_id
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()

@@ -1619,6 +1619,7 @@ def test_root_admin_reactivate_archived_mt5_uses_target_vm_dropdown(app_ctx, cli
     assert response.status_code == 200
     assert refreshed.archived_at is None
     assert refreshed.archive_reason is None
+    assert refreshed.vm_id == "VM-OTHER"
     assert setup_calls == [
         {
             "args": [mt5_account.id],
