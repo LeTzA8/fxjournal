@@ -1626,7 +1626,12 @@ def test_root_admin_can_delete_vm_files_for_mt5_account_with_terminal_path(app_c
     assert cleanup_calls == [
         {
             "args": [r"C:\MT5 User Terminals\reset\terminal64.exe", ""],
-            "kwargs": {"mt5_account_id": None},
+            "kwargs": {
+                "mt5_account_id": mt5_account.id,
+                "delete_account_row": False,
+                "clear_cleanup_mark": False,
+                "target_vm_id": "MYFXJOURNAL-SG",
+            },
             "account_vm_id": "MYFXJOURNAL-SG",
             "queue": "mt5_setup",
         }
@@ -1960,7 +1965,11 @@ def test_root_admin_can_delete_vm_files_for_mt5_account_with_only_appdata_hash(a
     assert cleanup_calls == [
         {
             "args": ["", "A" * 32],
-            "kwargs": {"mt5_account_id": None},
+            "kwargs": {
+                "mt5_account_id": mt5_account.id,
+                "delete_account_row": False,
+                "clear_cleanup_mark": False,
+            },
             "account_vm_id": "",
             "queue": "mt5_setup",
         }
@@ -2160,7 +2169,11 @@ def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, m
     assert cleanup_calls == [
         {
             "args": [r"C:\fake\terminal", "abc123hash"],
-            "kwargs": {"mt5_account_id": mt5_account_id},
+            "kwargs": {
+                "mt5_account_id": mt5_account_id,
+                "delete_account_row": True,
+                "clear_cleanup_mark": False,
+            },
             "queue": "mt5_setup",
         },
     ]

@@ -791,12 +791,20 @@ def queue_mt5_account_cleanup(
             getattr(mt5_account, "vm_id", None)
         )
 
+        cleanup_kwargs = {
+            "mt5_account_id": mt5_account_id,
+            "delete_account_row": bool(delete_row_on_success),
+            "clear_cleanup_mark": False,
+        }
+        if cleanup_vm_id:
+            cleanup_kwargs["target_vm_id"] = cleanup_vm_id
+
         dispatch_result = dispatch_mt5_cleanup(
             cleanup_mt5_terminal,
             terminal_path,
             appdata_hash,
             account_vm_id=cleanup_vm_id,
-            kwargs={"mt5_account_id": mt5_account_id if delete_row_on_success else None},
+            kwargs=cleanup_kwargs,
             label=f"mt5_cleanup_{log_context}",
             extra={
                 "mt5_account_id": mt5_account_id,

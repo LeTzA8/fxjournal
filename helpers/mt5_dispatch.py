@@ -395,7 +395,7 @@ def dispatch_mt5_cleanup(
         return None
     queue = mt5_setup_queue(vm_id)
     publish_kwargs = dict(kwargs or {})
-    if is_mt5_multi_vm_enabled() and vm_id:
+    if vm_id:
         publish_kwargs.setdefault("target_vm_id", vm_id)
     return dispatch_celery_task(
         task,
@@ -451,7 +451,7 @@ def guard_wrong_vm_task(
     if not is_mt5_multi_vm_enabled():
         return None
 
-    target = normalize_vm_id(target_vm_id)
+    target = canonical_monitor_vm_id(target_vm_id)
     if not target:
         return None
 

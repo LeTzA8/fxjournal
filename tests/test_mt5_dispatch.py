@@ -105,6 +105,27 @@ def test_guard_wrong_vm_task_noop_on_matching_vm(monkeypatch):
     assert guard_wrong_vm_task(task, target_vm_id="MYFXJOURNAL-SG", redispatch=lambda **_: pytest.fail("unexpected")) is None
 
 
+def test_guard_wrong_vm_task_canonicalizes_celery_prefixed_target(monkeypatch):
+    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
+    monkeypatch.setenv("COMPUTERNAME", "VM2-TEST")
+    calls = []
+    task = _FakeTask(_FakeRequest())
+
+    result = guard_wrong_vm_task(
+        task,
+        target_vm_id="mt5-sync@MYFXJOURNAL-SG",
+        queue_kind="setup",
+        redispatch=lambda queue, kwargs: calls.append({"queue": queue, "kwargs": kwargs}),
+    )
+
+    assert result == {
+        "requeued": True,
+        "target_vm_id": "MYFXJOURNAL-SG",
+        "queue": "mt5_setup.myfxjournal-sg",
+    }
+    assert calls[0]["queue"] == "mt5_setup.myfxjournal-sg"
+
+
 def test_mt5_dispatch_was_skipped():
     assert mt5_dispatch_was_skipped(None) is True
     assert mt5_dispatch_was_skipped(type("Result", (), {"id": "task-id"})()) is False
@@ -252,6 +273,9 @@ def test_queue_mt5_account_cleanup_uses_target_vm_override(app_ctx, monkeypatch)
     assert warning is None
     assert captured["queue"] == "mt5_setup.vm-target"
     assert captured["kwargs"]["target_vm_id"] == "VM-TARGET"
+    assert captured["kwargs"]["mt5_account_id"] == mt5_account.id
+    assert captured["kwargs"]["delete_account_row"] is False
+    assert captured["kwargs"]["clear_cleanup_mark"] is False
 
 
 def test_queue_mt5_accounts_cleanup_for_vm_queues_matching_accounts(app_ctx, monkeypatch):

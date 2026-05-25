@@ -1335,14 +1335,14 @@ def cleanup_mt5_terminal(
                 "cleanup_mark_cleared": False,
             }
 
-        from helpers.mt5_dispatch import guard_wrong_vm_task, normalize_vm_id
+        from helpers.mt5_dispatch import canonical_monitor_vm_id, guard_wrong_vm_task
         from models import MT5Account, db
 
-        cleanup_target_vm_id = normalize_vm_id(target_vm_id)
+        cleanup_target_vm_id = canonical_monitor_vm_id(target_vm_id)
         if not cleanup_target_vm_id and mt5_account_id is not None:
             account_for_guard = db.session.get(MT5Account, mt5_account_id)
             if account_for_guard is not None:
-                cleanup_target_vm_id = normalize_vm_id(account_for_guard.vm_id)
+                cleanup_target_vm_id = canonical_monitor_vm_id(account_for_guard.vm_id)
 
         guard_result = guard_wrong_vm_task(
             self,
