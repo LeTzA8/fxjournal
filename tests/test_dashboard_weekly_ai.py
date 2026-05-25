@@ -1784,6 +1784,7 @@ def test_dashboard_home_prioritizes_bundle_review_over_weekly_checkin(app_ctx, c
 
     assert response.status_code == 200
     assert b"Review Bundles" in response.data
+    assert response.data.count(b"Review Bundles") == 1
     assert b"Open Check-In" not in response.data
     assert b"Review Revenge Signals" not in response.data
 

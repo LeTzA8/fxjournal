@@ -1484,11 +1484,7 @@ def _build_dashboard_continuity_row(
     else:
         new_trades_label = "None this week"
 
-    if weekly_ai_state.get("weekly_ai_is_generating"):
-        review_status_label = "Generating"
-    elif weekly_ai_state.get("weekly_ai_review") is not None:
-        review_status_label = "Ready"
-    elif review_workflow_banner_state.get("show_workflow_banner"):
+    if review_workflow_banner_state.get("show_workflow_banner"):
         stage = review_workflow_banner_state.get("workflow_stage")
         review_status_by_stage = {
             "bundle_review": "Bundle review due",
@@ -1496,6 +1492,10 @@ def _build_dashboard_continuity_row(
             "weekly_checkin": "Check-in due",
         }
         review_status_label = review_status_by_stage.get(stage, "Review in progress")
+    elif weekly_ai_state.get("weekly_ai_is_generating"):
+        review_status_label = "Generating"
+    elif weekly_ai_state.get("weekly_ai_review") is not None:
+        review_status_label = "Ready"
     elif not has_closed_trades:
         review_status_label = "Needs closed trades"
     else:
@@ -1503,21 +1503,19 @@ def _build_dashboard_continuity_row(
 
     next_action_label = None
     next_action_href = None
-    if review_workflow_banner_state.get("show_workflow_banner"):
-        next_action_label = review_workflow_banner_state.get("button_label")
-        next_action_href = review_workflow_banner_state.get("button_href")
-    elif dashboard_state == "state-2":
-        next_action_label = "Connect MT5"
-        next_action_href = url_for("dashboard.home", _anchor="mt5-access")
-    elif not has_any_trades:
-        next_action_label = "Import trades"
-        next_action_href = url_for("trades.new_trade")
-    elif not has_closed_trades:
-        next_action_label = "Add closed trades"
-        next_action_href = url_for("trades.new_trade")
-    elif weekly_ai_state.get("weekly_ai_is_generating") or weekly_ai_state.get("weekly_ai_review") is not None:
-        next_action_label = "View review"
-        next_action_href = url_for("dashboard.home", _anchor="weekly-ai-review")
+    if not review_workflow_banner_state.get("show_workflow_banner"):
+        if dashboard_state == "state-2":
+            next_action_label = "Connect MT5"
+            next_action_href = url_for("dashboard.home", _anchor="mt5-access")
+        elif not has_any_trades:
+            next_action_label = "Import trades"
+            next_action_href = url_for("trades.new_trade")
+        elif not has_closed_trades:
+            next_action_label = "Add closed trades"
+            next_action_href = url_for("trades.new_trade")
+        elif weekly_ai_state.get("weekly_ai_is_generating") or weekly_ai_state.get("weekly_ai_review") is not None:
+            next_action_label = "View review"
+            next_action_href = url_for("dashboard.home", _anchor="weekly-ai-review")
 
     return {
         "last_sync_label": last_sync_label,

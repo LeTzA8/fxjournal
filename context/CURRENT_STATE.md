@@ -6,6 +6,8 @@ Last Updated: 2026-05-25
 
 - Public/auth pages: consolidated repeated trial/MT5 copy on landing, SEO, pricing, register, login, and dashboard public gate.
 - Dashboard: returning-user header drops welcome/essay copy; compact continuity row (last sync, new trades, review status, optional next action) for state-2/3; journey banner text shortened; onboarding banner hidden when setup/review blockers active; workflow banner suppresses duplicate journey banner.
+- Audit follow-up: dashboard continuity row now treats review workflow banners as the owner of the action CTA and status priority, so bundle/revenge/check-in prompts do not duplicate their primary button beside the banner.
+- Audit follow-up: admin MT5 cleanup routing still asks for a target VM when multi-VM affinity is missing, but the rendered error now clearly says cleanup could not be queued.
 
 ## Admin MT5 panel load performance (2026-05-25)
 

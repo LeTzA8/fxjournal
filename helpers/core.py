@@ -742,7 +742,10 @@ def resolve_mt5_cleanup_target_vm(*, mt5_account, target_vm_id=None):
         )
     resolved = explicit or stored or None
     if is_mt5_multi_vm_enabled() and not resolved:
-        return None, "Choose a target VM for this account before deleting VM files."
+        return None, (
+            "MT5 cleanup could not be queued. Choose a target VM for this account "
+            "before deleting VM files."
+        )
     return resolved, None
 
 
