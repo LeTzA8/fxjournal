@@ -718,7 +718,7 @@
                                         <p class="mt5-vm-current soft">Current: <strong>{{ account_vm_canonical or account.vm_id or "unknown" }}</strong></p>
                                         {% if vm_overview.get('show_vm_target_selector') and vm_overview.get('selectable_vm_ids') and not is_orphaned %}
                                         <label class="admin-mt5-row-vm-label">
-                                            <span class="soft">Target VM for setup/cleanup</span>
+                                            <span class="soft">Target VM for setup/reactivate/cleanup</span>
                                             <select class="admin-mt5-row-vm-select admin-sort-select" data-mt5-row-vm-select aria-label="Target VM for MT5 account {{ account.id }}">
                                                 <option value=""{% if account_vm_canonical or (vm_overview.get('multi_vm_enabled') and vm_overview.get('selectable_vm_ids')) %}{% else %} selected{% endif %}>Default routing</option>
                                                 {% for vm_option in vm_overview.selectable_vm_ids %}

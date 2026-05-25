@@ -4452,11 +4452,13 @@ def register_public_auth_routes(
             mt5_account=account,
             log_context="admin reactivate",
             target_vm_id=target_vm_id,
+            strict_target_vm=True,
         )
         if ok:
             current_app.logger.info(
-                "Admin queued MT5 reactivation mt5_account_id=%s queue=mt5_setup",
+                "Admin queued MT5 reactivation mt5_account_id=%s target_vm_id=%s queue=mt5_setup",
                 mt5_account_id,
+                target_vm_id or "default",
             )
         return build_admin_redirect(
             "mt5",

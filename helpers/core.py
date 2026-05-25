@@ -749,6 +749,30 @@ def resolve_mt5_cleanup_target_vm(*, mt5_account, target_vm_id=None):
     return resolved, None
 
 
+def resolve_mt5_setup_target_vm(*, mt5_account, target_vm_id=None):
+    """
+    Resolve which VM should run setup/reactivation.
+
+    Explicit admin dropdown input wins over stored account affinity. Unlike
+    cleanup routing, setup/reactivate may move an account to a different VM.
+    """
+    from helpers.mt5_dispatch import canonical_monitor_vm_id, is_mt5_multi_vm_enabled
+
+    stored = canonical_monitor_vm_id(getattr(mt5_account, "vm_id", None))
+    explicit = (
+        canonical_monitor_vm_id(target_vm_id)
+        if str(target_vm_id or "").strip()
+        else ""
+    )
+    resolved = explicit or stored or None
+    if is_mt5_multi_vm_enabled() and not resolved:
+        return None, (
+            "MT5 reactivation could not be queued. Choose a target VM for this account "
+            "before reactivating."
+        )
+    return resolved, None
+
+
 def queue_mt5_account_cleanup(
     *,
     mt5_account,
@@ -971,10 +995,19 @@ def archive_mt5_account(
     )
 
 
-def reactivate_mt5_account(*, mt5_account, log_context="reactivate", target_vm_id=None):
+def reactivate_mt5_account(
+    *,
+    mt5_account,
+    log_context="reactivate",
+    target_vm_id=None,
+    strict_target_vm=False,
+):
     """
     Queue MT5 terminal setup again for an archived account and clear its
     archived flag so the UI moves back into the setup flow.
+
+    When *strict_target_vm* is ``True`` (admin panel), the Target VM dropdown
+    scopes routing with ``allow_failover=False``, matching admin Setup Terminal.
     """
     if mt5_account is None:
         return False, "MT5 account not found."
@@ -988,6 +1021,23 @@ def reactivate_mt5_account(*, mt5_account, log_context="reactivate", target_vm_i
             "Saved MT5 credentials are no longer available for this account, so reactivation is not possible.",
         )
 
+    if strict_target_vm:
+        resolved_vm_id, vm_error = resolve_mt5_setup_target_vm(
+            mt5_account=mt5_account,
+            target_vm_id=target_vm_id,
+        )
+        if vm_error:
+            return False, vm_error
+    else:
+        from helpers.mt5_dispatch import canonical_monitor_vm_id
+
+        resolved_vm_id = canonical_monitor_vm_id(target_vm_id) or canonical_monitor_vm_id(
+            getattr(mt5_account, "vm_id", None)
+        ) or None
+
+    dispatch_target_vm_id = resolved_vm_id or target_vm_id
+    allow_failover = not strict_target_vm and not bool(str(target_vm_id or "").strip())
+
     try:
         from celery_workers.mt5_setup_tasks import setup_mt5_terminal
         from helpers.mt5_dispatch import dispatch_mt5_setup
@@ -995,13 +1045,13 @@ def reactivate_mt5_account(*, mt5_account, log_context="reactivate", target_vm_i
         dispatch_mt5_setup(
             setup_mt5_terminal,
             mt5_account.id,
-            target_vm_id=target_vm_id,
-            allow_failover=not bool(str(target_vm_id or "").strip()),
+            target_vm_id=dispatch_target_vm_id,
+            allow_failover=allow_failover,
             label="reactivate_mt5_account",
             extra={
                 "log_context": log_context,
                 "mt5_account_id": mt5_account.id,
-                "target_vm_id": target_vm_id,
+                "target_vm_id": dispatch_target_vm_id,
             },
         )
     except Exception as exc:

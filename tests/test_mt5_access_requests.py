@@ -1575,6 +1575,107 @@ def test_root_admin_can_archive_mt5_account_and_keep_reactivation_path(app_ctx, 
     assert b"Archived" in response.data
 
 
+def test_root_admin_reactivate_archived_mt5_uses_target_vm_dropdown(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
+    monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "MYFXJOURNAL-SG,VM-OTHER")
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-admin-reactivate-root@example.com",
+        username="mt5-admin-reactivate-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-admin-reactivate-user",
+        email="mt5-admin-reactivate-user@example.com",
+        account_name="Admin Reactivate Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119996",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Reactivate",
+        terminal_path=r"C:\MT5 User Terminals\reactivate\terminal64.exe",
+        vm_id="MYFXJOURNAL-SG",
+        is_active=False,
+        archived_at=utcnow_naive(),
+        archive_reason=MT5Account.ARCHIVE_REASON_INACTIVITY,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    setup_calls = []
+    _stub_mt5_setup_queue(monkeypatch, setup_calls)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/reactivate",
+        data={"target_vm_id": "VM-OTHER"},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+
+    assert response.status_code == 200
+    assert refreshed.archived_at is None
+    assert refreshed.archive_reason is None
+    assert setup_calls == [
+        {
+            "args": [mt5_account.id],
+            "kwargs": {
+                "target_vm_id": "VM-OTHER",
+                "allow_failover": False,
+            },
+            "queue": "mt5_setup",
+        }
+    ]
+    assert b"MT5 reactivation started." in response.data
+
+
+def test_root_admin_reactivate_archived_mt5_requires_target_vm_in_multi_vm(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
+    monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "MYFXJOURNAL-SG")
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-admin-reactivate-missing-root@example.com",
+        username="mt5-admin-reactivate-missing-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-admin-reactivate-missing-user",
+        email="mt5-admin-reactivate-missing-user@example.com",
+        account_name="Admin Reactivate Missing VM",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119999",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Reactivate-Missing",
+        is_active=False,
+        archived_at=utcnow_naive(),
+        archive_reason=MT5Account.ARCHIVE_REASON_INACTIVITY,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    setup_calls = []
+    _stub_mt5_setup_queue(monkeypatch, setup_calls)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/reactivate",
+        data={},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+
+    assert response.status_code == 200
+    assert refreshed.archived_at is not None
+    assert setup_calls == []
+    assert b"Choose a target VM" in response.data
+
 def test_root_admin_can_delete_vm_files_for_mt5_account_with_terminal_path(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     _root_user, _ = _log_in_root_admin(
