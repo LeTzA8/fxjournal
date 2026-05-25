@@ -2461,11 +2461,26 @@ def test_weekly_ai_state_falls_back_to_latest_generated_review_for_account(app_c
 
 
 def test_dashboard_home_shows_onboarding_banner_when_profile_was_skipped(app_ctx, client, monkeypatch):
-    user, _trade_account = _create_logged_in_user(
+    user, trade_account = _create_logged_in_user(
         client,
         username="dashboard-onboarding-skip-user",
         email="dashboard-onboarding-skip@example.com",
     )
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.085,
+            exit_price=1.091,
+            lot_size=0.01,
+            pnl=60.0,
+            opened_at=datetime(2026, 3, 22, 8, 0, 0),
+            closed_at=datetime(2026, 3, 22, 10, 0, 0),
+        )
+    )
+    review = _create_weekly_review(user, trade_account)
     db.session.add(UserProfile(user_id=user.id, skipped=True))
     db.session.commit()
 
@@ -2473,10 +2488,11 @@ def test_dashboard_home_shows_onboarding_banner_when_profile_was_skipped(app_ctx
         dashboard_routes,
         "_get_weekly_ai_state",
         lambda *args, **kwargs: {
-            "weekly_ai_review": None,
+            "weekly_ai_review": review,
+            "weekly_ai_review_display": None,
             "weekly_ai_generated_at_label": "",
             "weekly_ai_period_label": "",
-            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_empty_message": "",
             "weekly_ai_is_generating": False,
         },
     )
@@ -2484,5 +2500,5 @@ def test_dashboard_home_shows_onboarding_banner_when_profile_was_skipped(app_ctx
     response = client.get("/dashboard")
 
     assert response.status_code == 200
-    assert b"Complete Onboarding" in response.data
-    assert b"You skipped the questionnaire earlier" in response.data
+    assert b"Complete profile" in response.data
+    assert b"Finish your trading profile" in response.data

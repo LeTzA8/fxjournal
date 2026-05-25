@@ -56,14 +56,7 @@
                 New accounts may be reviewed before first login while we onboard carefully.
             </p>
             {% endif %}
-            {% if not user_logged_in %}
-            <div class="hero-mt5-trial landing-reveal" data-reveal-delay="980">
-                <p class="hero-mt5-trial__headline">Premium workflow trial — 14 days free, no card required.</p>
-                <p class="hero-mt5-trial__sub">Core journal stays free. Trial features include MT5 sync, review follow-ups, and advanced replay access where available.</p>
-            </div>
-            {% endif %}
-
-            <section class="landing-relief landing-reveal" id="workflow" data-reveal-delay="1040" aria-labelledby="landing-relief-title">
+            <section class="landing-relief landing-reveal" id="workflow" data-reveal-delay="980" aria-labelledby="landing-relief-title">
                 <h2 id="landing-relief-title">Journal your trades without turning it into a second job.</h2>
                 <div class="landing-relief-lines">
                     <p><strong>No exports.</strong> Connect MT5 once — trades sync automatically.</p>
@@ -72,7 +65,7 @@
                 </div>
             </section>
 
-            <div class="landing-actions landing-reveal" data-reveal-delay="1120">
+            <div class="landing-actions landing-reveal" data-reveal-delay="1040">
                 {% if user_logged_in %}
                 <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>
                 <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Log New Trade</a>
@@ -83,10 +76,9 @@
             </div>
 
             {% if not user_logged_in %}
-            <div class="hero-reassurance landing-reveal" data-reveal-delay="1240" aria-label="Signup reassurance">
+            <div class="hero-reassurance landing-reveal" data-reveal-delay="1120" aria-label="Signup reassurance">
                 <span>MT5 sync first</span>
-                <span>Import as a bridge</span>
-                <span>No credit card required</span>
+                <span>Import while setup runs</span>
             </div>
             {% endif %}
         </div>

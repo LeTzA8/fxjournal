@@ -598,6 +598,52 @@
         font-size: 0.82rem;
         line-height: 1.45;
     }
+
+    .dash-continuity-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.55rem 1.25rem;
+        margin-bottom: 0.95rem;
+        padding: 0.62rem 0.85rem;
+        border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--surface) 90%, var(--card));
+    }
+
+    .dash-continuity-item {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.35rem;
+        font-size: 0.82rem;
+        line-height: 1.35;
+    }
+
+    .dash-continuity-item dt {
+        margin: 0;
+        font-size: 0.68rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+    }
+
+    .dash-continuity-item dd {
+        margin: 0;
+        font-weight: 650;
+        color: var(--ink);
+    }
+
+    .dash-continuity-action {
+        margin-left: auto;
+    }
+
+    @media (max-width: 760px) {
+        .dash-continuity-action {
+            margin-left: 0;
+            width: 100%;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -614,13 +660,10 @@
                 <div>
                     <h1>Trading dashboard</h1>
                     {% if is_state_one and not has_any_trades %}
-                    <p class="dash-primary-story">Connect MetaTrader 5 once — your trades sync automatically and your weekly AI review builds from real executions.</p>
-                    <p class="welcome">Welcome, {{ username }}.</p>
-                    <p class="subtitle">{% if active_trade_account %}Account <strong>{{ active_trade_account.name }}</strong> — {% endif %}Start with MT5 sync below.</p>
+                    <p class="dash-primary-story">Connect MetaTrader 5 once — trades sync automatically and your weekly review builds from real executions.</p>
+                    <p class="subtitle">{% if active_trade_account %}Account <strong>{{ active_trade_account.name }}</strong>{% else %}Get started{% endif %} — connect MT5 below.</p>
                     {% else %}
-                    <p class="dash-primary-story">This week at a glance: journal, stats, and your weekly AI review.</p>
-                    <p class="welcome">Welcome, {{ username }}.</p>
-                    <p class="subtitle">{% if active_trade_account %}Account <strong>{{ active_trade_account.name }}</strong> — {% endif %}AI review, check-in, and key stats.</p>
+                    <p class="subtitle">{% if active_trade_account %}Account <strong>{{ active_trade_account.name }}</strong>{% else %}No active account{% endif %}{% if dashboard_continuity and dashboard_continuity.review_status_label %} · {{ dashboard_continuity.review_status_label }}{% endif %}</p>
                     {% endif %}
                 </div>
                 <div class="head-actions">
@@ -641,6 +684,28 @@
                 <span class="admin-view-banner-text">Viewing <strong>{{ username }}</strong>'s dashboard as <strong>{{ admin_viewer_username }}</strong>. Read-only.</span>
             </div>
             <a href="{{ url_for('admin_signup_users') }}" class="ghost-btn admin-view-banner-back">Back to Admin</a>
+        </section>
+        {% endif %}
+
+        {% if dashboard_continuity %}
+        <section class="dash-continuity-row panel" aria-label="Account status">
+            <dl class="dash-continuity-item">
+                <dt>Last sync</dt>
+                <dd>{{ dashboard_continuity.last_sync_label }}</dd>
+            </dl>
+            <dl class="dash-continuity-item">
+                <dt>New trades</dt>
+                <dd>{{ dashboard_continuity.new_trades_label }}</dd>
+            </dl>
+            <dl class="dash-continuity-item">
+                <dt>Review</dt>
+                <dd>{{ dashboard_continuity.review_status_label }}</dd>
+            </dl>
+            {% if dashboard_continuity.next_action_label and dashboard_continuity.next_action_href %}
+            <div class="dash-continuity-action">
+                <a href="{{ dashboard_continuity.next_action_href }}" class="trades-btn">{{ dashboard_continuity.next_action_label }}</a>
+            </div>
+            {% endif %}
         </section>
         {% endif %}
 
@@ -665,22 +730,19 @@
                 </h2>
                 <p class="journey-banner-text">
                     {% if is_state_one and not has_any_trades %}
-                    Connect MT5 first. Import a report while setup runs if you want an early preview.
+                    Read-only investor password. Import a report while setup runs if you want a preview.
                     {% elif is_state_two %}
                     Nice, your report is in. Connect MT5 next so you do not have to export again.
                     {% elif not has_any_trades %}
-                    Connect MT5 first, or import MT5 or Tradovate, or add a trade manually.
+                    Import MT5 or Tradovate history, or add a trade manually.
                     {% elif not has_closed_trades %}
-                    Closed positions with realized P&amp;L unlock win rate, equity, and sessions.
+                    Closed trades with realized P&amp;L unlock stats and your weekly review.
                     {% elif weekly_ai_is_generating %}
-                    You can review imports and early stats while this finishes.
+                    Review imports and stats while generation finishes.
                     {% else %}
-                    Keep logging until this account completes a week with enough closes for the full review (step 3).
+                    Keep logging until this account completes a week with enough closes (step 3).
                     {% endif %}
                 </p>
-                {% if not (is_state_one and not has_any_trades) %}
-                <p class="journey-banner-tip">Tip: use the <strong>?</strong> icons on cards for metric help.</p>
-                {% endif %}
             </div>
             <div class="journey-steps" aria-label="Getting started progress">
                 {% if is_state_one and not has_any_trades %}
@@ -1579,7 +1641,7 @@
             </div>
 
             <div class="hero-top-main">
-            <article class="panel notes-panel notes-panel-hero{% if is_state_one and not weekly_ai_review %} notes-panel-hero--onboarding{% endif %}">
+            <article class="panel notes-panel notes-panel-hero{% if is_state_one and not weekly_ai_review %} notes-panel-hero--onboarding{% endif %}" id="weekly-ai-review">
                 <div class="ai-hero-head">
                     {% if is_state_one and not weekly_ai_review %}
                     <div class="ai-hero-badges">
@@ -1962,25 +2024,25 @@
         {% if show_onboarding_banner %}
         <section class="panel onboarding-banner onboarding-banner--subtle">
             <div class="onboarding-banner-copy">
-                <p class="onboarding-banner-kicker">Optional Setup</p>
+                <p class="onboarding-banner-kicker">Optional</p>
                 <p class="onboarding-banner-title">
                     {% if onboarding_was_skipped %}
-                    Optional: finish your trading profile later.
+                    Finish your trading profile
                     {% else %}
-                    Optional: tailor MyFXJournal to how you trade.
+                    Tailor AI review tone
                     {% endif %}
                 </p>
                 <p class="onboarding-banner-note">
                     {% if onboarding_was_skipped %}
-                    You skipped the questionnaire earlier, which is fine. Add your trading style, main instruments, and experience level whenever you are ready so the AI review tone and coaching feel more like they were written for you.
+                    About 30 seconds — style, instruments, and experience level.
                     {% else %}
-                    About 30 seconds — only changes tone, examples, and jargon level. Finish MT5 setup first if you prefer.
+                    Optional questionnaire — shapes jargon and examples in your reviews.
                     {% endif %}
                 </p>
             </div>
             <div class="onboarding-banner-actions">
-                <a href="{{ url_for('onboarding') }}" class="ghost-btn">Complete Onboarding</a>
-                <a href="{{ url_for('account.account') }}" class="ghost-btn">Open Account</a>
+                <a href="{{ url_for('onboarding') }}" class="trades-btn">Complete profile</a>
+                <a href="{{ url_for('account.account') }}" class="ghost-btn">Account</a>
             </div>
         </section>
         {% endif %}

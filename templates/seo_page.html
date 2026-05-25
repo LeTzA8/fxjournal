@@ -27,25 +27,10 @@
                         <span class="ai-demo-chip{% if loop.first %} is-accent{% endif %}">{{ chip }}</span>
                         {% endfor %}
                     </div>
-                    <div class="hero-availability hero-availability--muted landing-reveal" data-reveal-delay="390" role="region" aria-label="Premium workflow trial and waitlist">
-                        <div class="hero-availability__top">
-                            <p class="hero-availability__kicker">Premium workflow trial</p>
-                            <span class="hero-availability__pill">No credit card</span>
-                        </div>
-                        <div class="hero-availability__body">
-                            <div class="hero-availability__copy hero-availability__copy--full">
-                                <p class="hero-availability__headline">
-                                    Try premium workflow features for 14 days.
-                                </p>
-                                <p class="hero-availability__text">
-                                    Core journaling stays free. MT5 sync, review follow-ups, and advanced replay access are waitlist-first after the trial.
-                                </p>
-                                <p class="hero-availability__text" style="margin-top:0.5rem;">
-                                    <a href="{{ url_for('pricing_page') }}" class="ghost-btn" style="display:inline-flex;min-height:38px;padding:0 1rem;font-size:0.74rem;">Pricing &amp; waitlist</a>
-                                </p>
-                            </div>
-                        </div>
-                    </div>
+                    <p class="seo-page-trial-note landing-reveal" data-reveal-delay="390">
+                        Core journal stays free. 14-day premium trial, no card.
+                        <a href="{{ url_for('pricing_page') }}">Pricing &amp; FAQ</a>
+                    </p>
                     <div class="landing-actions landing-reveal" data-reveal-delay="420">
                         {% if user_logged_in %}
                         <a href="{{ url_for('dashboard.home') }}" class="submit-btn hero-cta">Open Dashboard</a>
@@ -659,6 +644,19 @@
         font-size: clamp(1rem, 1.45vw, 1.12rem);
         color: var(--landing-lead-ink);
         line-height: 1.7;
+    }
+
+    .seo-page-trial-note {
+        margin: 0;
+        max-width: 58ch;
+        font-size: 0.88rem;
+        color: var(--muted);
+        line-height: 1.55;
+    }
+
+    .seo-page-trial-note a {
+        margin-left: 0.35rem;
+        font-weight: 650;
     }
 
     @property --availability-angle {

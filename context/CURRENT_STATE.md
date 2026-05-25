@@ -2,6 +2,11 @@
 
 Last Updated: 2026-05-25
 
+## UX friction pass — Phase 1–2 (2026-05-25)
+
+- Public/auth pages: consolidated repeated trial/MT5 copy on landing, SEO, pricing, register, login, and dashboard public gate.
+- Dashboard: returning-user header drops welcome/essay copy; compact continuity row (last sync, new trades, review status, optional next action) for state-2/3; journey banner text shortened; onboarding banner hidden when setup/review blockers active; workflow banner suppresses duplicate journey banner.
+
 ## Admin MT5 panel load performance (2026-05-25)
 
 - MT5 sync admin page no longer blocks on repeated Redis SCAN/LLEN round-trips per request. Worker monitor state is fetched with one SCAN (`list_mt5_worker_states`), queue depths use a Redis pipeline (`get_queue_depths`), and the combined monitor snapshot is cached for 20s (`admin_mt5_monitor_snapshot`).

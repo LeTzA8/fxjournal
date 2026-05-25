@@ -1426,6 +1426,108 @@ def _build_latest_trade_snapshot(user_trades, timezone_name):
     }
 
 
+def _build_dashboard_continuity_row(
+    *,
+    active_trade_account,
+    user_trades,
+    mt5_selected_row,
+    mt5_selected_status,
+    weekly_ai_state,
+    review_workflow_banner_state,
+    dashboard_state,
+    timezone_name,
+    has_any_trades,
+    has_closed_trades,
+):
+    if dashboard_state == "state-1":
+        return None
+
+    account_id = getattr(active_trade_account, "id", None)
+    status = mt5_selected_status
+    if status is None and mt5_selected_row is not None:
+        status = mt5_selected_row.get("status")
+
+    last_sync_label = "Not linked"
+    if mt5_selected_row is not None:
+        mt5_account = mt5_selected_row.get("mt5_account")
+        if mt5_account is not None and getattr(mt5_account, "last_synced_at", None) is not None:
+            synced_local = to_display_timezone(mt5_account.last_synced_at, timezone_name)
+            if synced_local is not None:
+                last_sync_label = f"Synced {synced_local.strftime('%d %b %H:%M')}"
+            else:
+                last_sync_label = "Synced"
+        elif status == "linked":
+            last_sync_label = "Connected"
+        elif status in {"queued", "setting_up", "pending"}:
+            last_sync_label = "Setting up"
+        elif status == "failed":
+            last_sync_label = "Setup failed"
+        elif status == "paused":
+            last_sync_label = "Sync paused"
+        elif status == "archived":
+            last_sync_label = "Inactive"
+
+    week_threshold = utcnow_naive() - timedelta(days=7)
+    new_trades_count = 0
+    if account_id is not None:
+        for trade in user_trades or []:
+            if getattr(trade, "trade_account_id", None) != account_id:
+                continue
+            opened_at = getattr(trade, "opened_at", None)
+            if opened_at is not None and opened_at >= week_threshold:
+                new_trades_count += 1
+
+    if new_trades_count == 1:
+        new_trades_label = "1 new trade"
+    elif new_trades_count > 1:
+        new_trades_label = f"{new_trades_count} new trades"
+    else:
+        new_trades_label = "None this week"
+
+    if weekly_ai_state.get("weekly_ai_is_generating"):
+        review_status_label = "Generating"
+    elif weekly_ai_state.get("weekly_ai_review") is not None:
+        review_status_label = "Ready"
+    elif review_workflow_banner_state.get("show_workflow_banner"):
+        stage = review_workflow_banner_state.get("workflow_stage")
+        review_status_by_stage = {
+            "bundle_review": "Bundle review due",
+            "classification": "Revenge review due",
+            "weekly_checkin": "Check-in due",
+        }
+        review_status_label = review_status_by_stage.get(stage, "Review in progress")
+    elif not has_closed_trades:
+        review_status_label = "Needs closed trades"
+    else:
+        review_status_label = "Waiting for week"
+
+    next_action_label = None
+    next_action_href = None
+    if review_workflow_banner_state.get("show_workflow_banner"):
+        next_action_label = review_workflow_banner_state.get("button_label")
+        next_action_href = review_workflow_banner_state.get("button_href")
+    elif dashboard_state == "state-2":
+        next_action_label = "Connect MT5"
+        next_action_href = url_for("dashboard.home", _anchor="mt5-access")
+    elif not has_any_trades:
+        next_action_label = "Import trades"
+        next_action_href = url_for("trades.new_trade")
+    elif not has_closed_trades:
+        next_action_label = "Add closed trades"
+        next_action_href = url_for("trades.new_trade")
+    elif weekly_ai_state.get("weekly_ai_is_generating") or weekly_ai_state.get("weekly_ai_review") is not None:
+        next_action_label = "View review"
+        next_action_href = url_for("dashboard.home", _anchor="weekly-ai-review")
+
+    return {
+        "last_sync_label": last_sync_label,
+        "new_trades_label": new_trades_label,
+        "review_status_label": review_status_label,
+        "next_action_label": next_action_label,
+        "next_action_href": next_action_href,
+    }
+
+
 def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_access_state, current_user=None):
     mt5_cfd_accounts = [
         account
@@ -1720,7 +1822,33 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
     else:
         dashboard_state = "state-1"
     has_ai_review = weekly_ai_state["weekly_ai_review"] is not None
-    show_whats_next_banner = not (has_any_trades and has_ai_review)
+    show_whats_next_banner = (
+        not (has_any_trades and has_ai_review)
+        and not review_workflow_banner_state["show_workflow_banner"]
+    )
+    show_onboarding_banner = (
+        onboarding_banner_state["show_onboarding_banner"]
+        and not show_whats_next_banner
+        and not review_workflow_banner_state["show_workflow_banner"]
+    )
+    dashboard_continuity = _build_dashboard_continuity_row(
+        active_trade_account=active_trade_account,
+        user_trades=user_trades,
+        mt5_selected_row=mt5_sections["mt5_selected_row"],
+        mt5_selected_status=mt5_sections["mt5_selected_status"],
+        weekly_ai_state=weekly_ai_state,
+        review_workflow_banner_state=review_workflow_banner_state,
+        dashboard_state=dashboard_state,
+        timezone_name=timezone_name,
+        has_any_trades=has_any_trades,
+        has_closed_trades=has_closed_trades,
+    )
+    if show_whats_next_banner and dashboard_continuity is not None:
+        dashboard_continuity = {
+            **dashboard_continuity,
+            "next_action_label": None,
+            "next_action_href": None,
+        }
 
     week_on_week_trends = _build_week_on_week_performance_trends(
         current_week_stats,
@@ -1809,8 +1937,9 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         weekly_ai_period_label=weekly_ai_state["weekly_ai_period_label"],
         weekly_ai_empty_message=weekly_ai_state["weekly_ai_empty_message"],
         weekly_ai_is_generating=weekly_ai_state["weekly_ai_is_generating"],
-        show_onboarding_banner=onboarding_banner_state["show_onboarding_banner"],
+        show_onboarding_banner=show_onboarding_banner,
         onboarding_was_skipped=onboarding_banner_state["onboarding_was_skipped"],
+        dashboard_continuity=dashboard_continuity,
         show_review_workflow_banner=review_workflow_banner_state["show_workflow_banner"],
         review_workflow_stage=review_workflow_banner_state["workflow_stage"],
         review_workflow_title=review_workflow_banner_state["title"],
