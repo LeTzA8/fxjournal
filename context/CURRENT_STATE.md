@@ -10,7 +10,7 @@ Last Updated: 2026-05-25
 
 ## Admin MT5: Delete VM files replaces Reset Terminal (2026-05-25)
 
-- Per-account **Delete VM files** (`POST …/mt5/<id>/delete-vm-files`) queues terminal/AppData cleanup only via `delete_mt5_account_vm_files`. It clears stored `terminal_path` / `appdata_hash` and sets `is_active=false`, but keeps credentials, `vm_id`, connection errors, and does **not** set `cleanup_marked_at`, so **Setup Terminal** is not blocked afterward. Rejects actively syncing accounts (still allows failed-connection rows with VM artifacts), rows with account cleanup pending, VM id mismatches, and missing target VM in multi-VM mode. Flash/confirm copy warns admins to wait for VM cleanup before Setup.
+- Per-account **Delete VM files** (`POST …/mt5/<id>/delete-vm-files`) queues terminal/AppData cleanup only via `delete_mt5_account_vm_files`. It clears stored `terminal_path` / `appdata_hash` and sets `is_active=false`, but keeps credentials, `vm_id`, connection errors, and does **not** set `cleanup_marked_at`, so **Setup Terminal** is not blocked afterward. Rejects actively syncing accounts (still allows failed-connection rows with VM artifacts), rows with account cleanup pending, VM id mismatches, and missing target VM in multi-VM mode. Admin Target VM dropdown and cleanup dispatch canonicalize Celery-prefixed ids (`mt5-sync@HOST` → `HOST`) so delete/setup route to the correct scoped queue. Flash/confirm copy warns admins to wait for VM cleanup before Setup.
 
 ## Admin MT5: VM-targeted cleanup + setup selector (2026-05-25)
 

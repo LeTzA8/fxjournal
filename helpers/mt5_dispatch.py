@@ -389,7 +389,7 @@ def dispatch_mt5_cleanup(
     extra=None,
     log=None,
 ):
-    vm_id = normalize_vm_id(account_vm_id)
+    vm_id = canonical_monitor_vm_id(account_vm_id)
     if is_mt5_multi_vm_enabled() and not vm_id:
         _log_dispatch_skip(label or "mt5_cleanup", "missing_vm_id", extra=extra)
         return None

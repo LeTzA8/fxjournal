@@ -672,7 +672,8 @@
                             {% set status_meta = mt5_statuses_by_account_id.get(account.id, {"label": "Setting Up", "chip_class": "warning-chip"}) %}
                             {% set has_vm_artifacts = account.terminal_path or account.appdata_hash %}
                             {% set blocks_active_delete = account.is_active and not account.is_archived and account.connection_status != 'failed' %}
-                            <tr data-mt5-account-row="{{ account.id }}">
+                            {% set account_vm_canonical = canonical_vm_id(account.vm_id) %}
+                            <tr data-mt5-account-row="{{ account.id }}" data-mt5-account-vm-id="{{ account_vm_canonical }}">
                                 <td>
                                     <div class="user-cell">
                                         <strong>{{ account.user.username if account.user else "Cleanup-only MT5 record" }}</strong>
@@ -714,14 +715,14 @@
                                 </td>
                                 <td class="mt5-vm-cell">
                                     <div class="mt5-vm-cell-stack">
-                                        <p class="mt5-vm-current soft">Current: <strong>{{ account.vm_id or "unknown" }}</strong></p>
+                                        <p class="mt5-vm-current soft">Current: <strong>{{ account_vm_canonical or account.vm_id or "unknown" }}</strong></p>
                                         {% if vm_overview.get('show_vm_target_selector') and vm_overview.get('selectable_vm_ids') and not is_orphaned %}
                                         <label class="admin-mt5-row-vm-label">
                                             <span class="soft">Target VM for setup/cleanup</span>
                                             <select class="admin-mt5-row-vm-select admin-sort-select" data-mt5-row-vm-select aria-label="Target VM for MT5 account {{ account.id }}">
-                                                <option value=""{% if account.vm_id or (vm_overview.get('multi_vm_enabled') and vm_overview.get('selectable_vm_ids')) %}{% else %} selected{% endif %}>Default routing</option>
+                                                <option value=""{% if account_vm_canonical or (vm_overview.get('multi_vm_enabled') and vm_overview.get('selectable_vm_ids')) %}{% else %} selected{% endif %}>Default routing</option>
                                                 {% for vm_option in vm_overview.selectable_vm_ids %}
-                                                <option value="{{ vm_option }}"{% if account.vm_id == vm_option or (not account.vm_id and vm_overview.get('multi_vm_enabled') and loop.first) %} selected{% endif %}>{{ vm_option }}</option>
+                                                <option value="{{ vm_option }}"{% if account_vm_canonical == vm_option or (not account_vm_canonical and vm_overview.get('multi_vm_enabled') and loop.first) %} selected{% endif %}>{{ vm_option }}</option>
                                                 {% endfor %}
                                             </select>
                                         </label>

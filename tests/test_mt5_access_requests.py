@@ -1643,6 +1643,50 @@ def test_root_admin_can_delete_vm_files_for_active_failed_connection(app_ctx, cl
     assert b"VM terminal file cleanup queued" in response.data
 
 
+def test_root_admin_can_delete_vm_files_when_account_vm_id_uses_celery_prefix(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "MYFXJOURNAL-SG,VM-OTHER")
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-delete-files-celery-root@example.com",
+        username="mt5-delete-files-celery-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-delete-files-celery-user",
+        email="mt5-delete-files-celery-user@example.com",
+        account_name="Delete Files Celery Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70119995",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Celery",
+        terminal_path=r"C:\MT5 User Terminals\celery\terminal64.exe",
+        vm_id="mt5-sync@MYFXJOURNAL-SG",
+        is_active=False,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/delete-vm-files",
+        data={"target_vm_id": "MYFXJOURNAL-SG"},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert response.status_code == 200
+    assert refreshed.terminal_path is None
+    assert cleanup_calls
+    assert cleanup_calls[0]["account_vm_id"] == "MYFXJOURNAL-SG"
+    assert b"VM terminal file cleanup queued" in response.data
+
+
 def test_root_admin_delete_vm_files_rejects_cleanup_pending_with_artifacts(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
     _root_user, _ = _log_in_root_admin(

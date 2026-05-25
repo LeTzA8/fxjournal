@@ -181,6 +181,10 @@ app.add_template_global(format_trade_price, "format_trade_price")
 app.add_template_global(format_trade_size, "format_trade_size")
 app.add_template_global(trim_decimal_string, "trim_decimal")
 
+from helpers.mt5_dispatch import canonical_monitor_vm_id
+
+app.add_template_global(canonical_monitor_vm_id, "canonical_vm_id")
+
 if oauth is not None:
     oauth.init_app(app)
     if app.config["GOOGLE_CLIENT_ID"] and app.config["GOOGLE_CLIENT_SECRET"]:

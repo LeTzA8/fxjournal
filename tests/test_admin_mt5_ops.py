@@ -103,7 +103,9 @@ def test_build_admin_mt5_vm_overview_groups_accounts_by_vm(app_ctx, monkeypatch)
     assert vm_by_id["unknown"]["account_count"] == 1
     assert vm_by_id["unknown"]["accounts"][0]["account_number"] == "222222"
     assert "vm-east" in overview["selectable_vm_ids"]
-    assert overview["show_vm_target_selector"] is bool(overview["selectable_vm_ids"])
+    assert overview["show_vm_target_selector"] is (
+        overview["multi_vm_enabled"] or bool(overview["selectable_vm_ids"])
+    )
 
 
 def test_build_admin_mt5_vm_overview_exposes_vm_selector_when_multi_vm(app_ctx, monkeypatch):

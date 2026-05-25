@@ -443,6 +443,6 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         "listen_legacy_queues": listen_legacy_mt5_queues(),
         "setup_vm_ids": parse_setup_vm_ids_env(),
         "selectable_vm_ids": selectable_vm_ids,
-        "show_vm_target_selector": bool(selectable_vm_ids),
+        "show_vm_target_selector": is_mt5_multi_vm_enabled() or bool(selectable_vm_ids),
         "monitor_available": monitor_available,
     }

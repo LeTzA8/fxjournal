@@ -779,12 +779,12 @@ def queue_mt5_account_cleanup(
         from celery_workers.mt5_setup_tasks import cleanup_mt5_terminal
         from helpers.mt5_dispatch import (
             MT5_DISPATCH_SKIPPED_MISSING_VM_MSG,
+            canonical_monitor_vm_id,
             dispatch_mt5_cleanup,
             mt5_dispatch_was_skipped,
-            normalize_vm_id,
         )
 
-        cleanup_vm_id = normalize_vm_id(target_vm_id) or normalize_vm_id(
+        cleanup_vm_id = canonical_monitor_vm_id(target_vm_id) or canonical_monitor_vm_id(
             getattr(mt5_account, "vm_id", None)
         )
 
