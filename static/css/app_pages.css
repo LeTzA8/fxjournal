@@ -1825,3 +1825,177 @@ body.app-layout .trade-accounts-page .helper-note {
 .trade-chart-panel[data-chart-unavailable] {
     display: none;
 }
+
+/* --- Contact page --- */
+body.app-layout .contact-page .dash-content,
+body.auth-layout .contact-page .dash-content {
+    max-width: min(680px, 100%);
+    margin-inline: auto;
+}
+
+body.auth-layout .contact-page .dash-wrap {
+    position: relative;
+    min-height: 100vh;
+    width: 100%;
+    padding: clamp(1rem, 3vw, 1.8rem);
+    padding-top: var(--auth-topbar-clearance, clamp(5.75rem, 11vw, 6.75rem));
+    display: flex;
+    justify-content: center;
+}
+
+body.auth-layout .contact-page .app-page-hero {
+    margin-bottom: 1rem;
+    margin-inline: auto;
+    padding: 1.12rem 1.35rem 1.18rem;
+    border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--card) 98%, transparent);
+    box-shadow: 0 18px 38px rgba(2, 6, 23, 0.24);
+    max-width: min(var(--app-hero-max-width, 52rem), 100%);
+    width: 100%;
+}
+
+body.auth-layout .contact-page .app-page-hero-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1.2rem;
+    flex-wrap: wrap;
+}
+
+body.auth-layout .contact-page .app-page-hero-text {
+    flex: 1 1 280px;
+    min-width: 0;
+}
+
+body.auth-layout .contact-page .app-page-eyebrow {
+    margin: 0 0 0.5rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+}
+
+body.auth-layout .contact-page .app-page-title {
+    margin: 0;
+    font-size: clamp(1.42rem, 2.55vw, 2.15rem);
+    color: var(--ink);
+    font-family: var(--font-display, "Sora", "Manrope", sans-serif);
+}
+
+body.auth-layout .contact-page .app-page-primary-story {
+    margin: 0.42rem 0 0;
+    font-size: 0.98rem;
+    font-weight: 650;
+    color: color-mix(in srgb, var(--ink) 88%, var(--muted));
+    line-height: 1.52;
+}
+
+body.auth-layout .contact-page .app-page-hero-copy {
+    margin: 0.48rem 0 0;
+    color: var(--muted);
+    font-size: 0.92rem;
+    line-height: 1.52;
+}
+
+body.auth-layout .contact-page .app-page-hero-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.65rem;
+    flex: 0 1 auto;
+}
+
+body.auth-layout .contact-page .app-page-hero-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    justify-content: flex-end;
+}
+
+body.auth-layout .contact-page .app-page-meta-chip {
+    border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface) 68%, transparent);
+    padding: 0.55rem 0.75rem;
+    min-width: 0;
+}
+
+body.auth-layout .contact-page .app-page-meta-chip span {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+body.auth-layout .contact-page .app-page-meta-chip strong {
+    display: block;
+    margin-top: 0.18rem;
+    font-size: 0.88rem;
+    font-weight: 800;
+    color: var(--ink);
+    word-break: break-word;
+}
+
+body.auth-layout .contact-page .contact-panel {
+    border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--card) 94%, transparent);
+    box-shadow: 0 16px 42px rgba(2, 6, 23, 0.12);
+    backdrop-filter: blur(8px);
+}
+
+body.app-layout .contact-page .contact-panel,
+body.auth-layout .contact-page .contact-panel {
+    padding: clamp(1rem, 2vw, 1.15rem);
+}
+
+.contact-page .contact-form {
+    display: grid;
+    gap: 0.72rem;
+}
+
+.contact-page .contact-form label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.contact-page .contact-form textarea {
+    resize: vertical;
+    min-height: 220px;
+}
+
+.contact-page .contact-helper {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.45;
+}
+
+.contact-page .contact-form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+}
+
+@media (max-width: 700px) {
+    body.auth-layout .contact-page .dash-wrap {
+        padding: 0.9rem;
+        padding-top: var(--auth-topbar-clearance, clamp(5.75rem, 11vw, 6.75rem));
+    }
+
+    body.auth-layout .contact-page .app-page-hero-right {
+        align-items: flex-start;
+        width: 100%;
+    }
+
+    body.auth-layout .contact-page .app-page-hero-meta {
+        justify-content: flex-start;
+    }
+}

@@ -1,40 +1,42 @@
 {% extends "base.html" %}
 
+{% from "_app_page_hero.html" import app_page_hero %}
+
 {% block content %}
 <div class="trade-accounts-page">
 <section class="dash-wrap">
     <div class="dash-content">
-        <header class="app-workbench-header" aria-label="Trade accounts">
-            <div class="app-workbench-header-main">
-                <h1 class="app-workbench-title">Trade accounts</h1>
-                <p class="app-workbench-meta">
-                    <strong>{{ account_rows|length }}</strong>
-                    account{% if account_rows|length != 1 %}s{% endif %}
-                    {% if active_trade_account %}
-                    · Active: <strong>{{ active_trade_account.name }}</strong>
-                    {% endif %}
-                    {% if default_trade_account %}
-                    · Default: <strong>{{ default_trade_account.name }}</strong>
-                    {% endif %}
-                    {% if not active_trade_account %}
-                    · <span class="app-workbench-meta-warn">No active account selected</span>
-                    {% endif %}
-                </p>
-            </div>
-            <div class="app-workbench-header-actions">
-                <button
-                    type="button"
-                    class="submit-btn"
-                    id="openCreateTradeAccountDialog"
-                    data-open-trade-account-editor
-                    data-editor-mode="create"
-                    aria-haspopup="dialog"
-                    aria-controls="tradeAccountEditorDialog"
-                >
-                    New Account
-                </button>
-            </div>
-        </header>
+        {% set _account_count = account_rows|length %}
+        {% set _account_count_label = (_account_count|string) ~ " account" ~ ("" if _account_count == 1 else "s") %}
+        {% set hero_chips = [{"label": "Accounts", "value": _account_count}] %}
+        {% if active_trade_account %}
+        {% set hero_chips = hero_chips + [{"label": "Active", "value": active_trade_account.name}] %}
+        {% else %}
+        {% set hero_chips = hero_chips + [{"label": "Active", "value": "None selected"}] %}
+        {% endif %}
+        {% if default_trade_account %}
+        {% set hero_chips = hero_chips + [{"label": "Default", "value": default_trade_account.name}] %}
+        {% endif %}
+        {% call app_page_hero(
+            "Trade accounts",
+            eyebrow="Settings",
+            primary_story="Separate prop challenges, live cash, and demos so PnL and reviews never get mixed.",
+            hero_copy=_account_count_label ~ " in your journal.",
+            chips=hero_chips,
+            extra_class="app-page-hero--settings-hub"
+        ) %}
+            <button
+                type="button"
+                class="submit-btn"
+                id="openCreateTradeAccountDialog"
+                data-open-trade-account-editor
+                data-editor-mode="create"
+                aria-haspopup="dialog"
+                aria-controls="tradeAccountEditorDialog"
+            >
+                New Account
+            </button>
+        {% endcall %}
 
         <p id="tradeAccountAlert" class="account-alert" role="status" hidden></p>
 
@@ -47,7 +49,7 @@
             <article class="panel accounts-panel">
                 <div class="panel-head panel-head--compact">
                     <h2>Accounts</h2>
-                    <span id="tradeAccountTotal" class="soft">{{ account_rows|length }} total</span>
+                    <span id="tradeAccountTotal" class="soft" hidden>{{ account_rows|length }} total</span>
                 </div>
 
                 {% if account_cards %}

@@ -902,7 +902,7 @@ def test_dashboard_journal_context_candidates_blocks_non_admin_and_support_view(
 
 
 def test_dashboard_mt5_card_uses_trial_setup_capacity_copy(app_ctx, client):
-    _create_logged_in_user(
+    user, trade_account = _create_logged_in_user(
         client,
         username="dashboard-mt5-trial-copy",
         email="dashboard-mt5-trial-copy@example.com",
@@ -920,6 +920,40 @@ def test_dashboard_mt5_card_uses_trial_setup_capacity_copy(app_ctx, client):
     db.session.commit()
 
     try:
+        response = client.get("/dashboard")
+        response_text = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert "14-day premium workflow trial" not in response_text
+
+        db.session.add(
+            Trade(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                symbol="EURUSD",
+                side="BUY",
+                entry_price=1.085,
+                exit_price=1.091,
+                lot_size=0.01,
+                pnl=60.0,
+                opened_at=datetime(2026, 3, 22, 8, 0, 0),
+                closed_at=datetime(2026, 3, 22, 10, 0, 0),
+            )
+        )
+        db.session.add(
+            MT5Account(
+                user_id=user.id,
+                trade_account_id=trade_account.id,
+                account_number="88442211",
+                investor_password_encrypted="stored-token",
+                server="Broker-Live",
+                is_active=False,
+                connection_status=MT5Account.CONNECTION_STATUS_FAILED,
+                connection_error_message="Login failed.",
+            )
+        )
+        db.session.commit()
+
         response = client.get("/dashboard")
         response_text = response.get_data(as_text=True)
 
@@ -1376,7 +1410,7 @@ def test_dashboard_home_uses_state_1_for_active_account_even_when_other_accounts
     assert b"Connect MetaTrader 5" in response.data
     assert b"data-mt5-setup-wizard" in response.data
     assert b"Sample Weekly Review" in response.data
-    assert b"Import while setup runs" in response.data
+    assert b"Import a report while setup runs" in response.data
     assert b"mt5-workflow-panel is-guided" in response.data
     assert b'id="trade-journal"' not in response.data
     assert b"Your weekly AI review" in response.data
@@ -1424,8 +1458,10 @@ def test_dashboard_home_uses_state_2_when_active_account_has_trades_without_acti
     assert b'data-dashboard-state="state-2"' in response.data
     assert b"Connect MT5 next" in response.data
     assert b"Nice, your report is in" in response.data
-    assert b"Connect MT5 below. We handle terminal setup and email you when sync is live." in response.data
-    assert b"mt5-workflow-panel is-guided" in response.data
+    assert b"Connect MT5 \xe2\x80\x94 automatic sync" in response.data
+    assert b"data-mt5-setup-wizard" in response.data
+    assert b"mt5-workflow-panel--compact" in response.data
+    assert b"mt5-workflow-panel is-guided" not in response.data
     assert b"journey-banner is-guided" not in response.data
     assert b'id="trade-journal"' in response.data
     assert b"Weekly AI Review" in response.data
@@ -1474,6 +1510,176 @@ def test_dashboard_home_uses_state_3_when_active_account_has_active_mt5(app_ctx,
     assert b"Weekly AI Review" in response.data
     assert b"Week on Week" in response.data
     assert b"Session Performance" in response.data
+
+
+def test_build_dashboard_continuity_row_returns_status_only_without_next_action():
+    review_stub = type("ReviewStub", (), {"response_text": "Weekly review body."})()
+    result = dashboard_routes._build_dashboard_continuity_row(
+        active_trade_account=type("AccountStub", (), {"id": 7})(),
+        user_trades=[
+            type("TradeStub", (), {"trade_account_id": 7, "opened_at": datetime(2026, 5, 24, 8, 0, 0)})(),
+            type("TradeStub", (), {"trade_account_id": 7, "opened_at": datetime(2026, 5, 23, 8, 0, 0)})(),
+        ],
+        mt5_selected_row={
+            "mt5_account": type(
+                "Mt5AccountStub",
+                (),
+                {"last_synced_at": datetime(2026, 5, 25, 20, 43, 0)},
+            )(),
+            "status": "linked",
+        },
+        mt5_selected_status="linked",
+        weekly_ai_state={
+            "weekly_ai_review": review_stub,
+            "weekly_ai_is_generating": False,
+        },
+        review_workflow_banner_state={"show_workflow_banner": False},
+        dashboard_state="state-3",
+        timezone_name="UTC",
+        has_any_trades=True,
+        has_closed_trades=True,
+    )
+
+    assert result == {
+        "last_sync_label": "Synced 25 May 20:43",
+        "new_trades_label": "2 new trades",
+        "review_status_label": "Ready",
+    }
+
+
+def test_dashboard_home_embeds_continuity_in_mt5_panel_without_view_review_cta(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-continuity-mt5-user",
+        email="dashboard-continuity-mt5@example.com",
+    )
+    fixed_now = datetime(2026, 5, 25, 20, 43, 0)
+    monkeypatch.setattr(dashboard_routes, "utcnow_naive", lambda: fixed_now)
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": type("ReviewStub", (), {"response_text": "Weekly review body."})(),
+            "weekly_ai_generated_at_label": "25 May 2026",
+            "weekly_ai_period_label": "19-25 May",
+            "weekly_ai_empty_message": "",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="EURUSD",
+            side="BUY",
+            entry_price=1.085,
+            exit_price=1.091,
+            lot_size=0.01,
+            pnl=60.0,
+            opened_at=fixed_now - timedelta(days=1),
+            closed_at=fixed_now - timedelta(hours=20),
+        )
+    )
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="GBPUSD",
+            side="SELL",
+            entry_price=1.265,
+            exit_price=1.26,
+            lot_size=0.01,
+            pnl=50.0,
+            opened_at=fixed_now - timedelta(days=2),
+            closed_at=fixed_now - timedelta(hours=18),
+        )
+    )
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            account_number="88442211",
+            investor_password_encrypted="stored-token",
+            server="Broker-Live",
+            is_active=True,
+            last_synced_at=fixed_now,
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b'class="dash-continuity-row dash-continuity-row--mt5"' in response.data
+    assert b"Synced 25 May 20:43" in response.data
+    assert b"2 new trades" in response.data
+    assert b"Review</dt>" in response.data
+    assert b"View review" not in response.data
+    assert b'class="dash-continuity-row panel"' not in response.data
+
+
+def test_dashboard_home_shows_continuity_in_hero_when_no_cfd_accounts(app_ctx, client, monkeypatch):
+    user = User(
+        username="dashboard-continuity-futures-user",
+        email="dashboard-continuity-futures@example.com",
+        password="hashed-password",
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    futures_account = TradeAccount(
+        user_id=user.id,
+        name="Futures Only",
+        account_type="FUTURES",
+        is_default=True,
+    )
+    db.session.add(futures_account)
+    db.session.commit()
+
+    with client.session_transaction() as session_state:
+        session_state["user_id"] = user.id
+        session_state["username"] = user.username
+        session_state["display_timezone"] = "UTC"
+        session_state["active_trade_account_id"] = futures_account.id
+
+    fixed_now = datetime(2026, 5, 25, 20, 43, 0)
+    monkeypatch.setattr(dashboard_routes, "utcnow_naive", lambda: fixed_now)
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=futures_account.id,
+            symbol="ES",
+            side="BUY",
+            entry_price=5200.0,
+            exit_price=5210.0,
+            lot_size=1.0,
+            pnl=500.0,
+            opened_at=fixed_now - timedelta(days=1),
+            closed_at=fixed_now - timedelta(hours=4),
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b'class="dash-continuity-row dash-continuity-row--mt5"' not in response.data
+    assert b"Not linked" in response.data
+    assert b"1 new trade" in response.data
+    assert b"Waiting for week" in response.data
 
 
 def test_dashboard_home_marks_running_trade_rows(app_ctx, client, monkeypatch):

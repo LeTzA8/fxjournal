@@ -5110,27 +5110,29 @@ def register_public_auth_routes(
         had_runtime_artifacts = bool(
             str(account.terminal_path or "").strip() or str(account.appdata_hash or "").strip()
         )
-        target_vm_id, target_vm_error = _parse_admin_target_vm_id()
-        if target_vm_error:
-            return build_admin_redirect("mt5", target_vm_error, "error")
 
-        from helpers.core import resolve_mt5_cleanup_target_vm
+        if had_runtime_artifacts:
+            target_vm_id, target_vm_error = _parse_admin_target_vm_id()
+            if target_vm_error:
+                return build_admin_redirect("mt5", target_vm_error, "error")
 
-        resolved_vm_id, cleanup_vm_error = resolve_mt5_cleanup_target_vm(
-            mt5_account=account,
-            target_vm_id=target_vm_id,
-        )
-        if cleanup_vm_error:
-            return build_admin_redirect("mt5", cleanup_vm_error, "error")
+            from helpers.core import resolve_mt5_cleanup_target_vm
 
-        cleanup_warning = queue_mt5_account_cleanup(
-            mt5_account=account,
-            log_context="admin delete",
-            delete_row_on_success=True,
-            target_vm_id=resolved_vm_id,
-        )
-        if cleanup_warning:
-            return build_admin_redirect("mt5", cleanup_warning, "error")
+            resolved_vm_id, cleanup_vm_error = resolve_mt5_cleanup_target_vm(
+                mt5_account=account,
+                target_vm_id=target_vm_id,
+            )
+            if cleanup_vm_error:
+                return build_admin_redirect("mt5", cleanup_vm_error, "error")
+
+            cleanup_warning = queue_mt5_account_cleanup(
+                mt5_account=account,
+                log_context="admin delete",
+                delete_row_on_success=True,
+                target_vm_id=resolved_vm_id,
+            )
+            if cleanup_warning:
+                return build_admin_redirect("mt5", cleanup_warning, "error")
 
         account_number = account.account_number
 

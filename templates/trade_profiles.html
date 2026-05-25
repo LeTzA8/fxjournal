@@ -1,36 +1,44 @@
 {% extends "base.html" %}
 
+{% from "_app_page_hero.html" import app_page_hero %}
+
 {% block content %}
 <div class="strategies-page">
 <section class="dash-wrap">
     <div class="dash-content">
-        <header class="app-workbench-header" aria-label="Strategies">
-            <div class="app-workbench-header-main">
-                <h1 class="app-workbench-title">Strategies</h1>
-                <p class="app-workbench-meta">
-                    <strong>{{ trade_profiles|length }}</strong>
-                    {% if trade_profiles|length == 1 %}strategy{% else %}strategies{% endif %}
-                    {% if active_trade_account %}
-                    · Active account: <strong>{{ active_trade_account.name }}</strong>
-                    {% else %}
-                    · <span class="app-workbench-meta-warn">No active account selected</span>
-                    {% endif %}
-                </p>
-            </div>
-            <div class="app-workbench-header-actions">
-                <button
-                    type="button"
-                    class="submit-btn"
-                    id="openCreateStrategyDialog"
-                    data-open-strategy-editor
-                    data-editor-mode="create"
-                    aria-haspopup="dialog"
-                    aria-controls="strategyEditorDialog"
-                >
-                    New Strategy
-                </button>
-            </div>
-        </header>
+        {% set _strategy_count = trade_profiles|length %}
+        {% set _strategy_count_label = (_strategy_count|string) ~ " strateg" ~ ("y" if _strategy_count == 1 else "ies") %}
+        {% set hero_chips = [{"label": "Strategies", "value": _strategy_count}] %}
+        {% if active_trade_account %}
+        {% set hero_chips = hero_chips + [{"label": "Active account", "value": active_trade_account.name}] %}
+        {% else %}
+        {% set hero_chips = hero_chips + [{"label": "Active account", "value": "None selected"}] %}
+        {% endif %}
+        {% if usage_scoped_to_active_account and active_trade_account %}
+        {% set hero_copy = "Usage for " ~ active_trade_account.name ~ "." %}
+        {% else %}
+        {% set hero_copy = "Usage across all accounts." %}
+        {% endif %}
+        {% call app_page_hero(
+            "Strategies",
+            eyebrow="Settings",
+            primary_story="Tag setups in your trade log and imports so you can see which playbooks are working.",
+            hero_copy=_strategy_count_label ~ " in your library. " ~ hero_copy,
+            chips=hero_chips,
+            extra_class="app-page-hero--settings-hub"
+        ) %}
+            <button
+                type="button"
+                class="submit-btn"
+                id="openCreateStrategyDialog"
+                data-open-strategy-editor
+                data-editor-mode="create"
+                aria-haspopup="dialog"
+                aria-controls="strategyEditorDialog"
+            >
+                New Strategy
+            </button>
+        {% endcall %}
 
         <section
             class="profile-grid workbench-grid workbench-grid--single"
@@ -41,11 +49,6 @@
             <article class="panel profile-list-panel">
                 <div class="panel-head panel-head--compact">
                     <h2>Strategy library</h2>
-                    {% if usage_scoped_to_active_account and active_trade_account %}
-                    <span class="soft">Usage for {{ active_trade_account.name }}</span>
-                    {% else %}
-                    <span class="soft">Usage across all accounts</span>
-                    {% endif %}
                 </div>
                 <div class="profile-list">
                     {% for card in strategy_cards %}

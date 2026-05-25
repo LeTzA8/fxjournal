@@ -771,7 +771,7 @@
                                                 {% endif %}
                                             >Archive</button>
                                             </form>
-                                            <form action="{{ url_for('admin_mt5_delete_account_vm_files', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this account&#39;s MT5 terminal folder and AppData on the VM? Saved credentials are kept. Wait for VM cleanup to finish before running Setup Terminal.');">
+                                            <form action="{{ url_for('admin_mt5_delete_account_vm_files', mt5_account_id=account.id) }}" method="post" onsubmit='return confirm({{ ("Delete this account's MT5 terminal folder and AppData on the VM? Saved credentials are kept. Wait for VM cleanup to finish before running Setup Terminal.")|tojson }});'>
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                 {{ mt5_vm_target_hidden() }}
                                                 <button
@@ -784,10 +784,10 @@
                                                 {% endif %}
                                             >Delete VM files</button>
                                             </form>
-                                            <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Delete this MT5 account? This will also attempt to remove its terminal files from the VM.');">
+                                            <form action="{{ url_for('admin_mt5_delete_account', mt5_account_id=account.id) }}" method="post" onsubmit='return confirm({{ ("Delete this MT5 account? This will also attempt to remove its terminal files from the VM.")|tojson }});'>
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                 {{ mt5_vm_target_hidden() }}
-                                                <button type="submit" class="ghost-btn danger-btn" {% if is_orphaned %}disabled aria-disabled="true" title="Cleanup-only records: delete removes the DB row only."{% endif %}>Delete</button>
+                                                <button type="submit" class="ghost-btn danger-btn" {% if is_orphaned %}title="Cleanup-only records: delete removes the DB row only."{% endif %}>Delete</button>
                                             </form>
                                         </div>
                                         <div class="mt5-account-actions-group inline-actions">

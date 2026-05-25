@@ -564,11 +564,11 @@ def test_dashboard_home_uses_active_account_for_mt5_panel(app_ctx, client, monke
     response = client.get("/dashboard")
 
     assert response.status_code == 200
-    assert b"Step 1 \xc2\xb7 Connect" in response.data or b"Start MT5 Sync" in response.data
+    assert b"Start MT5 Sync" in response.data or b"data-mt5-setup-wizard" in response.data
     assert b"Requestable CFD" in response.data
     assert (
         b"Connect MT5 below. We handle terminal setup and email you when sync is live." in response.data
-        or b"Read-only investor password only." in response.data
+        or b"Stored encrypted; used only to pull your trade history." in response.data
     )
     assert b"Pending Review" not in response.data
     assert b"Finish Request" not in response.data
@@ -610,7 +610,7 @@ def test_dashboard_home_treats_inactive_mt5_details_as_setup_pending_not_active_
     assert b"Setting Up" in response.data
     assert b"Sync Active" in response.data
     assert b"setup started right away" in response.data
-    assert b"Import an MT5 or Tradovate report to preview stats before sync goes live." in response.data
+    assert b"Import a report while setup runs" in response.data
     assert b'id="trade-journal"' not in response.data
     assert b"Your weekly AI review" in response.data or b"Weekly AI Review" in response.data
     assert b"Session Performance" not in response.data
@@ -744,7 +744,7 @@ def test_dashboard_home_treats_legacy_approved_request_as_direct_submit_flow(app
     )
     assert (
         b"Complete the form below to resume MT5 setup." in response.data
-        or b"Read-only investor password only." in response.data
+        or b"Stored encrypted; used only to pull your trade history." in response.data
     )
     assert b"Approval is already in place for this account." not in response.data
     assert b"APPROVED" not in response.data
@@ -1259,6 +1259,66 @@ def test_admin_mt5_page_shows_requested_setting_up_active_inactive_and_archived_
     assert b"Active" in response.data
     assert b"Inactive" in response.data
     assert b"Archived" in response.data
+
+
+def test_admin_mt5_delete_actions_render_submit_ready_buttons(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-delete-render-root@example.com",
+        username="mt5-delete-render-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-delete-render-user",
+        email="mt5-delete-render-user@example.com",
+        account_name="Delete Render Target",
+    )
+    cleanup_trade_account = TradeAccount(
+        user_id=user.id,
+        name="Cleanup Render Target",
+        account_type="CFD",
+        is_default=False,
+    )
+    db.session.add(cleanup_trade_account)
+    db.session.commit()
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70110050",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Render",
+        terminal_path=r"C:\MT5 User Terminals\render\terminal64.exe",
+        appdata_hash="RENDERHASH123",
+        is_active=False,
+    )
+    cleanup_only = MT5Account(
+        user_id=user.id,
+        trade_account_id=cleanup_trade_account.id,
+        account_number="70110051",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Cleanup",
+        is_active=False,
+    )
+    db.session.add_all([mt5_account, cleanup_only])
+    db.session.commit()
+    cleanup_only_id = cleanup_only.id
+    cleanup_only.mark_for_cleanup()
+    db.session.commit()
+
+    response = client.get("/dashboard/admin/access/mt5")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'return confirm("Delete this account\\u0027s MT5 terminal folder' in html
+    assert "return confirm('Delete this account" not in html
+
+    delete_action = f'action="/dashboard/admin/access/mt5/{cleanup_only_id}/delete"'
+    start = html.index(delete_action)
+    delete_form = html[start : html.index("</form>", start)]
+    assert "Cleanup-only records: delete removes the DB row only." in delete_form
+    assert "disabled" not in delete_form
+    assert "aria-disabled" not in delete_form
 
 
 def test_mt5_submission_claims_open_batch_slot_and_queues_setup(app_ctx, client, monkeypatch):
@@ -2210,6 +2270,49 @@ def test_root_admin_delete_mt5_fails_when_cleanup_cannot_queue(app_ctx, client, 
     assert refreshed is not None
     assert refreshed.user_id == user.id
     assert b"could not be queued" in response.data
+
+
+def test_root_admin_delete_mt5_without_vm_files_does_not_require_target_vm(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-delete-no-files-root@example.com",
+        username="mt5-delete-no-files-root",
+    )
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-delete-no-files-user",
+        email="mt5-delete-no-files-user@example.com",
+        account_name="Delete No Files Target",
+    )
+    mt5_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="70129990",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Delete-No-Files",
+        terminal_path=None,
+        appdata_hash=None,
+        is_active=False,
+        vm_id=None,
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+    mt5_account_id = mt5_account.id
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account_id}/delete",
+        data={},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account_id)
+    assert response.status_code == 200
+    assert refreshed is not None
+    assert refreshed.is_cleanup_only is True
+    assert b"marked for cleanup" in response.data
+    assert b"Choose a target VM" not in response.data
 
 
 def test_root_admin_delete_mt5_passes_target_vm_id(app_ctx, client, monkeypatch):

@@ -2,11 +2,30 @@
 
 Last Updated: 2026-05-25
 
-## UX friction pass — Phase 1–2 (2026-05-25)
+## Admin MT5 delete button fixes (2026-05-25)
+
+- Fixed the per-account **Delete VM files** form submit handler: the confirm copy now uses JSON escaping, avoiding the decoded apostrophe syntax error that made the browser kill the submit before the POST.
+- Regular MT5 **Delete** now remains clickable for cleanup-only/orphaned rows, matching the backend route that deletes those DB-only records. Admin delete no longer requires a target VM when the MT5 row has no stored terminal/AppData artifacts to clean up. Added focused route/render regressions. (`templates/admin_signup_access.html`, `auth_account.py`, `tests/test_mt5_access_requests.py`)
+
+## Contact page hero alignment (2026-05-25)
+
+- `templates/contact.html` now uses shared `app_page_hero` inside `dash-wrap` / `dash-content`, matching Dashboard and settings pages. Redundant welcome/subtitle copy removed; support inbox and privacy guidance consolidated into hero + one form helper line. Public visitors load `app_pages.css` for hero parity via `head_extra`.
+
+## Strategies + Trade accounts hero alignment (2026-05-25)
+
+- `templates/trade_profiles.html` and `templates/trade_accounts.html` now use shared `app_page_hero` (`app-page-hero--settings-hub`) instead of `app-workbench-header`, with meta chips and primary CTAs in the hero actions row. Panel subtitles trimmed where hero carries the same context.
+
+## Dashboard MT5 setup de-duplication (2026-05-25)
+
+- Continuity status (last sync, new trades, review) moved from standalone dashboard row into the MT5 sync panel as a compact strip; no separate "View review" or other next-action CTAs on that strip. When no CFD accounts exist, the same fields appear in hero meta chips instead.
+
+- State-1 (no trades): removed dashboard header essay, MT5 panel title hint, Step 1 badge, onboarding trust paragraph, selected-account card, inline trial line, and wizard kicker; journey banner remains primary setup CTA; panel shows account name + wizard step 1 + Continue + encrypted footnote.
+- State-2 (trades, no MT5): compact MT5 panel with setup wizard, no guided styling, header "Connect MT5" + one short line; progress stepper hidden until submitted; inline trial hidden during wizard requestable/pending only.
+- Fixed `_mt5_use_wizard` alias so wizard steps render for state-1/2.
 
 - Public/auth pages: consolidated repeated trial/MT5 copy on landing, SEO, pricing, register, login, and dashboard public gate.
-- Dashboard: returning-user header drops welcome/essay copy; compact continuity row (last sync, new trades, review status, optional next action) for state-2/3; journey banner text shortened; onboarding banner hidden when setup/review blockers active; workflow banner suppresses duplicate journey banner.
-- Audit follow-up: dashboard continuity row now treats review workflow banners as the owner of the action CTA and status priority, so bundle/revenge/check-in prompts do not duplicate their primary button beside the banner.
+- Dashboard: returning-user header drops welcome/essay copy; journey banner text shortened; onboarding banner hidden when setup/review blockers active; workflow banner suppresses duplicate journey banner.
+- Audit follow-up: dashboard continuity strip inside the MT5 panel treats review workflow banners as the owner of action CTAs and status priority, so bundle/revenge/check-in prompts do not duplicate their primary button beside the banner.
 - Audit follow-up: admin MT5 cleanup routing still asks for a target VM when multi-VM affinity is missing, but the rendered error now clearly says cleanup could not be queued.
 
 ## Admin MT5 panel load performance (2026-05-25)

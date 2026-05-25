@@ -1,6 +1,7 @@
 ﻿{% extends "base.html" %}
 
 {% from "_behavior_badges.html" import render_behavior_badges %}
+{% from "_app_page_hero.html" import app_page_hero %}
 
 {% block head_extra %}
 <style>
@@ -634,15 +635,9 @@
         color: var(--ink);
     }
 
-    .dash-continuity-action {
-        margin-left: auto;
-    }
-
-    @media (max-width: 760px) {
-        .dash-continuity-action {
-            margin-left: 0;
-            width: 100%;
-        }
+    .dash-continuity-row--mt5 {
+        margin: 0 0 0.75rem;
+        padding: 0.55rem 0.72rem;
     }
 </style>
 {% endblock %}
@@ -650,32 +645,53 @@
 {% block content %}
 {% set is_state_one = dashboard_state == "state-1" %}
 {% set is_state_two = dashboard_state == "state-2" %}
-{% set show_mt5_guidance = is_state_one or is_state_two %}
+{% set show_mt5_guidance = is_state_one and not has_any_trades %}
+{% set mt5_use_setup_wizard = (is_state_one and not has_any_trades) or is_state_two %}
+{% set _mt5_use_wizard = mt5_use_setup_wizard %}
+{% set mt5_onboarding_compact = (is_state_one and not has_any_trades) or is_state_two %}
+{% set mt5_hide_trial_inline = mt5_use_setup_wizard and mt5_selected_status in ("requestable", "pending") %}
+{% set hero_chips = [] %}
+{% if active_trade_account and not (is_state_one and not has_any_trades) %}
+{% set hero_chips = hero_chips + [{"label": "Account", "value": active_trade_account.name}] %}
+{% endif %}
+{% if dashboard_continuity and not mt5_cfd_accounts %}
+{% set hero_chips = hero_chips + [{"label": "Last sync", "value": dashboard_continuity.last_sync_label}] %}
+{% set hero_chips = hero_chips + [{"label": "New trades", "value": dashboard_continuity.new_trades_label}] %}
+{% set hero_chips = hero_chips + [{"label": "Review", "value": dashboard_continuity.review_status_label}] %}
+{% endif %}
+{% if weekly_ai_period_label and not is_state_one %}
+{% set hero_chips = hero_chips + [{"label": "Week", "value": weekly_ai_period_label}] %}
+{% endif %}
+{% set hero_primary = none %}
+{% set hero_copy = none %}
+{% if is_state_two %}
+{% set hero_primary = "Connect MT5 — automatic sync, no more manual exports." %}
+{% elif is_state_one and not has_any_trades %}
+{% if active_trade_account %}
+{% set hero_primary = active_trade_account.name %}
+{% else %}
+{% set hero_primary = "Get started" %}
+{% endif %}
+{% elif not active_trade_account %}
+{% set hero_copy = "No active account" %}
+{% endif %}
 <section class="dash-wrap">
 
     <div class="dash-content" data-dashboard-state="{{ dashboard_state }}">
-        <header class="dash-head">
-            <div class="crumb"><a href="{{ url_for('dashboard.home') }}">Dashboard</a></div>
-            <div class="head-row">
-                <div>
-                    <h1>Trading dashboard</h1>
-                    {% if is_state_one and not has_any_trades %}
-                    <p class="dash-primary-story">Connect MetaTrader 5 once — trades sync automatically and your weekly review builds from real executions.</p>
-                    <p class="subtitle">{% if active_trade_account %}Account <strong>{{ active_trade_account.name }}</strong>{% else %}Get started{% endif %} — connect MT5 below.</p>
-                    {% else %}
-                    <p class="subtitle">{% if active_trade_account %}Account <strong>{{ active_trade_account.name }}</strong>{% else %}No active account{% endif %}{% if dashboard_continuity and dashboard_continuity.review_status_label %} · {{ dashboard_continuity.review_status_label }}{% endif %}</p>
-                    {% endif %}
-                </div>
-                <div class="head-actions">
-                    <a href="{{ url_for('dashboard.analytics') }}" class="trades-btn">Analytics</a>
-                    <a href="{{ url_for('account.account') }}" class="account-btn">Account</a>
-                    <form action="{{ url_for('logout') }}" method="post">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="logout-btn">Log Out</button>
-                    </form>
-                </div>
-            </div>
-        </header>
+        {% call app_page_hero(
+            "Trading dashboard",
+            eyebrow="Dashboard",
+            primary_story=hero_primary,
+            hero_copy=hero_copy,
+            chips=hero_chips if hero_chips else none
+        ) %}
+            <a href="{{ url_for('dashboard.analytics') }}" class="trades-btn">Analytics</a>
+            <a href="{{ url_for('account.account') }}" class="account-btn">Account</a>
+            <form action="{{ url_for('logout') }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="logout-btn">Log Out</button>
+            </form>
+        {% endcall %}
 
         {% if admin_viewer_username and not support_view_session_active %}
         <section class="panel admin-view-banner">
@@ -684,28 +700,6 @@
                 <span class="admin-view-banner-text">Viewing <strong>{{ username }}</strong>'s dashboard as <strong>{{ admin_viewer_username }}</strong>. Read-only.</span>
             </div>
             <a href="{{ url_for('admin_signup_users') }}" class="ghost-btn admin-view-banner-back">Back to Admin</a>
-        </section>
-        {% endif %}
-
-        {% if dashboard_continuity %}
-        <section class="dash-continuity-row panel" aria-label="Account status">
-            <dl class="dash-continuity-item">
-                <dt>Last sync</dt>
-                <dd>{{ dashboard_continuity.last_sync_label }}</dd>
-            </dl>
-            <dl class="dash-continuity-item">
-                <dt>New trades</dt>
-                <dd>{{ dashboard_continuity.new_trades_label }}</dd>
-            </dl>
-            <dl class="dash-continuity-item">
-                <dt>Review</dt>
-                <dd>{{ dashboard_continuity.review_status_label }}</dd>
-            </dl>
-            {% if dashboard_continuity.next_action_label and dashboard_continuity.next_action_href %}
-            <div class="dash-continuity-action">
-                <a href="{{ dashboard_continuity.next_action_href }}" class="trades-btn">{{ dashboard_continuity.next_action_label }}</a>
-            </div>
-            {% endif %}
         </section>
         {% endif %}
 
@@ -856,21 +850,30 @@
         <section class="ai-hero-grid {% if mt5_cfd_accounts %}has-mt5{% else %}no-mt5{% endif %}{% if is_state_one %} state-onboarding{% endif %}" data-reveal-row-step="120" data-reveal-col-step="70">
             <div class="mt5-side-stack">
                 {% if mt5_cfd_accounts %}
-                <article id="mt5-access" class="panel mt5-access-panel mt5-workflow-panel{% if show_mt5_guidance %} is-guided{% endif %}{% if is_state_one and not has_any_trades %} mt5-workflow-panel--onboarding{% endif %}">
+                <article id="mt5-access" class="panel mt5-access-panel mt5-workflow-panel{% if show_mt5_guidance %} is-guided{% endif %}{% if is_state_one and not has_any_trades %} mt5-workflow-panel--onboarding{% elif is_state_two %} mt5-workflow-panel--compact{% endif %}">
                     <div class="panel-head">
                         <div class="panel-title-wrap">
                             {% if is_state_one and not has_any_trades %}
+                            {% if mt5_selected_account %}
+                            <h2>{{ mt5_selected_account.name }}</h2>
+                            {% else %}
                             <h2>Connect MetaTrader 5</h2>
-                            <p class="panel-title-hint">Trades sync automatically. Your weekly AI review builds from real executions — no exports, no spreadsheets.</p>
+                            {% endif %}
+                            {% elif is_state_two %}
+                            <h2>Connect MT5</h2>
+                            {% if mt5_selected_account %}
+                            <p class="panel-account-note">{{ mt5_selected_account.name }}</p>
+                            {% endif %}
                             {% else %}
                             <h2>MT5 sync</h2>
-                            {% endif %}
                             {% if mt5_selected_account %}
                             <p class="panel-account-note">{{ mt5_selected_account.name }}</p>
                             {% else %}
                             <p class="panel-account-note">Switch to a CFD trade account from the account switcher</p>
                             {% endif %}
+                            {% endif %}
                         </div>
+                        {% if not (mt5_onboarding_compact and mt5_selected_status in ("requestable", "pending")) %}
                         <span class="soft">
                             {% if mt5_selected_status == "linked" %}
                             Connected
@@ -883,12 +886,30 @@
                             {% elif mt5_selected_status in ("queued", "setting_up") %}
                             Setting Up
                             {% elif mt5_selected_status in ("requestable", "pending") %}
-                            {% if is_state_one and not has_any_trades %}Step 1 · Connect{% elif is_state_two %}Connect Next{% else %}Start MT5 Sync{% endif %}
+                            Start MT5 Sync
                             {% else %}
                             Optional After Import
                             {% endif %}
                         </span>
+                        {% endif %}
                     </div>
+
+                    {% if dashboard_continuity %}
+                    <div class="dash-continuity-row dash-continuity-row--mt5" aria-label="Account status">
+                        <dl class="dash-continuity-item">
+                            <dt>Last sync</dt>
+                            <dd>{{ dashboard_continuity.last_sync_label }}</dd>
+                        </dl>
+                        <dl class="dash-continuity-item">
+                            <dt>New trades</dt>
+                            <dd>{{ dashboard_continuity.new_trades_label }}</dd>
+                        </dl>
+                        <dl class="dash-continuity-item">
+                            <dt>Review</dt>
+                            <dd>{{ dashboard_continuity.review_status_label }}</dd>
+                        </dl>
+                    </div>
+                    {% endif %}
 
                     {% if mt5_selected_row %}
                     {% if mt5_selected_status in ("linked", "archived", "paused") %}
@@ -900,7 +921,7 @@
                     {% else %}
                     {% set mt5_progress_stage = 1 %}
                     {% endif %}
-                    {% set _mt5_hide_setup_progress = is_state_one and not has_any_trades and mt5_selected_status in ("requestable", "pending") %}
+                    {% set _mt5_hide_setup_progress = mt5_use_setup_wizard and mt5_selected_status in ("requestable", "pending") %}
                     {% if not _mt5_hide_setup_progress %}
                     <div class="mt5-workflow-summary">
                         <ol class="mt5-progress-track" data-mt5-progress data-current-stage="{{ mt5_progress_stage }}" aria-label="MT5 sync progress">
@@ -926,8 +947,6 @@
                             </span>
                         </div>
                     </div>
-                    {% elif is_state_one and not has_any_trades %}
-                    <p class="mt5-onboarding-trust">Read-only investor password only. Stored encrypted; used solely to pull trade history. We never place trades.</p>
                     {% endif %}
                     {% endif %}
 
@@ -940,7 +959,7 @@
                         {% endif %}
                     </p>
                     {% endif %}
-                    {% if mt5_batch_state.batches_enabled and mt5_selected_status not in ("linked", "paused", "archived", "queued", "setting_up") %}
+                    {% if mt5_batch_state.batches_enabled and mt5_selected_status not in ("linked", "paused", "archived", "queued", "setting_up") and not mt5_hide_trial_inline %}
                     <p class="mt5-panel-copy mt5-panel-copy--compact">
                         14-day premium workflow trial
                         <span class="help-tooltip">
@@ -962,42 +981,41 @@
                     {% endif %}
 
                     {% if mt5_selected_account and mt5_selected_row and not mt5_selected_row.is_linked and mt5_selected_status in ("requestable", "pending") %}
-                    {% set _mt5_use_wizard = is_state_one and not has_any_trades %}
                     <div class="mt5-form-shell{% if show_mt5_guidance %} guided-focus-panel{% endif %}" data-mt5-form-shell>
                         <form
                             action="{{ url_for('trade_accounts.request_mt5_access') }}"
                             method="post"
-                            class="mt5-card-form{% if _mt5_use_wizard %} mt5-card-form--wizard{% endif %}"
+                            class="mt5-card-form{% if mt5_use_setup_wizard %} mt5-card-form--wizard{% endif %}"
                             data-themed-validation
                             data-mt5-request-form
                             data-mt5-import-url="{{ url_for('trades.new_trade') }}"
-                            {% if _mt5_use_wizard %}data-mt5-setup-wizard{% endif %}
+                            {% if mt5_use_setup_wizard %}data-mt5-setup-wizard{% endif %}
                         >
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
                             <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
 
+                            {% if not mt5_use_setup_wizard %}
                             <div class="mt5-selected-account-card">
                                 <span class="mt5-selected-account-label">Selected Account</span>
                                 <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
                                 <span class="mt5-selected-account-meta">Credentials apply only to this account.</span>
                             </div>
+                            {% endif %}
 
                             <div class="mt5-request-form-alert" data-mt5-form-alert role="status" hidden></div>
 
-                            {% if _mt5_use_wizard %}
+                            {% if mt5_use_setup_wizard and is_state_two %}
                             <div class="mt5-wizard-head" aria-live="polite">
-                                <p class="mt5-wizard-kicker">MT5 setup</p>
                                 <p class="mt5-wizard-step-label" data-mt5-wizard-step-label>Step 1 of 4 · Account number</p>
                             </div>
+                            {% elif mt5_use_setup_wizard %}
+                            <p class="mt5-wizard-step-label sr-only" data-mt5-wizard-step-label>Step 1 of 4 · Account number</p>
                             {% endif %}
 
-                            <div class="mt5-form-grid{% if _mt5_use_wizard %} mt5-form-grid--wizard{% endif %}">
-                                <div class="mt5-form-field{% if _mt5_use_wizard %} mt5-wizard-step is-active{% endif %}"{% if _mt5_use_wizard %} data-mt5-wizard-step="1"{% endif %}>
+                            <div class="mt5-form-grid{% if mt5_use_setup_wizard %} mt5-form-grid--wizard{% endif %}">
+                                <div class="mt5-form-field{% if mt5_use_setup_wizard %} mt5-wizard-step is-active{% endif %}"{% if mt5_use_setup_wizard %} data-mt5-wizard-step="1"{% endif %}>
                                     <label for="mt5_account_number">MT5 account number</label>
-                                    {% if _mt5_use_wizard %}
-                                    <p class="mt5-wizard-field-hint">Your MT5 login ID from MetaTrader 5.</p>
-                                    {% endif %}
                                     <input
                                         id="mt5_account_number"
                                         name="account_number"
@@ -1143,9 +1161,8 @@
                     <p class="mt5-card-footnote">Stored encrypted; used only to pull your trade history.</p>
                     {% if is_state_one and not has_any_trades %}
                     <aside class="mt5-import-bridge" aria-label="Import while MT5 setup runs">
-                        <p class="mt5-import-bridge-kicker">While setup runs</p>
-                        <p class="mt5-import-bridge-copy">Import an MT5 or Tradovate report to preview stats before sync goes live.</p>
-                        <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Import a report</a>
+                        <p class="mt5-import-bridge-copy">Import a report while setup runs.</p>
+                        <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Import</a>
                     </aside>
                     {% endif %}
                     {% elif mt5_selected_status == "queued" and mt5_selected_account %}
@@ -1156,9 +1173,8 @@
                     </div>
                     {% if is_state_one and not has_any_trades %}
                     <aside class="mt5-import-bridge" aria-label="Import while MT5 setup runs">
-                        <p class="mt5-import-bridge-kicker">While setup runs</p>
-                        <p class="mt5-import-bridge-copy">Import an MT5 or Tradovate report to preview stats before sync goes live.</p>
-                        <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Import a report</a>
+                        <p class="mt5-import-bridge-copy">Import a report while setup runs.</p>
+                        <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Import</a>
                     </aside>
                     {% endif %}
                     <form
@@ -1191,9 +1207,8 @@
                     </div>
                     {% if is_state_one and not has_any_trades %}
                     <aside class="mt5-import-bridge" aria-label="Import while MT5 setup runs">
-                        <p class="mt5-import-bridge-kicker">While setup runs</p>
-                        <p class="mt5-import-bridge-copy">Import an MT5 or Tradovate report to preview stats before sync goes live.</p>
-                        <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Import a report</a>
+                        <p class="mt5-import-bridge-copy">Import a report while setup runs.</p>
+                        <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Import</a>
                     </aside>
                     {% endif %}
                     <form
@@ -1463,13 +1478,15 @@
                         <div class="panel-title-wrap">
                             {% if is_state_one and not has_any_trades %}
                             <h2>Connect MetaTrader 5</h2>
-                            <p class="panel-title-hint">Create a CFD trade account first, then connect MT5 for automatic sync.</p>
+                            <p class="panel-account-note">Create a CFD trade account first.</p>
                             {% else %}
                             <h2>MT5 sync</h2>
                             <p class="panel-account-note">Create a CFD trade account first, then start MT5 sync setup here.</p>
                             {% endif %}
                         </div>
-                        <span class="soft">{% if is_state_one and not has_any_trades %}Step 1 · Connect{% else %}Optional After Import{% endif %}</span>
+                        {% if not (is_state_one and not has_any_trades) %}
+                        <span class="soft">Optional After Import</span>
+                        {% endif %}
                     </div>
                     {% if show_mt5_guidance and not (is_state_one and not has_any_trades) %}
                     <p class="mt5-panel-hint">Optional: Connect MT5 for automatic sync (read-only investor password).</p>
@@ -2413,7 +2430,7 @@
         align-items: start;
     }
 
-    .dash-content[data-dashboard-state="state-1"] > .dash-head,
+    .dash-content[data-dashboard-state="state-1"] > .app-page-hero,
     .dash-content[data-dashboard-state="state-1"] > .onboarding-banner,
     .dash-content[data-dashboard-state="state-1"] > .workflow-banner {
         grid-column: 1 / -1;
@@ -2442,31 +2459,6 @@
     .dash-content[data-dashboard-state="state-1"] > .workflow-banner {
         order: 4;
     }
-    .dash-head { margin-bottom: 1.05rem;
-        margin-inline: auto;
-        padding: 1.18rem 1.35rem 1.22rem;
-        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
-        border-radius: 18px;
-        background: color-mix(in srgb, var(--card) 97%, transparent);
-        box-shadow: 0 14px 32px rgba(2, 6, 23, 0.16);
-        max-width: min(var(--app-hero-max-width, 52rem), 100%);
-        width: 100%; }
-
-    .crumb { font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em; font-weight: 700;
-        color: color-mix(in srgb, var(--muted) 88%, var(--ink));
-        margin-bottom: 0.72rem; }
-
-    .crumb a { text-decoration: none;
-        border-bottom: 1px solid transparent; }
-
-    .crumb a:hover { border-bottom-color: currentColor; }
-
-    .head-row { display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem; }
 
     h1 { margin: 0;
         font-size: clamp(1.42rem, 2.55vw, 2.15rem); }
@@ -2514,12 +2506,12 @@
         font-size: 0.8rem;
         white-space: nowrap; }
 
-    .head-actions { display: flex;
+    .app-page-hero-actions { display: flex;
         align-items: center;
         gap: 0.55rem;
         flex-wrap: wrap; }
 
-    .head-actions form { margin: 0; }
+    .app-page-hero-actions form { margin: 0; }
 
     .account-btn { border: 1px solid var(--border);  border-radius: 8px;
         padding: 0.34rem 0.62rem;
@@ -5523,8 +5515,9 @@
 
     @media (max-width: 700px) { .dash-wrap { padding: 0.9rem; }
 
-        .dash-head,
-        .dash-head h1,
+        .app-page-hero,
+        .app-page-title,
+        .app-page-primary-story,
         .dash-primary-story,
         .welcome,
         .subtitle {
@@ -5533,18 +5526,23 @@
             word-break: break-word;
         }
 
-        .dash-head h1 {
+        .app-page-title {
             line-height: 1.15;
         }
 
-        .head-row { flex-direction: column;
+        .app-page-hero-row { flex-direction: column;
             align-items: flex-start; }
 
-        .head-actions { width: 100%;
+        .app-page-hero-right {
+            align-items: flex-start;
+            width: 100%;
+        }
+
+        .app-page-hero-actions { width: 100%;
             justify-content: flex-start;
             gap: 0.45rem; }
 
-        .head-actions > * {
+        .app-page-hero-actions > * {
             max-width: 100%;
         }
 

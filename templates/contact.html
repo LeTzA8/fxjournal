@@ -1,21 +1,36 @@
 {% extends "base.html" %}
 
-{% block content %}
-<section class="contact-shell{% if not account_user %} contact-shell-public{% endif %}">
-    <div class="contact-stack">
-        <header class="contact-head">
-            <div class="crumb"><a href="{{ url_for('dashboard.home') if account_user else url_for('landing') }}">{{ "Dashboard" if account_user else "Landing" }}</a> / Contact</div>
-            <h1>Contact</h1>
-            {% if account_user %}
-            <p class="welcome">Signed in as {{ account_user.username }}.</p>
-            <p class="subtitle">Use this form for bugs, privacy issues, account questions, product feedback, or other enquiries.</p>
-            {% else %}
-            <p class="welcome">No account required.</p>
-            <p class="subtitle">Use this form for product questions, bugs, account enquiries, or anything else you want to ask before signing up.</p>
-            {% endif %}
-        </header>
+{% from "_app_page_hero.html" import app_page_hero %}
 
-        <article class="contact-card{% if not account_user %} contact-card-public{% endif %}">
+{% block head_extra %}
+{% if not account_user %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app_pages.css', v='14') }}">
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="contact-page{% if not account_user %} contact-page--public{% endif %}">
+<section class="dash-wrap">
+    <div class="dash-content">
+        {% if account_user %}
+        {% set hero_chips = [{"label": "Signed in", "value": account_user.username}] %}
+        {{ app_page_hero(
+            "Contact",
+            eyebrow="Support",
+            primary_story="Bugs, privacy requests, account questions, or product feedback.",
+            hero_copy="We reply from support@myfxjournal.com.",
+            chips=hero_chips
+        ) }}
+        {% else %}
+        {{ app_page_hero(
+            "Contact",
+            eyebrow="Support",
+            primary_story="Product questions, bugs, or enquiries — no account required.",
+            hero_copy="Messages go to support@myfxjournal.com. Include an email you check if you want a reply."
+        ) }}
+        {% endif %}
+
+        <article class="panel contact-panel">
             <form action="{{ url_for('contact.contact') }}" method="post" class="contact-form" data-themed-validation>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="text" name="honeypot" style="display:none;" tabindex="-1" autocomplete="off">
@@ -60,10 +75,9 @@
                     placeholder="Describe the issue, question, or request."
                 >{{ contact_body or '' }}</textarea>
 
-                <p class="helper-note">This sends directly to the project contact inbox at <a href="mailto:support@myfxjournal.com">support@myfxjournal.com</a>.{% if not account_user %} Include an email you actively check if you want a reply.{% endif %}</p>
-                <p class="helper-note">For privacy or data requests, choose <strong>Privacy / Data Issue</strong> and include the account email plus what you want to access, correct, or delete.</p>
+                <p class="contact-helper">For privacy or data requests, choose <strong>Privacy / Data Issue</strong> and include the account email plus what you want to access, correct, or delete.</p>
 
-                <div class="form-actions">
+                <div class="contact-form-actions">
                     <button type="submit" class="submit-btn">Send Message</button>
                     <a class="ghost-link" href="{{ url_for('dashboard.home') if account_user else url_for('landing') }}">Cancel</a>
                 </div>
@@ -71,129 +85,5 @@
         </article>
     </div>
 </section>
-
-<style>
-    main {
-        max-width: none;
-        margin: 0;
-        padding: 0;
-        min-height: 100vh;
-    }
-
-    .contact-shell {
-        position: relative;
-        min-height: 100vh;
-        padding: clamp(1rem, 3vw, 1.8rem);
-        display: flex;
-        justify-content: center;
-    }
-
-    .contact-shell-public {
-        align-items: center;
-    }
-
-    .contact-stack {
-        width: min(100%, 680px);
-        display: grid;
-        gap: 0.9rem;
-        align-content: start;
-    }
-
-    .contact-head {
-        display: grid;
-        gap: 0.38rem;
-    }
-
-    .crumb {
-        font-size: 0.78rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-weight: 700;
-    }
-
-    .crumb a {
-        text-decoration: none;
-        border-bottom: 1px solid transparent;
-    }
-
-    .crumb a:hover {
-        border-bottom-color: currentColor;
-    }
-
-    h1 {
-        margin: 0;
-        font-size: clamp(1.5rem, 2.6vw, 2.15rem);
-    }
-
-    .welcome {
-        margin: 0;
-        font-size: 0.94rem;
-        font-weight: 700;
-    }
-
-    .subtitle {
-        margin: 0;
-    }
-
-    .contact-card {
-        width: 100%;
-        background: color-mix(in srgb, var(--card) 94%, transparent);
-        border: 1px solid var(--surface-border-strong);
-        border-radius: 16px;
-        padding: clamp(1rem, 2vw, 1.15rem);
-        box-shadow: 0 10px 28px rgba(15, 55, 36, 0.08);
-    }
-
-    .contact-form {
-        display: grid;
-        gap: 0.72rem;
-    }
-
-    .contact-form label {
-        font-size: 0.8rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-    }
-
-    .contact-form input,
-    .contact-form select,
-    .contact-form textarea {
-        width: 100%;
-        border-radius: 10px;
-        padding: 0.7rem 0.78rem;
-        font: inherit;
-        transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
-    }
-
-    .contact-form textarea {
-        resize: vertical;
-        min-height: 220px;
-    }
-
-    .helper-note {
-        margin: 0;
-        font-size: 0.82rem;
-    }
-
-    .contact-alert {
-        margin: 0 0 0.85rem;
-        border-radius: 10px;
-        padding: 0.58rem 0.72rem;
-        font-size: 0.82rem;
-        font-weight: 700;
-    }
-
-    .contact-card-public {
-        box-shadow: 0 16px 42px rgba(2, 6, 23, 0.12);
-        backdrop-filter: blur(8px);
-    }
-
-    @media (max-width: 700px) {
-        .contact-shell {
-        position: relative;
-            padding: 0.9rem;
-        }
-    }
-</style>
+</div>
 {% endblock %}

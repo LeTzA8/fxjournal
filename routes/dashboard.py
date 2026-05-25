@@ -1501,28 +1501,10 @@ def _build_dashboard_continuity_row(
     else:
         review_status_label = "Waiting for week"
 
-    next_action_label = None
-    next_action_href = None
-    if not review_workflow_banner_state.get("show_workflow_banner"):
-        if dashboard_state == "state-2":
-            next_action_label = "Connect MT5"
-            next_action_href = url_for("dashboard.home", _anchor="mt5-access")
-        elif not has_any_trades:
-            next_action_label = "Import trades"
-            next_action_href = url_for("trades.new_trade")
-        elif not has_closed_trades:
-            next_action_label = "Add closed trades"
-            next_action_href = url_for("trades.new_trade")
-        elif weekly_ai_state.get("weekly_ai_is_generating") or weekly_ai_state.get("weekly_ai_review") is not None:
-            next_action_label = "View review"
-            next_action_href = url_for("dashboard.home", _anchor="weekly-ai-review")
-
     return {
         "last_sync_label": last_sync_label,
         "new_trades_label": new_trades_label,
         "review_status_label": review_status_label,
-        "next_action_label": next_action_label,
-        "next_action_href": next_action_href,
     }
 
 
@@ -1841,13 +1823,6 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         has_any_trades=has_any_trades,
         has_closed_trades=has_closed_trades,
     )
-    if show_whats_next_banner and dashboard_continuity is not None:
-        dashboard_continuity = {
-            **dashboard_continuity,
-            "next_action_label": None,
-            "next_action_href": None,
-        }
-
     week_on_week_trends = _build_week_on_week_performance_trends(
         current_week_stats,
         previous_week_stats,
