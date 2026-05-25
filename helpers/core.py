@@ -927,12 +927,15 @@ def archive_mt5_account(
     mt5_account,
     archive_reason=MT5Account.ARCHIVE_REASON_INACTIVITY,
     log_context="archive",
-    target_vm_id=None,
 ):
     """
-    Archive an MT5 account so sync stops and VM files can be removed while the
-    DB record and encrypted credentials stay available for reactivation.
+    Archive an MT5 account so sync stops while the DB row, credentials, and
+    VM runtime metadata stay intact.
+
+    Use Delete VM files or Delete account separately when terminal cleanup is
+    needed. *log_context* is reserved for future audit logging.
     """
+    _ = log_context
     if mt5_account is None:
         return False, "MT5 account not found."
     if mt5_account.is_orphaned:
@@ -945,42 +948,18 @@ def archive_mt5_account(
             "That MT5 account no longer has saved credentials, so it cannot be archived for reactivation.",
         )
 
-    terminal_exists = bool(
-        str(getattr(mt5_account, "terminal_path", "") or "").strip()
-        or str(getattr(mt5_account, "appdata_hash", "") or "").strip()
-    )
-    if not mt5_account.is_active and not terminal_exists:
-        return False, "That MT5 account is not active on the VM."
-
-    cleanup_warning = None
-    if terminal_exists:
-        resolved_vm_id, vm_error = resolve_mt5_cleanup_target_vm(
-            mt5_account=mt5_account,
-            target_vm_id=target_vm_id,
-        )
-        if vm_error:
-            return False, vm_error
-        cleanup_warning = queue_mt5_account_cleanup(
-            mt5_account=mt5_account,
-            log_context=log_context,
-            target_vm_id=resolved_vm_id,
-        )
-        if cleanup_warning:
-            return False, cleanup_warning
-
     try:
         mt5_account.is_active = False
         mt5_account.archived_at = utcnow_naive()
         mt5_account.archive_reason = str(archive_reason or "").strip() or None
-        mt5_account.terminal_path = None
-        mt5_account.appdata_hash = None
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()
         return False, "Could not archive that MT5 account right now. Please try again."
 
     return True, (
-        "MT5 sync archived. The saved read-only credentials are kept so it can be reactivated later."
+        "MT5 sync archived. Sync is paused; credentials and VM metadata are unchanged. "
+        "Reactivate when ready."
     )
 
 

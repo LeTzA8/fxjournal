@@ -1568,19 +1568,9 @@ def test_root_admin_can_archive_mt5_account_and_keep_reactivation_path(app_ctx, 
     assert refreshed.is_active is False
     assert refreshed.archived_at is not None
     assert refreshed.archive_reason == MT5Account.ARCHIVE_REASON_INACTIVITY
-    assert refreshed.terminal_path is None
-    assert refreshed.appdata_hash is None
-    assert cleanup_calls == [
-        {
-            "args": [
-                r"C:\MT5 User Terminals\archive\terminal64.exe",
-                "ARCHIVEHASH123",
-            ],
-            "kwargs": {"mt5_account_id": None},
-            "account_vm_id": "",
-            "queue": "mt5_setup",
-        }
-    ]
+    assert refreshed.terminal_path == r"C:\MT5 User Terminals\archive\terminal64.exe"
+    assert refreshed.appdata_hash == "ARCHIVEHASH123"
+    assert cleanup_calls == []
     assert b"Archived MT5 account 70119992." in response.data
     assert b"Archived" in response.data
 

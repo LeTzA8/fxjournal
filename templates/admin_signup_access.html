@@ -758,16 +758,15 @@
                                             </form>
                                         </div>
                                         <div class="mt5-account-actions-group inline-actions">
-                                            <form action="{{ url_for('admin_mt5_archive_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Archive this MT5 account due to inactivity? The VM terminal files will be removed, but the saved read-only credentials will stay available for reactivation.');">
+                                            <form action="{{ url_for('admin_mt5_archive_account', mt5_account_id=account.id) }}" method="post" onsubmit="return confirm('Archive this MT5 account due to inactivity? Sync will pause, but credentials and VM files stay unchanged. Use Delete VM files separately if you need terminal cleanup.');">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                {{ mt5_vm_target_hidden() }}
                                                 <button
                                                 type="submit"
                                                 class="ghost-btn"
-                                                {% if is_orphaned or account.is_archived or (not account.is_active and not account.terminal_path and not account.appdata_hash) %}
+                                                {% if is_orphaned or account.is_archived %}
                                                 disabled
                                                 aria-disabled="true"
-                                                title="Only linked MT5 accounts with active or existing VM artifacts can be archived."
+                                                title="{{ 'Cleanup-only MT5 records cannot be archived.' if is_orphaned else 'That MT5 account is already archived.' }}"
                                                 {% endif %}
                                             >Archive</button>
                                             </form>

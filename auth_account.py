@@ -4426,14 +4426,10 @@ def register_public_auth_routes(
     @root_admin_required
     def admin_mt5_archive_account(mt5_account_id):
         account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
-        target_vm_id, target_vm_error = _parse_admin_target_vm_id()
-        if target_vm_error:
-            return build_admin_redirect("mt5", target_vm_error, "error")
         ok, message = archive_mt5_account(
             mt5_account=account,
             archive_reason=MT5Account.ARCHIVE_REASON_INACTIVITY,
             log_context="admin archive",
-            target_vm_id=target_vm_id,
         )
         if ok:
             message = (

@@ -42,9 +42,10 @@ Last Updated: 2026-05-25
 
 ## Admin MT5: VM-targeted cleanup + setup selector (2026-05-25)
 
-- Admin MT5 panel exposes a reusable **Target VM** selector when multi-VM is enabled or more than one VM is configured/observed. Applies to **Setup Terminal**, **Reactivate**, **Delete VM files**, **Archive**, and **Delete** so cleanup/setup routes to the chosen worker queue. Submissions are validated against configured/account/worker VM ids.
+- Admin MT5 panel exposes a reusable **Target VM** selector when multi-VM is enabled or more than one VM is configured/observed. Applies to **Setup Terminal**, **Reactivate**, **Delete VM files**, and **Delete** so cleanup/setup routes to the chosen worker queue. Submissions are validated against configured/account/worker VM ids.
+- **Archive** is state-only: sets `archived_at` / `archive_reason` and `is_active=false` without queueing VM cleanup or clearing `terminal_path` / `appdata_hash`. Use **Delete VM files** when terminal cleanup is needed.
 - Each Worker VM card includes **Delete VM files** — queues terminal/AppData cleanup for **inactive or archived** MT5 accounts on that VM with stored runtime paths, then clears `terminal_path` / `appdata_hash` / `is_active` in the DB. Active accounts are skipped.
-- Delete/reset/archive now return **errors** when cleanup cannot be queued but VM artifacts still exist (multi-VM missing `vm_id` or invalid target VM). Delete no longer marks cleanup-only state when dispatch fails.
+- Delete/reset/archive now return **errors** when cleanup cannot be queued but VM artifacts still exist (multi-VM missing `vm_id` or invalid target VM). Delete no longer marks cleanup-only state when dispatch fails. Archive no longer queues cleanup.
 - Backend: `queue_mt5_account_cleanup(..., target_vm_id=)`, `queue_mt5_accounts_cleanup_for_vm`, `collect_admin_selectable_vm_ids`, `resolve_admin_target_vm_id`, route `POST /dashboard/admin/access/mt5/vm-delete-files`. (`helpers/core.py`, `helpers/admin_mt5_ops.py`, `auth_account.py`, `templates/admin_signup_access.html`, `static/css/admin_panel.css`, tests)
 
 ## VM Task Scheduler XML: direct workers primary, watchdogs legacy (2026-05-25)
