@@ -6,6 +6,7 @@ Last Updated: 2026-05-25
 
 - Fixed the per-account **Delete VM files** form submit handler: the confirm copy now uses JSON escaping, avoiding the decoded apostrophe syntax error that made the browser kill the submit before the POST.
 - Regular MT5 **Delete** now remains clickable for cleanup-only/orphaned rows, matching the backend route that deletes those DB-only records. Admin delete no longer requires a target VM when the MT5 row has no stored terminal/AppData artifacts to clean up. Added focused route/render regressions. (`templates/admin_signup_access.html`, `auth_account.py`, `tests/test_mt5_access_requests.py`)
+- Per-account **Delete VM files** is no longer rendered as a disabled button for blocked states. The POST now reaches backend validation and flashes the reason (active account, cleanup pending, no artifacts, cleanup-only) instead of appearing to do nothing.
 
 ## Contact page hero alignment (2026-05-25)
 
@@ -14,6 +15,7 @@ Last Updated: 2026-05-25
 ## Strategies + Trade accounts hero alignment (2026-05-25)
 
 - `templates/trade_profiles.html` and `templates/trade_accounts.html` now use shared `app_page_hero` (`app-page-hero--settings-hub`) instead of `app-workbench-header`, with meta chips and primary CTAs in the hero actions row. Panel subtitles trimmed where hero carries the same context.
+- Strategies + Trade accounts workbench grids now use full-width `dash-content` (removed 1120px cap). Long strategy descriptions collapse to a 3-line preview via native `<details>` with Show more/less; full text remains in Edit dialog `data-editor-description`. (`static/css/app_pages.css`, `templates/trade_profiles.html`)
 
 ## Dashboard MT5 setup de-duplication (2026-05-25)
 

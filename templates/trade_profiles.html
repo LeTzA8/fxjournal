@@ -94,7 +94,15 @@
                         </div>
 
                         {% if card.description %}
-                        <p class="profile-description profile-description--multiline">{{ card.description }}</p>
+                        {% set _desc = card.description %}
+                        {% set _desc_is_long = _desc|length > 200 or (_desc.split('\n')|length > 3) %}
+                        {% if _desc_is_long %}
+                        <details class="profile-description-details">
+                            <summary class="profile-description profile-description--multiline">{{ _desc }}</summary>
+                        </details>
+                        {% else %}
+                        <p class="profile-description profile-description--multiline">{{ _desc }}</p>
+                        {% endif %}
                         {% endif %}
 
                         <dl class="profile-stat-row">

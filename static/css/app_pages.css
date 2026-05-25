@@ -341,11 +341,11 @@ body.app-layout .workbench-activity-item:last-child {
     padding-bottom: 0;
 }
 
-/* Keep Strategies / Trade accounts readable on ultrawide; trade log + management stay full width */
+/* Strategies / Trade accounts: full-width workbench (hero stays readable via --app-hero-max-width) */
 body.app-layout .strategies-page .dash-content,
 body.app-layout .trade-accounts-page .dash-content {
-    max-width: min(1120px, 100%);
-    margin-inline: auto;
+    max-width: none;
+    width: 100%;
 }
 
 @media (max-width: 700px) {
@@ -570,6 +570,51 @@ body.app-layout .strategies-page .profile-description--multiline {
     margin: 0.45rem 0 0;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+body.app-layout .strategies-page .profile-description-details {
+    margin: 0.45rem 0 0;
+}
+
+body.app-layout .strategies-page .profile-description-details summary.profile-description--multiline {
+    margin: 0;
+}
+
+body.app-layout .strategies-page .profile-description-details summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+body.app-layout .strategies-page .profile-description-details summary::-webkit-details-marker {
+    display: none;
+}
+
+body.app-layout .strategies-page .profile-description-details:not([open]) summary {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    white-space: normal;
+}
+
+body.app-layout .strategies-page .profile-description-details[open] summary {
+    margin-bottom: 0;
+}
+
+body.app-layout .strategies-page .profile-description-details summary::after {
+    display: inline-block;
+    margin-top: 0.28rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: color-mix(in srgb, var(--accent) 78%, var(--ink));
+}
+
+body.app-layout .strategies-page .profile-description-details:not([open]) summary::after {
+    content: "Show more";
+}
+
+body.app-layout .strategies-page .profile-description-details[open] summary::after {
+    content: "Show less";
 }
 
 body.app-layout .strategies-page .profile-stat-row {

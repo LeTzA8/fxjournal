@@ -650,48 +650,37 @@
 {% set _mt5_use_wizard = mt5_use_setup_wizard %}
 {% set mt5_onboarding_compact = (is_state_one and not has_any_trades) or is_state_two %}
 {% set mt5_hide_trial_inline = mt5_use_setup_wizard and mt5_selected_status in ("requestable", "pending") %}
-{% set hero_chips = [] %}
-{% if active_trade_account and not (is_state_one and not has_any_trades) %}
-{% set hero_chips = hero_chips + [{"label": "Account", "value": active_trade_account.name}] %}
-{% endif %}
-{% if dashboard_continuity and not mt5_cfd_accounts %}
-{% set hero_chips = hero_chips + [{"label": "Last sync", "value": dashboard_continuity.last_sync_label}] %}
-{% set hero_chips = hero_chips + [{"label": "New trades", "value": dashboard_continuity.new_trades_label}] %}
-{% set hero_chips = hero_chips + [{"label": "Review", "value": dashboard_continuity.review_status_label}] %}
-{% endif %}
-{% if weekly_ai_period_label and not is_state_one %}
-{% set hero_chips = hero_chips + [{"label": "Week", "value": weekly_ai_period_label}] %}
-{% endif %}
-{% set hero_primary = none %}
 {% set hero_copy = none %}
 {% if is_state_two %}
-{% set hero_primary = "Connect MT5 — automatic sync, no more manual exports." %}
+{% set hero_copy = "Connect MT5 — automatic sync, no more manual exports." %}
 {% elif is_state_one and not has_any_trades %}
 {% if active_trade_account %}
-{% set hero_primary = active_trade_account.name %}
+{% set hero_copy = active_trade_account.name %}
 {% else %}
-{% set hero_primary = "Get started" %}
+{% set hero_copy = "Get started" %}
 {% endif %}
 {% elif not active_trade_account %}
 {% set hero_copy = "No active account" %}
+{% else %}
+{% set hero_subtitle_parts = [] %}
+{% if active_trade_account %}
+{% set hero_subtitle_parts = hero_subtitle_parts + [active_trade_account.name] %}
+{% endif %}
+{% if weekly_ai_period_label %}
+{% set hero_subtitle_parts = hero_subtitle_parts + [weekly_ai_period_label] %}
+{% endif %}
+{% if hero_subtitle_parts %}
+{% set hero_copy = hero_subtitle_parts | join(" · ") %}
+{% endif %}
 {% endif %}
 <section class="dash-wrap">
 
     <div class="dash-content" data-dashboard-state="{{ dashboard_state }}">
-        {% call app_page_hero(
+        {{ app_page_hero(
             "Trading dashboard",
             eyebrow="Dashboard",
-            primary_story=hero_primary,
-            hero_copy=hero_copy,
-            chips=hero_chips if hero_chips else none
-        ) %}
-            <a href="{{ url_for('dashboard.analytics') }}" class="trades-btn">Analytics</a>
-            <a href="{{ url_for('account.account') }}" class="account-btn">Account</a>
-            <form action="{{ url_for('logout') }}" method="post">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="logout-btn">Log Out</button>
-            </form>
-        {% endcall %}
+            hero_copy=hero_copy
+        ) }}
 
         {% if admin_viewer_username and not support_view_session_active %}
         <section class="panel admin-view-banner">

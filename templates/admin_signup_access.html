@@ -778,8 +778,6 @@
                                                 type="submit"
                                                 class="ghost-btn danger-btn"
                                                 {% if is_orphaned or account.cleanup_marked_at or blocks_active_delete or not has_vm_artifacts %}
-                                                disabled
-                                                aria-disabled="true"
                                                 title="{{ 'Cleanup-only MT5 records have no VM files to delete.' if is_orphaned else ('This account already has account cleanup pending.' if account.cleanup_marked_at else ('Archive this account before deleting VM files while it is still actively syncing.' if blocks_active_delete else 'No terminal paths or AppData hash are stored for this account.')) }}"
                                                 {% endif %}
                                             >Delete VM files</button>

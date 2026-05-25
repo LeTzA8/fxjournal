@@ -1280,7 +1280,13 @@ def test_admin_mt5_delete_actions_render_submit_ready_buttons(app_ctx, client, m
         account_type="CFD",
         is_default=False,
     )
-    db.session.add(cleanup_trade_account)
+    active_trade_account = TradeAccount(
+        user_id=user.id,
+        name="Active Render Target",
+        account_type="CFD",
+        is_default=False,
+    )
+    db.session.add_all([cleanup_trade_account, active_trade_account])
     db.session.commit()
     mt5_account = MT5Account(
         user_id=user.id,
@@ -1300,9 +1306,21 @@ def test_admin_mt5_delete_actions_render_submit_ready_buttons(app_ctx, client, m
         server="Broker-Cleanup",
         is_active=False,
     )
-    db.session.add_all([mt5_account, cleanup_only])
+    active_account = MT5Account(
+        user_id=user.id,
+        trade_account_id=active_trade_account.id,
+        account_number="70110052",
+        investor_password_encrypted=encrypt_password("investor-pass"),
+        server="Broker-Active-Render",
+        terminal_path=r"C:\MT5 User Terminals\active-render\terminal64.exe",
+        appdata_hash="ACTIVERENDERHASH123",
+        is_active=True,
+        connection_status=MT5Account.CONNECTION_STATUS_CONNECTED,
+    )
+    db.session.add_all([mt5_account, cleanup_only, active_account])
     db.session.commit()
     cleanup_only_id = cleanup_only.id
+    active_account_id = active_account.id
     cleanup_only.mark_for_cleanup()
     db.session.commit()
 
@@ -1319,6 +1337,15 @@ def test_admin_mt5_delete_actions_render_submit_ready_buttons(app_ctx, client, m
     assert "Cleanup-only records: delete removes the DB row only." in delete_form
     assert "disabled" not in delete_form
     assert "aria-disabled" not in delete_form
+
+    delete_vm_files_action = (
+        f'action="/dashboard/admin/access/mt5/{active_account_id}/delete-vm-files"'
+    )
+    start = html.index(delete_vm_files_action)
+    delete_vm_files_form = html[start : html.index("</form>", start)]
+    assert "Archive this account before deleting VM files while it is still actively syncing." in delete_vm_files_form
+    assert "disabled" not in delete_vm_files_form
+    assert "aria-disabled" not in delete_vm_files_form
 
 
 def test_mt5_submission_claims_open_batch_slot_and_queues_setup(app_ctx, client, monkeypatch):
