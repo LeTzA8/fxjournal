@@ -3841,7 +3841,9 @@ def register_public_auth_routes(
     def admin_signup_users_export():
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["name", "email", "signup date", "last login date"])
+        writer.writerow(
+            ["name", "email", "signup date", "last login date", "last active date"]
+        )
         users = User.query.order_by(User.created_at.asc(), User.id.asc()).all()
         for user in users:
             writer.writerow(
@@ -3850,6 +3852,7 @@ def register_public_auth_routes(
                     user.email,
                     _format_admin_timestamp(user.created_at),
                     _format_admin_timestamp(user.last_login_at),
+                    _format_admin_timestamp(user.last_active_at),
                 ]
             )
         filename = f"myfxjournal-users-{utcnow_naive().strftime('%Y%m%d')}.csv"

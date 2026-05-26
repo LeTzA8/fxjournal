@@ -324,8 +324,10 @@ def test_admin_users_export_returns_csv_for_all_users(app_ctx, client, monkeypat
     )
     first.created_at = datetime(2026, 1, 10, 12, 0, 0)
     first.last_login_at = datetime(2026, 2, 1, 8, 30, 0)
+    first.last_active_at = datetime(2026, 2, 5, 14, 15, 0)
     second.created_at = datetime(2026, 1, 15, 9, 0, 0)
     second.last_login_at = None
+    second.last_active_at = None
     db.session.commit()
     _login_as(client, admin)
 
@@ -337,18 +339,26 @@ def test_admin_users_export_returns_csv_for_all_users(app_ctx, client, monkeypat
     assert "myfxjournal-users-" in response.headers.get("Content-Disposition", "")
 
     rows = list(csv.reader(StringIO(response.get_data(as_text=True))))
-    assert rows[0] == ["name", "email", "signup date", "last login date"]
+    assert rows[0] == [
+        "name",
+        "email",
+        "signup date",
+        "last login date",
+        "last active date",
+    ]
     exported = {row[1]: row for row in rows[1:]}
     assert exported["export-alpha@example.com"] == [
         "export-alpha",
         "export-alpha@example.com",
         "2026-01-10 12:00 UTC",
         "2026-02-01 08:30 UTC",
+        "2026-02-05 14:15 UTC",
     ]
     assert exported["export-beta@example.com"] == [
         "export-beta",
         "export-beta@example.com",
         "2026-01-15 09:00 UTC",
+        "-",
         "-",
     ]
     assert "admin-users-export@example.com" in exported

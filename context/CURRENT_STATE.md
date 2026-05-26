@@ -4,7 +4,7 @@ Last Updated: 2026-05-26
 
 ## Admin users CSV export (2026-05-26)
 
-- `GET /dashboard/admin/access/users/export` (`admin_signup_users_export`): admin-gated download of all users as CSV with columns name (username), email, signup date (`created_at`), last login date (`last_login_at`), using the same UTC timestamp format as the admin users table.
+- `GET /dashboard/admin/access/users/export` (`admin_signup_users_export`): admin-gated download of all users as CSV with columns name (username), email, signup date (`created_at`), last login date (`last_login_at`), last active date (`last_active_at`), using the same UTC timestamp format as the admin users table.
 - `templates/admin_signup_access.html`: **Export all users (CSV)** link on the Registered Users panel toolbar.
 - Tests: `tests/test_admin_route_gating.py` (route gating list, CSV payload, export link on users page).
 
