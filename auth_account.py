@@ -503,192 +503,188 @@ def _build_admin_mt5_status(*, account, request_row=None):
 
 SEO_PAGE_DEFINITIONS = {
     "trading-journal": {
-        "title": "Trading Journal That Finds Your Biggest Mistake | MyFXJournal",
+        "title": "Trading Journal for Weekly Trade Review | MyFXJournal",
         "meta_description": (
-            "Find your biggest trading mistake without extra work. MyFXJournal syncs with MT5, reviews your week automatically, and shows you the one thing holding you back."
+            "A trading journal for importing trades, reviewing the week, and spotting repeat execution patterns without rebuilding your history by hand."
         ),
         "eyebrow": "Trading journal",
-        "hero_title": "Find the mistake that's costing you money.",
+        "hero_title": "Review your trades without rebuilding the week.",
         "hero_body": (
-            "MyFXJournal syncs with MetaTrader 5, reviews your trades automatically, and tells you the one mistake worth fixing this week. No spreadsheets. No screenshots. No second job."
+            "Start free, import your trade history, and turn closed trades into a short weekly review. Add read-only MT5 sync later when setup capacity is available, or keep using imports if that is simpler."
         ),
-        "chips": ("Automated weekly review", "MT5 sync", "Zero manual logging"),
-        "intro_title": "If this sounds familiar",
+        "chips": ("Import or sync trades", "Weekly AI-assisted review", "One next step"),
+        "intro_title": "A journal should make review easier",
         "intro_body": (
-            "You've taken courses. Watched the videos. Read the books. Your equity curve still looks the same. "
-            "The problem isn't knowledge — it's one mistake you keep making without seeing it. "
-            "A journal should show you that, not create more homework."
+            "Most traders do not need another blank notes app. They need a reliable way to see what repeated across the week, which trades prove it, and what to focus on before the next session."
         ),
         "fit_points": (
-            "Most traders repeat the same 1–2 mistakes for months. MyFXJournal finds them for you.",
-            "No screenshots, no manual entries. Connect MT5 and your trades flow in automatically.",
-            "A short weekly review tells you exactly what went wrong — and what to protect next week.",
+            "Bring in closed trades from import, manual entry, or optional read-only MT5 sync.",
+            "Keep the review focused on repeat behavior, not just totals and win rate.",
+            "Leave the first review with one practical adjustment instead of another long journal entry.",
         ),
         "cards": (
             {
-                "title": "Stop guessing what went wrong",
-                "body": "Most traders think they know their mistakes. The data usually tells a different story.",
+                "title": "Start from trade history",
+                "body": "Import the trades first so the journal begins with evidence, not memory or scattered screenshots.",
             },
             {
-                "title": "No effort, no excuses",
-                "body": "If it takes zero work, you'll actually do it. That's the whole point.",
+                "title": "Review the pattern",
+                "body": "Look for repeated behaviors like re-entries, sizing drift, session mismatch, and early exits.",
             },
             {
-                "title": "Fix one thing at a time",
-                "body": "You don't need ten improvements. You need the right one, repeated.",
+                "title": "Keep the next step small",
+                "body": "The weekly review is designed to produce one clear focus you can actually carry into the next week.",
             },
         ),
         "workflow_steps": (
             {
-                "title": "Connect MT5",
-                "body": "Link your MetaTrader 5 account with read-only access. Takes two minutes. Your trades sync automatically from there.",
+                "title": "Start free",
+                "body": "Create an account and bring in closed trades with import or manual entry. No need to wait on sync setup to see the journal.",
             },
             {
-                "title": "Trade normally",
-                "body": "No screenshots, no notes, no extra tabs. Just trade. MyFXJournal pulls your history in the background.",
+                "title": "Organize the week",
+                "body": "Keep trades grouped by account so personal, funded, and demo history do not blur together.",
             },
             {
-                "title": "Get your weekly review",
-                "body": "Every week: what happened, what repeated, and the one thing to fix. Short enough to read before markets open.",
+                "title": "Read the review",
+                "body": "Use the weekly AI-assisted review to spot what repeated and choose one next action for your process.",
             },
         ),
-        "workflow_heading": "Three steps. Zero journaling.",
-        "cta_heading": "Your biggest mistake is hiding in your trade history.",
-        "cta_body": "Connect MT5, trade normally, and let MyFXJournal find the pattern that's costing you the most.",
+        "workflow_heading": "Import first. Review sooner.",
+        "cta_heading": "Turn trade history into a review loop.",
+        "cta_body": "Start free, import trades, and get to the first useful review instead of maintaining another spreadsheet.",
         "faq": (
             {
-                "question": "Do I need to log my trades manually?",
-                "answer": "No. Connect MT5 and your trades sync automatically. You can also import history files if you prefer.",
+                "question": "Do I need to type every trade manually?",
+                "answer": "No. You can import history files, add trades manually when needed, or use read-only MT5 sync during the premium workflow trial when setup capacity is available.",
             },
             {
                 "question": "Is this just another trade tracker?",
-                "answer": "No. Most trackers store trades. MyFXJournal reviews them for you and tells you what to fix.",
+                "answer": "It stores trades, but the main value is review: organizing closed trades into patterns you can reflect on each week.",
             },
             {
-                "question": "Shouldn't I just review my own trades?",
-                "answer": "You should. Most don't — the process gets too heavy. MyFXJournal does the analysis automatically so the week doesn't slip past without one.",
+                "question": "Will it tell me what to trade next?",
+                "answer": "No. MyFXJournal is for journaling and reflection, not trade signals, predictions, or financial advice.",
             },
         ),
     },
     "mt5-trading-journal": {
-        "title": "MT5 Trading Journal — Automatic Sync, Weekly Review | MyFXJournal",
+        "title": "MT5 Trading Journal - Import or Sync MetaTrader 5 Trades | MyFXJournal",
         "meta_description": (
-            "The MT5 trading journal that syncs your MetaTrader 5 history automatically, finds your biggest mistake, and delivers a weekly review — no manual journaling required."
+            "An MT5 trading journal for importing MetaTrader 5 history now, adding read-only sync when available, and reviewing closed trades each week."
         ),
         "eyebrow": "MT5 trading journal",
-        "hero_title": "Your MT5 history, reviewed. No exports needed.",
+        "hero_title": "Turn MT5 history into a weekly review.",
         "hero_body": (
-            "Connect MetaTrader 5 with read-only access. Your trades sync automatically. "
-            "Every week, MyFXJournal tells you the one mistake worth fixing — no exports, no spreadsheets, no journaling homework."
+            "Import your MetaTrader 5 history today. When setup capacity is available, add read-only MT5 sync during the premium workflow trial so future closed trades can feed the same review loop automatically."
         ),
-        "chips": ("Automatic MT5 sync", "Weekly AI review", "Zero export hassle"),
-        "intro_title": "The data's already there",
+        "chips": ("MT5 import", "Optional read-only sync", "Weekly review"),
+        "intro_title": "MT5 stores the fills. It does not review the week.",
         "intro_body": (
-            "Every trade is already in MT5. Raw history just doesn't tell you what you're doing wrong. "
-            "You need something that reads that data and shows you the pattern that's actually costing you."
+            "The account history is already there. The missing step is turning those rows into a review: which sessions you traded, how you reacted after losses, and which behavior deserves attention next week."
         ),
         "fit_points": (
-            "MT5 already has your data. MyFXJournal turns it into a clear weekly review without you touching a thing.",
-            "No exporting reports. No pasting into spreadsheets. Connect once, and the rest is automatic.",
-            "See revenge trades, sizing mistakes, and patterns you'd never catch scrolling through MT5 history.",
+            "Import an MT5 XLSX file immediately so activation does not depend on sync availability.",
+            "Use investor or read-only credentials only if you add optional sync.",
+            "Review MT5 trades by account so demo, funded, and personal history stay separate.",
         ),
         "cards": (
             {
-                "title": "No more MT5 report exports",
-                "body": "Stop downloading statement files every weekend. Your history flows in automatically.",
+                "title": "Import is the first step",
+                "body": "Upload MT5 history and start reviewing closed trades before deciding whether sync is worth adding.",
             },
             {
-                "title": "See what MT5 history can't show you",
-                "body": "Raw trade logs don't flag revenge trades or sizing creep. MyFXJournal does.",
+                "title": "Sync is optional",
+                "body": "Read-only sync can reduce repeated exports when setup capacity is available; imports remain the fallback.",
             },
             {
-                "title": "Built for MetaTrader 5 traders",
-                "body": "Not a generic journal with MT5 bolted on. The sync, the review, and the workflow are designed around how MT5 traders actually work.",
+                "title": "Review beyond the statement",
+                "body": "The weekly review helps connect MT5 rows to timing, re-entry behavior, session context, and one process takeaway.",
             },
         ),
         "workflow_steps": (
             {
-                "title": "Connect your MT5",
-                "body": "Use read-only (investor) access. Setup takes two minutes. No trading permissions needed.",
+                "title": "Upload MT5 history",
+                "body": "Export closed trade history from MetaTrader 5 and import it into the journal.",
             },
             {
-                "title": "Trade like you always do",
-                "body": "MyFXJournal pulls your closed trades automatically every few minutes. You don't do anything.",
+                "title": "Keep accounts clean",
+                "body": "Route each MT5 account to its own journal context before review starts.",
             },
             {
-                "title": "Read your weekly review",
-                "body": "Each week, get a short review: what cost you money, what worked, and the one adjustment worth making.",
+                "title": "Add sync when useful",
+                "body": "Use read-only sync during the premium workflow trial when setup capacity is available, then read the same weekly review from updated history.",
             },
         ),
-        "workflow_heading": "Connect once. Review every week.",
-        "cta_heading": "Your MT5 history already holds the answer.",
-        "cta_body": "Connect MetaTrader 5. Stop exporting. Let the review find your biggest mistake.",
+        "workflow_heading": "Import now. Sync when it removes work.",
+        "cta_heading": "Start reviewing MT5 history today.",
+        "cta_body": "Import your MT5 trades, keep the account context clean, and add read-only sync later if it fits your workflow.",
         "faq": (
             {
                 "question": "Does this need my MT5 trading password?",
-                "answer": "No. You connect with investor (read-only) credentials. MyFXJournal can only read your history — never place trades.",
+                "answer": "No. Optional sync uses investor or read-only credentials. MyFXJournal is designed to read history, not place trades.",
             },
             {
-                "question": "Is this free?",
-                "answer": "Core journaling is free to start. MT5 sync is included during the 14-day premium workflow trial when setup capacity is available.",
+                "question": "Do I need sync before I can use it?",
+                "answer": "No. MT5 import works immediately. Sync is optional during the 14-day premium workflow trial when setup capacity is available.",
             },
             {
                 "question": "What if I trade on multiple MT5 accounts?",
-                "answer": "Each MT5 account gets its own sync and its own weekly review, so the context stays clean.",
+                "answer": "Keep each MT5 account in its own journal context so imports, optional sync, and weekly review do not blur together.",
             },
         ),
     },
     "free-mt5-sync": {
-        "title": "MyFXJournal | MT5 Sync Trial",
+        "title": "MT5 Sync Trial - Read-Only MetaTrader 5 Sync | MyFXJournal",
         "meta_description": (
-            "Try read-only MetaTrader 5 (MT5) sync during the 14-day premium workflow trial and turn account history into a weekly AI review without repeated exports."
+            "Try read-only MetaTrader 5 sync during the 14-day premium workflow trial when setup capacity is available, with import as the immediate fallback."
         ),
         "eyebrow": "MT5 sync trial",
-        "hero_title": "Connect MT5 once. Stop exporting forever.",
+        "hero_title": "Try MT5 sync without making it the first blocker.",
         "hero_body": (
-            "MT5 sync is included during the 14-day premium workflow trial when setup capacity is available. Connect with read-only access and your trades feed the weekly review automatically — no exports, no cleanup."
+            "MT5 sync is included during the 14-day premium workflow trial when setup capacity is available. Import works right away; sync is the optional step that keeps future closed trades flowing with read-only access."
         ),
-        "chips": ("14-day premium workflow trial", "Read-only access", "No export routine"),
-        "intro_title": "The export routine stops here",
+        "chips": ("Capacity-managed setup", "Read-only access", "Import fallback"),
+        "intro_title": "Sync should support review, not delay it",
         "intro_body": (
-            "The sync isn't the goal. It's how you stop rebuilding the week from scratch every Sunday."
+            "The goal is not a live connection for its own sake. The goal is getting closed trades into a weekly review with less repeated export work."
         ),
         "fit_points": (
-            "No more weekend exports. MT5 history flows in on its own.",
-            "Catch revenge patterns and sizing mistakes the raw log won't flag.",
-            "Connect with investor or read-only access. No trading permissions needed.",
+            "Start with import if sync capacity is closed or you want to review immediately.",
+            "Use investor or read-only access only; trading permissions are not part of the workflow.",
+            "Once active, sync feeds the same account-level weekly review as imported history.",
         ),
         "cards": (
             {
-                "title": "Start with sync",
-                "body": "Use the premium workflow trial when setup capacity is available. No separate pipeline to set up.",
+                "title": "Capacity-managed setup",
+                "body": "Setup opens as capacity allows while the product is small, so import remains the reliable first step.",
             },
             {
                 "title": "One account, one review",
                 "body": "Each MT5 account stays separate so the context doesn't blur.",
             },
             {
-                "title": "Don't let it collect dust",
-                "body": "Synced trades feed the review loop — not just a history tab you never open.",
+                "title": "Sync feeds activation",
+                "body": "The useful moment is the review that comes from synced trades, not a passive dashboard connection.",
             },
         ),
         "workflow_steps": (
             {
-                "title": "Start the trial workflow",
-                "body": "Use the in-product setup flow when MT5 setup capacity is available. Manual import still works right away.",
+                "title": "Start with history",
+                "body": "Import an MT5 file immediately, then use the in-product sync setup flow when capacity is available.",
             },
             {
                 "title": "Connect read-only",
                 "body": "Use investor credentials only. When setup capacity is available, setup starts after you submit details.",
             },
             {
-                "title": "Watch the review build",
-                "body": "Automatic MT5 sync feeds the weekly review and revenge-pattern flags. No rebuilding the week by hand.",
+                "title": "Read the review",
+                "body": "Synced or imported closed trades feed the weekly review, including likely re-entry and behavior patterns.",
             },
         ),
-        "workflow_heading": "Automatic sync in. Weekly review out.",
-        "cta_heading": "Trial sync. No export routine.",
-        "cta_body": "Connect read-only during the premium workflow trial, skip the export routine, and start a review loop that actually runs.",
+        "workflow_heading": "Import first. Sync when available.",
+        "cta_heading": "Start the MT5 review loop.",
+        "cta_body": "Start free, import your MT5 history, then request read-only sync when setup capacity is available.",
         "faq": (
             {
                 "question": "How does the trial work?",
@@ -705,60 +701,60 @@ SEO_PAGE_DEFINITIONS = {
         ),
     },
     "forex-trading-journal": {
-        "title": "MyFXJournal | Forex Trading Journal",
+        "title": "Forex Trading Journal for Pair and Session Review | MyFXJournal",
         "meta_description": (
-            "MyFXJournal is a forex trading journal built to cut journaling overhead, review trades by account, and turn the week into a lighter AI review."
+            "A forex trading journal for reviewing pairs, sessions, post-loss behavior, and weekly execution patterns from imported or synced trade history."
         ),
         "eyebrow": "Forex trading journal",
-        "hero_title": "A forex journal that stays out of the way.",
+        "hero_title": "Review forex pairs, sessions, and repeat behavior.",
         "hero_body": (
-            "Track the week, spot the pattern, and keep reflection close to the trades without turning journaling into weekend homework."
+            "Import your forex trades, keep each account separate, and review how pairs, sessions, and post-loss decisions shaped the week. Built for reflection, not signals."
         ),
-        "chips": ("Weekly AI review", "Behavior-aware review", "Revenge-pattern flags"),
-        "intro_title": "Why this works",
+        "chips": ("Pair review", "Session context", "Weekly AI-assisted review"),
+        "intro_title": "Forex review needs context",
         "intro_body": (
-            "Most traders do not skip review because they do not care. They skip it because the process gets heavy after the market closes."
+            "A forex journal should do more than store EURUSD and XAUUSD rows. It should help you see when you traded, what you repeated after losses, and whether your best process actually matched the session you were in."
         ),
         "fit_points": (
-            "Keep the review focused on execution, psychology, and revenge-style patterns that are easy to miss in raw logs.",
-            "Use one account-centered workflow instead of piecing review together across charts and notes.",
-            "Keep a journaling habit that supports trading instead of getting in the way of it.",
+            "Review pairs and sessions from closed trades instead of reconstructing the week from memory.",
+            "Keep demo, personal, and funded forex accounts in their own review context.",
+            "Use the weekly review to choose one session, pair, or behavior rule to test next.",
         ),
         "cards": (
             {
-                "title": "See the week clearly",
-                "body": "Start from the actual account activity, not memory or scattered screenshots.",
+                "title": "Pairs in context",
+                "body": "See where your attention and risk clustered instead of treating every symbol as an isolated row.",
             },
             {
-                "title": "Spot what repeated",
-                "body": "Catch clusters of good execution, impulsive follow-ups, sloppy losses, and revenge-style re-entries before they blur together.",
+                "title": "Session-aware review",
+                "body": "Spot when your trades drifted outside the session or time window where your process usually holds up.",
             },
             {
-                "title": "Keep the next step small",
-                "body": "Tighten one rule or one habit instead of overwhelming yourself with ten fixes.",
+                "title": "Post-loss behavior",
+                "body": "Review fast re-entries, sizing shifts, and repeat attempts after a stop before they blur into a normal week.",
             },
         ),
         "workflow_steps": (
             {
-                "title": "Start clean",
-                "body": "Begin from synced or imported history. The journal doesn't start with a blank page.",
+                "title": "Import forex history",
+                "body": "Upload MT5 history, use manual entry, or add read-only sync later when setup capacity is available.",
             },
             {
-                "title": "See the pattern",
-                "body": "Let the journal organize the performance and behavior context, including likely revenge patterns, into one review flow.",
+                "title": "Scan pairs and sessions",
+                "body": "Review closed trades by pair, session, timing, and account before reading the weekly summary.",
             },
             {
-                "title": "Carry one adjustment",
-                "body": "Move into next week with one useful adjustment instead of a full process rewrite.",
+                "title": "Carry one rule",
+                "body": "Use the weekly review to pick one pair, session, or behavior constraint to test next week.",
             },
         ),
-        "workflow_heading": "Capture less. Learn faster.",
-        "cta_heading": "A review habit you'll actually keep.",
-        "cta_body": "Track the week, spot the pattern, and carry one adjustment forward without turning it into homework.",
+        "workflow_heading": "Review the forex week you actually traded.",
+        "cta_heading": "Start a forex review from real trade history.",
+        "cta_body": "Start free, import forex trades, and use the first review to choose one practical adjustment.",
         "faq": (
             {
                 "question": "Is MyFXJournal only for forex traders?",
-                "answer": "No, but it fits forex traders especially well because the workflow stays light.",
+                "answer": "No. It supports other instruments too, but this workflow fits forex traders who want pair, session, and execution review from their own history.",
             },
             {
                 "question": "Does the product tell me what to trade next?",
@@ -766,29 +762,29 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "question": "Who is this best for?",
-                "answer": "Traders who want a lighter review loop and care about execution and behavior, not just a ledger.",
+                "answer": "Forex traders who want a lighter weekly review loop and care about execution behavior, not just a ledger.",
             },
         ),
     },
     "weekly-trading-review": {
-        "title": "MyFXJournal | Weekly Trading Review",
+        "title": "Weekly Trading Review From Trade History | MyFXJournal",
         "meta_description": (
-            "Use MyFXJournal to turn trade history into a lighter weekly AI review with clearer patterns, one rule worth carrying forward, and less journaling overhead."
+            "Turn closed trade history into a weekly trading review with cited patterns, one process takeaway, and less manual weekend reconstruction."
         ),
         "eyebrow": "Weekly trading review",
         "hero_title": "Weekly review without the weekend drag.",
         "hero_body": (
-            "Turn the week into a readable review, a clearer pattern, and one rule worth testing before the next trading week starts."
+            "Import or sync closed trades, then read a concise weekly review that names what repeated and one rule worth testing before the next trading week starts."
         ),
-        "chips": ("Weekly AI review", "Repeatable review loop", "Revenge-pattern flags"),
-        "intro_title": "Why this matters",
+        "chips": ("Closed-trade review", "One weekly takeaway", "Cited patterns"),
+        "intro_title": "The output matters",
         "intro_body": (
-            "The problem is rarely knowing review matters. The problem is staying consistent once the process starts to drag."
+            "A useful weekly review should not become another project. It should answer: what happened, what repeated, which trades show it, and what one thing should change next week."
         ),
         "fit_points": (
-            "Look for patterns that repeat — revenge sequences, sizing habits, execution breaks — not just one-off reactions.",
-            "Keep reflection structured enough to be useful, but light enough to keep doing.",
-            "Turn this week's trades into a next-week adjustment without making review feel like a project.",
+            "Start from imported or synced closed trades instead of memory and screenshots.",
+            "Look for repeated behaviors: revenge sequences, sizing habits, execution breaks, and session drift.",
+            "Finish with one adjustment so the review leads into activation, not passive reading.",
         ),
         "cards": (
             {
@@ -806,21 +802,21 @@ SEO_PAGE_DEFINITIONS = {
         ),
         "workflow_steps": (
             {
-                "title": "Start from the week",
-                "body": "Start from synced or imported trade history instead of reconstructing the week from scratch.",
+                "title": "Bring in the week",
+                "body": "Import closed trades or use optional sync when available so the review has account history to read.",
             },
             {
                 "title": "Name the pattern",
                 "body": "Highlight the behavior, sizing, or revenge-style sequence the review surfaced as worth carrying forward.",
             },
             {
-                "title": "Leave with one rule",
-                "body": "End the week with a cleaner next-step rule instead of another long document.",
+                "title": "Choose one rule",
+                "body": "End with a specific process rule or experiment that you can check against next week's trades.",
             },
         ),
         "workflow_heading": "A weekly review you can keep up with.",
         "cta_heading": "One review. One rule. Every week.",
-        "cta_body": "Turn this week's trades into a takeaway short enough to act on before the next week starts.",
+        "cta_body": "Start free, import trade history, and turn the first review into a concrete next-week focus.",
         "faq": (
             {
                 "question": "What should a weekly trading review produce?",
@@ -828,7 +824,7 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "question": "Why not just write the review manually?",
-                "answer": "You can, but many traders stop because the workload grows too quickly. MyFXJournal keeps it lighter.",
+                "answer": "You can. MyFXJournal is for traders who want the same reflection loop with less assembling, tagging, and spreadsheet upkeep.",
             },
             {
                 "question": "Is the weekly review meant to replace thinking?",
@@ -839,65 +835,63 @@ SEO_PAGE_DEFINITIONS = {
     "why-am-i-not-improving-in-trading": {
         "title": "Why Am I Not Improving in Trading? | MyFXJournal",
         "meta_description": (
-            "You study, you practise, but your trading results stay flat. The reason is usually one mistake you keep repeating without noticing. Here's how to find it."
+            "If you study trading but do not improve, the issue may be a repeated execution pattern. Review closed trades to see what keeps showing up."
         ),
         "eyebrow": "Why am I not improving",
-        "hero_title": "You're not stuck. You're repeating the same mistake.",
+        "hero_title": "You may be repeating the same trade behavior.",
         "hero_body": (
-            "Most traders who feel stuck aren't lacking knowledge. They're repeating one or two mistakes without realising it. "
-            "The fix isn't more education — it's seeing the pattern clearly enough to stop doing it."
+            "If more videos and strategy notes are not changing your results, start from your closed trades. MyFXJournal helps you review what repeated so the next step is clearer."
         ),
-        "chips": ("Find your pattern", "Automated review", "No extra work"),
-        "intro_title": "If this sounds like you",
+        "chips": ("Pattern review", "Closed-trade evidence", "One next step"),
+        "intro_title": "Improvement needs a feedback loop",
         "intro_body": (
-            "You've watched the courses. Read the books. Studied charts for months. "
-            "But your results haven't changed. The problem isn't what you know — it's what you keep doing without noticing."
+            "Education helps, but it does not show whether you are cutting winners early, re-entering after stops, changing size under pressure, or trading outside your plan. Your journal should make those behaviors visible."
         ),
         "fit_points": (
-            "You've learned plenty, but your account balance doesn't reflect it.",
-            "You know you should journal, but it feels like a second job on top of trading.",
-            "You suspect you're repeating mistakes, but you can't pinpoint which ones.",
+            "Use trade history to separate knowledge gaps from execution gaps.",
+            "Review the sequence of decisions after losses, wins, and missed trades.",
+            "Pick one behavior to test next instead of changing your whole system at once.",
         ),
         "cards": (
             {
-                "title": "It's not about learning more",
-                "body": "You already know enough. The bottleneck is one or two habits you repeat under pressure without noticing.",
+                "title": "Separate study from execution",
+                "body": "A trader can understand a setup and still break the process under pressure. The review starts with what actually happened.",
             },
             {
-                "title": "Journaling shouldn't be the problem",
-                "body": "If review takes too much effort, you won't do it. MyFXJournal makes it automatic so there's no excuse left.",
+                "title": "Make the review repeatable",
+                "body": "Import or sync trades so the feedback loop is easier to keep than a blank weekly document.",
             },
             {
-                "title": "One mistake, one fix",
-                "body": "You don't need a personality overhaul. You need to see the specific pattern and stop feeding it.",
+                "title": "Change one variable",
+                "body": "The weekly review is designed to leave you with one behavior to observe or adjust next week.",
             },
         ),
-        "workflow_eyebrow": "How to find the mistake",
+        "workflow_eyebrow": "How to find the pattern",
         "workflow_steps": (
             {
-                "title": "Connect your trades",
-                "body": "Link MT5 or import your history. No manual logging. Your trades are already recorded — MyFXJournal just reads them.",
+                "title": "Bring in your trades",
+                "body": "Import history, add trades manually, or use optional MT5 sync when setup capacity is available.",
             },
             {
-                "title": "Trade for a week",
-                "body": "Don't change anything. Just trade the way you normally do. That's the data the review needs.",
+                "title": "Review the sequence",
+                "body": "Look at what happened around losses, re-entries, session changes, and exit decisions.",
             },
             {
-                "title": "See the mistake",
-                "body": "Your weekly review shows you exactly where the damage happened — revenge trades, bad sizing, impulsive entries — and gives you one thing to fix.",
+                "title": "Choose the next test",
+                "body": "Use the weekly review to choose one process experiment instead of adding another broad theory.",
             },
         ),
-        "workflow_heading": "Find it without doing extra work.",
-        "cta_heading": "The answer is already in your trade history.",
-        "cta_body": "Stop guessing why you're stuck. Connect your trades, get a weekly review, and find the one mistake that's been there the whole time.",
+        "workflow_heading": "Use history before adding more theory.",
+        "cta_heading": "Find the feedback loop you can act on.",
+        "cta_body": "Start free, import your trades, and use the weekly review to see what keeps repeating.",
         "faq": (
             {
                 "question": "I've tried journaling before and stopped. Why would this be different?",
-                "answer": "Because you don't have to do anything. Your trades sync automatically, and the review writes itself. There's nothing to keep up with.",
+                "answer": "Because you can start from imports or optional sync instead of a blank page. The review is meant to reduce assembly work, not replace your judgment.",
             },
             {
                 "question": "Will this tell me what to trade?",
-                "answer": "No. No signals. It shows what's going wrong in your execution — the rest is on you.",
+                "answer": "No. It is for reviewing closed trade history and process behavior, not trade signals or financial advice.",
             },
             {
                 "question": "Do I need to be an experienced trader?",
@@ -908,25 +902,22 @@ SEO_PAGE_DEFINITIONS = {
     "trade-replay-chart": {
         "title": "Trade Replay Chart (Coming Soon) | MyFXJournal",
         "meta_description": (
-            "Trade replay on a price chart is coming to MyFXJournal: see entries, exits, and context on the chart—not just rows in a table. "
-            "In limited admin preview today; wider access when rollout opens."
+            "Trade replay charts are coming to MyFXJournal. Import trades today for weekly review, with chart replay in limited admin preview until rollout opens."
         ),
         "eyebrow": "Trade replay · Coming soon",
-        "hero_title": "Replay the trade on the chart—not just the spreadsheet row.",
+        "hero_title": "Trade replay is coming to the journal.",
         "hero_body": (
-            "We are building a trade replay chart that puts each trade back onto price so you can see entry, exit, and how the move developed. "
-            "It is in internal admin preview now and will open to everyone once the rollout is ready."
+            "MyFXJournal's replay chart is in limited admin preview. Start by importing trades for weekly review now; when replay opens more broadly, the chart will sit on top of that same trade history."
         ),
-        "chips": ("Coming soon", "Admin preview today", "Chart-native review"),
-        "intro_title": "Why we are building it",
+        "chips": ("Coming soon", "Admin preview today", "Uses journal history"),
+        "intro_title": "The current intent",
         "intro_body": (
-            "Closed-trade lists are fast for totals, but they rarely show the sequence you felt in the session. "
-            "Replay will tie the journal back to the market structure you traded so the same mistake is easier to recognise next time."
+            "If you searched for a trade replay chart, you probably want to see entries and exits in market context instead of reviewing rows alone. That feature is not broadly public yet, so this page sets the right expectation before signup."
         ),
         "fit_points": (
             "You already log or import trades and want review to feel closer to how you experienced the session.",
             "You want a single place to scan entries and exits against price instead of jumping between the journal and a separate platform.",
-            "You use weekly AI review for themes today—and will use replay when you need the picture of one trade or one session.",
+            "Use weekly AI review for themes today; use replay later when you need the picture of one trade or one session.",
         ),
         "cards": (
             {
@@ -939,13 +930,13 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "title": "Same data as the journal",
-                "body": "Replay will use the trades already in your account—whether they came from import or optional MT5 sync.",
+                "body": "Replay is planned to use the trades already in your account, whether they came from import, manual entry, or optional MT5 sync.",
             },
         ),
         "workflow_steps": (
             {
                 "title": "Get trades into the journal",
-                "body": "Import MT5 or Tradovate files, add manual trades, or use read-only MT5 sync when setup capacity is available—replay will sit on top of that history.",
+                "body": "Import MT5 or Tradovate files, add manual trades, or use read-only MT5 sync when setup capacity is available.",
             },
             {
                 "title": "Open replay on a trade (after launch)",
@@ -953,12 +944,12 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "title": "Review with the chart in view",
-                "body": "Walk the path from entry to exit, then carry the takeaway into your weekly review or next-week rules.",
+                "body": "Once replay is available for your account, use it to inspect the path from entry to exit and carry the takeaway into weekly review.",
             },
         ),
         "workflow_heading": "How it will work when replay opens up.",
-        "cta_heading": "Get ready on the journal side today.",
-        "cta_body": "Start free and bring in your history now. When trade replay opens beyond admin preview, your trades will already be in place.",
+        "cta_heading": "Use the journal now; replay comes later.",
+        "cta_body": "Start free and import history for weekly review today, with replay clearly marked as coming soon.",
         "faq": (
             {
                 "question": "Can I use trade replay today?",
@@ -986,26 +977,24 @@ SEO_PAGE_DEFINITIONS = {
         ),
     },
     "ai-weekly-trading-review": {
-        "title": "AI Weekly Trading Review — See What Your Trades Actually Show | MyFXJournal",
+        "title": "AI Weekly Trading Review From Closed Trades | MyFXJournal",
         "meta_description": (
-            "MyFXJournal's AI weekly review reads your closed trades and tells you the one pattern worth fixing this week — with cited trades, evidence-bounded coaching, and follow-up questions."
+            "An AI weekly trading review that summarizes closed trades with cited evidence, one practical takeaway, and reflection-first coaching. No signals or prediction claims."
         ),
         "eyebrow": "AI weekly trading review",
-        "hero_title": "A weekly review that reads your trades — not just your feelings about them.",
+        "hero_title": "AI-assisted review grounded in your closed trades.",
         "hero_body": (
-            "Most traders review their week with vague summaries and good intentions. "
-            "MyFXJournal's AI weekly review reads your actual closed trades, finds the pattern that mattered most, and tells you exactly what it costs you — with references to specific trades, not generic advice."
+            "Import or sync trades, then read a weekly AI-assisted review that cites the closed trades behind its takeaways. It is for reflection after the fact, not live decisions, signals, or financial advice."
         ),
-        "chips": ("Evidence-bounded coaching", "Cited trades", "No generic advice"),
-        "intro_title": "Why most trade reviews don't work",
+        "chips": ("Cited trades", "Weekly summary", "Reflection-first"),
+        "intro_title": "The AI needs evidence first",
         "intro_body": (
-            "Manual reviewing is slow and biased toward recent trades. Generic AI summaries tell you what happened, not what it means. "
-            "A useful review needs to read the sequence — when did you press the same idea twice, what happened after a loss, which session kept burning you — and connect those facts to a single actionable diagnosis."
+            "A useful AI review starts with actual fills: timing, sessions, exits, re-entries, and account context. Without that history, AI turns into generic coaching. MyFXJournal keeps the review bounded to what the journal can cite."
         ),
         "fit_points": (
             "The review reads timing, session context, exit handling, and re-entry sequences — not just win rate and average R.",
-            "Every diagnosis comes with cited trade references so you can see exactly which trades drove the conclusion.",
-            "Follow-up chat is scoped to that review: ask why something happened, what you missed, or what to watch for next week.",
+            "Review takeaways include cited trade references so you can inspect the evidence behind the conclusion.",
+            "Follow-up questions, where available, stay scoped to the review and its trades rather than becoming a generic trading chatbot.",
         ),
         "cards": (
             {
@@ -1017,8 +1006,8 @@ SEO_PAGE_DEFINITIONS = {
                 "body": "Not a list of everything that went wrong — one main diagnosis, with the supporting context you need to recognise it again.",
             },
             {
-                "title": "Ask follow-up questions",
-                "body": "The weekly review doesn't end at the summary. Ask what you missed, why a trade was cited, or what to test next week — the chat stays grounded in your actual trades.",
+                "title": "Scoped follow-up when available",
+                "body": "If your plan includes review follow-up, questions stay tied to the cited trades and current weekly review.",
             },
         ),
         "workflow_steps": (
@@ -1028,16 +1017,16 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "title": "Read your weekly review",
-                "body": "Every week, a new review is generated: one main insight, cited trades, a coaching takeaway, and a suggested experiment for next week.",
+                "body": "When enough closed trades are available, the review summarizes one main insight, cited trades, and a suggested experiment for next week.",
             },
             {
                 "title": "Ask the follow-up questions",
-                "body": "Not sure what a pattern means? Ask. The chat is scoped to that review and those trades — not a generic AI assistant.",
+                "body": "Where available, ask about the review in context. The product is not a public trading chatbot or signal engine.",
             },
         ),
         "workflow_heading": "Review that works from your data, not your memory.",
-        "cta_heading": "Your trades already contain the answer.",
-        "cta_body": "Import your trade history and get a weekly review this week — no credit card, no setup overhead.",
+        "cta_heading": "Try AI-assisted review from your own history.",
+        "cta_body": "Start free, import trade history, and read the first weekly review when enough closed trades are available.",
         "faq": (
             {
                 "question": "Is this just an AI summary of my stats?",
@@ -1049,7 +1038,7 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "question": "Can I ask questions about the review?",
-                "answer": "Yes — on Trader and above. The follow-up chat is scoped to the current week's review and its cited trades. It refuses generic advice and stays grounded in your actual data.",
+                "answer": "Review follow-up may depend on your plan. Where available, it is scoped to the current week's review and cited trades, not generic trading advice.",
             },
             {
                 "question": "How is this different from ChatGPT?",
@@ -1058,64 +1047,60 @@ SEO_PAGE_DEFINITIONS = {
         ),
     },
     "revenge-trading-journal": {
-        "title": "Revenge Trading Journal — Catch Revenge Trades Before They Compound | MyFXJournal",
+        "title": "Revenge Trading Journal for Post-Loss Review | MyFXJournal",
         "meta_description": (
-            "MyFXJournal automatically detects post-loss re-entry patterns in your trade history. Your weekly review shows you when and how revenge trading is costing you — without manual tagging."
+            "Review likely revenge-trading patterns from closed trade history: post-loss re-entries, sizing shifts, and weekly behavior with cited examples."
         ),
         "eyebrow": "Revenge trading journal",
-        "hero_title": "You already know what revenge trading looks like. The hard part is catching it in your own history.",
+        "hero_title": "Review the trades after the loss.",
         "hero_body": (
-            "Revenge trades look obvious in hindsight. In the moment, they feel like recovering a loss. "
-            "MyFXJournal's weekly review detects post-loss re-entry sequences in your trade history — without you having to tag or admit anything."
+            "Import closed trades and review what happened after losses: fast re-entries, size changes, repeat attempts, and whether the sequence matched your plan. The goal is reflection, not shame or prediction."
         ),
-        "chips": ("Post-loss re-entry detection", "Automatic flagging", "Weekly review citation"),
-        "intro_title": "Why traders don't catch revenge trading themselves",
+        "chips": ("Post-loss sequences", "Likely pattern flags", "Weekly review"),
+        "intro_title": "Revenge trading is a sequence problem",
         "intro_body": (
-            "Manual journaling relies on honesty in the moment — which is exactly when objectivity breaks down. "
-            "Most traders can identify revenge trading in others or in past screenshots. "
-            "They cannot identify it in their own current-week data because they rationalise each entry as it happens. "
-            "An automated review that reads the sequence — not the justification — catches what manual review misses."
+            "A single trade rarely proves motive. A sequence can still be useful: loss, fast re-entry, same symbol, larger size, or a plan change under pressure. MyFXJournal helps surface those sequences so you can inspect them honestly."
         ),
         "fit_points": (
-            "The review reads your post-loss sequences: same symbol, tighter spacing, increasing size, quick re-entry after a stop.",
-            "Flagged patterns are cited to specific trades so you can see exactly where it happened rather than accepting a vague label.",
-            "The weekly coaching diagnosis connects the pattern to outcome: did the revenge trade recover, or compound the loss?",
+            "Review likely post-loss re-entry patterns without relying only on manual revenge-trade tags.",
+            "Use cited trades to verify whether the sequence really looks like a discipline break.",
+            "Carry one behavioral constraint into the next week instead of promising to be more disciplined.",
         ),
         "cards": (
             {
-                "title": "Sequence detection, not tag-based",
-                "body": "You don't have to label a trade as revenge. The review reads the timing and sequence and flags it when the pattern is there.",
+                "title": "Sequence review, not tag-based",
+                "body": "You do not need to label a trade in the moment. The review looks for timing and sequence clues in closed trades.",
             },
             {
-                "title": "Outcome-first framing",
-                "body": "The review distinguishes between a revenge trade that happened to win (habit reinforced) and one that lost (cost confirmed). Both are problems — just different ones.",
+                "title": "Outcome is not validation",
+                "body": "A post-loss re-entry can win and still reinforce a risky habit. The review keeps the behavior separate from the result.",
             },
             {
                 "title": "One experiment per week",
-                "body": "The review suggests a specific, testable rule for next week: not 'stop revenge trading' but a concrete behavioural constraint you can actually measure.",
+                "body": "The review points toward a concrete constraint to test, such as a delay after losses or no same-symbol re-entry.",
             },
         ),
         "workflow_steps": (
             {
                 "title": "Connect your trades",
-                "body": "Import via MT5 XLSX, CSV, or MT5 sync. No manual tagging needed — the review reads the raw sequence.",
+                "body": "Import via MT5 XLSX, Tradovate CSV, manual entry, or optional MT5 sync when setup capacity is available.",
             },
             {
                 "title": "Get your review",
-                "body": "When a post-loss re-entry pattern appears in your data, it surfaces in the weekly review with the specific trades cited.",
+                "body": "When likely post-loss sequences appear in your data, the weekly review can surface them with the specific trades cited.",
             },
             {
-                "title": "Apply one fix",
-                "body": "The review ends with a specific experiment: a rule to test next week that directly targets the pattern it found.",
+                "title": "Test one constraint",
+                "body": "The review ends with a specific experiment: a rule to test next week that directly targets the pattern it surfaced.",
             },
         ),
         "workflow_heading": "Catch it in the data, not in the regret.",
-        "cta_heading": "Find out if revenge trading is in your history.",
-        "cta_body": "Import your trades and get a weekly review this week. If the pattern is there, it will show up — with the trades to prove it.",
+        "cta_heading": "Review your post-loss behavior.",
+        "cta_body": "Start free, import trades, and use the weekly review to inspect what happens after losses.",
         "faq": (
             {
                 "question": "Do I have to manually tag revenge trades?",
-                "answer": "No. The review detects post-loss re-entry sequences automatically. You do not need to tag, label, or admit anything in the moment.",
+                "answer": "No. The review can flag likely post-loss re-entry sequences from timing and trade history, so you do not have to rely only on manual tags.",
             },
             {
                 "question": "What counts as a revenge trade in the review?",
@@ -1123,7 +1108,7 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "question": "What if the revenge trade actually won?",
-                "answer": "The review handles this case specifically. A winning revenge trade reinforces the habit without validating the decision. The coaching diagnosis explains the difference.",
+                "answer": "A win does not automatically validate the process. The review helps you separate outcome from whether the sequence matched your plan.",
             },
             {
                 "question": "Is this only for forex?",
@@ -1134,22 +1119,17 @@ SEO_PAGE_DEFINITIONS = {
     "why-do-i-keep-losing-forex-trades": {
         "title": "Why Do I Keep Losing Forex Trades? Find the Real Pattern | MyFXJournal",
         "meta_description": (
-            "If you keep losing forex trades despite knowing the strategy, the issue is usually a behavioural pattern in your execution. MyFXJournal's weekly review reads your trade history and shows you what it actually is."
+            "If you keep losing forex trades despite knowing the strategy, review closed trade history for execution patterns: exits, sessions, sizing, and post-loss behavior."
         ),
         "eyebrow": "Why do I keep losing?",
-        "hero_title": "You are probably not losing because of your strategy.",
+        "hero_title": "The pattern may be in execution, not another strategy.",
         "hero_body": (
-            "If you have taken courses, watched the videos, and know the setup — but your equity curve keeps going the wrong direction — "
-            "the issue is almost certainly not the strategy. It is a pattern in your execution that you are not seeing. "
-            "MyFXJournal reads your actual trade history and shows you what it is."
+            "If you understand the setup but your forex results keep slipping, review the closed trades: exits, sessions, sizing shifts, and what you do after losses. MyFXJournal helps organize that evidence into a weekly review."
         ),
-        "chips": ("Execution pattern detection", "Weekly AI review", "Cited trade evidence"),
-        "intro_title": "The patterns that most traders miss",
+        "chips": ("Forex execution review", "Cited trade evidence", "One next rule"),
+        "intro_title": "Look past the entry",
         "intro_body": (
-            "Losing traders usually focus on entry quality. The data almost always tells a different story. "
-            "The most common patterns in losing weeks are: exiting winners too early, sizing up after losses, "
-            "trading the same idea after it has already failed, and taking setups outside the session where your edge actually exists. "
-            "None of these show up in a standard P&L table."
+            "Entry quality matters, but losing weeks often involve quieter process problems: cutting winners early, trading outside your best session, adding size after losses, or repeating the same idea after it failed."
         ),
         "fit_points": (
             "The review reads exit handling, re-entry sequences, session distribution, and sizing behaviour — not just win rate.",
@@ -1159,25 +1139,25 @@ SEO_PAGE_DEFINITIONS = {
         "cards": (
             {
                 "title": "Exit too early, not entry too late",
-                "body": "Most losing weeks are not about bad entries. They are about cutting winners short while letting the same losing idea run. The review reads the exit side.",
+                "body": "Some losing weeks are less about entries and more about cutting winners short or letting the same losing idea keep running.",
             },
             {
                 "title": "Session and context mismatch",
-                "body": "If your edge exists in one session and you keep trading outside it, the data will show it. The review breaks down performance by session and time of day.",
+                "body": "If your process works better in one session and drifts elsewhere, the review can make that visible by session and time of day.",
             },
             {
                 "title": "Post-loss decision shift",
-                "body": "Many traders change their behaviour after a loss in ways that compound the damage — bigger size, faster re-entry, different setup. The review detects the sequence.",
+                "body": "Many traders change their behaviour after a loss — bigger size, faster re-entry, different setup. The review can surface the sequence.",
             },
         ),
         "workflow_steps": (
             {
                 "title": "Bring in your trade history",
-                "body": "Import your MT5 file, connect MT5 sync, or add trades manually. The more history you bring in, the clearer the patterns.",
+                "body": "Import your MT5 file, add trades manually, or connect optional read-only MT5 sync when setup capacity is available.",
             },
             {
                 "title": "Read this week's review",
-                "body": "The weekly review picks the most significant pattern from your recent trades and explains exactly what it cost you — with cited trades.",
+                "body": "The weekly review highlights a pattern from recent closed trades with cited examples and appropriate sample-size caution.",
             },
             {
                 "title": "Test one change",
@@ -1185,8 +1165,8 @@ SEO_PAGE_DEFINITIONS = {
             },
         ),
         "workflow_heading": "Find the actual reason, not another theory.",
-        "cta_heading": "Stop guessing why the equity curve looks the same every week.",
-        "cta_body": "Import your trades and get a weekly review. Free to start. No credit card.",
+        "cta_heading": "Review the losing pattern from your own trades.",
+        "cta_body": "Start free, import forex history, and use the weekly review to choose one process rule to test.",
         "faq": (
             {
                 "question": "I know my strategy works — why am I still losing?",
@@ -1194,7 +1174,7 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "question": "Will the review tell me what to trade next?",
-                "answer": "No. It tells you what patterns are in your closed trade history and what they cost you. Trade decisions are yours.",
+                "answer": "No. It helps you review patterns in your closed trade history. Trade decisions stay yours.",
             },
             {
                 "question": "What if I only have a few weeks of history?",
@@ -1202,65 +1182,61 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "question": "Is this only for losing traders?",
-                "answer": "No. Profitable traders use it to identify habits that work and protect them, not just to fix losing habits. The review surfaces both.",
+                "answer": "No. The review can also help identify habits that worked in stronger weeks so you know what to protect.",
             },
         ),
     },
     "myfxjournal-vs-tradersync": {
-        "title": "MyFXJournal vs TraderSync — Which Is Right For You? | MyFXJournal",
+        "title": "MyFXJournal vs TraderSync - Review-First vs Tracker-First | MyFXJournal",
         "meta_description": (
-            "Honest comparison: MyFXJournal focuses on weekly AI review, behavioral pattern detection, and reflection depth. TraderSync offers broader analytics and multi-broker support. Here's how to decide."
+            "Compare MyFXJournal and TraderSync by workflow: review-first weekly reflection versus broader tracking, analytics, tags, and broker coverage."
         ),
         "eyebrow": "MyFXJournal vs TraderSync",
-        "hero_title": "TraderSync and MyFXJournal are solving different problems.",
+        "hero_title": "Choose by workflow, not feature count.",
         "hero_body": (
-            "TraderSync is a comprehensive trade tracker with detailed analytics, tags, and multi-broker coverage. "
-            "MyFXJournal focuses on something narrower: a weekly coaching review that reads your execution patterns and tells you the one thing worth fixing. "
-            "Which is right depends on what you actually need."
+            "TraderSync is a broader trade tracking and analytics product. MyFXJournal is narrower: import or sync trades, read a weekly AI-assisted review, and turn that review into one next action."
         ),
-        "chips": ("Honest comparison", "No affiliate bias", "Different use cases"),
+        "chips": ("Workflow comparison", "Review-first", "Different use cases"),
         "intro_title": "What each product is built for",
         "intro_body": (
-            "TraderSync is built for traders who want detailed statistics, manual tagging, broker integrations across many platforms, and a deep analytics dashboard. "
-            "MyFXJournal is built for traders who want a lower-friction weekly review habit with AI-assisted pattern detection — and eventually, conversational reflection grounded in their trade history. "
-            "These are genuinely different products for different workflows."
+            "TraderSync fits traders who want detailed tracking, tags, broad broker coverage, and a deep analytics surface. MyFXJournal fits traders who want a lower-friction review loop that starts with trade history and emphasizes weekly reflection over dashboard maintenance."
         ),
         "fit_points": (
-            "If you want the deepest analytics dashboard and multi-broker support, TraderSync is the stronger choice — it has more integrations and more tag-based analytics.",
-            "If you want a weekly coaching review that automatically identifies behavioral patterns without manual tagging, MyFXJournal is built around that workflow.",
-            "If MT5 is your primary platform, MyFXJournal's read-only MT5 sync is purpose-built for the MT5 retail trader workflow.",
+            "Choose TraderSync if broad broker coverage, manual tags, and detailed analytics are the priority.",
+            "Choose MyFXJournal if the main job is getting to a weekly review and one practical takeaway with less upkeep.",
+            "If MT5 is your main platform, MyFXJournal supports MT5 import immediately and optional read-only sync when setup capacity is available.",
         ),
         "cards": (
             {
-                "title": "Analytics depth vs review quality",
-                "body": "TraderSync has more analytics surfaces. MyFXJournal puts that energy into the weekly review: what the patterns mean and what to do about them.",
+                "title": "Analytics depth vs review focus",
+                "body": "TraderSync offers broader tracking surfaces. MyFXJournal centers the weekly review: what repeated and what to test next.",
             },
             {
-                "title": "Manual tagging vs automatic detection",
-                "body": "TraderSync relies on manual setup categories and tags. MyFXJournal detects behavioral patterns — revenge entries, exit habits, session mismatches — from the raw sequence.",
+                "title": "Manual tagging vs pattern review",
+                "body": "TraderSync can support custom tagging. MyFXJournal reduces tag work by looking for behavior patterns from the trade sequence.",
             },
             {
-                "title": "Price point",
-                "body": "TraderSync starts at ~$29.95/month. MyFXJournal keeps core journaling free; Trader tier will launch at $14/month after the trial/waitlist phase.",
+                "title": "First value",
+                "body": "With MyFXJournal, activation starts when trades are imported and the first useful review is available, not after building a large tagging system.",
             },
         ),
         "workflow_steps": (
             {
                 "title": "Import or sync your trades",
-                "body": "Both products support MT5 imports. MyFXJournal also supports read-only MT5 sync for automatic weekly updates.",
+                "body": "Bring trades into MyFXJournal through MT5 import, Tradovate CSV, manual entry, or optional read-only MT5 sync when available.",
             },
             {
                 "title": "Review your week",
-                "body": "TraderSync shows you a detailed stats dashboard. MyFXJournal shows you a weekly coaching review: one main insight, cited trades, and one thing to change.",
+                "body": "Use MyFXJournal for a concise weekly review with cited trades and one process takeaway.",
             },
             {
                 "title": "Reflect and adjust",
-                "body": "TraderSync surfaces your custom tags and categories. MyFXJournal offers follow-up chat scoped to the review, so you can explore what the pattern actually means.",
+                "body": "Where available, follow-up stays scoped to the weekly review and your trade history rather than becoming general trading advice.",
             },
         ),
         "workflow_heading": "Two different approaches to the same problem.",
-        "cta_heading": "Try the weekly review approach — free.",
-        "cta_body": "No credit card. Import your trades and get a weekly review this week. If the review-first approach fits your workflow, great.",
+        "cta_heading": "Try the review-first workflow.",
+        "cta_body": "Start free, import your trades, and see whether a weekly review loop fits better than a tracker-heavy workflow.",
         "faq": (
             {
                 "question": "Is this a fair comparison?",
@@ -1272,74 +1248,69 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "question": "What happens when MyFXJournal launches paid tiers?",
-                "answer": "Free tier stays free. Trader tier will launch at $14/month — below TraderSync's entry price. Everyone currently using the product during beta gets grandfathered pricing.",
+                "answer": "Core journaling stays free to start. Optional premium workflow access and current pricing are shown on the pricing page so the comparison does not depend on stale plan details.",
             },
         ),
     },
     "myfxjournal-vs-edgewonk": {
-        "title": "MyFXJournal vs Edgewonk — Different Tools, Different Habits | MyFXJournal",
+        "title": "MyFXJournal vs Edgewonk - Automatic Review vs Manual Discipline | MyFXJournal",
         "meta_description": (
-            "Edgewonk focuses on deep trade analytics and manual journaling discipline. MyFXJournal focuses on automatic weekly review and behavioral pattern detection. Honest comparison."
+            "Compare MyFXJournal and Edgewonk by journaling habit: automatic weekly review from trade history versus deeper manual process scoring."
         ),
         "eyebrow": "MyFXJournal vs Edgewonk",
-        "hero_title": "Edgewonk and MyFXJournal are built around different trading habits.",
+        "hero_title": "Do you want a manual process system or a weekly review loop?",
         "hero_body": (
-            "Edgewonk is a desktop-based trade journal with deep analytics, manual trade tagging, and a strong emphasis on process discipline. "
-            "MyFXJournal is web-based, MT5-connected, and focused on a weekly AI review that reads patterns in your trade history without requiring manual journaling effort. "
-            "The difference is mostly about what kind of work you want to do."
+            "Edgewonk is built around deep manual journaling, scoring, and process discipline. MyFXJournal is web-based and review-first: import or sync trade history, then use the weekly review to decide what to work on next."
         ),
         "chips": ("Honest comparison", "Different workflows", "Free to try"),
         "intro_title": "What separates them",
         "intro_body": (
-            "Edgewonk's strength is in its deep manual discipline model: every trade gets tagged, scored, and reviewed against your own rules. "
-            "For traders who want to build that kind of systematic process, it is genuinely powerful. "
-            "MyFXJournal takes the opposite stance: the review should run automatically on your trade data so the habit is frictionless, "
-            "and the AI should do the pattern detection so you don't have to self-identify your mistakes in the moment."
+            "Edgewonk's strength is a structured manual discipline model: tags, scoring, and reviewing against your own rules. MyFXJournal takes a lighter stance: start from trade history, reduce setup work, and make the weekly review the habit."
         ),
         "fit_points": (
             "If you want a deeply manual journaling workflow with your own scoring system and trade categories, Edgewonk is more flexible for that.",
-            "If you want the weekly review to happen automatically and the pattern detection to work without tagging, MyFXJournal is built around that workflow.",
-            "Edgewonk is a one-time purchase (~$169). MyFXJournal keeps core journaling free; Trader tier launches at $14/month after the trial/waitlist phase.",
+            "If you want a weekly review that works from imported or synced history with less tagging, MyFXJournal is built around that workflow.",
+            "Check each product's pricing page for current plan details; this comparison focuses on workflow fit.",
         ),
         "cards": (
             {
                 "title": "Manual discipline vs automatic review",
-                "body": "Edgewonk works if you commit to the tagging and scoring process. MyFXJournal's value comes from having no process to maintain — the review runs on your raw trade data.",
+                "body": "Edgewonk rewards traders who maintain tags and scoring. MyFXJournal reduces setup so the first value is the review itself.",
             },
             {
                 "title": "Desktop vs web",
-                "body": "Edgewonk is a downloaded desktop app. MyFXJournal is web-based and syncs with MT5 automatically — no exports, no local file management.",
+                "body": "Edgewonk is desktop software. MyFXJournal runs in the browser and supports imports plus optional read-only MT5 sync when setup capacity is available.",
             },
             {
                 "title": "Coaching style",
-                "body": "Edgewonk surfaces your own rules and lets you score against them. MyFXJournal's review identifies patterns you may not have named or noticed yet.",
+                "body": "Edgewonk helps you score against your own process. MyFXJournal highlights likely patterns from trade history and asks you to test one adjustment.",
             },
         ),
         "workflow_steps": (
             {
                 "title": "Import your trade history",
-                "body": "Both products support trade imports. Edgewonk uses its own import flow; MyFXJournal supports MT5 XLSX, CSV, and read-only MT5 sync.",
+                "body": "MyFXJournal supports MT5 XLSX, Tradovate CSV, manual entry, and optional read-only MT5 sync during trial when capacity is available.",
             },
             {
                 "title": "Review and reflect",
-                "body": "Edgewonk shows your custom scoring dashboard. MyFXJournal shows a weekly coaching review — one main insight, cited trades, one suggested experiment.",
+                "body": "Edgewonk shows your custom scoring dashboard. MyFXJournal shows a weekly review with one main insight, cited trades, and one suggested experiment.",
             },
             {
                 "title": "Build the habit",
-                "body": "Both products are only useful if you return to them. The difference is how much setup you need to do to get value from each visit.",
+                "body": "Both products only help if you return. MyFXJournal keeps the repeat action simple: import or sync, review, pick one next rule.",
             },
         ),
         "workflow_heading": "Both are useful. The question is what habit you want to build.",
         "cta_heading": "Try the frictionless approach.",
-        "cta_body": "Core journaling stays free. No credit card. Import your trades and get a weekly review — no tagging, no scoring, no setup discipline required.",
+        "cta_body": "Start free, import your trades, and see whether the review-first habit is easier to keep.",
         "faq": (
             {
-                "question": "Is Edgewonk worth the one-time price?",
-                "answer": "For traders who want to build a deep manual journaling discipline and are willing to do the tagging work consistently, yes. If manual process maintenance is what caused you to stop journaling in the past, probably not.",
+                "question": "Is Edgewonk better for manual journaling?",
+                "answer": "It can be a better fit if you want a deep manual scoring system and are willing to maintain the tagging work consistently.",
             },
             {
                 "question": "Does MyFXJournal require manual tagging?",
-                "answer": "No. Behavioral patterns — revenge entries, exit habits, session mismatches — are detected automatically from the trade sequence. You don't tag anything.",
+                "answer": "No. Likely behavioral patterns such as revenge entries, exit habits, and session mismatches can be surfaced from the trade sequence without requiring manual tags first.",
             },
             {
                 "question": "Can I use both?",
@@ -1379,14 +1350,14 @@ SEO_PAGE_DEFINITIONS = {
                 "body": "Win rate alone will not show revenge re-entries or session drift. The review helps spot sequences and habits, not just totals.",
             },
             {
-                "title": "Free starting point",
-                "body": "Core journaling stays free. Optional MT5 sync is available during the premium workflow trial when setup capacity allows — import works immediately.",
+                "title": "Free start, clear upgrade path",
+                "body": "Core journaling starts with import and manual entry. Optional MT5 sync is a premium workflow trial feature when setup capacity allows.",
             },
         ),
         "workflow_steps": (
             {
                 "title": "Start free and import",
-                "body": "Create an account and upload MT5 or Tradovate history, or add trades manually. No card required to begin.",
+                "body": "Create an account and upload MT5 or Tradovate history, or add trades manually.",
             },
             {
                 "title": "Review by account",
@@ -1410,8 +1381,8 @@ SEO_PAGE_DEFINITIONS = {
                 "answer": "Templates store rows. MyFXJournal organizes review, helps spot behavioral patterns from trade sequences, and produces a weekly summary so you spend less time assembling the week.",
             },
             {
-                "question": "Looking for MT5, forex, AI, or spreadsheet-specific pages?",
-                "answer": "This page is the broad hub. We also have dedicated pages for free MT5 journaling, free AI weekly review, free forex review, and trading journal template alternatives — each focused on a narrower search intent.",
+                "question": "Which free journal page should I start with?",
+                "answer": "Use this page for the broad workflow. MT5, AI review, forex, spreadsheet-template, and prop-firm searches each have a narrower page with more specific expectations.",
             },
             {
                 "question": "Does this give trade signals or guaranteed improvement?",
@@ -1471,7 +1442,7 @@ SEO_PAGE_DEFINITIONS = {
         ),
         "workflow_heading": "Import today. Sync when it saves time.",
         "cta_heading": "Start reviewing MT5 history without another export cycle.",
-        "cta_body": "Import your MT5 file free today. Add optional sync later if you want history to update without another export.",
+        "cta_body": "Import your MT5 file today. Add optional sync later if you want history to update without another export.",
         "faq": (
             {
                 "question": "Do I need MT5 sync to use the journal?",
@@ -1499,7 +1470,7 @@ SEO_PAGE_DEFINITIONS = {
         "eyebrow": "Free AI trading journal",
         "hero_title": "Weekly AI-assisted review without writing the entry yourself.",
         "hero_body": (
-            "Import closed trades first. Each week, an AI-assisted review reads the sequence — re-entries, session mix, exit habits — and summarizes what mattered with cited trades. "
+            "Import closed trades first. When enough history is in place, an AI-assisted review reads the sequence — re-entries, session mix, exit habits — and summarizes what mattered with cited trades. "
             "For reflection after the fact, not live trade decisions, financial advice, or guaranteed improvement."
         ),
         "chips": ("Weekly AI-assisted review", "Cited trades", "Reflection-first"),
@@ -1631,7 +1602,7 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "question": "How does this relate to the general free trading journal?",
-                "answer": "This page is forex-specific. For a broader free journal overview — imports, accounts, and the full workflow — start from the free trading journal hub page on this site.",
+                "answer": "This page is forex-specific. The broader free journal page covers the general workflow across imports, accounts, and weekly review.",
             },
         ),
     },
@@ -1703,7 +1674,7 @@ SEO_PAGE_DEFINITIONS = {
             },
             {
                 "question": "How does this relate to the general free trading journal?",
-                "answer": "This page is for spreadsheet and template searchers. For a broader overview of the free journal workflow, start from the free trading journal hub page on this site.",
+                "answer": "This page is for spreadsheet and template searchers. The broader free journal page covers the general workflow across imports, accounts, and weekly review.",
             },
         ),
     },
@@ -1732,7 +1703,7 @@ SEO_PAGE_DEFINITIONS = {
         "cards": (
             {
                 "title": "Account separation matters",
-                "body": "Mixing prop and personal history hides the behavior that actually failed the evaluation.",
+                "body": "Mixing prop and personal history hides the behavior that matters for the evaluation account.",
             },
             {
                 "title": "Post-loss behavior in view",

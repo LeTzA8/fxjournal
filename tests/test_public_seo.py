@@ -1,6 +1,7 @@
 from sqlalchemy import event
 from werkzeug.security import generate_password_hash
 
+from auth_account import SEO_PAGE_DEFINITIONS, SEO_SITEMAP_PATHS
 from models import User, db
 
 
@@ -34,26 +35,29 @@ def test_sitemap_xml_lists_public_pages(client):
 
     assert response.status_code == 200
     assert b'<?xml version="1.0" encoding="UTF-8"?>' in response.data
-    assert b"<loc>http://localhost:5000/</loc>" in response.data
-    assert b"<loc>http://localhost:5000/pricing</loc>" in response.data
-    assert b"<loc>http://localhost:5000/dashboard</loc>" in response.data
-    assert b"<loc>http://localhost:5000/login</loc>" in response.data
-    assert b"<loc>http://localhost:5000/register</loc>" in response.data
-    assert b"<loc>http://localhost:5000/contact</loc>" in response.data
-    assert b"<loc>http://localhost:5000/privacy</loc>" in response.data
-    assert b"<loc>http://localhost:5000/terms</loc>" in response.data
-    assert b"<loc>http://localhost:5000/faq/mt5-server</loc>" in response.data
-    assert b"<loc>http://localhost:5000/free-mt5-sync</loc>" in response.data
-    assert b"<loc>http://localhost:5000/mt5-trading-journal</loc>" in response.data
-    assert b"<loc>http://localhost:5000/forex-trading-journal</loc>" in response.data
-    assert b"<loc>http://localhost:5000/weekly-trading-review</loc>" in response.data
-    assert b"<loc>http://localhost:5000/trade-replay-chart</loc>" in response.data
-    assert b"<loc>http://localhost:5000/free-trading-journal</loc>" in response.data
-    assert b"<loc>http://localhost:5000/free-mt5-trading-journal</loc>" in response.data
-    assert b"<loc>http://localhost:5000/free-ai-trading-journal</loc>" in response.data
-    assert b"<loc>http://localhost:5000/free-forex-trading-journal</loc>" in response.data
-    assert b"<loc>http://localhost:5000/free-trading-journal-template</loc>" in response.data
-    assert b"<loc>http://localhost:5000/free-prop-firm-trading-journal</loc>" in response.data
+    for path in SEO_SITEMAP_PATHS:
+        assert f"<loc>http://localhost:5000{path}</loc>".encode() in response.data
+
+
+def test_all_configured_seo_pages_are_indexable_unique_and_canonical(client):
+    titles = [page["title"] for page in SEO_PAGE_DEFINITIONS.values()]
+    descriptions = [page["meta_description"] for page in SEO_PAGE_DEFINITIONS.values()]
+    hero_titles = [page["hero_title"] for page in SEO_PAGE_DEFINITIONS.values()]
+
+    assert len(titles) == len(set(titles))
+    assert len(descriptions) == len(set(descriptions))
+    assert len(hero_titles) == len(set(hero_titles))
+
+    for slug, page in SEO_PAGE_DEFINITIONS.items():
+        response = client.get(f"/{slug}")
+        text = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert page["title"] in text
+        assert page["hero_title"] in text
+        assert 'name="description"' in text
+        assert '<meta name="robots" content="index, follow">' in text
+        assert f'href="http://localhost:5000/{slug}"' in text
 
 
 FREE_SEO_CLUSTER_PAGES = (
@@ -170,7 +174,7 @@ def test_free_mt5_sync_page_has_indexable_metadata(client):
     response = client.get("/free-mt5-sync")
 
     assert response.status_code == 200
-    assert b"MyFXJournal | MT5 Sync Trial" in response.data
+    assert b"MT5 Sync Trial" in response.data
     assert b"14-day premium workflow trial" in response.data
     assert b'<meta name="robots" content="index, follow">' in response.data
     assert b'href="http://localhost:5000/free-mt5-sync"' in response.data

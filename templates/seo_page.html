@@ -28,16 +28,14 @@
                         {% endfor %}
                     </div>
                     <p class="seo-page-trial-note landing-reveal" data-reveal-delay="390">
-                        Core journal stays free. 14-day premium trial, no card.
+                        Import works immediately. Optional premium workflows are covered in
                         <a href="{{ url_for('pricing_page') }}">Pricing &amp; FAQ</a>
                     </p>
                     <div class="landing-actions landing-reveal" data-reveal-delay="420">
                         {% if user_logged_in %}
                         <a href="{{ url_for('dashboard.home') }}" class="submit-btn hero-cta">Open Dashboard</a>
-                        <a href="{{ url_for('landing') }}#features" class="ghost-btn">See Product Proof</a>
                         {% else %}
                         <a href="{{ url_for('register') }}" class="submit-btn hero-cta">Start Free</a>
-                        <a href="{{ url_for('landing') }}#features" class="ghost-btn">See Product Proof</a>
                         {% endif %}
                     </div>
                 </div>
@@ -118,7 +116,6 @@
                     {% else %}
                     <a href="{{ url_for('register') }}" class="submit-btn hero-cta">Start Free</a>
                     {% endif %}
-                    <a href="{{ url_for('landing') }}#features" class="ghost-btn">See Product Proof</a>
                 </div>
             </div>
         </section>

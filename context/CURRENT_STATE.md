@@ -1,6 +1,15 @@
 # CURRENT_STATE
 
-Last Updated: 2026-05-25
+Last Updated: 2026-05-26
+
+## SEO acquisition-to-activation pass (2026-05-26)
+
+- Reviewed all configured public SEO pages in `SEO_PAGE_DEFINITIONS` through an acquisition -> activation -> retention lens. Copy now leads with search intent, import/sync expectations, first review value, and one clear next action instead of repeating broad product philosophy.
+- Existing pages were tuned for safer claims: MT5 sync is framed as optional/capacity-managed/trial-gated where relevant, AI pages avoid signal/prediction/chatbot overpromising, comparison pages avoid stale competitor price claims, revenge/prop/losing-trade pages use evidence-bounded reflection language.
+- The free SEO cluster remains the broad hub plus MT5, AI, forex, template-alternative, and prop-firm intents; repeated free/trial/no-card wording was consolidated, template copy stays clear that MyFXJournal is software rather than a downloadable spreadsheet.
+- `templates/seo_page.html` now shows one dominant top CTA and one bottom CTA by removing repeated "See Product Proof" secondary buttons; the retained pricing text link keeps premium workflow/payment context without becoming a competing CTA.
+- Public SEO tests now iterate all configured SEO page definitions and sitemap paths, checking unique page titles/descriptions/H1s plus 200/indexable/canonical output for every SEO slug.
+- Tests: `.\.venv\Scripts\python.exe -m py_compile auth_account.py tests/test_public_seo.py`; `.\.venv\Scripts\pytest.exe tests/test_public_seo.py -v` (15 passed).
 
 ## Admin MT5 delete button fixes (2026-05-25)
 
