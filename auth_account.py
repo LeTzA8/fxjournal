@@ -2036,9 +2036,48 @@ def _resolve_email_reply_to():
     )
 
 
-def send_email_placeholder(to_email, subject, text_body, html_body=None):
+ADMIN_EMAIL_NAME_PLACEHOLDER = "{{name}}"
+
+
+def _resolve_admin_broadcast_from_header():
+    """From address for admin broadcast emails (distinct from transactional noreply)."""
+    raw = os.getenv("ADMIN_EMAIL_FROM", "admin@myfxjournal.com").strip()
+    if "<" in raw and ">" in raw:
+        return raw
+    name = os.getenv("EMAIL_FROM_NAME", "MyFXJournal").strip()
+    if name:
+        return f"{name} <{raw}>"
+    return raw
+
+
+def apply_admin_email_placeholders(content, *, recipient_name):
+    if not content:
+        return content
+    return content.replace(ADMIN_EMAIL_NAME_PLACEHOLDER, recipient_name)
+
+
+def html_to_plain_email_text(html_body):
+    if not html_body:
+        return ""
+    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html_body, flags=re.I | re.S)
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
+    text = re.sub(r"</p\s*>", "\n\n", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = (
+        text.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", '"')
+        .replace("&#39;", "'")
+    )
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def send_email_placeholder(to_email, subject, text_body, html_body=None, *, from_header=None):
     provider = os.getenv("EMAIL_PROVIDER", "placeholder").strip().lower()
-    sender = _resolve_email_from_header()
+    sender = from_header or _resolve_email_from_header()
     reply_to = _resolve_email_reply_to()
     send_enabled = os.getenv("EMAIL_SEND_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     api_key = os.getenv("RESEND_API_KEY", "").strip() or os.getenv("EMAIL_API_KEY", "").strip()
@@ -2392,6 +2431,7 @@ def register_public_auth_routes(
             "mt5": "admin_mt5_accounts",
             "cfd_symbols": "admin_cfd_symbols",
             "weekly_report": "admin_weekly_report",
+            "send_email": "admin_send_email",
         }
         endpoint = endpoint_map.get(section, "admin_signup_users")
         if message:
@@ -4228,6 +4268,156 @@ def register_public_auth_routes(
             section="codes",
             signup_codes=signup_codes,
         )
+
+    def _parse_admin_email_inactive_days(raw_value, *, default=30):
+        try:
+            days = int(raw_value)
+        except (TypeError, ValueError):
+            days = default
+        return max(1, min(days, 3650))
+
+    def _query_admin_email_recipients(*, inactive_days, inactive_only, search_query):
+        now = utcnow_naive()
+        cutoff = now - timedelta(days=inactive_days)
+        users_query = User.query
+        if search_query:
+            search_like = f"%{search_query}%"
+            search_filters = [
+                User.username.ilike(search_like),
+                User.email.ilike(search_like),
+            ]
+            if search_query.isdigit():
+                search_filters.append(User.id == int(search_query))
+            users_query = users_query.filter(or_(*search_filters))
+        users = users_query.order_by(User.username.asc(), User.id.asc()).all()
+        recipients = []
+        for user in users:
+            last_login = user.last_login_at
+            is_inactive = last_login is None or last_login < cutoff
+            if inactive_only and not is_inactive:
+                continue
+            recipients.append(
+                {
+                    "id": user.id,
+                    "name": user.username,
+                    "email": user.email,
+                    "signup_status": user.signup_status,
+                    "last_login_at": last_login.isoformat() if last_login else None,
+                    "inactive": is_inactive,
+                }
+            )
+        return recipients
+
+    def render_admin_send_email_page(*, admin_user, **extra_context):
+        page_ctx = build_admin_page_context(
+            admin_user=admin_user,
+            section="send_email",
+            title="MyFXJournal | Send Email",
+            page_heading="Send Email",
+            page_subtitle=(
+                "Compose and send individual emails to selected users. "
+                "Use {{name}} in the subject or body for per-recipient personalization."
+            ),
+        )
+        page_ctx.update(extra_context)
+        return render_template("admin_send_email.html", **page_ctx)
+
+    @app.route("/dashboard/admin/access/send-email")
+    @admin_required
+    def admin_send_email():
+        admin_user = get_current_admin_user()
+        default_inactive_days = _parse_admin_email_inactive_days(
+            os.getenv("ADMIN_EMAIL_INACTIVE_DAYS_DEFAULT", "30"),
+            default=30,
+        )
+        return render_admin_send_email_page(
+            admin_user=admin_user,
+            default_inactive_days=default_inactive_days,
+            admin_broadcast_from=_resolve_admin_broadcast_from_header(),
+            send_delay_ms=max(
+                100,
+                int(os.getenv("ADMIN_EMAIL_SEND_DELAY_MS", "400") or 400),
+            ),
+        )
+
+    @app.route("/dashboard/admin/access/send-email/recipients")
+    @admin_required
+    def admin_send_email_recipients():
+        inactive_days = _parse_admin_email_inactive_days(request.args.get("inactive_days"))
+        inactive_only = request.args.get("inactive_only", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        search_query = (request.args.get("q") or "").strip()
+        recipients = _query_admin_email_recipients(
+            inactive_days=inactive_days,
+            inactive_only=inactive_only,
+            search_query=search_query,
+        )
+        return jsonify(
+            {
+                "recipients": recipients,
+                "inactive_days": inactive_days,
+                "inactive_only": inactive_only,
+            }
+        )
+
+    @app.route("/dashboard/admin/access/send-email/send-one", methods=["POST"])
+    @admin_required
+    def admin_send_email_send_one():
+        payload = request.get_json(silent=True) or {}
+        user_id = payload.get("user_id")
+        subject = str(payload.get("subject") or "").strip()
+        html_body = str(payload.get("html_body") or "").strip()
+        text_body = str(payload.get("text_body") or "").strip()
+
+        if not user_id:
+            return jsonify({"error": "missing_user", "message": "Recipient is required."}), 400
+        try:
+            user_id = int(user_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "invalid_user", "message": "Invalid recipient."}), 400
+        if not subject:
+            return jsonify({"error": "missing_subject", "message": "Subject is required."}), 400
+        if len(subject) > 200:
+            return jsonify({"error": "subject_too_long", "message": "Subject is too long."}), 400
+        if not html_body and not text_body:
+            return jsonify({"error": "missing_body", "message": "Message body is required."}), 400
+        if len(html_body) > 512_000:
+            return jsonify({"error": "body_too_large", "message": "Message body is too large."}), 400
+
+        recipient = db.session.get(User, user_id)
+        if recipient is None:
+            return jsonify({"error": "user_not_found", "message": "Recipient not found."}), 404
+
+        recipient_name = recipient.username
+        personalized_subject = apply_admin_email_placeholders(subject, recipient_name=recipient_name)
+        personalized_html = apply_admin_email_placeholders(html_body, recipient_name=recipient_name)
+        personalized_text = apply_admin_email_placeholders(
+            text_body or html_to_plain_email_text(personalized_html),
+            recipient_name=recipient_name,
+        )
+
+        result = send_email_placeholder(
+            recipient.email,
+            personalized_subject,
+            personalized_text,
+            html_body=personalized_html or None,
+            from_header=_resolve_admin_broadcast_from_header(),
+        )
+        sent = bool(result.get("sent"))
+        return jsonify(
+            {
+                "ok": sent,
+                "sent": sent,
+                "mode": result.get("mode"),
+                "user_id": recipient.id,
+                "email": recipient.email,
+                "name": recipient_name,
+            }
+        ), (200 if sent else 502)
 
     @app.route("/dashboard/admin/access/cfd-symbols")
     @root_admin_required

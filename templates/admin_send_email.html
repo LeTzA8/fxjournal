@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+{% include 'partials/admin_panel_head.html' %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" crossorigin="anonymous">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin_send_email.css') }}">
+{% endblock %}
+
+{% block content %}
+{% include 'partials/admin_shell_start.html' %}
+
+        <section
+            class="panel admin-send-email-compose"
+            id="adminSendEmailRoot"
+            data-recipients-url="{{ url_for('admin_send_email_recipients') }}"
+            data-send-url="{{ url_for('admin_send_email_send_one') }}"
+            data-csrf-token="{{ csrf_token() }}"
+            data-default-inactive-days="{{ default_inactive_days }}"
+            data-send-delay-ms="{{ send_delay_ms }}"
+            data-placeholder="{{ '{{' }}name{{ '}}' }}"
+        >
+            <div class="panel-head panel-head-stack">
+                <div>
+                    <h2>Compose</h2>
+                    <p class="helper-note">
+                        Sends individually via Resend from <strong>{{ admin_broadcast_from }}</strong>.
+                        Use <code>{{ '{{' }}name{{ '}}' }}</code> in the subject or body for per-recipient personalization.
+                    </p>
+                </div>
+            </div>
+
+            <div class="admin-send-email-grid">
+                <div class="admin-send-email-main">
+                    <div class="admin-send-email-field">
+                        <label for="adminSendEmailToSearch">To</label>
+                        <div class="admin-send-email-to-wrap">
+                            <div class="admin-send-email-chips" id="adminSendEmailChips" aria-live="polite"></div>
+                            <input
+                                type="search"
+                                id="adminSendEmailToSearch"
+                                class="admin-send-email-to-search"
+                                placeholder="Search name or email…"
+                                autocomplete="off"
+                                spellcheck="false"
+                            >
+                        </div>
+                        <div class="admin-send-email-recipient-panel" id="adminSendEmailRecipientPanel" hidden>
+                            <ul class="admin-send-email-recipient-list" id="adminSendEmailRecipientList" role="listbox" aria-label="Recipients"></ul>
+                        </div>
+                        <div class="admin-send-email-recipient-tools">
+                            <label class="admin-send-email-inactive-toggle">
+                                <input type="checkbox" id="adminSendEmailInactiveOnly">
+                                <span>Inactive only</span>
+                            </label>
+                            <label class="admin-send-email-inactive-days" for="adminSendEmailInactiveDays">
+                                <span class="soft">Last login older than</span>
+                                <input
+                                    type="number"
+                                    id="adminSendEmailInactiveDays"
+                                    min="1"
+                                    max="3650"
+                                    value="{{ default_inactive_days }}"
+                                >
+                                <span class="soft">days</span>
+                            </label>
+                            <button type="button" class="ghost-btn" id="adminSendEmailSelectVisible">Select visible</button>
+                            <button type="button" class="ghost-btn" id="adminSendEmailClearSelected">Clear</button>
+                            <span class="admin-send-email-recipient-status soft" id="adminSendEmailRecipientStatus" role="status"></span>
+                        </div>
+                    </div>
+
+                    <div class="admin-send-email-field">
+                        <label for="adminSendEmailSubject">Subject</label>
+                        <input
+                            type="text"
+                            id="adminSendEmailSubject"
+                            class="admin-send-email-subject"
+                            maxlength="200"
+                            placeholder="Subject line"
+                            autocomplete="off"
+                        >
+                    </div>
+
+                    <div class="admin-send-email-field">
+                        <span class="admin-send-email-label-row">
+                            <label for="adminSendEmailEditor">Message</label>
+                            <button type="button" class="ghost-btn admin-send-email-insert-placeholder" id="adminSendEmailInsertPlaceholder">
+                                Insert {{ '{{' }}name{{ '}}' }}
+                            </button>
+                        </span>
+                        <div id="adminSendEmailEditor" class="admin-send-email-editor" aria-label="Email body"></div>
+                    </div>
+
+                    <div class="admin-send-email-actions">
+                        <button type="button" class="submit-btn" id="adminSendEmailSendBtn">Send to selected</button>
+                        <span class="admin-send-email-send-hint soft" id="adminSendEmailSendHint"></span>
+                    </div>
+
+                    <div class="admin-send-email-progress" id="adminSendEmailProgress" hidden>
+                        <div class="admin-send-email-progress-bar" aria-hidden="true">
+                            <div class="admin-send-email-progress-fill" id="adminSendEmailProgressFill"></div>
+                        </div>
+                        <p class="admin-send-email-progress-text" id="adminSendEmailProgressText" role="status" aria-live="polite"></p>
+                    </div>
+
+                    <div class="admin-send-email-summary" id="adminSendEmailSummary" hidden role="status" aria-live="polite"></div>
+                </div>
+
+                <aside class="admin-send-email-preview panel spotlight-panel">
+                    <div class="panel-head">
+                        <h2>Preview</h2>
+                        <span class="soft" id="adminSendEmailPreviewRecipient">Select a recipient</span>
+                    </div>
+                    <p class="admin-send-email-preview-subject" id="adminSendEmailPreviewSubject"></p>
+                    <div class="admin-send-email-preview-body" id="adminSendEmailPreviewBody"></div>
+                </aside>
+            </div>
+        </section>
+
+{% include 'partials/admin_shell_end.html' %}
+{% endblock %}
+
+{% block page_scripts %}
+    {{ super() }}
+    <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js" crossorigin="anonymous"></script>
+    <script defer src="{{ url_for('static', filename='js/admin_send_email.js') }}"></script>
+{% endblock %}

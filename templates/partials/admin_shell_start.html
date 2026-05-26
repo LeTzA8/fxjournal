@@ -21,6 +21,10 @@
           href="{{ url_for('admin_journal.journal_home') }}"
           class="admin-side-nav-link{% if section == 'journal' %} is-active{% endif %}"
         >Journal</a>
+        <a
+          href="{{ url_for('admin_send_email') }}"
+          class="admin-side-nav-link{% if section == 'send_email' %} is-active{% endif %}"
+        >Send Email</a>
         {% if is_root_admin %}
         <a
           href="{{ url_for('admin_mt5_accounts') }}"
@@ -136,6 +140,17 @@
           <span class="admin-stat-tile admin-stat-tile--static">
             <span class="admin-stat-label">MT5 accounts</span>
             <span class="admin-stat-value">{{ overview.mt5_accounts }}</span>
+          </span>
+        </div>
+        {% elif section == 'send_email' %}
+        <div class="admin-stat-row">
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">From address</span>
+            <span class="admin-stat-value admin-stat-value--compact">{{ admin_broadcast_from }}</span>
+          </span>
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">Placeholder</span>
+            <span class="admin-stat-value">{{ '{{' }}name{{ '}}' }}</span>
           </span>
         </div>
         {% elif section == 'weekly_report' %}

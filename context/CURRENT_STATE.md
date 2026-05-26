@@ -2,6 +2,14 @@
 
 Last Updated: 2026-05-26
 
+## Admin Send Email compose (2026-05-26)
+
+- `GET /dashboard/admin/access/send-email` (`admin_send_email`): admin-gated Gmail-style compose with searchable multi-select recipients, adjustable inactive filter (last login older than N days), Quill rich text (bold/italic/links/images), `{{name}}` placeholder, live preview for first selected recipient, and sequential per-recipient send with progress + summary.
+- `GET /dashboard/admin/access/send-email/recipients` + `POST /dashboard/admin/access/send-email/send-one`: JSON APIs; sends via existing Resend path with `from_header` from `ADMIN_EMAIL_FROM` (default `admin@myfxjournal.com`). Client delays between sends (`ADMIN_EMAIL_SEND_DELAY_MS`, default 400ms).
+- `auth_account.send_email_placeholder` accepts optional `from_header`; helpers `apply_admin_email_placeholders`, `html_to_plain_email_text`, `_resolve_admin_broadcast_from_header`.
+- UI: `templates/admin_send_email.html`, `static/css/admin_send_email.css`, `static/js/admin_send_email.js`; nav link in `partials/admin_shell_start.html`.
+- Tests: `tests/test_admin_send_email.py`, `tests/test_send_email.py` (custom from), `tests/test_admin_route_gating.py` route list.
+
 ## Admin users CSV export (2026-05-26)
 
 - `GET /dashboard/admin/access/users/export` (`admin_signup_users_export`): admin-gated download of all users as CSV with columns name (username), email, signup date (`created_at`), last login date (`last_login_at`), last active date (`last_active_at`), using the same UTC timestamp format as the admin users table.
