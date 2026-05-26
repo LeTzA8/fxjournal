@@ -1,4 +1,6 @@
+import csv
 from datetime import datetime
+from io import StringIO
 from itertools import count
 
 import pytest
@@ -12,6 +14,7 @@ from helpers.app_settings import MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, get_bool_ap
 ALL_ADMIN_ROUTES = [
     ("get", "/dashboard/admin/access"),
     ("get", "/dashboard/admin/access/users"),
+    ("get", "/dashboard/admin/access/users/export"),
     ("get", "/dashboard/admin/access/codes"),
     ("get", "/dashboard/admin/access/mt5"),
     ("get", "/dashboard/admin/access/cfd-symbols"),
@@ -302,3 +305,67 @@ def test_root_admin_can_toggle_mt5_auto_bar_sync(app_ctx, client, monkeypatch):
 
     assert response.status_code == 302
     assert get_bool_app_setting(MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, False) is True
+
+
+def test_admin_users_export_returns_csv_for_all_users(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "admin-users-export@example.com")
+    admin = _create_user(
+        username="admin-users-export",
+        email="admin-users-export@example.com",
+        is_admin=True,
+    )
+    first = _create_user(
+        username="export-alpha",
+        email="export-alpha@example.com",
+    )
+    second = _create_user(
+        username="export-beta",
+        email="export-beta@example.com",
+    )
+    first.created_at = datetime(2026, 1, 10, 12, 0, 0)
+    first.last_login_at = datetime(2026, 2, 1, 8, 30, 0)
+    second.created_at = datetime(2026, 1, 15, 9, 0, 0)
+    second.last_login_at = None
+    db.session.commit()
+    _login_as(client, admin)
+
+    response = client.get("/dashboard/admin/access/users/export")
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/csv"
+    assert "attachment" in response.headers.get("Content-Disposition", "")
+    assert "myfxjournal-users-" in response.headers.get("Content-Disposition", "")
+
+    rows = list(csv.reader(StringIO(response.get_data(as_text=True))))
+    assert rows[0] == ["name", "email", "signup date", "last login date"]
+    exported = {row[1]: row for row in rows[1:]}
+    assert exported["export-alpha@example.com"] == [
+        "export-alpha",
+        "export-alpha@example.com",
+        "2026-01-10 12:00 UTC",
+        "2026-02-01 08:30 UTC",
+    ]
+    assert exported["export-beta@example.com"] == [
+        "export-beta",
+        "export-beta@example.com",
+        "2026-01-15 09:00 UTC",
+        "-",
+    ]
+    assert "admin-users-export@example.com" in exported
+
+
+def test_admin_users_page_includes_export_link(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "admin-users-export-link@example.com")
+    admin = _create_user(
+        username="admin-users-export-link",
+        email="admin-users-export-link@example.com",
+        is_admin=True,
+    )
+    db.session.commit()
+    _login_as(client, admin)
+
+    response = client.get("/dashboard/admin/access/users")
+
+    assert response.status_code == 200
+    assert b"/dashboard/admin/access/users/export" in response.data
+    assert b"Export all users (CSV)" in response.data

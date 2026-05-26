@@ -148,6 +148,7 @@
                         {% endif %}
                     </form>
                     <div class="users-toolbar-meta">
+                        <a href="{{ url_for('admin_signup_users_export') }}" class="ghost-btn">Export all users (CSV)</a>
                         <p class="helper-note">
                             {% if users_total_count %}
                             Showing {{ users_showing_from }}-{{ users_showing_to }} of {{ users_total_count }} users

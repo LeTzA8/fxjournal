@@ -2,6 +2,12 @@
 
 Last Updated: 2026-05-26
 
+## Admin users CSV export (2026-05-26)
+
+- `GET /dashboard/admin/access/users/export` (`admin_signup_users_export`): admin-gated download of all users as CSV with columns name (username), email, signup date (`created_at`), last login date (`last_login_at`), using the same UTC timestamp format as the admin users table.
+- `templates/admin_signup_access.html`: **Export all users (CSV)** link on the Registered Users panel toolbar.
+- Tests: `tests/test_admin_route_gating.py` (route gating list, CSV payload, export link on users page).
+
 ## Weekly AI compressed prompt payload (2026-05-26)
 
 - Added `helpers/weekly_prompt_payload.py` with `build_weekly_prompt_payload` + `format_weekly_prompt_payload`: lean pass-1 model input with review scope, evidence boundaries, deduped strategy context, high-signal trades, primary sequences, coaching frame triggers, and constraints. Full `build_trade_payload` output still persists unchanged in `AIGeneratedResponse.payload_json`.

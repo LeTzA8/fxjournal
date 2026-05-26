@@ -1,3 +1,5 @@
+import csv
+import io
 import os
 import json
 import secrets
@@ -3832,6 +3834,29 @@ def register_public_auth_routes(
             pending_users=pending_users,
             accounts_by_user=accounts_by_user,
             user_stats_by_user=user_stats_by_user,
+        )
+
+    @app.route("/dashboard/admin/access/users/export")
+    @admin_required
+    def admin_signup_users_export():
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["name", "email", "signup date", "last login date"])
+        users = User.query.order_by(User.created_at.asc(), User.id.asc()).all()
+        for user in users:
+            writer.writerow(
+                [
+                    user.username,
+                    user.email,
+                    _format_admin_timestamp(user.created_at),
+                    _format_admin_timestamp(user.last_login_at),
+                ]
+            )
+        filename = f"myfxjournal-users-{utcnow_naive().strftime('%Y%m%d')}.csv"
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/regenerate-ai-advice", methods=["POST"])
