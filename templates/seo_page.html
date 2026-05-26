@@ -41,7 +41,9 @@
                 </div>
 
                 <aside class="seo-page-panel landing-reveal" data-reveal-delay="260">
-                    <p class="seo-panel-kicker">Why this matters</p>
+                    {% if seo_page.panel_kicker %}
+                    <p class="seo-panel-kicker">{{ seo_page.panel_kicker }}</p>
+                    {% endif %}
                     <h2>{{ seo_page.intro_title }}</h2>
                     <p>{{ seo_page.intro_body }}</p>
                     <ul class="seo-signal-list">
@@ -57,7 +59,7 @@
             <div class="landing-inner">
                 <div class="seo-section-head landing-reveal" data-reveal-delay="50">
                     <p class="seo-section-eyebrow">What it removes</p>
-                    <h2>Less admin. More clarity.</h2>
+                    <h2>{{ seo_page.cards_heading or "Less admin. More clarity." }}</h2>
                 </div>
                 <div class="seo-card-grid">
                     {% for card in seo_page.cards %}

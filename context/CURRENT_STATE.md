@@ -2,6 +2,13 @@
 
 Last Updated: 2026-05-26
 
+## SEO hero/panel copy refinement (2026-05-26)
+
+- Second pass on all 18 `SEO_PAGE_DEFINITIONS` pages: shortened hero bodies and hero side panels, removed search-intent/meta copy (e.g. `/free-trading-journal` “Why traders search for free first”, `/trade-replay-chart` “If you searched for…”, template page search framing), and varied panel kickers (`panel_kicker`) plus “What it removes” headings (`cards_heading`) per page.
+- Hero panels now use user-facing angles (what you get, best fit, what sync changes, what this replaces, first useful outcome) with 1 short paragraph + max 3 bullets; free-cluster and psychology pages got page-specific removal cards (spreadsheet upkeep, export cycles, blank-page journaling, rule drift, etc.).
+- `templates/seo_page.html`: optional `panel_kicker` (removed hardcoded “Why this matters”) and optional `cards_heading` (replaces generic “Less admin. More clarity.” when set). No routing/canonical/sitemap changes; no new CSS/layout sizing changes — text trim only.
+- Tests: `pytest tests/test_public_seo.py -v` (15 passed).
+
 ## SEO acquisition-to-activation pass (2026-05-26)
 
 - Reviewed all configured public SEO pages in `SEO_PAGE_DEFINITIONS` through an acquisition -> activation -> retention lens. Copy now leads with search intent, import/sync expectations, first review value, and one clear next action instead of repeating broad product philosophy.
