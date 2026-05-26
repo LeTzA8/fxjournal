@@ -48,6 +48,58 @@ def test_sitemap_xml_lists_public_pages(client):
     assert b"<loc>http://localhost:5000/forex-trading-journal</loc>" in response.data
     assert b"<loc>http://localhost:5000/weekly-trading-review</loc>" in response.data
     assert b"<loc>http://localhost:5000/trade-replay-chart</loc>" in response.data
+    assert b"<loc>http://localhost:5000/free-trading-journal</loc>" in response.data
+    assert b"<loc>http://localhost:5000/free-mt5-trading-journal</loc>" in response.data
+    assert b"<loc>http://localhost:5000/free-ai-trading-journal</loc>" in response.data
+    assert b"<loc>http://localhost:5000/free-forex-trading-journal</loc>" in response.data
+    assert b"<loc>http://localhost:5000/free-trading-journal-template</loc>" in response.data
+    assert b"<loc>http://localhost:5000/free-prop-firm-trading-journal</loc>" in response.data
+
+
+FREE_SEO_CLUSTER_PAGES = (
+    (
+        "/free-trading-journal",
+        b"Free Trading Journal",
+        b"http://localhost:5000/free-trading-journal",
+    ),
+    (
+        "/free-mt5-trading-journal",
+        b"Free MT5 Trading Journal",
+        b"http://localhost:5000/free-mt5-trading-journal",
+    ),
+    (
+        "/free-ai-trading-journal",
+        b"Free AI Trading Journal",
+        b"http://localhost:5000/free-ai-trading-journal",
+    ),
+    (
+        "/free-forex-trading-journal",
+        b"Free Forex Trading Journal",
+        b"http://localhost:5000/free-forex-trading-journal",
+    ),
+    (
+        "/free-trading-journal-template",
+        b"Free Trading Journal Template Alternative",
+        b"http://localhost:5000/free-trading-journal-template",
+    ),
+    (
+        "/free-prop-firm-trading-journal",
+        b"Free Prop Firm Trading Journal",
+        b"http://localhost:5000/free-prop-firm-trading-journal",
+    ),
+)
+
+
+def test_free_seo_cluster_pages_have_indexable_metadata(client):
+    for path, title_fragment, canonical_url in FREE_SEO_CLUSTER_PAGES:
+        response = client.get(path)
+
+        assert response.status_code == 200
+        assert title_fragment in response.data
+        assert b'name="description"' in response.data
+        assert b'<meta name="robots" content="index, follow">' in response.data
+        assert b'rel="canonical"' in response.data
+        assert b'href="' + canonical_url + b'"' in response.data
 
 
 def test_legal_aliases_redirect_to_canonical_urls(client):
