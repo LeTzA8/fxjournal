@@ -1251,6 +1251,7 @@ def edit_trade(trade_pubkey):
     trade_closed_at_label = (
         closed_at_local.strftime("%d %b %Y %H:%M") if closed_at_local else "-"
     )
+    trade_profile_version = getattr(trade, "trade_profile_version", None)
     base = _build_trade_entry_context(user_id, trade)
     return render_template(
         "trade_entry.html",
@@ -1268,6 +1269,17 @@ def edit_trade(trade_pubkey):
         actual_rr=actual_rr,
         trade_opened_at_label=trade_opened_at_label,
         trade_closed_at_label=trade_closed_at_label,
+        trade_source_timezone=trade.source_timezone or "Unknown",
+        has_trade_source_timezone=bool(trade.source_timezone),
+        trade_profile_description=(
+            trade_profile_version.short_description
+            if trade_profile_version is not None
+            and trade_profile_version.short_description
+            else "No strategy attached to this trade."
+        ),
+        has_trade_profile_description=bool(
+            trade_profile_version is not None and trade_profile_version.short_description
+        ),
         **base,
     )
 

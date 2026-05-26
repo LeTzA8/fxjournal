@@ -8,13 +8,21 @@ Last Updated: 2026-05-26
 - `templates/admin_signup_access.html`: **Export all users (CSV)** link on the Registered Users panel toolbar.
 - Tests: `tests/test_admin_route_gating.py` (route gating list, CSV payload, export link on users page).
 
+## Trade edit/detail progressive disclosure (2026-05-26)
+
+- `templates/trade_entry.html`: edit and read-only full-record forms now use native `<details>` collapsibles with section hints, chevrons, and default-open core sections (Instrument, Execution, Performance/Outcome, trade note). Timing, strategy description, and import note default collapsed; edit view adds a compact top summary line (symbol · side · net PnL · RR · status · date).
+- Edit form moves status into the Timing section; strategy select + readonly description and import note sit in nested Journal sub-sections. New-trade manual entry form unchanged (flat sections).
+- `static/js/trade_form_collapsible.js` opens collapsed sections when HTML5 validation fails. Edit route passes strategy description + source timezone context for template rendering only.
+- Tests: `tests/test_trades_routes.py::test_trade_edit_uses_progressive_disclosure_sections`.
+
 ## Weekly AI compressed prompt payload (2026-05-26)
 
 - Added `helpers/weekly_prompt_payload.py` with `build_weekly_prompt_payload` + `format_weekly_prompt_payload`: lean pass-1 model input with review scope, evidence boundaries, deduped strategy context, high-signal trades, primary sequences, coaching frame triggers, and constraints. Full `build_trade_payload` output still persists unchanged in `AIGeneratedResponse.payload_json`.
 - `build_dashboard_advice_messages` now sends the compressed payload to pass-1; `format_payload_for_prompt` remains for audit/debug and other callers.
 - Audit follow-up aligned stale prompt-contract references to `WEEK_SUMMARY`, `PRIMARY_SEQUENCES`, `COACHING_FRAME_TRIGGERS`, `CONSTRAINTS`, and `HIGH_SIGNAL_TRADES.ref`; it also fixed same-symbol re-entry labels so only actual post-loss retries set `same_symbol_after_loss`.
 - `prompts/dashboard_advice.txt` + `REVIEW_JSON_OUTPUT_INSTRUCTIONS` patched for narrow-week framing (not low-value), optional strength, ungated Reward→Cost→Mislesson via `coaching_frame_triggers`, and style transformation examples.
-- Tests: `tests/test_weekly_prompt_payload.py` (strategy dedupe, noise exclusion, bundles, low-trade scope, winning retry trigger, market context compression, pass-1 wiring).
+- Follow-up: `reward_cost_mislesson` now requires engaging substantive trade notes on flagged post-loss re-entries (credit possible planned re-entry, do not rubber-stamp post-trade notes or wins; frame as planned re-entry vs post-hoc justification; improvement asks for pre-entry re-entry reason).
+- Tests: `tests/test_weekly_prompt_payload.py` (strategy dedupe, noise exclusion, bundles, low-trade scope, winning retry trigger, market context compression, pass-1 wiring, note-aware re-entry prompt + payload).
 
 ## SEO hero/panel copy refinement (2026-05-26)
 

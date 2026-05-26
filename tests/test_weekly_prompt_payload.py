@@ -292,11 +292,41 @@ def test_prompt_includes_strength_safety_rules():
     from ai_service import load_prompt_text
 
     prompt_text = load_prompt_text("dashboard_advice.txt")["prompt_text"]
+    normalized = prompt_text.replace("\n", " ")
     assert "Do not force a strength" in prompt_text
     assert "Do not praise the behavior being flagged as risky" in prompt_text
     assert "Size stability does not validate" in prompt_text
     assert "reward_cost_mislesson" in prompt_text
     assert "narrow review, not a weak one" in prompt_text
+    assert "planned re-entry vs post-hoc justification" in normalized
+    assert "write the re-entry reason before entering" in normalized
+
+
+NAS100_PLANNED_REENTRY_NOTE = (
+    "First trade felt rushed; got swept for liquidity. HTF structure unchanged "
+    "and price still rejecting from the 4H FVG. Second trade was a better "
+    "planned re-entry on the same idea."
+)
+
+
+def test_winning_same_symbol_retry_exposes_trade_note_to_model(app_ctx):
+    full = _nas100_two_trade_full_payload()
+    full["trades"][0]["trade_note"] = NAS100_PLANNED_REENTRY_NOTE
+    full["notes_coverage"] = 1.0
+    full["notes_confidence"] = "high"
+
+    prompt_payload = build_weekly_prompt_payload(full)
+    winner = next(t for t in prompt_payload["high_signal_trades"] if t["ref"] == "T1")
+    assert winner["trade_note"] == NAS100_PLANNED_REENTRY_NOTE
+
+    prompt_text = format_weekly_prompt_payload(prompt_payload)
+    assert "4H FVG" in prompt_text
+    assert "swept for liquidity" in prompt_text
+
+    _, messages, _ = build_dashboard_advice_messages(full)
+    user_text = messages[2]["content"][0]["text"]
+    assert "HIGH_SIGNAL_TRADES" in user_text
+    assert NAS100_PLANNED_REENTRY_NOTE in user_text
 
 
 def test_build_dashboard_advice_messages_uses_compressed_prompt(app_ctx):

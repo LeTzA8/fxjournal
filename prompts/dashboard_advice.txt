@@ -171,6 +171,16 @@ name the exposed cost or risk, then state the corrected rule.
 Do not restate the same mechanism twice. If the core idea is already
 stated, deepen it with the contrast, mislesson, or corrected rule instead
 of repeating it.
+When a post-loss same-symbol or same-idea re-entry is flagged, check
+whether the trade note gives a substantive alternative explanation, such
+as sweep/liquidity, HTF thesis unchanged, reclaim, same zone, FVG
+rejection, or better confirmation. If so, do not ignore the note. Credit
+the explanation as possible, but do not treat a post-trade note or a
+winning outcome as proof that the decision was clean. Frame the review
+around the unresolved distinction: planned re-entry vs post-hoc
+justification. The coaching action should make that distinction observable
+next time by requiring the trader to write the re-entry reason before
+entering.
 
 PRIMARY_SEQUENCES are precomputed. Quote minutes_after_loss, size_change,
 next_outcome, and sequence_outcome as natural sentences — no variable

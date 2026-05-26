@@ -1768,6 +1768,8 @@
                         <p class="insight-body ai-review-copy ai-review-strength">{% for segment in weekly_ai_review_display.strength.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
                         {% elif weekly_ai_is_generating %}
                         <p class="insight-body ai-generating-copy muted-value">{{ weekly_ai_empty_message|trim }}</p>
+                        {% elif weekly_ai_review and weekly_ai_review_display %}
+                        <p class="insight-body ai-review-copy ai-review-strength muted-value">No strength called out this week — the review focused on what to change first.</p>
                         {% else %}
                         <p class="insight-body ai-review-copy ai-review-strength muted-value">Shows here once your review runs.</p>
                         {% endif %}

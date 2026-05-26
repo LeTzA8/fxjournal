@@ -1099,6 +1099,10 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Do not force a strength" in prompt_text
     assert "reward_cost_mislesson" in prompt_text
     assert "COACHING_FRAME_TRIGGERS" in prompt_text
+    normalized = prompt_text.replace("\n", " ")
+    assert "planned re-entry vs post-hoc justification" in normalized
+    assert "write the re-entry reason before entering" in normalized
+    assert "planned re-entry vs post-hoc justification" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
 
     # Bar-derived market context fields — new additions
     assert "large_candle_before_entry" in prompt_text

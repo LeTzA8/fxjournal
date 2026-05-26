@@ -151,6 +151,40 @@ def test_trade_detail_shows_import_note_separately(app_ctx, client):
     assert b"Imported from MT5 Positions" in detail_response.data
 
 
+def test_trade_edit_uses_progressive_disclosure_sections(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-edit-collapsible-user",
+        email="trade-edit-collapsible@example.com",
+    )
+
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=1.10120,
+        lot_size=1.00,
+        pnl=120.0,
+        trade_note="Edit note",
+        opened_at=datetime(2026, 3, 10, 9, 0, 0),
+        closed_at=datetime(2026, 3, 10, 10, 24, 0),
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    edit_response = client.get(f"/dashboard/trades/{trade.pubkey}/edit")
+
+    assert edit_response.status_code == 200
+    assert b"trade-summary-compact" in edit_response.data
+    assert b'trade-form-section--instrument trade-form-collapsible" open' in edit_response.data
+    assert b'trade-form-section--timing trade-form-collapsible"' in edit_response.data
+    assert b'name="entry_price"' in edit_response.data
+    assert b'name="trade_note"' in edit_response.data
+    assert b"Save changes" in edit_response.data
+
+
 def test_trade_detail_shows_only_relevant_movement_metric_by_account_type(app_ctx, client):
     user, cfd_account = _create_logged_in_user(
         client,
