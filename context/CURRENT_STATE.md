@@ -2,6 +2,14 @@
 
 Last Updated: 2026-05-26
 
+## Weekly AI compressed prompt payload (2026-05-26)
+
+- Added `helpers/weekly_prompt_payload.py` with `build_weekly_prompt_payload` + `format_weekly_prompt_payload`: lean pass-1 model input with review scope, evidence boundaries, deduped strategy context, high-signal trades, primary sequences, coaching frame triggers, and constraints. Full `build_trade_payload` output still persists unchanged in `AIGeneratedResponse.payload_json`.
+- `build_dashboard_advice_messages` now sends the compressed payload to pass-1; `format_payload_for_prompt` remains for audit/debug and other callers.
+- Audit follow-up aligned stale prompt-contract references to `WEEK_SUMMARY`, `PRIMARY_SEQUENCES`, `COACHING_FRAME_TRIGGERS`, `CONSTRAINTS`, and `HIGH_SIGNAL_TRADES.ref`; it also fixed same-symbol re-entry labels so only actual post-loss retries set `same_symbol_after_loss`.
+- `prompts/dashboard_advice.txt` + `REVIEW_JSON_OUTPUT_INSTRUCTIONS` patched for narrow-week framing (not low-value), optional strength, ungated Reward→Cost→Mislesson via `coaching_frame_triggers`, and style transformation examples.
+- Tests: `tests/test_weekly_prompt_payload.py` (strategy dedupe, noise exclusion, bundles, low-trade scope, winning retry trigger, market context compression, pass-1 wiring).
+
 ## SEO hero/panel copy refinement (2026-05-26)
 
 - Second pass on all 18 `SEO_PAGE_DEFINITIONS` pages: shortened hero bodies and hero side panels, removed search-intent/meta copy (e.g. `/free-trading-journal` “Why traders search for free first”, `/trade-replay-chart` “If you searched for…”, template page search framing), and varied panel kickers (`panel_kicker`) plus “What it removes” headings (`cards_heading`) per page.

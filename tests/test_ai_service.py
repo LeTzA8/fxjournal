@@ -33,7 +33,6 @@ from models import (
     TradeProfile,
     TradeProfileVersion,
     User,
-    WeeklyCheckin,
     db,
 )
 
@@ -1006,19 +1005,21 @@ def test_dashboard_prompt_uses_exit_price_language():
     """
     prompt_text = load_prompt_text("dashboard_advice.txt")["prompt_text"]
 
-    # Trade fields — must all be present and none renamed
-    assert "close_price" not in prompt_text
+    # Compressed payload trade fields
     for field in [
-        "entry_price", "exit_price", "stop_loss", "take_profit",
-        "strategy_name", "strategy_version", "strategy_description",
-        "entry_session", "exit_session", "session", "duration_minutes",
-        "planned_risk_dollars", "trade_risk_pct",
-        "same_trade_idea_reentry", "is_potential_revenge",
-        "is_potential_reactive", "is_revenge", "planned_rr", "realized_rr",
-        "tp_capture_pct", "closed_before_tp", "market_context",
-        "stop_management", "split_group_size", "review_ref",
+        "strategy_ref",
+        "entry_session",
+        "exit_session",
+        "duration_minutes",
+        "same_trade_idea_reentry",
+        "planned_rr",
+        "realized_rr",
+        "market_context_summary",
+        "post_loss_context",
+        "ref",
+        "HIGH_SIGNAL_TRADES",
     ]:
-        assert field in prompt_text, f"Missing trade field: {field}"
+        assert field in prompt_text, f"Missing compressed field reference: {field}"
 
     # Structural sections — new architecture
     assert "EVIDENCE HIERARCHY" in prompt_text
@@ -1042,54 +1043,48 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "ceiling" in prompt_text.lower()
 
     # Precomputed signal references
-    assert "risk_authority" in prompt_text
-    assert "post_loss_response" in prompt_text
-    assert "single_trade_dominance" in prompt_text
-    assert "tp_capture_shortfalls" in prompt_text
-    assert "session_concentration" in prompt_text
-    assert "revenge_evidence" in prompt_text
-    assert "execution_outcome" in prompt_text
+    assert "WEEK_SUMMARY" in prompt_text
+    assert "PRIMARY_SEQUENCES" in prompt_text
+    assert "COACHING_FRAME_TRIGGERS" in prompt_text
+    assert "CONSTRAINTS" in prompt_text
     assert "habits are leaking" in prompt_text
     assert "leaky_execution_bad_outcome" in prompt_text
     assert "good_execution_flat_outcome" in prompt_text
     assert "leaky_execution_flat_outcome" in prompt_text
     assert "light correction" in prompt_text
-    assert "execution_outcome.primary_issue" in prompt_text
-    assert "issue_evidence_level" in prompt_text
+    assert "WEEK_SUMMARY.primary_issue" in prompt_text
+    assert "primary_issue_evidence_level" in prompt_text
     assert "one watch item" in prompt_text
     assert "deterministic lead signal" in prompt_text
-    assert "do_not_lead_with" in prompt_text
-    assert "not the headline" in prompt_text
-    assert "coaching_hypotheses" in prompt_text
-    assert "trap candidates" in prompt_text
-    assert "Use the hypothesis as framing" in prompt_text
+    assert "trap/frame cues" in prompt_text
     assert "contrast pair" in prompt_text
     assert "a winning retry does not make the habit safe" in prompt_text
-    assert "names both the rewarded trade or symbol" in prompt_text
+    assert "names the rewarded trade or symbol" in prompt_text
     assert "Reward -> Cost ->" in prompt_text
     assert "Mislesson -> Better lesson" in prompt_text
     assert "Do not restate the same mechanism twice" in prompt_text
     assert "Trade references must appear" in prompt_text
     assert "inside sentences, not as trailing fragments" in prompt_text
     assert "same-symbol cap with logging added" in prompt_text
-    assert "SURFACE_FACTS" in prompt_text
-    assert "confidence_envelope" in prompt_text.lower()
-    assert "execution_outcome.primary_issue" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
-    assert "issue_evidence_level" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
-    assert "coaching_hypotheses" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "EVIDENCE_BOUNDARY" in prompt_text
+    assert "SAMPLE_CONTEXT" in prompt_text
+    assert "HIGH_SIGNAL_TRADES" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "WEEK_SUMMARY.primary_issue" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "primary_issue_evidence_level" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "COACHING_FRAME_TRIGGERS" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "Do not invent traps" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
-    assert "what the trader may have mislearned" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
-    assert "names both the rewarded trade or symbol" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "backend-written review copy" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "names the rewarded trade or symbol" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "Reward -> Cost -> Mislesson -> Better lesson" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "Do not restate the same mechanism twice" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "Trade references must appear inside sentences" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "same-symbol cap with logging added" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "flat clean week is neutral" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
-    assert "outlier concentration the main diagnosis" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "CONSTRAINTS.do_not_claim" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
 
     # Risk priority rule — non-obvious domain rule, must be explicit
-    assert "risk_authority.stable" in prompt_text
-    assert "risk_judgment_allowed" in prompt_text
+    assert "CONSTRAINTS.do_not_claim" in prompt_text
+    assert "size_change fields" in prompt_text
     assert "shift to stronger" in prompt_text
     assert "Lot size is not risk" in prompt_text
     assert "larger or smaller lot is not evidence" in prompt_text
@@ -1098,8 +1093,12 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "strategy_coverage_pct" in prompt_text
     assert "TIER" in prompt_text  # evidence tiers
 
-    # Small-sample compression — must be explicit
-    assert "closed_trades < 5" in prompt_text
+    # Small-sample / narrow-scope calibration
+    assert "specific_trade_sequence" in prompt_text
+    assert "narrow review, not a weak one" in prompt_text
+    assert "Do not force a strength" in prompt_text
+    assert "reward_cost_mislesson" in prompt_text
+    assert "COACHING_FRAME_TRIGGERS" in prompt_text
 
     # Bar-derived market context fields — new additions
     assert "large_candle_before_entry" in prompt_text
@@ -1895,11 +1894,12 @@ def test_maybe_generate_weekly_dashboard_advice_skips_before_cutoff_for_returnin
 
 
 def test_maybe_generate_weekly_dashboard_advice_first_review_may_run_before_weekly_cutoff(app_ctx, monkeypatch):
-    """No prior weekly AI on the account: allow generation before Friday (onboarding path)."""
+    """No prior weekly AI on the account: allow generation before Friday, even without check-in."""
     user, trade_account = _create_user_and_account(
         username="ai-first-review-cutoff-user",
         email="ai-first-review-cutoff@example.com",
     )
+    now_utc = datetime(2026, 3, 11, 15, 0, 0, tzinfo=timezone.utc)
     db.session.add(
         Trade(
             user_id=user.id,
@@ -1948,7 +1948,7 @@ def test_maybe_generate_weekly_dashboard_advice_first_review_may_run_before_week
         user_id=user.id,
         trade_account_id=trade_account.id,
         prompt_filename="dashboard_advice.txt",
-        now_utc=datetime(2026, 3, 11, 15, 0, 0, tzinfo=timezone.utc),
+        now_utc=now_utc,
     )
     assert result["generated"] is True
     assert result.get("skip_reason") is None
@@ -1956,11 +1956,15 @@ def test_maybe_generate_weekly_dashboard_advice_first_review_may_run_before_week
 
 
 def test_maybe_generate_weekly_dashboard_advice_returns_skip_reason_for_no_trades(app_ctx, monkeypatch):
+    user, trade_account = _create_user_and_account(
+        username="ai-no-trades-user",
+        email="ai-no-trades@example.com",
+    )
     period = {
         "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
         "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
+        "eligible_at_utc": datetime(2026, 3, 13, 21, 30, 0),
     }
-
     monkeypatch.setattr(ai_service, "get_latest_trade_week_period", lambda **kwargs: period)
     monkeypatch.setattr(
         ai_service,
@@ -1978,9 +1982,10 @@ def test_maybe_generate_weekly_dashboard_advice_returns_skip_reason_for_no_trade
     )
 
     result = maybe_generate_weekly_dashboard_advice(
-        user_id=1,
-        trade_account_id=1,
+        user_id=user.id,
+        trade_account_id=trade_account.id,
         prompt_filename="dashboard_advice.txt",
+        now_utc=datetime(2026, 3, 14, 22, 0, 0, tzinfo=timezone.utc),
     )
 
     assert result["generated"] is False

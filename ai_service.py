@@ -114,16 +114,16 @@ Use this exact shape:
 }
 
 Rules for refs:
-- Use only review_ref values present in the TRADES section.
+- Use only ref values present in HIGH_SIGNAL_TRADES.
 - Prefer 1-2 refs per item, maximum 3.
-- Across summary.text and takeaways, include at least one cited representative trade or bundle when any review_ref is available and a non-misleading example exists.
+- Across summary.text and takeaways, include at least one cited representative trade or bundle when any HIGH_SIGNAL_TRADES.ref is available and a non-misleading example exists.
 - Use a second cited trade only when it creates a useful contrast (best vs worst, before vs after a loss, early exit vs cleaner hold, or session/context contrast).
 - Use bundle refs like B1 for bundled trade ideas and trade refs like T1 for solo trade ideas.
 - improvement.refs and strength.refs must always be an empty list.
 - experiment.refs is optional and may be empty when the experiment is generalized.
 - The UI appends ref labels directly after the text. A ref that does not match a symbol explicitly named in the text will appear as an orphaned label. Only add a ref when the text contains the exact symbol name or bundle description that the ref represents.
 - Trade references must appear inside sentences, not as trailing fragments. If a sentence cannot naturally name the trade or symbol, leave refs empty.
-- If summary.text or a takeaway names a specific symbol (e.g. "GBPJPY") or bundle, include that trade's review_ref. Do not leave the refs empty in that case.
+- If summary.text or a takeaway names a specific symbol (e.g. "GBPJPY") or bundle, include that trade's ref. Do not leave the refs empty in that case.
 - If summary.text or a takeaway makes an aggregate or pattern observation ("trades that followed losses", "two London entries", "the session pattern") without naming a specific symbol, refs must be empty — not filled with implied trades.
 - Never add a ref for a trade the text does not explicitly name. One named trade = one ref. Two named trades = two refs. Pattern observation = zero refs.
 - If two refs would render as the same visible label because they share symbol/date, do not attach both to one short sentence. Either write it as an aggregate pattern with refs empty, or name only the single trade that proves the point.
@@ -132,25 +132,27 @@ Rules for text fields:
 - summary.text must stay as the single opening paragraph.
 - takeaways should contain 1-3 items by default. Use 4 only when the fourth item is genuinely distinct and useful.
 - summary.text must identify one dominant diagnosis for the week, not merely restate performance.
-- Use CURRENT_WEEK_BREAKDOWNS.execution_outcome as the coaching stance before writing. When execution_outcome.primary_issue is present, treat it as the default lead signal; ranked_issues gives fallback order and primary_issue_hint explains how to frame it.
-- Use execution_outcome.issue_evidence_level for intensity. If it is isolated, frame the issue as one watch item, not a repeated habit. If it is strong, be more direct.
-- If CURRENT_WEEK_BREAKDOWNS.coaching_hypotheses are present, choose at most one as the central review angle. Prefer the highest-ranked eligible hypothesis, but override it if the completed week has a clearer performance story. Do not invent traps, motives, danger windows, false lessons, or better lessons beyond the hypothesis facts/hints. Use it as framing, not as a script.
-- When using outcome_disguised_habit, explain the contrast pair: which trade rewarded the habit, which trade exposed it, and what the trader may have mislearned from the winner. Avoid generic lessons like "a winning retry does not make the habit safe" unless the review section names both the rewarded trade or symbol and the exposed trade or symbol, and explains the sequence mechanism.
-- For outcome_disguised_habit, use this writing shape across summary/takeaways: Reward -> Cost -> Mislesson -> Better lesson. Do not flatten it into "the problem is the decision after the loss." Name the rewarded trade, say what it reinforced, name the exposed trade, say how it contradicted that reinforcement, then state the corrected rule.
+- Use WEEK_SUMMARY.coaching_stance and WEEK_SUMMARY.primary_issue as stance rails before writing. Treat WEEK_SUMMARY.primary_issue as the default lead signal when present.
+- Use WEEK_SUMMARY.primary_issue_evidence_level for intensity. If it is isolated, frame the issue as one watch item, not a repeated habit. If it is strong, be more direct.
+- Use COACHING_FRAME_TRIGGERS as concise writing cues, not as backend-written review copy. Do not invent traps, motives, danger windows, false lessons, or better lessons beyond the trigger facts and instructions.
+- If COACHING_FRAME_TRIGGERS includes reward_cost_mislesson, use Reward -> Cost -> Mislesson -> Better lesson even when coaching_hypotheses is empty or absent.
+- When using reward_cost_mislesson, explain the contrast pair: which trade rewarded the habit, which trade exposed the cost or risk, and what the trader may mislearn from the winner. Avoid generic lessons like "a winning retry does not make the habit safe" unless the review section names the rewarded trade or symbol and explains the sequence mechanism.
+- For reward_cost_mislesson, use this writing shape across summary/takeaways: Reward -> Cost -> Mislesson -> Better lesson. Do not flatten it into "the problem is the decision after the loss." Name the rewarded trade, say what it reinforced, name the exposed cost or risk, then state the corrected rule.
 - Do not restate the same mechanism twice. If the core idea is already stated, deepen it with the contrast, mislesson, or corrected rule instead of repeating it.
 - A flat clean week is neutral, not a loss; hold the process steady and suggest only a small measurement or refinement.
-- If execution_outcome.do_not_lead_with includes single_trade_dominance, use the dominant trade only as context and do not make outlier concentration the main diagnosis.
+- If CONSTRAINTS.do_not_claim or CONSTRAINTS.do_not_focus_on rules limit a claim, obey them even when the week was profitable.
 - Never mention internal labels such as week_archetype, execution_class, coaching_stance, primary_issue, ranked_issues, issue_evidence_level, or do_not_lead_with.
 - A profitable week with leaky or bad execution should acknowledge the good result without endorsing the leak; a losing week with good execution should protect confidence and avoid overhauling the process.
 - summary.text must start with the human conclusion, then support it with data.
-- summary.text must include a count or concrete trade example and, when available, combine at least two signals such as timing, range location, session, volatility, sequence, exit handling, or risk authority.
+- summary.text must include a count or concrete trade example and, when available, combine at least two signals such as timing, range location, session, volatility, sequence, exit handling, or explicit size/risk context.
 - Prefer making summary.text or the first takeaway name the representative trade that proves the diagnosis, so the review has at least one visible trade citation.
 - Entry candle fields are supporting evidence only; never make them the whole diagnosis.
 - Every takeaway must deepen the same main insight by connecting evidence to a decision or behavior the trader can change.
 - A takeaway is not valid if it only says what happened. It must explain what the evidence means for the trader's next decision.
 - improvement.text must include the "Improve this week:" prefix exactly once.
 - improvement.text must directly address the main insight, be specific and testable, and generalize one level up from the evidence without mentioning a specific trade, bundle, exact date, or weekday.
-- strength.text must include the "You're already strong at:" prefix exactly once.
+- strength.text must include the "You're already strong at:" prefix exactly once when the strength key is present.
+- Do not force a strength. Omit the strength key entirely when the only notable behavior is the leak, when calm during a questionable re-entry would be praised, or when size stability would validate the re-entry.
 - strength.text must be grounded in observed data or consistent execution from this week, not generic praise.
 - Prefer behavior, execution, session, sizing, or process language in improvement.text over symbol-specific wording.
 - experiment.text must be one clear experiment, specific, measurable, and not repetitive of recent experiments.
@@ -158,9 +160,9 @@ Rules for text fields:
 - If improvement.text blocks same-symbol re-entry after a loss, experiment.text must not be another same-symbol cap with logging added. Use a different lever, such as recording skipped retries, checking whether the next trade is a genuinely fresh decision, or measuring the first post-loss decision across all symbols.
 - Use plain English in every text field (summary, takeaways, improvement, strength, experiment), not only for sizing: short sentences, everyday trading words, calm coach tone—never academic or consultant speak.
 - Examples: prefer "risked more" / "larger position" over "escalated sizing"; "jumped back in after a loss" over "reactive re-engagement"; "closed before your target" over "suboptimal TP capture"; "one trade drove the week" over "outlier dominance."
-- When CURRENT_WEEK_BREAKDOWNS.sizing includes median_risk_pct_of_account or median_planned_risk_dollars, prefer those anchors over median lot size in any numeric coaching guidance.
-- The plain-text payload lists SUMMARY before weekly breakdowns and TRADES last; use that order when framing the review.
-- Never mention review_ref aliases like T1 or B2 inside any text field.
+- When the compressed payload provides explicit risk or size-change fields, prefer those anchors over lot-size inference.
+- The plain-text payload lists WEEK_SUMMARY before HIGH_SIGNAL_TRADES; use that order when framing the review.
+- Never mention ref aliases like T1 or B2 inside any text field.
 - Do not include any keys other than summary, takeaways, improvement, strength, and experiment.
 """.strip()
 
@@ -2812,9 +2814,15 @@ def format_payload_for_prompt(payload):
 
 
 def build_dashboard_advice_messages(payload, prompt_filename=None, profile_adjustments=""):
+    from helpers.weekly_prompt_payload import (
+        build_weekly_prompt_payload,
+        format_weekly_prompt_payload,
+    )
+
     prompt_history = get_or_create_prompt_history(prompt_filename)
     payload_json = serialize_payload(payload)
-    prompt_input = format_payload_for_prompt(payload)
+    prompt_payload = build_weekly_prompt_payload(payload)
+    prompt_input = format_weekly_prompt_payload(prompt_payload)
     if profile_adjustments:
         prompt_input = f"{prompt_input}{profile_adjustments}"
     return prompt_history, [
