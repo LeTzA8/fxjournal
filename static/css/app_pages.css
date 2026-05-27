@@ -2201,48 +2201,54 @@ body.auth-layout .contact-page .contact-panel {
 }
 
 .landing-roadmap {
-    margin: 2.5rem auto 0;
-    max-width: min(960px, calc(100% - 2rem));
+    margin: 0;
 }
 
 .landing-roadmap-panel {
-    border: 1px solid var(--border);
+    border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
     border-radius: 16px;
-    padding: 1.35rem 1.25rem;
+    padding: clamp(1.15rem, 2.4vw, 1.75rem);
     background: color-mix(in srgb, var(--card) 94%, transparent);
 }
 
 .landing-roadmap-head {
-    margin-bottom: 1rem;
+    display: grid;
+    gap: 0.45rem;
+    max-width: 680px;
+    margin-bottom: 1.15rem;
 }
 
 .landing-roadmap-head h2 {
-    margin: 0.25rem 0 0.35rem;
-    font-size: 1.15rem;
+    margin: 0;
+    font-size: clamp(1.25rem, 2.1vw, 1.65rem);
 }
 
-.landing-roadmap-head p {
+.landing-roadmap-head .muted {
     margin: 0;
-    font-size: 0.88rem;
-    color: var(--muted);
-    line-height: 1.55;
+    font-size: 0.9rem;
+    line-height: 1.6;
 }
 
 .landing-roadmap-grid {
     display: grid;
-    gap: 0.85rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
 }
 
-@media (min-width: 760px) {
+@media (max-width: 760px) {
     .landing-roadmap-grid {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: 1fr;
     }
 }
 
 .landing-roadmap-lane {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    min-height: 100%;
     border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
-    border-radius: 12px;
-    padding: 0.85rem 0.95rem;
+    border-radius: 14px;
+    padding: clamp(0.95rem, 1.6vw, 1.15rem);
 }
 
 .landing-roadmap-lane--trader {
@@ -2254,37 +2260,54 @@ body.auth-layout .contact-page .contact-panel {
 }
 
 .landing-roadmap-tier {
-    margin: 0 0 0.45rem;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: color-mix(in srgb, var(--roadmap-lane-accent, var(--accent)) 58%, var(--ink));
 }
 
 .landing-roadmap-list {
-    margin: 0 0 0.65rem;
-    padding-left: 1.1rem;
-    font-size: 0.84rem;
-    line-height: 1.5;
+    margin: 0;
+    padding-left: 1.15rem;
+    font-size: 0.88rem;
+    line-height: 1.55;
     color: var(--ink);
 }
 
+.landing-roadmap-list li + li {
+    margin-top: 0.35rem;
+}
+
 .landing-roadmap-cta {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: auto;
+    padding-top: 0.35rem;
+}
+
+.landing-roadmap-cta-copy {
     margin: 0;
-    font-size: 0.82rem;
+    font-size: 0.84rem;
     line-height: 1.55;
     color: var(--muted);
 }
 
-.landing-roadmap-cta button {
+.landing-roadmap-waitlist-btn {
+    appearance: none;
+    align-self: flex-start;
+    margin: 0;
     padding: 0;
     border: 0;
     background: none;
-    color: var(--accent);
+    color: color-mix(in srgb, var(--roadmap-lane-accent, var(--accent)) 78%, white 22%);
     font: inherit;
-    font-weight: 600;
+    font-size: 0.84rem;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: left;
     cursor: pointer;
     text-decoration: underline;
-    text-underline-offset: 2px;
+    text-underline-offset: 3px;
 }

@@ -321,48 +321,52 @@
     }
     </style>
 
-    <section class="landing-roadmap landing-section" aria-labelledby="landing-roadmap-title">
-        <div class="landing-roadmap-panel">
-            <div class="landing-roadmap-head">
-                <p class="eyebrow">What's opening next</p>
-                <h2 id="landing-roadmap-title">Planned workflow upgrades</h2>
-                <p>Core journaling stays free. These Trader and Pro surfaces are opening gradually during beta.</p>
-            </div>
-            <div class="landing-roadmap-grid">
-                <section class="landing-roadmap-lane landing-roadmap-lane--trader" aria-label="Trader planned features">
-                    <p class="landing-roadmap-tier">Trader</p>
-                    <ul class="landing-roadmap-list">
-                        <li>Advanced Replay (1m and extended history)</li>
-                        <li>Recurring pattern tracking</li>
-                    </ul>
-                    <p class="landing-roadmap-cta">
-                        Want early access to Advanced Replay or Pattern Tracking?
-                        <button
-                            type="button"
-                            data-waitlist-trigger="trader"
-                            data-waitlist-source="landing_planned"
-                            data-waitlist-feature="advanced_replay"
-                            data-waitlist-cta-context="landing_trader_lane"
-                        >Join the Trader waitlist →</button>
-                    </p>
-                </section>
-                <section class="landing-roadmap-lane landing-roadmap-lane--pro" aria-label="Pro planned features">
-                    <p class="landing-roadmap-tier">Pro</p>
-                    <ul class="landing-roadmap-list">
-                        <li>Multi-timeframe replay</li>
-                        <li>Multiple MT5 accounts</li>
-                    </ul>
-                    <p class="landing-roadmap-cta">
-                        Want early access to Multi-timeframe Replay or multi-account tooling?
-                        <button
-                            type="button"
-                            data-waitlist-trigger="pro"
-                            data-waitlist-source="landing_planned"
-                            data-waitlist-feature="multi_timeframe_replay"
-                            data-waitlist-cta-context="landing_pro_lane"
-                        >Join the Pro waitlist →</button>
-                    </p>
-                </section>
+    <section class="landing-section landing-roadmap" id="roadmap" aria-labelledby="landing-roadmap-title">
+        <div class="landing-inner">
+            <div class="landing-roadmap-panel">
+                <div class="landing-roadmap-head">
+                    <p class="eyebrow">What's opening next</p>
+                    <h2 id="landing-roadmap-title">Planned workflow upgrades</h2>
+                    <p class="muted">Core journaling stays free. These Trader and Pro surfaces are opening gradually during beta.</p>
+                </div>
+                <div class="landing-roadmap-grid">
+                    <section class="landing-roadmap-lane landing-roadmap-lane--trader" aria-label="Trader planned features">
+                        <p class="landing-roadmap-tier">Trader</p>
+                        <ul class="landing-roadmap-list">
+                            <li>Advanced Replay (1m and extended history)</li>
+                            <li>Recurring pattern tracking</li>
+                        </ul>
+                        <div class="landing-roadmap-cta">
+                            <p class="landing-roadmap-cta-copy">Want early access to Advanced Replay or Pattern Tracking?</p>
+                            <button
+                                type="button"
+                                class="landing-roadmap-waitlist-btn"
+                                data-waitlist-trigger="trader"
+                                data-waitlist-source="landing_planned"
+                                data-waitlist-feature="advanced_replay"
+                                data-waitlist-cta-context="landing_trader_lane"
+                            >Join the Trader waitlist →</button>
+                        </div>
+                    </section>
+                    <section class="landing-roadmap-lane landing-roadmap-lane--pro" aria-label="Pro planned features">
+                        <p class="landing-roadmap-tier">Pro</p>
+                        <ul class="landing-roadmap-list">
+                            <li>Multi-timeframe replay</li>
+                            <li>Multiple MT5 accounts</li>
+                        </ul>
+                        <div class="landing-roadmap-cta">
+                            <p class="landing-roadmap-cta-copy">Want early access to Multi-timeframe Replay or multi-account tooling?</p>
+                            <button
+                                type="button"
+                                class="landing-roadmap-waitlist-btn"
+                                data-waitlist-trigger="pro"
+                                data-waitlist-source="landing_planned"
+                                data-waitlist-feature="multi_timeframe_replay"
+                                data-waitlist-cta-context="landing_pro_lane"
+                            >Join the Pro waitlist →</button>
+                        </div>
+                    </section>
+                </div>
             </div>
         </div>
     </section>
@@ -2014,6 +2018,7 @@
     #ai-demo,
     #hands-off,
     #features,
+    #roadmap,
     #compare,
     #founder {
         border-radius: 22px;
@@ -2063,6 +2068,144 @@
     .landing-section .muted {
         margin: 0 0 0.9rem;
         max-width: 70ch;
+    }
+
+    .landing-roadmap .landing-inner {
+        padding-top: 0.15rem;
+        padding-bottom: 0.35rem;
+    }
+
+    .landing-roadmap-panel {
+        --landing-roadmap-accent: color-mix(in srgb, var(--accent) 72%, #67e8f9 28%);
+        padding: clamp(1.15rem, 2.4vw, 1.75rem);
+        border: 1px solid color-mix(in srgb, var(--landing-roadmap-accent) 34%, var(--border));
+        border-radius: 16px;
+        background:
+            linear-gradient(180deg, color-mix(in srgb, white 7%, transparent), transparent 42%),
+            radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 14%, transparent), transparent 44%),
+            radial-gradient(circle at bottom right, color-mix(in srgb, #67e8f9 10%, transparent), transparent 46%),
+            color-mix(in srgb, #080b1b 84%, var(--surface));
+        box-shadow:
+            0 20px 46px rgba(2, 6, 23, 0.34),
+            inset 0 1px 0 color-mix(in srgb, white 9%, transparent);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+    }
+
+    .landing-roadmap-head {
+        display: grid;
+        gap: 0.45rem;
+        max-width: 680px;
+        margin-bottom: 1.15rem;
+    }
+
+    .landing-roadmap-head h2 {
+        margin: 0;
+        font-size: clamp(1.25rem, 2.1vw, 1.65rem);
+        letter-spacing: -0.03em;
+    }
+
+    .landing-roadmap-head .muted {
+        margin: 0;
+        max-width: 62ch;
+        font-size: 0.9rem;
+        line-height: 1.6;
+    }
+
+    .landing-roadmap-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+    }
+
+    .landing-roadmap-lane {
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+        min-height: 100%;
+        padding: clamp(0.95rem, 1.6vw, 1.15rem);
+        border: 1px solid color-mix(in srgb, var(--roadmap-lane-accent, var(--landing-roadmap-accent)) 30%, var(--border));
+        border-radius: 14px;
+        background:
+            linear-gradient(180deg, color-mix(in srgb, var(--roadmap-lane-accent, var(--landing-roadmap-accent)) 10%, transparent), transparent 60%),
+            color-mix(in srgb, #111827 58%, var(--surface));
+    }
+
+    .landing-roadmap-lane--trader {
+        --roadmap-lane-accent: var(--accent);
+    }
+
+    .landing-roadmap-lane--pro {
+        --roadmap-lane-accent: #67e8f9;
+    }
+
+    .landing-roadmap-tier {
+        margin: 0;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--roadmap-lane-accent, var(--accent)) 58%, var(--ink));
+    }
+
+    .landing-roadmap-list {
+        margin: 0;
+        padding-left: 1.15rem;
+        font-size: 0.88rem;
+        line-height: 1.55;
+        color: var(--ink);
+    }
+
+    .landing-roadmap-list li + li {
+        margin-top: 0.35rem;
+    }
+
+    .landing-roadmap-cta {
+        display: grid;
+        gap: 0.55rem;
+        margin-top: auto;
+        padding-top: 0.35rem;
+    }
+
+    .landing-roadmap-cta-copy {
+        margin: 0;
+        font-size: 0.84rem;
+        line-height: 1.55;
+        color: var(--muted);
+    }
+
+    .landing-roadmap-waitlist-btn {
+        appearance: none;
+        align-self: flex-start;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: color-mix(in srgb, var(--roadmap-lane-accent, var(--accent)) 78%, white 22%);
+        font: inherit;
+        font-size: 0.84rem;
+        font-weight: 700;
+        line-height: 1.4;
+        text-align: left;
+        cursor: pointer;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        text-decoration-color: color-mix(in srgb, var(--roadmap-lane-accent, var(--accent)) 42%, transparent);
+    }
+
+    .landing-roadmap-waitlist-btn:hover {
+        color: var(--ink);
+    }
+
+    .landing-roadmap-waitlist-btn:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--roadmap-lane-accent, var(--accent)) 55%, transparent);
+        outline-offset: 3px;
+    }
+
+    @media (max-width: 760px) {
+        .landing-roadmap-grid {
+            grid-template-columns: 1fr;
+        }
     }
 
     .ai-demo-section {
