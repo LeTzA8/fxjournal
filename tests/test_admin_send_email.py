@@ -59,7 +59,9 @@ def test_admin_send_email_page_requires_admin(app_ctx, client, monkeypatch):
     response = client.get("/dashboard/admin/access/send-email")
     assert response.status_code == 200
     assert b"Send to selected" in response.data
-    assert b"quill" in response.data.lower()
+    assert b"adminSendEmailMessage" in response.data
+    assert b"Name personalization" in response.data
+    assert b"quill" not in response.data.lower()
 
 
 def test_admin_send_email_recipients_inactive_filter(app_ctx, client, monkeypatch):
@@ -155,6 +157,60 @@ def test_admin_send_email_send_one_uses_admin_from_and_placeholder(
     assert captured["payload"]["to"] == [recipient.email]
     assert captured["payload"]["subject"] == f"Hello {recipient.username}"
     assert f"Hi {recipient.username}" in captured["payload"]["html"]
+
+
+def test_admin_send_email_send_one_accepts_plain_text_body(
+    app_ctx, client, monkeypatch
+):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "send-email-text@example.com")
+    monkeypatch.setenv("EMAIL_SEND_ENABLED", "1")
+    monkeypatch.setenv("EMAIL_PROVIDER", "resend")
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv("ADMIN_EMAIL_FROM", "admin@myfxjournal.com")
+
+    captured = {}
+
+    class FakeResendEmails:
+        @staticmethod
+        def send(payload):
+            captured["payload"] = payload
+            return {"id": "email_456"}
+
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "resend",
+        type("FakeResendModule", (), {"Emails": FakeResendEmails, "api_key": None})(),
+    )
+
+    suffix = _unique_suffix()
+    admin = _create_user(
+        username=f"send-email-text-admin-{suffix}",
+        email="send-email-text@example.com",
+    )
+    recipient = _create_user(
+        username=f"text-recipient-{suffix}",
+        email=f"text-recipient-{suffix}@example.com",
+    )
+    db.session.commit()
+    _login_as(client, admin)
+
+    response = client.post(
+        "/dashboard/admin/access/send-email/send-one",
+        data=json.dumps(
+            {
+                "user_id": recipient.id,
+                "subject": "Hello {{name}}",
+                "text_body": "Hi {{name}}\nSecond line",
+            }
+        ),
+        content_type="application/json",
+        headers={"X-CSRFToken": _csrf_token(client)},
+    )
+
+    assert response.status_code == 200
+    assert captured["payload"]["subject"] == f"Hello {recipient.username}"
+    assert f"Hi {recipient.username}<br>Second line" in captured["payload"]["html"]
+    assert "{{name}}" not in captured["payload"]["html"]
 
 
 def _csrf_token(client):

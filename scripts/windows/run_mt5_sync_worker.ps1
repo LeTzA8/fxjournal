@@ -116,7 +116,7 @@ function Get-Mt5VmQueueSlug {
 }
 
 $VmSlug = Get-Mt5VmQueueSlug
-$SyncQueues = "mt5_priority.$VmSlug,mt5_sync.$VmSlug,mt5_priority,mt5_sync"
+$SyncQueues = "mt5_priority.$VmSlug,mt5_sync.$VmSlug"
 
 while ($true) {
     Set-ConsoleTitleSafely "MT5 Sync Window | Starting..."

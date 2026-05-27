@@ -434,7 +434,7 @@ def build_revenge_evidence(serialized_trades):
             continue
         prev_pnl = _safe_float(trade.get("prev_trade_pnl"))
         minutes_since = _safe_float(trade.get("minutes_since_prev_close"))
-        size_change = trade.get("size_vs_prev_trade")
+        size_change = trade.get("risk_pct_vs_prev")
         is_strong = (
             confirmed
             or (
@@ -450,7 +450,7 @@ def build_revenge_evidence(serialized_trades):
                 {
                     "ref": trade.get("review_ref"),
                     "minutes_since_prev_close": minutes_since,
-                    "size_vs_prev_trade": size_change,
+                    "risk_pct_vs_prev": size_change,
                     "confirmed": confirmed,
                 }
             )

@@ -2599,17 +2599,23 @@ def register_public_auth_routes(
     def _serialize_admin_weekly_record(record, *, generation_count=1, trade_account_label=""):
         payload, payload_error = _parse_admin_ai_payload(record.payload_json)
         payload = payload or {}
-        summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-        emotional_index = (
-            payload.get("emotional_index")
-            if isinstance(payload.get("emotional_index"), dict)
+        summary = payload.get("week_summary") if isinstance(payload.get("week_summary"), dict) else {}
+        if not summary and isinstance(payload.get("summary"), dict):
+            summary = payload.get("summary")
+        emotional_context = (
+            payload.get("emotional_context")
+            if isinstance(payload.get("emotional_context"), dict)
             else {}
         )
+        if not emotional_context and isinstance(payload.get("emotional_index"), dict):
+            emotional_context = payload.get("emotional_index")
         historical_context = (
-            payload.get("historical_context")
-            if isinstance(payload.get("historical_context"), dict)
+            payload.get("historical_context_summary")
+            if isinstance(payload.get("historical_context_summary"), dict)
             else {}
         )
+        if not historical_context and isinstance(payload.get("historical_context"), dict):
+            historical_context = payload.get("historical_context")
         prompt_history = getattr(record, "prompt_history", None)
         prompt_created_at = getattr(prompt_history, "created_at", None)
 
@@ -2629,14 +2635,24 @@ def register_public_auth_routes(
             "payload": payload or None,
             "payload_raw": record.payload_json or "",
             "payload_parse_error": payload_error,
-            "notes_coverage": payload.get("notes_coverage"),
-            "notes_confidence": payload.get("notes_confidence"),
-            "notes_with_content": payload.get("notes_with_content"),
-            "notes_missing": payload.get("notes_missing"),
+            "evidence_boundary": payload.get("evidence_boundary"),
+            "sample_context": payload.get("sample_context")
+            or (
+                {
+                    key: payload["evidence_boundary"][key]
+                    for key in ("claim_scope", "review_mode")
+                    if isinstance(payload.get("evidence_boundary"), dict)
+                    and payload["evidence_boundary"].get(key) is not None
+                }
+                or None
+            ),
             "account_age_days": payload.get("account_age_days"),
             "summary": summary,
-            "emotional_index": emotional_index,
+            "week_summary": summary,
+            "emotional_context": emotional_context,
+            "emotional_index": emotional_context,
             "historical_context": historical_context,
+            "historical_context_summary": historical_context,
             "prompt": {
                 "id": getattr(prompt_history, "prompt_id", None),
                 "text": getattr(prompt_history, "prompt_text", None),
@@ -4276,6 +4292,13 @@ def register_public_auth_routes(
             days = default
         return max(1, min(days, 3650))
 
+    def _parse_admin_email_send_delay_ms(raw_value, *, default=400):
+        try:
+            delay_ms = int(raw_value)
+        except (TypeError, ValueError):
+            delay_ms = default
+        return max(100, min(delay_ms, 60_000))
+
     def _query_admin_email_recipients(*, inactive_days, inactive_only, search_query):
         now = utcnow_naive()
         cutoff = now - timedelta(days=inactive_days)
@@ -4315,8 +4338,7 @@ def register_public_auth_routes(
             title="MyFXJournal | Send Email",
             page_heading="Send Email",
             page_subtitle=(
-                "Compose and send individual emails to selected users. "
-                "Use {{name}} in the subject or body for per-recipient personalization."
+                "Compose one message and send it as individual Resend emails to selected users."
             ),
         )
         page_ctx.update(extra_context)
@@ -4334,9 +4356,10 @@ def register_public_auth_routes(
             admin_user=admin_user,
             default_inactive_days=default_inactive_days,
             admin_broadcast_from=_resolve_admin_broadcast_from_header(),
-            send_delay_ms=max(
-                100,
-                int(os.getenv("ADMIN_EMAIL_SEND_DELAY_MS", "400") or 400),
+            admin_broadcast_reply_to=_resolve_email_reply_to(),
+            send_delay_ms=_parse_admin_email_send_delay_ms(
+                os.getenv("ADMIN_EMAIL_SEND_DELAY_MS", "400"),
+                default=400,
             ),
         )
 
@@ -4385,7 +4408,7 @@ def register_public_auth_routes(
             return jsonify({"error": "subject_too_long", "message": "Subject is too long."}), 400
         if not html_body and not text_body:
             return jsonify({"error": "missing_body", "message": "Message body is required."}), 400
-        if len(html_body) > 512_000:
+        if len(html_body) > 512_000 or len(text_body) > 512_000:
             return jsonify({"error": "body_too_large", "message": "Message body is too large."}), 400
 
         recipient = db.session.get(User, user_id)

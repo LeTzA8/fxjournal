@@ -231,7 +231,7 @@
                 {% if form_mode == 'view' %}
                 <form class="trade-form trade-form--view" onsubmit="return false;">
 
-                    <details class="trade-form-section trade-form-section--instrument trade-form-collapsible" open>
+                    <details class="trade-form-section trade-form-section--instrument trade-form-collapsible">
                         <summary class="trade-form-section-summary">
                             <span class="trade-form-section-title trade-form-section-title--instrument"><span class="trade-section-emoji" aria-hidden="true">🎯</span>Instrument</span>
                             <span class="trade-form-section-hint soft">{{ instrument_hint }}</span>
@@ -260,7 +260,7 @@
                         </div>
                     </details>
 
-                    <details class="trade-form-section trade-form-section--execution trade-form-collapsible" open>
+                    <details class="trade-form-section trade-form-section--execution trade-form-collapsible">
                         <summary class="trade-form-section-summary">
                             <span class="trade-form-section-title trade-form-section-title--execution"><span class="trade-section-emoji" aria-hidden="true">⚡</span>Execution</span>
                             <span class="trade-form-section-hint soft">{{ execution_hint }}</span>
@@ -292,7 +292,7 @@
                         </div>
                     </details>
 
-                    <details class="trade-form-section trade-form-section--performance trade-form-collapsible" open>
+                    <details class="trade-form-section trade-form-section--performance trade-form-collapsible">
                         <summary class="trade-form-section-summary">
                             <span class="trade-form-section-title trade-form-section-title--performance"><span class="trade-section-emoji" aria-hidden="true">💹</span>Performance</span>
                             <span class="trade-form-section-hint soft">{{ performance_hint }}</span>
@@ -373,7 +373,7 @@
                         </div>
                     </details>
 
-                    <details class="trade-form-section trade-form-section--journal trade-form-collapsible" open>
+                    <details class="trade-form-section trade-form-section--journal trade-form-collapsible">
                         <summary class="trade-form-section-summary">
                             <span class="trade-form-section-title trade-form-section-title--journal"><span class="trade-section-emoji" aria-hidden="true">📝</span>Journal</span>
                             <span class="trade-form-section-hint soft">{{ trade_note_summary }}</span>
@@ -436,7 +436,7 @@
                 <form action="{{ form_action }}" method="post" class="trade-form trade-form--edit" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                    <details class="trade-form-section trade-form-section--instrument trade-form-collapsible" open>
+                    <details class="trade-form-section trade-form-section--instrument trade-form-collapsible">
                         <summary class="trade-form-section-summary">
                             <span class="trade-form-section-title trade-form-section-title--instrument"><span class="trade-section-emoji" aria-hidden="true">🎯</span>Instrument</span>
                             <span class="trade-form-section-hint soft">{{ instrument_hint }}</span>
@@ -471,7 +471,7 @@
                         </div>
                     </details>
 
-                    <details class="trade-form-section trade-form-section--execution trade-form-collapsible" open>
+                    <details class="trade-form-section trade-form-section--execution trade-form-collapsible">
                         <summary class="trade-form-section-summary">
                             <span class="trade-form-section-title trade-form-section-title--execution"><span class="trade-section-emoji" aria-hidden="true">⚡</span>Execution</span>
                             <span class="trade-form-section-hint soft">{{ execution_hint }}</span>
@@ -503,7 +503,7 @@
                         </div>
                     </details>
 
-                    <details class="trade-form-section trade-form-section--performance trade-form-collapsible" open>
+                    <details class="trade-form-section trade-form-section--performance trade-form-collapsible">
                         <summary class="trade-form-section-summary">
                             <span class="trade-form-section-title trade-form-section-title--performance"><span class="trade-section-emoji" aria-hidden="true">💹</span>Outcome</span>
                             <span class="trade-form-section-hint soft">{{ performance_hint }}</span>
@@ -585,7 +585,7 @@
                         </div>
                     </details>
 
-                    <details class="trade-form-section trade-form-section--journal trade-form-collapsible" open>
+                    <details class="trade-form-section trade-form-section--journal trade-form-collapsible">
                         <summary class="trade-form-section-summary">
                             <span class="trade-form-section-title trade-form-section-title--journal"><span class="trade-section-emoji" aria-hidden="true">📝</span>Journal</span>
                             <span class="trade-form-section-hint soft">{{ trade_note_summary }}</span>
@@ -660,7 +660,7 @@
                 </form>
 
                 {% else %}
-                <form action="{{ form_action }}" method="post" class="trade-form trade-form--edit" data-themed-validation>
+                <form action="{{ form_action }}" method="post" class="trade-form trade-form--new" data-themed-validation>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                     <div class="trade-form-section trade-form-section--instrument">
@@ -708,9 +708,9 @@
                             </div>
                             <div class="trade-field">
                                 <label class="trade-field-label" for="exit_price">Exit price</label>
-                                <input id="exit_price" name="exit_price" type="number" step="0.00001" placeholder="Leave blank if still open" value="{{ trade.exit_price if trade and trade.exit_price is not none else '' }}">
+                                <input id="exit_price" name="exit_price" type="number" step="0.00001" placeholder="If closed" value="{{ trade.exit_price if trade and trade.exit_price is not none else '' }}">
                             </div>
-                            <div class="trade-field trade-field--span-2">
+                            <div class="trade-field">
                                 <label class="trade-field-label" for="lot_size">{{ size_label }}</label>
                                 <input id="lot_size" name="lot_size" type="number" step="0.01" placeholder="0.10" value="{{ trade.lot_size if trade else '' }}" required>
                             </div>
@@ -730,7 +730,7 @@
                         <div class="trade-fields-grid trade-fields-grid--2">
                             <div class="trade-field">
                                 <label class="trade-field-label" for="pnl">PnL (gross)</label>
-                                <input id="pnl" name="pnl" type="number" step="0.01" placeholder="Optional if exit price fills it in" value="{{ trade.pnl if trade and trade.pnl is not none else '' }}">
+                                <input id="pnl" name="pnl" type="number" step="0.01" placeholder="Optional" value="{{ trade.pnl if trade and trade.pnl is not none else '' }}">
                             </div>
                             <div class="trade-field">
                                 <label class="trade-field-label" for="commission">Commission</label>
@@ -804,7 +804,7 @@
 
             {% if form_mode == "new" %}
             <article class="panel import-panel">
-                <div class="panel-head">
+                <div class="panel-head import-panel-head">
                     <h2>{% if account_type == "FUTURES" %}Import from Tradovate{% else %}Import from MetaTrader 5{% endif %}</h2>
                     <div class="panel-head-meta">
                         <div class="help-popover">
@@ -832,16 +832,16 @@
                                 </ol>
                             </div>
                         </div>
-                        <span class="soft">{% if account_type == "FUTURES" %}CSV Upload{% else %}XLSX Upload{% endif %}</span>
+                        <span class="import-panel-kicker soft">{% if account_type == "FUTURES" %}CSV Upload{% else %}XLSX Upload{% endif %}</span>
                     </div>
                 </div>
-                    <p class="field-help">
-                        {% if account_type == "FUTURES" %}
-                        Tradovate timestamps default to <strong>America/Chicago</strong> unless the file provides explicit timezone data.
-                        {% else %}
-                        MT5 file import is the fastest first step. If the workbook omits timezone data, optional MT5 sync becomes the canonical source later.
-                        {% endif %}
-                    </p>
+                <p class="import-panel-intro field-help">
+                    {% if account_type == "FUTURES" %}
+                    Tradovate timestamps default to <strong>America/Chicago</strong> unless the file provides explicit timezone data.
+                    {% else %}
+                    MT5 file import is the fastest first step. If the workbook omits timezone data, optional MT5 sync becomes the canonical source later.
+                    {% endif %}
+                </p>
                 <form action="{{ url_for('trades.import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook" }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <label for="mt5_file">{% if account_type == "FUTURES" %}Tradovate Performance File{% else %}MT5 Report File{% endif %}</label>
@@ -888,7 +888,7 @@
                         Fastest first win: upload a MetaTrader 5 report exported as <code>.xlsx</code>. If the file includes close timestamps, duration and session analytics will use them automatically.
                         {% endif %}
                     </p>
-                    <div class="form-actions">
+                    <div class="form-actions import-form-actions">
                         <button type="submit" class="submit-btn">{% if account_type == "FUTURES" %}Upload CSV{% else %}Upload XLSX{% endif %}</button>
                     </div>
                 </form>
@@ -947,11 +947,15 @@
         justify-items: center;
         min-width: 0; }
 
-    .panel-grid.with-import { grid-template-columns: minmax(0, 760px) minmax(0, 520px);
+    .panel-grid.with-import { grid-template-columns: minmax(0, 1.35fr) minmax(280px, 400px);
         justify-content: center;
-        justify-items: center;
-        align-items: center;
+        justify-items: stretch;
+        align-items: start;
         gap: 1rem; }
+
+    .panel-grid.with-import > .panel {
+        max-width: none;
+    }
 
     .panel { border-radius: 14px;
         padding: 0.9rem;
@@ -1008,17 +1012,38 @@
     .entry-panel { width: 100%;
         margin: 0;
         min-width: 0;
-        align-self: center; }
+        align-self: stretch; }
 
     .import-panel { width: 100%;
         margin: 0;
         min-width: 0;
-        max-width: 520px;
-        align-self: center; }
+        max-width: none;
+        align-self: start;
+        position: sticky;
+        top: 1rem; }
+
+    .import-panel-head h2 {
+        min-width: 0;
+        line-height: 1.25;
+    }
+
+    .import-panel-kicker {
+        white-space: nowrap;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    .import-panel-intro {
+        margin: -0.15rem 0 0.15rem;
+        line-height: 1.5;
+    }
 
     .panel-head-meta { display: inline-flex;
         align-items: center;
-        gap: 0.5rem; }
+        gap: 0.5rem;
+        flex-shrink: 0; }
 
     h2 { margin: 0;
         font-size: 1rem; }
@@ -1461,6 +1486,34 @@
 
     .import-form > * { min-width: 0; }
 
+    .import-form-actions {
+        margin-top: 0.15rem;
+    }
+
+    .import-form-actions .submit-btn {
+        width: 100%;
+    }
+
+    .trade-form--new {
+        display: grid;
+        gap: 0.7rem;
+        min-width: 0;
+    }
+
+    .trade-form--new .trade-form-section {
+        margin-bottom: 0;
+    }
+
+    .panel-grid.with-import .trade-form--new .trade-fields-grid--2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    @media (max-width: 719px) {
+        .panel-grid.with-import .trade-form--new .trade-fields-grid--2 {
+            grid-template-columns: 1fr;
+        }
+    }
+
     .trade-form label:not(.trade-flag-option) { font-size: 0.82rem;
         font-weight: 600;
         text-transform: none;
@@ -1490,7 +1543,12 @@
 
     .dropzone { position: relative;
         border: 1px dashed var(--field-border-dashed); border-radius: 10px;
-        padding: 1rem 0.8rem;
+        padding: 1.15rem 0.85rem;
+        min-height: 7.5rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
         text-align: center;
         transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
         cursor: pointer; }
@@ -1658,7 +1716,14 @@
     .trade-flag-option small { color: var(--muted);
         line-height: 1.45; }
 
-@media (max-width: 980px) { .panel-grid.with-import { grid-template-columns: 1fr; } }
+@media (max-width: 980px) {
+        .panel-grid.with-import { grid-template-columns: 1fr; }
+
+        .import-panel {
+            position: static;
+            order: -1;
+        }
+    }
 
     @media (max-width: 700px) { .dash-wrap { padding: 0.9rem; }
 

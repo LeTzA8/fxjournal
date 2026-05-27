@@ -84,7 +84,10 @@ def test_build_admin_mt5_vm_overview_groups_accounts_by_vm(app_ctx, monkeypatch)
     monkeypatch.setattr(
         "helpers.admin_mt5_ops.get_queue_depths",
         lambda queue_names: {
-            name: {"mt5_sync": 2, "mt5_priority": 1, "mt5_setup": 0}.get(name, 0)
+            name: {
+                "mt5_sync.vm-east": 2,
+                "mt5_priority.vm-east": 1,
+            }.get(name, 0)
             for name in queue_names
         },
     )
@@ -95,7 +98,7 @@ def test_build_admin_mt5_vm_overview_groups_accounts_by_vm(app_ctx, monkeypatch)
     )
 
     assert overview["vm_count"] == 2
-    assert overview["queue_depths"]["mt5_sync"] == 2
+    assert overview["scoped_queue_depths"]["vm-east"]["mt5_sync"] == 2
     vm_by_id = {row["vm_id"]: row for row in overview["vms"]}
     assert vm_by_id["vm-east"]["account_count"] == 1
     assert vm_by_id["vm-east"]["region"] == "US East"
@@ -103,13 +106,10 @@ def test_build_admin_mt5_vm_overview_groups_accounts_by_vm(app_ctx, monkeypatch)
     assert vm_by_id["unknown"]["account_count"] == 1
     assert vm_by_id["unknown"]["accounts"][0]["account_number"] == "222222"
     assert "vm-east" in overview["selectable_vm_ids"]
-    assert overview["show_vm_target_selector"] is (
-        overview["multi_vm_enabled"] or bool(overview["selectable_vm_ids"])
-    )
+    assert overview["show_vm_target_selector"] is bool(overview["selectable_vm_ids"])
 
 
-def test_build_admin_mt5_vm_overview_exposes_vm_selector_when_multi_vm(app_ctx, monkeypatch):
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
+def test_build_admin_mt5_vm_overview_exposes_vm_selector_when_multiple_vms(app_ctx, monkeypatch):
     monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "VM-A,VM-B")
     monkeypatch.setattr(
         "helpers.admin_mt5_ops.list_mt5_worker_states",

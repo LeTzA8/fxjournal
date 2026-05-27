@@ -77,13 +77,17 @@ def test_celery_trace_filter_suppresses_plain_task_lifecycle_logs():
     assert trace_filter.filter(custom_record) is True
 
 
-def test_get_mt5_worker_window_config_detects_mt5_workers():
+def test_get_mt5_worker_window_config_detects_mt5_workers(monkeypatch):
+    monkeypatch.setenv("COMPUTERNAME", "FXJOURNAL-SG")
     sync_config = celery_app_module._get_mt5_worker_window_config("mt5-sync@FXJOURNAL-SG")
     setup_config = celery_app_module._get_mt5_worker_window_config("mt5-setup@FXJOURNAL-SG")
 
     assert sync_config["worker_kind"] == "mt5_sync"
     assert sync_config["queue_name"] == "mt5_sync"
-    assert sync_config["queue_names"] == ("mt5_priority", "mt5_sync")
+    assert sync_config["queue_names"] == (
+        "mt5_priority.fxjournal-sg",
+        "mt5_sync.fxjournal-sg",
+    )
     assert sync_config["title_prefix"] == "MT5 Sync Window"
     assert setup_config["worker_kind"] == "mt5_setup"
     assert setup_config["queue_name"] == "mt5_setup"

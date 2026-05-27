@@ -21,28 +21,18 @@ _QUEUE_SLUG_MAX_LEN = 48
 _QUEUE_SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
 
 
-def is_mt5_multi_vm_enabled() -> bool:
-    return str(os.getenv("FXJ_MT5_MULTI_VM", "") or "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-
-
 def mt5_dispatch_was_skipped(result) -> bool:
-    """True when multi-VM dispatch intentionally skipped (e.g. missing vm_id)."""
+    """True when dispatch intentionally skipped (e.g. missing vm_id)."""
     return result is None
 
 
 def listen_legacy_mt5_queues() -> bool:
-    if not is_mt5_multi_vm_enabled():
-        return True
-    return str(os.getenv("FXJ_MT5_LISTEN_LEGACY_QUEUES", "1") or "").strip().lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
+    """Optional migration escape hatch; VM workers should consume scoped queues only."""
+    return str(os.getenv("FXJ_MT5_LISTEN_LEGACY_QUEUES", "") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
     }
 
 
@@ -77,6 +67,11 @@ def canonical_monitor_vm_id(value) -> str:
     return text
 
 
+def routing_vm_id(value) -> str:
+    """Normalize vm_id for queue routing and affinity checks."""
+    return canonical_monitor_vm_id(value)
+
+
 def current_vm_id(default_hostname=None) -> str:
     """Prefer Windows COMPUTERNAME for MT5 worker identity."""
     from celery_workers.worker_monitor import get_vm_id
@@ -96,9 +91,8 @@ def mt5_queue_name(kind: str, vm_id=None) -> str:
     }.get(str(kind or "").strip().lower())
     if base is None:
         raise ValueError(f"Unknown MT5 queue kind: {kind!r}")
-    if not is_mt5_multi_vm_enabled():
-        return base
-    slug = vm_id_to_queue_slug(vm_id)
+    resolved = routing_vm_id(vm_id)
+    slug = vm_id_to_queue_slug(resolved)
     if slug == "unknown":
         return base
     return f"{base}.{slug}"
@@ -120,22 +114,21 @@ def scoped_mt5_queue_names(*, vm_ids=None, include_legacy=None) -> tuple[str, ..
     names = []
     seen = set()
     if include_legacy is None:
-        include_legacy = listen_legacy_mt5_queues() or not is_mt5_multi_vm_enabled()
-    if include_legacy or not is_mt5_multi_vm_enabled():
+        include_legacy = listen_legacy_mt5_queues()
+    if include_legacy:
         for queue_name in (MT5_PRIORITY_QUEUE, MT5_SYNC_QUEUE, MT5_SETUP_QUEUE):
             if queue_name not in seen:
                 seen.add(queue_name)
                 names.append(queue_name)
-    if is_mt5_multi_vm_enabled():
-        for vm_id in vm_ids or ():
-            normalized = normalize_vm_id(vm_id)
-            if not normalized:
-                continue
-            for kind in MT5_QUEUE_KINDS:
-                queue_name = mt5_queue_name(kind, normalized)
-                if queue_name not in seen:
-                    seen.add(queue_name)
-                    names.append(queue_name)
+    for vm_id in vm_ids or ():
+        resolved = routing_vm_id(vm_id)
+        if not resolved:
+            continue
+        for kind in MT5_QUEUE_KINDS:
+            queue_name = mt5_queue_name(kind, resolved)
+            if queue_name not in seen:
+                seen.add(queue_name)
+                names.append(queue_name)
     return tuple(names)
 
 
@@ -262,7 +255,7 @@ def build_setup_task_kwargs(*, target_vm_id=None, allow_failover=True, setup_att
 
 
 def _account_vm_id(account) -> str:
-    return normalize_vm_id(getattr(account, "vm_id", None))
+    return routing_vm_id(getattr(account, "vm_id", None))
 
 
 def _log_dispatch_skip(label, reason, *, extra=None):
@@ -276,10 +269,10 @@ def _log_dispatch_skip(label, reason, *, extra=None):
 
 def _resolve_account_vm_queue(account, *, kind, label, extra=None):
     vm_id = _account_vm_id(account)
-    if is_mt5_multi_vm_enabled() and not vm_id:
+    if not vm_id:
         _log_dispatch_skip(label, "missing_vm_id", extra={**(extra or {}), "mt5_account_id": getattr(account, "id", None)})
         return None, None
-    queue = mt5_queue_name(kind, vm_id or None)
+    queue = mt5_queue_name(kind, vm_id)
     return queue, vm_id
 
 
@@ -294,14 +287,13 @@ def dispatch_mt5_sync(
     extra=None,
     log=None,
 ):
-    vm_id = normalize_vm_id(account_vm_id)
-    if is_mt5_multi_vm_enabled() and not vm_id:
+    vm_id = routing_vm_id(account_vm_id)
+    if not vm_id:
         _log_dispatch_skip(label or "mt5_sync", "missing_vm_id", extra={**(extra or {}), "mt5_account_id": mt5_account_id})
         return None
     queue = mt5_sync_queue(vm_id)
     publish_kwargs = dict(kwargs or {})
-    if is_mt5_multi_vm_enabled() and vm_id:
-        publish_kwargs.setdefault("target_vm_id", vm_id)
+    publish_kwargs.setdefault("target_vm_id", vm_id)
     dispatch_kwargs = {
         "task": task,
         "args": [mt5_account_id],
@@ -330,14 +322,13 @@ def dispatch_mt5_priority(
     extra=None,
     log=None,
 ):
-    vm_id = normalize_vm_id(account_vm_id)
-    if is_mt5_multi_vm_enabled() and not vm_id:
+    vm_id = routing_vm_id(account_vm_id)
+    if not vm_id:
         _log_dispatch_skip(label or "mt5_priority", "missing_vm_id", extra=extra)
         return None
     queue = mt5_priority_queue(vm_id)
     publish_kwargs = dict(kwargs or {})
-    if is_mt5_multi_vm_enabled() and vm_id:
-        publish_kwargs.setdefault("target_vm_id", vm_id)
+    publish_kwargs.setdefault("target_vm_id", vm_id)
     return dispatch_celery_task(
         task,
         args=list(args),
@@ -389,14 +380,13 @@ def dispatch_mt5_cleanup(
     extra=None,
     log=None,
 ):
-    vm_id = canonical_monitor_vm_id(account_vm_id)
-    if is_mt5_multi_vm_enabled() and not vm_id:
+    vm_id = routing_vm_id(account_vm_id)
+    if not vm_id:
         _log_dispatch_skip(label or "mt5_cleanup", "missing_vm_id", extra=extra)
         return None
     queue = mt5_setup_queue(vm_id)
     publish_kwargs = dict(kwargs or {})
-    if vm_id:
-        publish_kwargs.setdefault("target_vm_id", vm_id)
+    publish_kwargs.setdefault("target_vm_id", vm_id)
     return dispatch_celery_task(
         task,
         args=[terminal_path, appdata_hash],
@@ -409,15 +399,15 @@ def dispatch_mt5_cleanup(
 
 
 def dispatch_mt5_pause(task, mt5_account_id, *, account_vm_id=None, label=None, extra=None, log=None):
-    vm_id = normalize_vm_id(account_vm_id)
-    if is_mt5_multi_vm_enabled() and not vm_id:
+    vm_id = routing_vm_id(account_vm_id)
+    if not vm_id:
         _log_dispatch_skip(label or "mt5_pause", "missing_vm_id", extra=extra)
         return None
     queue = mt5_setup_queue(vm_id)
     return dispatch_celery_task(
         task,
         args=[mt5_account_id],
-        kwargs={"target_vm_id": vm_id or None},
+        kwargs={"target_vm_id": vm_id},
         queue=queue,
         label=label or "mt5_pause",
         extra=extra,
@@ -448,10 +438,7 @@ def guard_wrong_vm_task(
 
     Returns a result dict when re-queued, otherwise None.
     """
-    if not is_mt5_multi_vm_enabled():
-        return None
-
-    target = canonical_monitor_vm_id(target_vm_id)
+    target = routing_vm_id(target_vm_id)
     if not target:
         return None
 
@@ -502,11 +489,6 @@ def guard_wrong_vm_task(
 def account_sync_queue_depths(vm_id) -> tuple[int, int]:
     from celery_workers.cache import get_queue_depth
 
-    if not is_mt5_multi_vm_enabled():
-        return (
-            int(get_queue_depth(MT5_SYNC_QUEUE) or 0),
-            int(get_queue_depth(MT5_PRIORITY_QUEUE) or 0),
-        )
     return (
         int(get_queue_depth(mt5_sync_queue(vm_id)) or 0),
         int(get_queue_depth(mt5_priority_queue(vm_id)) or 0),
@@ -522,7 +504,7 @@ def configured_monitor_vm_ids(*, mt5_accounts=None) -> list[str]:
             seen.add(key)
             vm_ids.append(vm_id)
     for account in mt5_accounts or ():
-        vm_id = normalize_vm_id(getattr(account, "vm_id", None))
+        vm_id = routing_vm_id(getattr(account, "vm_id", None))
         if not vm_id:
             continue
         key = vm_id.casefold()

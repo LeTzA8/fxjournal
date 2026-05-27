@@ -2,7 +2,6 @@
 
 {% block head_extra %}
 {% include 'partials/admin_panel_head.html' %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css" crossorigin="anonymous">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_send_email.css') }}">
 {% endblock %}
 
@@ -10,7 +9,7 @@
 {% include 'partials/admin_shell_start.html' %}
 
         <section
-            class="panel admin-send-email-compose"
+            class="admin-send-email-compose"
             id="adminSendEmailRoot"
             data-recipients-url="{{ url_for('admin_send_email_recipients') }}"
             data-send-url="{{ url_for('admin_send_email_send_one') }}"
@@ -18,19 +17,31 @@
             data-default-inactive-days="{{ default_inactive_days }}"
             data-send-delay-ms="{{ send_delay_ms }}"
             data-placeholder="{{ '{{' }}name{{ '}}' }}"
+            data-sample-name="Alex"
         >
-            <div class="panel-head panel-head-stack">
-                <div>
-                    <h2>Compose</h2>
-                    <p class="helper-note">
-                        Sends individually via Resend from <strong>{{ admin_broadcast_from }}</strong>.
-                        Use <code>{{ '{{' }}name{{ '}}' }}</code> in the subject or body for per-recipient personalization.
-                    </p>
-                </div>
-            </div>
-
             <div class="admin-send-email-grid">
-                <div class="admin-send-email-main">
+                <div class="panel spotlight-panel admin-send-email-main-panel">
+                    <div class="admin-send-email-compose-head">
+                        <div>
+                            <h2>Compose Email</h2>
+                            <p class="helper-note">
+                                Each selected user receives an individual Resend email from
+                                <strong>{{ admin_broadcast_from }}</strong>.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="admin-send-email-personalization" aria-label="Name personalization help">
+                        <div class="admin-send-email-personalization-copy">
+                            <strong>Name personalization</strong>
+                            <span>
+                                Type <code>{{ '{{' }}name{{ '}}' }}</code> anywhere in the subject or message.
+                                It is replaced with each recipient's username before sending.
+                            </span>
+                            <span class="soft">Example: <code>Hi {{ '{{' }}name{{ '}}' }},</code> becomes <code>Hi Alex,</code>.</span>
+                        </div>
+                    </div>
+
                     <div class="admin-send-email-field">
                         <label for="adminSendEmailToSearch">To</label>
                         <div class="admin-send-email-to-wrap">
@@ -39,7 +50,7 @@
                                 type="search"
                                 id="adminSendEmailToSearch"
                                 class="admin-send-email-to-search"
-                                placeholder="Search name or email…"
+                                placeholder="Search users by name or email"
                                 autocomplete="off"
                                 spellcheck="false"
                             >
@@ -76,19 +87,24 @@
                             id="adminSendEmailSubject"
                             class="admin-send-email-subject"
                             maxlength="200"
-                            placeholder="Subject line"
+                            placeholder="Subject line, e.g. Quick update for {{ '{{' }}name{{ '}}' }}"
                             autocomplete="off"
                         >
                     </div>
 
                     <div class="admin-send-email-field">
                         <span class="admin-send-email-label-row">
-                            <label for="adminSendEmailEditor">Message</label>
+                            <label for="adminSendEmailMessage">Message</label>
                             <button type="button" class="ghost-btn admin-send-email-insert-placeholder" id="adminSendEmailInsertPlaceholder">
-                                Insert {{ '{{' }}name{{ '}}' }}
+                                Insert name token
                             </button>
                         </span>
-                        <div id="adminSendEmailEditor" class="admin-send-email-editor" aria-label="Email body"></div>
+                        <textarea
+                            id="adminSendEmailMessage"
+                            class="admin-send-email-message"
+                            rows="12"
+                            placeholder="Write the email body here. Use {{ '{{' }}name{{ '}}' }} if you want the recipient's username inserted."
+                        ></textarea>
                     </div>
 
                     <div class="admin-send-email-actions">
@@ -106,10 +122,10 @@
                     <div class="admin-send-email-summary" id="adminSendEmailSummary" hidden role="status" aria-live="polite"></div>
                 </div>
 
-                <aside class="admin-send-email-preview panel spotlight-panel">
+                <aside class="panel spotlight-panel admin-send-email-preview">
                     <div class="panel-head">
                         <h2>Preview</h2>
-                        <span class="soft" id="adminSendEmailPreviewRecipient">Select a recipient</span>
+                        <span class="soft" id="adminSendEmailPreviewRecipient">Sample preview</span>
                     </div>
                     <p class="admin-send-email-preview-subject" id="adminSendEmailPreviewSubject"></p>
                     <div class="admin-send-email-preview-body" id="adminSendEmailPreviewBody"></div>
@@ -122,6 +138,5 @@
 
 {% block page_scripts %}
     {{ super() }}
-    <script src="https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js" crossorigin="anonymous"></script>
     <script defer src="{{ url_for('static', filename='js/admin_send_email.js') }}"></script>
 {% endblock %}

@@ -462,9 +462,6 @@
                     sync {{ vm_overview.queue_depths.get('mt5_sync', 0) }},
                     priority {{ vm_overview.queue_depths.get('mt5_priority', 0) }},
                     setup {{ vm_overview.queue_depths.get('mt5_setup', 0) }}
-                    {% if vm_overview.get('multi_vm_enabled') %}
-                    · multi-VM routing enabled
-                    {% endif %}
                 </p>
                 {% endif %}
                 <div class="mt5-vm-grid">
@@ -721,9 +718,9 @@
                                         <label class="admin-mt5-row-vm-label">
                                             <span class="soft">Target VM for setup/reactivate/cleanup</span>
                                             <select class="admin-mt5-row-vm-select admin-sort-select" data-mt5-row-vm-select aria-label="Target VM for MT5 account {{ account.id }}">
-                                                <option value=""{% if account_vm_canonical or (vm_overview.get('multi_vm_enabled') and vm_overview.get('selectable_vm_ids')) %}{% else %} selected{% endif %}>Default routing</option>
+                                                <option value=""{% if account_vm_canonical or vm_overview.get('selectable_vm_ids') %}{% else %} selected{% endif %}>Default routing</option>
                                                 {% for vm_option in vm_overview.selectable_vm_ids %}
-                                                <option value="{{ vm_option }}"{% if account_vm_canonical == vm_option or (not account_vm_canonical and vm_overview.get('multi_vm_enabled') and loop.first) %} selected{% endif %}>{{ vm_option }}</option>
+                                                <option value="{{ vm_option }}"{% if account_vm_canonical == vm_option %} selected{% endif %}>{{ vm_option }}</option>
                                                 {% endfor %}
                                             </select>
                                         </label>

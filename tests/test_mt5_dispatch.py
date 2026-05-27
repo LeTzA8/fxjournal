@@ -7,7 +7,6 @@ from helpers.mt5_dispatch import (
     dispatch_mt5_setup,
     dispatch_mt5_sync,
     guard_wrong_vm_task,
-    is_mt5_multi_vm_enabled,
     is_setup_failover_eligible_error,
     mt5_dispatch_was_skipped,
     mt5_priority_queue,
@@ -27,18 +26,16 @@ def test_vm_id_to_queue_slug_normalizes():
     assert vm_id_to_queue_slug("A" * 80) == "a" * 48
 
 
-def test_queue_names_legacy_when_flag_off(monkeypatch):
-    monkeypatch.delenv("FXJ_MT5_MULTI_VM", raising=False)
-    assert mt5_sync_queue("MYFXJOURNAL-SG") == "mt5_sync"
-    assert mt5_priority_queue("MYFXJOURNAL-SG") == "mt5_priority"
-    assert mt5_setup_queue("MYFXJOURNAL-SG") == "mt5_setup"
-
-
-def test_queue_names_scoped_when_flag_on(monkeypatch):
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
+def test_queue_names_always_scoped():
     assert mt5_sync_queue("MYFXJOURNAL-SG") == "mt5_sync.myfxjournal-sg"
     assert mt5_priority_queue("MYFXJOURNAL-SG") == "mt5_priority.myfxjournal-sg"
     assert mt5_setup_queue("MYFXJOURNAL-SG") == "mt5_setup.myfxjournal-sg"
+
+
+def test_queue_names_unknown_vm_id_falls_back_to_legacy_base():
+    assert mt5_sync_queue(None) == "mt5_sync"
+    assert mt5_priority_queue("") == "mt5_priority"
+    assert mt5_setup_queue("unknown") == "mt5_setup"
 
 
 def test_parse_setup_vm_ids_env(monkeypatch):
@@ -82,7 +79,6 @@ class _FakeTask:
 
 
 def test_guard_wrong_vm_task_redispatches(monkeypatch):
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     monkeypatch.setenv("COMPUTERNAME", "VM2-TEST")
     calls = []
     task = _FakeTask(_FakeRequest(kwargs={"trigger_source": "beat"}))
@@ -99,14 +95,12 @@ def test_guard_wrong_vm_task_redispatches(monkeypatch):
 
 
 def test_guard_wrong_vm_task_noop_on_matching_vm(monkeypatch):
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     monkeypatch.setenv("COMPUTERNAME", "MYFXJOURNAL-SG")
     task = _FakeTask(_FakeRequest())
     assert guard_wrong_vm_task(task, target_vm_id="MYFXJOURNAL-SG", redispatch=lambda **_: pytest.fail("unexpected")) is None
 
 
 def test_guard_wrong_vm_task_canonicalizes_celery_prefixed_target(monkeypatch):
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     monkeypatch.setenv("COMPUTERNAME", "VM2-TEST")
     calls = []
     task = _FakeTask(_FakeRequest())
@@ -197,11 +191,10 @@ def test_resolve_mt5_setup_target_vm_allows_vm_override(app_ctx):
     assert error is None
 
 
-def test_resolve_mt5_setup_target_vm_requires_target_in_multi_vm(app_ctx, monkeypatch):
+def test_resolve_mt5_setup_target_vm_requires_target_when_missing(app_ctx):
     from helpers.core import resolve_mt5_setup_target_vm
     from models import MT5Account, TradeAccount, User, db
 
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     user = User(username="resolve-setup-vm-multi", email="resolve-setup-vm-multi@example.com", password="hashed")
     db.session.add(user)
     db.session.flush()
@@ -224,11 +217,10 @@ def test_resolve_mt5_setup_target_vm_requires_target_in_multi_vm(app_ctx, monkey
     assert "Choose a target VM" in error
 
 
-def test_resolve_mt5_cleanup_target_vm_requires_target_in_multi_vm(app_ctx, monkeypatch):
+def test_resolve_mt5_cleanup_target_vm_requires_target_when_missing(app_ctx):
     from helpers.core import resolve_mt5_cleanup_target_vm
     from models import MT5Account, TradeAccount, User, db
 
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     user = User(username="resolve-vm-multi", email="resolve-vm-multi@example.com", password="hashed")
     db.session.add(user)
     db.session.flush()
@@ -254,8 +246,6 @@ def test_resolve_mt5_cleanup_target_vm_requires_target_in_multi_vm(app_ctx, monk
 def test_queue_mt5_account_cleanup_reports_missing_vm_skip(app_ctx, monkeypatch):
     from helpers.core import queue_mt5_account_cleanup
     from models import MT5Account, TradeAccount, User, db
-
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
 
     user = User(username="cleanup-skip-user", email="cleanup-skip@example.com", password="hashed")
     db.session.add(user)
@@ -284,7 +274,6 @@ def test_queue_mt5_account_cleanup_uses_target_vm_override(app_ctx, monkeypatch)
     from helpers.core import queue_mt5_account_cleanup
     from models import MT5Account, TradeAccount, User, db
 
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     captured = {}
 
     class _Task:
@@ -452,8 +441,6 @@ def test_queue_mt5_accounts_cleanup_for_vm_skips_active_only(app_ctx, monkeypatc
 
 
 def test_dispatch_mt5_sync_skips_missing_vm_id_when_multi_vm(monkeypatch, caplog):
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
-
     class _Task:
         name = "sync"
 
@@ -464,7 +451,6 @@ def test_dispatch_mt5_sync_skips_missing_vm_id_when_multi_vm(monkeypatch, caplog
 
 
 def test_dispatch_mt5_setup_builds_kwargs(monkeypatch):
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     captured = {}
 
     class _Task:
@@ -493,8 +479,34 @@ def test_dispatch_mt5_setup_builds_kwargs(monkeypatch):
     assert captured["kwargs"]["allow_failover"] is False
 
 
+def test_dispatch_mt5_sync_scoped_queue_canonicalizes_celery_prefixed_vm_id(monkeypatch):
+    captured = {}
+
+    class _Task:
+        name = "sync"
+
+        @property
+        def app(self):
+            class _App:
+                conf = type("Conf", (), {"broker_url": "memory://"})()
+
+            return _App()
+
+        def apply_async(self, **kwargs):
+            captured.update(kwargs)
+            return type("Result", (), {"id": "task-id"})()
+
+    dispatch_mt5_sync(
+        _Task(),
+        123,
+        account_vm_id="mt5-sync@MYFXJOURNAL-SG",
+        label="test_sync",
+    )
+    assert captured["queue"] == "mt5_sync.myfxjournal-sg"
+    assert captured["kwargs"]["target_vm_id"] == "MYFXJOURNAL-SG"
+
+
 def test_dispatch_mt5_priority_scoped_queue(monkeypatch):
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     captured = {}
 
     class _Task:

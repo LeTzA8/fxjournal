@@ -260,13 +260,47 @@ def _build_queue_health_snapshot(
 
 
 def build_mt5_sync_health_snapshot(*, now=None):
+    from helpers.mt5_dispatch import (
+        listen_legacy_mt5_queues,
+        mt5_priority_queue,
+        mt5_sync_queue,
+        parse_setup_vm_ids_env,
+        routing_vm_id,
+    )
+
+    queue_names = []
+    if listen_legacy_mt5_queues():
+        queue_names.extend(["mt5_priority", "mt5_sync"])
+    seen = {name.casefold() for name in queue_names}
+    for vm_id in parse_setup_vm_ids_env():
+        for queue_name in (mt5_priority_queue(vm_id), mt5_sync_queue(vm_id)):
+            key = queue_name.casefold()
+            if key not in seen:
+                seen.add(key)
+                queue_names.append(queue_name)
+    try:
+        from celery_workers.cache import list_worker_states
+
+        for row in list_worker_states("mt5_sync"):
+            vm_id = routing_vm_id(row.get("vm_id") or row.get("worker_id"))
+            if not vm_id:
+                continue
+            for queue_name in (mt5_priority_queue(vm_id), mt5_sync_queue(vm_id)):
+                key = queue_name.casefold()
+                if key not in seen:
+                    seen.add(key)
+                    queue_names.append(queue_name)
+    except Exception:
+        pass
+    if not queue_names:
+        queue_names = ["mt5_priority", "mt5_sync"]
     return _build_queue_health_snapshot(
         "mt5_sync",
         worker_kind="mt5_sync",
         stale_threshold_minutes=_sync_stale_threshold_minutes(),
         activity_basis="processed",
         now=now,
-        queue_names=("mt5_priority", "mt5_sync"),
+        queue_names=tuple(queue_names),
     )
 
 

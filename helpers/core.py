@@ -727,7 +727,7 @@ def resolve_mt5_cleanup_target_vm(*, mt5_account, target_vm_id=None):
     Returns ``(vm_id, error_message)``. Empty explicit input falls back to the
     account's stored VM affinity.
     """
-    from helpers.mt5_dispatch import canonical_monitor_vm_id, is_mt5_multi_vm_enabled
+    from helpers.mt5_dispatch import canonical_monitor_vm_id
 
     stored = canonical_monitor_vm_id(getattr(mt5_account, "vm_id", None))
     explicit = (
@@ -741,7 +741,7 @@ def resolve_mt5_cleanup_target_vm(*, mt5_account, target_vm_id=None):
             "Use default routing or the account's current VM."
         )
     resolved = explicit or stored or None
-    if is_mt5_multi_vm_enabled() and not resolved:
+    if not resolved:
         return None, (
             "MT5 cleanup could not be queued. Choose a target VM for this account "
             "before deleting VM files."
@@ -756,7 +756,7 @@ def resolve_mt5_setup_target_vm(*, mt5_account, target_vm_id=None):
     Explicit admin dropdown input wins over stored account affinity. Unlike
     cleanup routing, setup/reactivate may move an account to a different VM.
     """
-    from helpers.mt5_dispatch import canonical_monitor_vm_id, is_mt5_multi_vm_enabled
+    from helpers.mt5_dispatch import canonical_monitor_vm_id
 
     stored = canonical_monitor_vm_id(getattr(mt5_account, "vm_id", None))
     explicit = (
@@ -765,7 +765,7 @@ def resolve_mt5_setup_target_vm(*, mt5_account, target_vm_id=None):
         else ""
     )
     resolved = explicit or stored or None
-    if is_mt5_multi_vm_enabled() and not resolved:
+    if not resolved:
         return None, (
             "MT5 reactivation could not be queued. Choose a target VM for this account "
             "before reactivating."

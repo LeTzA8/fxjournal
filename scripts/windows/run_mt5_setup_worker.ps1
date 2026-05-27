@@ -100,7 +100,7 @@ function Get-Mt5VmQueueSlug {
 }
 
 $VmSlug = Get-Mt5VmQueueSlug
-$SetupQueues = "mt5_setup.$VmSlug,mt5_setup"
+$SetupQueues = "mt5_setup.$VmSlug"
 
 while ($true) {
     Set-ConsoleTitleSafely "MT5 Setup Window | Starting..."

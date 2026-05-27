@@ -1,0 +1,20 @@
+---
+description: UTF-16 encoding for Hyonix Task Scheduler XML exports
+globs: manual VM scripts/FX Journal MT5 *.xml
+alwaysApply: false
+---
+
+# VM Task Scheduler XML encoding
+
+Task Scheduler imports require **UTF-16 LE with BOM** (`FF FE`).
+
+After editing any `manual VM scripts/FX Journal MT5 *.xml` file:
+
+1. Re-encode from repo root:
+   ```bash
+   python "manual VM scripts/reencode_task_xml_utf16.py"
+   ```
+2. Verify the file starts with BOM bytes `FF FE` (not UTF-8).
+3. Do not commit UTF-8/plain-text versions of these exports.
+
+Repo paths inside XML must stay `C:\Users\Administrator\fxjournal`, not the local dev path.

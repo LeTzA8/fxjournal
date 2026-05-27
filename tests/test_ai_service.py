@@ -284,10 +284,10 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
                 "trade_number_in_session": 2,
                 "prev_trade_pnl": -80.0,
                 "minutes_since_prev_close": 12.0,
-                "size_vs_prev_trade": "larger",
+                "risk_pct_vs_prev": "larger",
                 "prev_symbol_trade_pnl": -80.0,
                 "minutes_since_prev_symbol_close": 12.0,
-                "size_vs_prev_symbol_trade": "larger",
+                "risk_pct_vs_prev_symbol": "larger",
                 "loss_streak_before_trade": 1,
                 "is_post_loss_trade": True,
                 "same_symbol_reentry": True,
@@ -381,7 +381,7 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "- confirmed_reactive_points: 2.50" in prompt_text
     assert "- revenge_points: 1.25" in prompt_text
     assert "- confirmed_revenge_trade_count: 1" in prompt_text
-    assert "- heuristic_revenge_trade_count: 1" in prompt_text
+    assert "- revenge_trade_count: 1" in prompt_text
     assert "- reactive_trade_count: 1" in prompt_text
     assert "- bundle_count: 0" in prompt_text
     assert "- total_closed_trades: 1" in prompt_text
@@ -441,10 +441,10 @@ def test_format_payload_for_prompt_includes_trade_fields_and_clear_context():
     assert "trade_sequence_number: 2" in prompt_text
     assert "prev_trade_pnl: -80.00" in prompt_text
     assert "minutes_since_prev_close: 12.00" in prompt_text
-    assert "size_vs_prev_trade: larger" in prompt_text
+    assert "risk_pct_vs_prev: larger" in prompt_text
     assert "prev_symbol_trade_pnl: -80.00" in prompt_text
     assert "minutes_since_prev_symbol_close: 12.00" in prompt_text
-    assert "size_vs_prev_symbol_trade: larger" in prompt_text
+    assert "risk_pct_vs_prev_symbol: larger" in prompt_text
     assert "is_post_loss_same_symbol_trade: true" in prompt_text
     assert "same_trade_idea_reentry: true" in prompt_text
     assert "is_potential_revenge: true" in prompt_text
@@ -518,27 +518,20 @@ def test_build_trade_payload_serializes_trade_risk_fields_and_session(app_ctx):
     )
 
     assert len(payload["trades"]) == 1
-    assert payload["trades"][0]["contract_code"] == "MESM26"
-    assert payload["trades"][0]["stop_loss"] == 4998.0
-    assert payload["trades"][0]["take_profit"] == 5006.0
-    assert payload["trades"][0]["entry_session"] == "New York"
-    assert payload["trades"][0]["exit_session"] == "New York"
-    assert payload["trades"][0]["session"] == "New York"
-    assert payload["trades"][0]["review_ref"] == "T1"
-    assert payload["trades"][0]["trade_id"] == trade.id
-    assert payload["trades"][0]["duration_minutes"] == 45.0
-    assert payload["trades"][0]["trade_sequence_number"] == 1
-    assert payload["trades"][0]["trade_number_in_session"] == 1
-    assert payload["trades"][0]["planned_rr"] == 3.0
-    assert payload["trades"][0]["realized_rr"] == 1.25
-    assert payload["trades"][0]["tp_capture_pct"] == 41.67
-    assert payload["trades"][0]["closed_before_tp"] is True
-    assert payload["trades"][0]["closed_before_sl"] is None
-    assert payload["trades"][0]["split_group_size"] == 1
-    assert payload["trades"][0]["split_group_role"] == "solo"
-    sizing = payload["current_week_breakdowns"]["sizing"]
-    assert sizing["median_planned_risk_dollars"] == 10.0
-    assert sizing["median_risk_pct_of_account"] == 0.01
+    trade = payload["trades"][0]
+    assert trade["ref"] == "T1"
+    assert trade["symbol"] == "MES"
+    assert trade["entry_session"] == "New York"
+    assert trade["exit_session"] == "New York"
+    assert trade["duration_minutes"] == 45.0
+    assert trade["planned_rr"] == 3.0
+    assert trade["realized_rr"] == 1.25
+    assert trade["trade_risk_pct"] == 0.01
+    assert trade["trade_note"] == "Held to target."
+    assert payload["week_summary"]["closed_trades"] == 1
+    assert payload["risk_authority"]["basis"] == "pct_of_account"
+    assert "value" not in payload["risk_authority"]
+    assert trade["trade_date_label"]
 
 
 def test_build_trade_payload_serializes_strategy_context(app_ctx):
@@ -589,27 +582,16 @@ def test_build_trade_payload_serializes_strategy_context(app_ctx):
     )
 
     trade = payload["trades"][0]
-    assert trade["strategy_name"] == "NY Open Sweep v1"
-    assert trade["strategy_version"] == 1
-    assert trade["strategy_description"] == "Only trade the first pullback after the New York open."
-    strategy_breakdown = payload["current_week_breakdowns"]["strategies"]
-    assert strategy_breakdown == [
+    assert trade["strategy_ref"] == "S1"
+    assert payload["strategy_context"]["strategies_used"] == [
         {
-            "strategy_name": "NY Open Sweep v1",
-            "count": 1,
-            "win_rate": 100.0,
-            "net_pnl": 100.0,
+            "strategy_ref": "S1",
+            "name": "NY Open Sweep v1",
+            "version": 1,
+            "description": "Only trade the first pullback after the New York open.",
         }
     ]
-    assert payload["current_week_breakdowns"]["strategy_coverage"] == {
-        "trades_with_strategy": 1,
-        "strategy_coverage_pct": 100.0,
-    }
-
-    prompt_text = format_payload_for_prompt(payload)
-    assert "strategy NY Open Sweep v1: count=1, win_rate=100.00%, net_pnl=+100.00" in prompt_text
-    assert "strategy_name: NY Open Sweep v1" in prompt_text
-    assert "strategy_description: Only trade the first pullback after the New York open." in prompt_text
+    assert trade["trade_note"] == "Waited for the planned pullback."
 
 
 def test_build_trade_payload_adds_market_context_and_trailing_stop_detection(app_ctx):
@@ -658,39 +640,11 @@ def test_build_trade_payload_adds_market_context_and_trailing_stop_detection(app
         closed_trades_only=True,
     )
 
-    context = payload["trades"][0]["market_context"]
-    assert context["bars_status"] == "ready"
-    assert context["in_trade_bars"] == 4
-    assert context["post_exit_bars"] == 1
-    assert context["mfe_price_move"] == 8.0
-    assert context["mae_price_move"] == 1.0
-    assert context["mfe_r"] is None
-    assert context["post_exit_tp_reached"] is True
-    assert context["minutes_after_exit_to_tp"] == 5.0
-
-    stop_context = context["stop_management"]
-    assert stop_context["stop_loss_breakeven_or_better"] is True
-    assert stop_context["stop_loss_protects_profit"] is True
-    assert stop_context["confidence"] == "high"
-    assert "stored_stop_loss_protects_profit" in stop_context["evidence"]
-    assert "system_note_mentions_breakeven_stop" in stop_context["evidence"]
-    assert "system_note_mentions_trailing_or_moved_stop" in stop_context["evidence"]
-
-    weekly_market = payload["current_week_breakdowns"]["market_context"]
-    assert weekly_market["trades_with_bars"] == 1
-    assert weekly_market["bar_coverage_pct"] == 100.0
-    assert weekly_market["post_exit_tp_reached_count"] == 1
-    assert weekly_market["protective_stop_count"] == 1
-    assert weekly_market["trailing_or_breakeven_stop_count"] == 1
-    assert "large_candle_entry_count" in weekly_market
-    assert "entry_bar_against_direction_count" in weekly_market
-    assert "post_exit_continued_count" in weekly_market
-    assert "post_exit_reversed_count" in weekly_market
-
-    prompt_text = format_payload_for_prompt(payload)
-    assert "market_context.post_exit_tp_reached: true" in prompt_text
-    assert "stop_management.stop_loss_protects_profit: true" in prompt_text
-    assert "stop_management.confidence: high" in prompt_text
+    summary = payload["trades"][0]["market_context_summary"]
+    assert summary["bars_status"] == "ready"
+    assert summary["post_exit_tp_reached"] is True
+    assert summary["stop_management_summary"]["confidence"] == "high"
+    assert "protective" in summary["stop_management_summary"]["read"]
 
 
 def test_build_trade_payload_excludes_system_trade_notes_from_notes_coverage(app_ctx):
@@ -740,14 +694,9 @@ def test_build_trade_payload_excludes_system_trade_notes_from_notes_coverage(app
         closed_trades_only=True,
     )
 
-    assert payload["notes_coverage"] == 0.5
-    assert payload["notes_with_content"] == 1
-    assert payload["notes_missing"] == 1
-    assert payload["notes_basis"] == (
-        "Per weekly trade idea after bundle merging; counts non-empty user-authored trade_note text only."
-    )
+    assert "notes_coverage" not in payload
     trades_by_symbol = {trade["symbol"]: trade for trade in payload["trades"]}
-    assert trades_by_symbol["EURUSD"]["trade_note"] is None
+    assert trades_by_symbol["EURUSD"].get("trade_note") is None
     assert trades_by_symbol["GBPUSD"]["trade_note"] == "Faded the first spike and stuck to plan."
 
 
@@ -786,10 +735,10 @@ def test_format_payload_for_prompt_handles_missing_trade_session():
                     "trade_number_in_session": 1,
                     "prev_trade_pnl": None,
                     "minutes_since_prev_close": None,
-                    "size_vs_prev_trade": None,
+                    "risk_pct_vs_prev": None,
                     "prev_symbol_trade_pnl": None,
                     "minutes_since_prev_symbol_close": None,
-                    "size_vs_prev_symbol_trade": None,
+                    "risk_pct_vs_prev_symbol": None,
                     "loss_streak_before_trade": 0,
                     "is_post_loss_trade": False,
                     "same_symbol_reentry": False,
@@ -1000,26 +949,46 @@ def test_dashboard_prompt_uses_exit_price_language():
     The prompt was rewritten in 2026-05 for better flow, baking the rules
     into structure rather than a numbered list. This test locks in the key
     behavioral guarantees: evidence hierarchy, risk-priority rule, insight
-    mandate, output format, strategy-label gate, small-sample compression,
+    mandate, output format, strategy-label gate, small-sample calibration,
     and integrated evidence boundaries.
     """
     prompt_text = load_prompt_text("dashboard_advice.txt")["prompt_text"]
 
-    # Compressed payload trade fields
+    # Universal payload trade fields
     for field in [
         "strategy_ref",
         "entry_session",
-        "exit_session",
         "duration_minutes",
-        "same_trade_idea_reentry",
         "planned_rr",
         "realized_rr",
         "market_context_summary",
-        "post_loss_context",
+        "trade_date_label",
         "ref",
-        "HIGH_SIGNAL_TRADES",
+        "trades",
+        "week_summary",
+        "evidence_boundary",
+        "post_loss_sequences",
+        "risk_outlier",
+        "tp_capture_pct",
+        "closed_before_tp",
+        "closed_before_sl",
     ]:
-        assert field in prompt_text, f"Missing compressed field reference: {field}"
+        assert field in prompt_text, f"Missing universal payload field reference: {field}"
+
+    # Removed legacy payload sections
+    for removed in [
+        "sample_context",
+        "review_scope",
+        "primary_sequences",
+        "post_loss_response",
+        "notes_confidence",
+        "strategy_coverage_pct",
+        "SURFACE_FACTS",
+        "large_candle_before_entry",
+        "entry_in_session_overlap",
+        "stop_loss_protects_profit",
+    ]:
+        assert removed not in prompt_text, f"Legacy field still referenced: {removed}"
 
     # Structural sections — new architecture
     assert "EVIDENCE HIERARCHY" in prompt_text
@@ -1043,17 +1012,17 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "ceiling" in prompt_text.lower()
 
     # Precomputed signal references
-    assert "WEEK_SUMMARY" in prompt_text
-    assert "PRIMARY_SEQUENCES" in prompt_text
-    assert "COACHING_FRAME_TRIGGERS" in prompt_text
-    assert "CONSTRAINTS" in prompt_text
+    assert "week_summary" in prompt_text
+    assert "post_loss_sequences" in prompt_text
+    assert "coaching_frame_triggers" in prompt_text
+    assert "constraints" in prompt_text
     assert "habits are leaking" in prompt_text
     assert "leaky_execution_bad_outcome" in prompt_text
     assert "good_execution_flat_outcome" in prompt_text
     assert "leaky_execution_flat_outcome" in prompt_text
     assert "light correction" in prompt_text
-    assert "WEEK_SUMMARY.primary_issue" in prompt_text
-    assert "primary_issue_evidence_level" in prompt_text
+    assert "week_summary.primary_issue" in prompt_text
+    assert "week_summary.issue_scope" in prompt_text
     assert "one watch item" in prompt_text
     assert "deterministic lead signal" in prompt_text
     assert "trap/frame cues" in prompt_text
@@ -1066,12 +1035,11 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Trade references must appear" in prompt_text
     assert "inside sentences, not as trailing fragments" in prompt_text
     assert "same-symbol cap with logging added" in prompt_text
-    assert "EVIDENCE_BOUNDARY" in prompt_text
-    assert "SAMPLE_CONTEXT" in prompt_text
-    assert "HIGH_SIGNAL_TRADES" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
-    assert "WEEK_SUMMARY.primary_issue" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
-    assert "primary_issue_evidence_level" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
-    assert "COACHING_FRAME_TRIGGERS" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "Frame guidance" in prompt_text
+    assert "trades[].ref" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "week_summary.primary_issue" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "week_summary.issue_scope" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "coaching_frame_triggers" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "Do not invent traps" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "backend-written review copy" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "names the rewarded trade or symbol" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
@@ -1080,35 +1048,34 @@ def test_dashboard_prompt_uses_exit_price_language():
     assert "Trade references must appear inside sentences" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "same-symbol cap with logging added" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
     assert "flat clean week is neutral" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
-    assert "CONSTRAINTS.do_not_claim" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
+    assert "risk_judgment_allowed" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
 
     # Risk priority rule — non-obvious domain rule, must be explicit
-    assert "CONSTRAINTS.do_not_claim" in prompt_text
-    assert "size_change fields" in prompt_text
-    assert "shift to stronger" in prompt_text
+    assert "risk_judgment_allowed" in prompt_text
+    assert "size_change fields" not in prompt_text
+    assert "risk_pct_vs_prev" in prompt_text
     assert "Lot size is not risk" in prompt_text
     assert "larger or smaller lot is not evidence" in prompt_text
 
-    # Strategy label hierarchy — must explicitly gate on coverage
-    assert "strategy_coverage_pct" in prompt_text
+    # Strategy label hierarchy
+    assert "Strategy text can provide context" in prompt_text
     assert "TIER" in prompt_text  # evidence tiers
 
     # Small-sample / narrow-scope calibration
-    assert "specific_trade_sequence" in prompt_text
+    assert "specific_trade_sequence" not in prompt_text
+    assert "week_summary.closed_trades < 3" in prompt_text or "evidence_boundary.claim_scope" in prompt_text
     assert "narrow review, not a weak one" in prompt_text
     assert "Do not force a strength" in prompt_text
     assert "reward_cost_mislesson" in prompt_text
-    assert "COACHING_FRAME_TRIGGERS" in prompt_text
+    assert "coaching_hypotheses" in prompt_text
     normalized = prompt_text.replace("\n", " ")
     assert "planned re-entry vs post-hoc justification" in normalized
     assert "write the re-entry reason before entering" in normalized
     assert "planned re-entry vs post-hoc justification" in ai_service.REVIEW_JSON_OUTPUT_INSTRUCTIONS
 
-    # Bar-derived market context fields — new additions
-    assert "large_candle_before_entry" in prompt_text
+    # Compact market context only
     assert "post_exit_direction" in prompt_text
-    assert "entry_in_session_overlap" in prompt_text
-    assert "stop_loss_protects_profit" in prompt_text
+    assert "Do not over-focus on one-candle or tick-volume microstructure" in prompt_text
 
     # Boundaries are integrated into the main prompt flow, not appended
     assert "Evidence boundaries" in prompt_text
@@ -1251,32 +1218,19 @@ def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, mon
     )
 
     assert len(payload["trades"]) == 3
-    assert payload["notes_coverage"] == 0.33
-    assert payload["notes_with_content"] == 1
-    assert payload["notes_missing"] == 2
-    assert payload["notes_confidence"] == "low"
-    assert payload["account_age_days"] == 18
-    assert payload["summary"]["top_symbol_by_trade_count"] == "EURUSD"
-    assert payload["summary"]["top_symbol_trade_share_pct"] == 66.67
-    assert payload["summary"]["top_symbol_by_abs_pnl"] == "EURUSD"
-    assert payload["summary"]["top_symbol_abs_pnl_share_pct"] == 51.52
-    assert payload["summary"]["largest_trade_symbol"] == "GBPUSD"
-    assert payload["summary"]["largest_trade_abs_pnl_share_pct"] == 48.48
-    assert payload["current_week_breakdowns"]["execution_outcome"]["week_archetype"]
-    prompt_text = format_payload_for_prompt(payload)
-    assert "execution_outcome.week_archetype" in prompt_text
-    assert "execution_outcome.coaching_stance" in prompt_text
+    assert "notes_coverage" not in payload
+    assert payload["week_summary"]["top_symbol_by_trade_count"] == "EURUSD"
+    assert payload["week_summary"]["top_symbol_trade_share_pct"] == 66.67
+    assert payload["week_summary"]["largest_trade_symbol"] == "GBPUSD"
+    assert payload["week_summary"]["largest_trade_abs_pnl_share_pct"] == 48.48
+    assert payload["week_summary"]["coaching_stance"]
+    assert payload["evidence_boundary"]["claim_scope"]
 
     eur_trades = [trade for trade in payload["trades"] if trade["symbol"] == "EURUSD"]
     gbp_trade = next(trade for trade in payload["trades"] if trade["symbol"] == "GBPUSD")
 
     assert len(eur_trades) == 2
-    assert all(trade["possible_split_order"] is True for trade in eur_trades)
-    assert {trade["split_group_size"] for trade in eur_trades} == {2}
-    assert {trade["split_group_role"] for trade in eur_trades} == {"lead", "add_on"}
-    assert gbp_trade["outlier_size"] is True
-    assert gbp_trade["outlier_lot_spike"] is True
-    assert gbp_trade["is_likely_corrective"] is True
+    assert gbp_trade["duration_minutes"] == 5.0
 
 
 def test_build_trade_payload_uses_bundled_view_for_summary_and_emotional_index(app_ctx):
@@ -1354,27 +1308,19 @@ def test_build_trade_payload_uses_bundled_view_for_summary_and_emotional_index(a
         },
     )
 
-    assert payload["summary"]["total_trades"] == 2
-    assert payload["summary"]["closed_trades"] == 2
-    assert payload["summary"]["bundle_count"] == 1
-    assert payload["summary"]["reactive_trade_count"] == 1
+    assert payload["week_summary"]["closed_trades"] == 2
+    assert payload["week_summary"]["trade_idea_count"] == 2
     assert len(payload["trades"]) == 2
 
-    bundled_trade = next(trade for trade in payload["trades"] if trade["is_bundle"] is True)
-    solo_trade = next(trade for trade in payload["trades"] if trade["is_bundle"] is False)
-    assert bundled_trade["review_ref"] == "B1"
-    assert solo_trade["review_ref"] == "T1"
+    bundled_trade = next(trade for trade in payload["trades"] if trade.get("is_bundle") is True)
+    solo_trade = next(trade for trade in payload["trades"] if not trade.get("is_bundle"))
+    assert bundled_trade["ref"] == "B1"
+    assert solo_trade["ref"] == "T1"
     assert bundled_trade["bundle_trade_count"] == 2
-    assert bundled_trade["is_reactive"] is True
     assert bundled_trade["trade_note"] == "Planned scale entry. | Added on confirmation."
 
-    emotional_index = payload["emotional_index"]
-    assert emotional_index["signals"]["bundle_count"] == 1
-    assert emotional_index["signals"]["confirmed_revenge_trade_count"] == 0
-    assert emotional_index["signals"]["heuristic_reactive_trade_count"] == 0
-    assert emotional_index["signals"]["reactive_trade_count"] == 1
-    assert emotional_index["components"]["confirmed_reactive_points"] == 1.25
-    assert emotional_index["signals"]["total_closed_trades"] == 2
+    emotional_context = payload["emotional_context"]
+    assert emotional_context["confirmed_reactive_count"] == 1
 
 
 def test_build_trade_payload_adds_sequence_and_revenge_context(app_ctx):
@@ -1445,20 +1391,14 @@ def test_build_trade_payload_adds_sequence_and_revenge_context(app_ctx):
         if trade["symbol"] == "EURUSD" and trade["pnl"] == 150.0
     )
 
-    assert second_trade["trade_sequence_number"] == 2
-    assert second_trade["prev_trade_pnl"] == -100.0
-    assert second_trade["minutes_since_prev_close"] == 5.0
-    assert second_trade["size_vs_prev_trade"] == "larger"
-    assert second_trade["prev_symbol_trade_pnl"] == -100.0
-    assert second_trade["minutes_since_prev_symbol_close"] == 5.0
-    assert second_trade["size_vs_prev_symbol_trade"] == "larger"
+    assert second_trade["risk_pct_vs_prev"] == "larger"
+    assert second_trade["risk_pct_vs_prev_symbol"] == "larger"
     assert second_trade["loss_streak_before_trade"] == 1
     assert second_trade["is_post_loss_trade"] is True
     assert second_trade["same_symbol_reentry"] is True
     assert second_trade["is_post_loss_same_symbol_trade"] is True
     assert second_trade["same_trade_idea_reentry"] is True
-    assert second_trade["is_potential_revenge"] is True
-    assert second_trade["is_potential_reactive"] is True
+    assert payload["post_loss_sequences"]
 
 
 def test_build_trade_payload_flags_calm_self_report_mismatch_when_behaviour_is_elevated(app_ctx):
@@ -1513,18 +1453,11 @@ def test_build_trade_payload_flags_calm_self_report_mismatch_when_behaviour_is_e
         },
     )
 
-    emotional_index = payload["emotional_index"]
-    assert emotional_index["score"] == pytest.approx(3.03, abs=0.02)
-    assert emotional_index["label"] == "moderate"
-    assert emotional_index["self_report_mismatch"] is True
-    assert emotional_index["signals"]["confirmed_revenge_trade_count"] == 0
-    assert emotional_index["signals"]["heuristic_revenge_trade_count"] == 1
-    assert emotional_index["signals"]["revenge_trade_count"] == 1
-    assert emotional_index["signals"]["heuristic_reactive_trade_count"] == 1
-    assert emotional_index["signals"]["confirmed_reactive_trade_count"] == 1
-    assert emotional_index["signals"]["reactive_trade_count"] == 2
-    assert emotional_index["components"]["confirmed_reactive_points"] == 1.25
-    assert emotional_index["components"]["revenge_points"] == pytest.approx(1.78, abs=0.02)
+    emotional_context = payload["emotional_context"]
+    assert emotional_context["label"] == "moderate"
+    assert emotional_context["self_report_mismatch"] is True
+    assert emotional_context["confirmed_reactive_count"] == 1
+    assert emotional_context["heuristic_revenge_count"] == 1
 
 
 def test_compute_emotional_index_normalizes_repeated_confirmed_revenge_trades():
@@ -1674,20 +1607,14 @@ def test_build_trade_payload_historical_context_excludes_review_period(app_ctx):
         closed_trades_only=True,
     )
 
-    assert payload["historical_context"]["comparison_scope"] == "history_before_review_period_only"
-    assert payload["historical_context"]["window_end_utc"] == "2026-03-10T00:00:00Z"
-    assert payload["historical_context"]["summary"]["total_trades"] == 1
-    assert payload["historical_context"]["summary"]["closed_trades"] == 1
-    assert "expectancy" in payload["historical_context"]["summary"]
-    assert payload["historical_context"]["summary"]["expectancy"] is not None
+    historical_summary = payload["historical_context_summary"]
+    assert "use_as_background_only" not in historical_summary
+    assert historical_summary["window_days"] == 90
+    assert historical_summary["historical_win_rate"] is not None
+    assert historical_summary["historical_expectancy"] is not None
 
-    pt = payload["performance_trends"]
-    assert pt["comparison_basis"] == "reviewed_period_vs_prior_pre_period_history"
-    assert pt["win_rate_current"] is not None
-    assert pt["win_rate_historical"] is not None
-    assert pt["expectancy_current"] is not None
-    assert pt["expectancy_historical"] is not None
-    assert "ei_trend" in pt
+    pt = payload.get("performance_trends") or {}
+    assert pt.get("ei_trend") in (None, "flat", "improving", "declining")
 
 
 def test_build_trade_payload_ei_trend_from_prior_stored_reviews(app_ctx):

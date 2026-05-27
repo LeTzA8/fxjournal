@@ -27,8 +27,9 @@ def _normalize_mt5_position_key(value):
 
 
 def _normalize_vm_id(value):
-    text_value = str(value or "").strip()
-    return text_value[:64] or None
+    from helpers.mt5_dispatch import routing_vm_id
+
+    return routing_vm_id(value) or None
 
 
 _SKIP_DEBUG_BENIGN_REASON = "existing_already_closed_or_no_state_change"

@@ -12,7 +12,6 @@ from celery_workers.cache import (
 )
 from helpers.mt5_dispatch import (
     configured_monitor_vm_ids,
-    is_mt5_multi_vm_enabled,
     listen_legacy_mt5_queues,
     mt5_priority_queue,
     mt5_setup_queue,
@@ -215,30 +214,31 @@ def _fetch_admin_mt5_monitor_snapshot(*, mt5_accounts):
         monitor_available = False
         grouped_worker_states = {}
 
-    queue_names = ["mt5_sync", "mt5_priority", "mt5_setup"]
-    if is_mt5_multi_vm_enabled():
-        for vm_id in _monitor_vm_ids_for_queue_depths(mt5_accounts=mt5_accounts):
-            queue_names.extend(
-                [
-                    mt5_sync_queue(vm_id),
-                    mt5_priority_queue(vm_id),
-                    mt5_setup_queue(vm_id),
-                ]
-            )
+    queue_names = []
+    if listen_legacy_mt5_queues():
+        queue_names.extend(["mt5_sync", "mt5_priority", "mt5_setup"])
+    for vm_id in _monitor_vm_ids_for_queue_depths(mt5_accounts=mt5_accounts):
+        queue_names.extend(
+            [
+                mt5_sync_queue(vm_id),
+                mt5_priority_queue(vm_id),
+                mt5_setup_queue(vm_id),
+            ]
+        )
+    queue_names = list(dict.fromkeys(queue_names))
 
     try:
-        depth_values = get_queue_depths(queue_names)
+        depth_values = get_queue_depths(queue_names) if queue_names else {}
         queue_depths = {
             queue_name: int(depth_values.get(queue_name) or 0)
             for queue_name in ("mt5_sync", "mt5_priority", "mt5_setup")
         }
-        if is_mt5_multi_vm_enabled():
-            for vm_id in _monitor_vm_ids_for_queue_depths(mt5_accounts=mt5_accounts):
-                scoped_queue_depths[vm_id] = {
-                    "mt5_sync": int(depth_values.get(mt5_sync_queue(vm_id)) or 0),
-                    "mt5_priority": int(depth_values.get(mt5_priority_queue(vm_id)) or 0),
-                    "mt5_setup": int(depth_values.get(mt5_setup_queue(vm_id)) or 0),
-                }
+        for vm_id in _monitor_vm_ids_for_queue_depths(mt5_accounts=mt5_accounts):
+            scoped_queue_depths[vm_id] = {
+                "mt5_sync": int(depth_values.get(mt5_sync_queue(vm_id)) or 0),
+                "mt5_priority": int(depth_values.get(mt5_priority_queue(vm_id)) or 0),
+                "mt5_setup": int(depth_values.get(mt5_setup_queue(vm_id)) or 0),
+            }
     except CacheUnavailableError:
         monitor_available = False
         queue_depths = {}
@@ -439,10 +439,9 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         "orphaned_count": len(orphaned_accounts),
         "queue_depths": queue_depths,
         "scoped_queue_depths": scoped_queue_depths,
-        "multi_vm_enabled": is_mt5_multi_vm_enabled(),
         "listen_legacy_queues": listen_legacy_mt5_queues(),
         "setup_vm_ids": parse_setup_vm_ids_env(),
         "selectable_vm_ids": selectable_vm_ids,
-        "show_vm_target_selector": is_mt5_multi_vm_enabled() or bool(selectable_vm_ids),
+        "show_vm_target_selector": bool(selectable_vm_ids),
         "monitor_available": monitor_available,
     }

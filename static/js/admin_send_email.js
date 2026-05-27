@@ -8,6 +8,7 @@
     const sendUrl = root.dataset.sendUrl || "";
     const csrfToken = root.dataset.csrfToken || "";
     const placeholderToken = root.dataset.placeholder || "{{name}}";
+    const sampleName = root.dataset.sampleName || "Alex";
     const defaultInactiveDays = parseInt(root.dataset.defaultInactiveDays || "30", 10) || 30;
     const sendDelayMs = Math.max(100, parseInt(root.dataset.sendDelayMs || "400", 10) || 400);
 
@@ -21,6 +22,7 @@
     const selectVisibleBtn = document.getElementById("adminSendEmailSelectVisible");
     const clearSelectedBtn = document.getElementById("adminSendEmailClearSelected");
     const subjectInput = document.getElementById("adminSendEmailSubject");
+    const messageInput = document.getElementById("adminSendEmailMessage");
     const insertPlaceholderBtn = document.getElementById("adminSendEmailInsertPlaceholder");
     const sendBtn = document.getElementById("adminSendEmailSendBtn");
     const sendHint = document.getElementById("adminSendEmailSendHint");
@@ -38,17 +40,6 @@
     let highlightedIndex = -1;
     let sending = false;
 
-    const quill = new Quill("#adminSendEmailEditor", {
-        theme: "snow",
-        modules: {
-            toolbar: [
-                ["bold", "italic"],
-                ["link", "image"],
-            ],
-        },
-        placeholder: "Write your message…",
-    });
-
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     const applyPlaceholders = (text, name) => {
@@ -62,6 +53,25 @@
         Array.from(selectedById.values()).sort((a, b) =>
             String(a.name || "").localeCompare(String(b.name || ""))
         );
+
+    const setEmptyPreview = (message) => {
+        previewBody.textContent = "";
+        const empty = document.createElement("p");
+        empty.className = "soft admin-send-email-empty-preview";
+        empty.textContent = message;
+        previewBody.appendChild(empty);
+    };
+
+    const updateSendHint = () => {
+        if (sending) {
+            return;
+        }
+        const selectedCount = selectedById.size;
+        sendBtn.disabled = selectedCount === 0;
+        sendHint.textContent = selectedCount
+            ? `${selectedCount} selected. Emails send one at a time.`
+            : "Select at least one user.";
+    };
 
     const renderChips = () => {
         chipsEl.textContent = "";
@@ -79,17 +89,17 @@
             removeBtn.type = "button";
             removeBtn.className = "admin-send-email-chip-remove";
             removeBtn.setAttribute("aria-label", `Remove ${recipient.name}`);
-            removeBtn.textContent = "×";
+            removeBtn.textContent = "x";
             removeBtn.addEventListener("click", () => {
                 selectedById.delete(recipient.id);
                 renderChips();
                 renderRecipientList();
-                updatePreview();
             });
             chip.appendChild(removeBtn);
             chipsEl.appendChild(chip);
         });
         updatePreview();
+        updateSendHint();
     };
 
     const formatLastLogin = (isoValue) => {
@@ -107,12 +117,23 @@
         });
     };
 
+    const toggleRecipient = (recipient) => {
+        if (selectedById.has(recipient.id)) {
+            selectedById.delete(recipient.id);
+        } else {
+            selectedById.set(recipient.id, recipient);
+        }
+        renderChips();
+        renderRecipientList();
+    };
+
     const renderRecipientList = () => {
         recipientList.textContent = "";
         visibleRecipients.forEach((recipient, index) => {
             const item = document.createElement("li");
             item.className = "admin-send-email-recipient-item";
             item.setAttribute("role", "option");
+            item.setAttribute("aria-selected", selectedById.has(recipient.id) ? "true" : "false");
             if (selectedById.has(recipient.id)) {
                 item.classList.add("is-selected");
             }
@@ -139,32 +160,22 @@
             const tagEl = document.createElement("span");
             tagEl.className = `admin-send-email-recipient-tag${recipient.inactive ? " is-inactive" : ""}`;
             tagEl.textContent = recipient.inactive
-                ? `Inactive · last login ${formatLastLogin(recipient.last_login_at)}`
+                ? `Inactive, last login ${formatLastLogin(recipient.last_login_at)}`
                 : `Last login ${formatLastLogin(recipient.last_login_at)}`;
 
             meta.appendChild(nameEl);
             meta.appendChild(emailEl);
             meta.appendChild(tagEl);
 
-            const toggle = () => {
-                if (selectedById.has(recipient.id)) {
-                    selectedById.delete(recipient.id);
-                } else {
-                    selectedById.set(recipient.id, recipient);
-                }
-                renderChips();
-                renderRecipientList();
-            };
-
             item.addEventListener("click", (event) => {
                 if (event.target === checkbox) {
                     return;
                 }
-                toggle();
+                toggleRecipient(recipient);
             });
             checkbox.addEventListener("click", (event) => {
                 event.stopPropagation();
-                toggle();
+                toggleRecipient(recipient);
             });
 
             item.appendChild(checkbox);
@@ -175,9 +186,10 @@
         const count = visibleRecipients.length;
         const selectedCount = getSelectedRecipients().length;
         recipientStatus.textContent = count
-            ? `${count} shown · ${selectedCount} selected`
+            ? `${count} shown, ${selectedCount} selected`
             : "No users match this filter";
         recipientPanel.hidden = count === 0 && !searchInput.value.trim();
+        updateSendHint();
     };
 
     const fetchRecipients = async () => {
@@ -204,7 +216,10 @@
             highlightedIndex = visibleRecipients.length ? 0 : -1;
             renderRecipientList();
         } catch (_err) {
+            visibleRecipients = [];
+            recipientList.textContent = "";
             recipientStatus.textContent = "Could not load recipients.";
+            updateSendHint();
         }
     };
 
@@ -215,53 +230,84 @@
         fetchTimer = setTimeout(fetchRecipients, 220);
     };
 
-    const updatePreview = () => {
+    function updatePreview() {
         const selected = getSelectedRecipients();
-        const previewTarget = selected[0] || null;
+        const previewTarget = selected[0] || { name: sampleName, email: "" };
         const subject = subjectInput.value.trim();
-        const htmlBody = quill.root.innerHTML.trim();
-        const plainBody = quill.getText().trim();
+        const message = messageInput.value.trim();
 
-        if (!previewTarget) {
-            previewRecipient.textContent = "Select a recipient";
-            previewSubject.textContent = subject || "(No subject)";
-            previewBody.innerHTML = htmlBody
-                ? applyPlaceholders(htmlBody, "Recipient")
-                : "<p class=\"soft\">Message preview will appear here.</p>";
+        if (selected.length) {
+            previewRecipient.textContent = `${previewTarget.name} <${previewTarget.email}>`;
+        } else {
+            previewRecipient.textContent = `Sample preview (${sampleName})`;
+        }
+
+        previewSubject.textContent =
+            applyPlaceholders(subject, previewTarget.name) || "(No subject)";
+
+        if (!message) {
+            setEmptyPreview("Message preview will appear here.");
             return;
         }
 
-        previewRecipient.textContent = `${previewTarget.name} <${previewTarget.email}>`;
-        previewSubject.textContent = applyPlaceholders(subject, previewTarget.name) || "(No subject)";
-        if (htmlBody && htmlBody !== "<p><br></p>") {
-            previewBody.innerHTML = applyPlaceholders(htmlBody, previewTarget.name);
-        } else if (plainBody) {
-            previewBody.textContent = applyPlaceholders(plainBody, previewTarget.name);
-        } else {
-            previewBody.innerHTML = "<p class=\"soft\">Message preview will appear here.</p>";
-        }
+        previewBody.textContent = applyPlaceholders(message, previewTarget.name);
+    }
+
+    const insertAtCursor = (field, token) => {
+        field.focus();
+        const start = field.selectionStart ?? field.value.length;
+        const end = field.selectionEnd ?? field.value.length;
+        field.value = `${field.value.slice(0, start)}${token}${field.value.slice(end)}`;
+        const nextPosition = start + token.length;
+        field.setSelectionRange(nextPosition, nextPosition);
+        field.dispatchEvent(new Event("input", { bubbles: true }));
     };
 
     const insertPlaceholderAtCursor = () => {
-        const range = quill.getSelection(true);
-        if (range) {
-            quill.insertText(range.index, placeholderToken);
-            quill.setSelection(range.index + placeholderToken.length);
-        } else {
-            const length = quill.getLength();
-            quill.insertText(length - 1, placeholderToken);
+        const active = document.activeElement;
+        insertAtCursor(active === subjectInput ? subjectInput : messageInput, placeholderToken);
+    };
+
+    const renderSummary = (sentCount, failedDetails) => {
+        summaryEl.textContent = "";
+        summaryEl.hidden = false;
+
+        const sent = document.createElement("span");
+        sent.className = "good";
+        sent.textContent = `${sentCount} sent`;
+        summaryEl.appendChild(sent);
+
+        if (failedDetails.length) {
+            summaryEl.appendChild(document.createTextNode(" / "));
+            const failed = document.createElement("span");
+            failed.className = "bad";
+            failed.textContent = `${failedDetails.length} failed`;
+            summaryEl.appendChild(failed);
+
+            const list = document.createElement("ul");
+            list.className = "admin-send-email-failure-list soft";
+            failedDetails.slice(0, 8).forEach((detail) => {
+                const item = document.createElement("li");
+                item.textContent = detail;
+                list.appendChild(item);
+            });
+            if (failedDetails.length > 8) {
+                const item = document.createElement("li");
+                item.textContent = `${failedDetails.length - 8} more failed.`;
+                list.appendChild(item);
+            }
+            summaryEl.appendChild(list);
         }
-        updatePreview();
     };
 
     const sendToSelected = async () => {
         const recipients = getSelectedRecipients();
         const subject = subjectInput.value.trim();
-        const htmlBody = quill.root.innerHTML.trim();
-        const textBody = quill.getText().trim();
+        const textBody = messageInput.value.trim();
 
         if (!recipients.length) {
             sendHint.textContent = "Select at least one recipient.";
+            searchInput.focus();
             return;
         }
         if (!subject) {
@@ -269,21 +315,29 @@
             subjectInput.focus();
             return;
         }
-        if (!htmlBody || htmlBody === "<p><br></p>") {
-            if (!textBody) {
-                sendHint.textContent = "Write a message body.";
-                return;
-            }
+        if (!textBody) {
+            sendHint.textContent = "Write a message body.";
+            messageInput.focus();
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Send this email individually to ${recipients.length} selected user${
+                recipients.length === 1 ? "" : "s"
+            }?`
+        );
+        if (!confirmed) {
+            return;
         }
 
         sending = true;
         sendBtn.disabled = true;
-        sendHint.textContent = "";
+        sendHint.textContent = "Sending. Keep this page open until it finishes.";
         summaryEl.hidden = true;
         progressWrap.hidden = false;
+        progressFill.style.width = "0%";
 
         let sentCount = 0;
-        let failedCount = 0;
         const failedDetails = [];
         const total = recipients.length;
 
@@ -292,7 +346,7 @@
             const done = index + 1;
             const pct = Math.round((done / total) * 100);
             progressFill.style.width = `${pct}%`;
-            progressText.textContent = `Sending ${done} of ${total} to ${recipient.email}…`;
+            progressText.textContent = `Sending ${done} of ${total} to ${recipient.email}...`;
 
             try {
                 const response = await fetch(sendUrl, {
@@ -306,7 +360,7 @@
                     body: JSON.stringify({
                         user_id: recipient.id,
                         subject,
-                        html_body: htmlBody,
+                        html_body: "",
                         text_body: textBody,
                     }),
                 });
@@ -314,11 +368,9 @@
                 if (response.ok && data.sent) {
                     sentCount += 1;
                 } else {
-                    failedCount += 1;
-                    failedDetails.push(`${recipient.email} (${data.mode || "error"})`);
+                    failedDetails.push(`${recipient.email} (${data.mode || data.error || "error"})`);
                 }
             } catch (_err) {
-                failedCount += 1;
                 failedDetails.push(`${recipient.email} (network)`);
             }
 
@@ -329,19 +381,10 @@
 
         progressFill.style.width = "100%";
         progressText.textContent = "Done.";
-        summaryEl.hidden = false;
-        summaryEl.innerHTML = [
-            `<span class="good">${sentCount} sent</span>`,
-            failedCount ? ` · <span class="bad">${failedCount} failed</span>` : "",
-            failedDetails.length
-                ? `<p class="soft" style="margin:0.5rem 0 0">${failedDetails.slice(0, 8).join("<br>")}${
-                      failedDetails.length > 8 ? "<br>…" : ""
-                  }</p>`
-                : "",
-        ].join("");
+        renderSummary(sentCount, failedDetails);
 
         sending = false;
-        sendBtn.disabled = false;
+        updateSendHint();
     };
 
     searchInput.addEventListener("input", () => {
@@ -372,13 +415,7 @@
             event.preventDefault();
             const recipient = visibleRecipients[highlightedIndex];
             if (recipient) {
-                if (selectedById.has(recipient.id)) {
-                    selectedById.delete(recipient.id);
-                } else {
-                    selectedById.set(recipient.id, recipient);
-                }
-                renderChips();
-                renderRecipientList();
+                toggleRecipient(recipient);
             }
         } else if (event.key === "Escape") {
             recipientPanel.hidden = true;
@@ -403,10 +440,12 @@
     });
 
     subjectInput.addEventListener("input", updatePreview);
-    quill.on("text-change", updatePreview);
+    messageInput.addEventListener("input", updatePreview);
     insertPlaceholderBtn.addEventListener("click", insertPlaceholderAtCursor);
     sendBtn.addEventListener("click", sendToSelected);
 
     inactiveDaysInput.value = String(defaultInactiveDays);
+    updatePreview();
+    updateSendHint();
     fetchRecipients();
 })();

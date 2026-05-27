@@ -24,6 +24,11 @@ from helpers.utils import decrypt_password, encrypt_password
 from models import MT5Account, MT5BrokerServerOffset, Trade, TradeAccount, TradeBars, User, db
 
 
+@pytest.fixture(autouse=True)
+def _mt5_worker_matches_default_test_vm(monkeypatch):
+    monkeypatch.setenv("COMPUTERNAME", "MYFXJOURNAL-SG")
+
+
 def _create_user_with_account(*, username, email, account_name="Main Account"):
     user = User(
         username=username,
@@ -64,7 +69,7 @@ def _log_in_root_admin(client, *, email="root-admin@example.com", username="root
     return user, trade_account
 
 
-def _create_mt5_account(*, user_id, trade_account_id, account_number="12345678"):
+def _create_mt5_account(*, user_id, trade_account_id, account_number="12345678", vm_id="MYFXJOURNAL-SG"):
     mt5_account = MT5Account(
         user_id=user_id,
         trade_account_id=trade_account_id,
@@ -73,6 +78,7 @@ def _create_mt5_account(*, user_id, trade_account_id, account_number="12345678")
         server="Broker-Server",
         terminal_path=r"C:\MT5Terminals\test\terminal64.exe",
         is_active=True,
+        vm_id=vm_id,
     )
     db.session.add(mt5_account)
     db.session.commit()
@@ -2948,7 +2954,7 @@ def test_internal_mt5_sync_auto_queues_bars_for_public_user_when_enabled(app_ctx
             {
                 "task": getattr(task, "name", ""),
                 "args": list(args),
-                "queue": "mt5_priority",
+                "queue": "mt5_priority.myfxjournal-sg",
                 "label": label,
                 "extra": extra,
             }
@@ -2995,7 +3001,7 @@ def test_internal_mt5_sync_auto_queues_bars_for_public_user_when_enabled(app_ctx
         {
             "task": "celery_workers.mt5_sync_tasks.fetch_trade_bars_batch",
             "args": [mt5_account.id, [trade.id]],
-            "queue": "mt5_priority",
+            "queue": "mt5_priority.myfxjournal-sg",
             "label": "mt5_auto_bar_sync_batch_after_ingest",
             "extra": {
                 "mt5_account_id": mt5_account.id,
@@ -3065,7 +3071,7 @@ def test_internal_mt5_sync_auto_queues_bars_for_existing_closed_trade_on_empty_b
     queued = []
 
     def _fake_dispatch(task, *args, account_vm_id=None, kwargs=None, label=None, extra=None, log=None):
-        queued.append({"args": list(args), "queue": "mt5_priority", "label": label})
+        queued.append({"args": list(args), "queue": "mt5_priority.myfxjournal-sg", "label": label})
         return SimpleNamespace(id=f"queued-{len(queued)}")
 
     monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_priority", _fake_dispatch)
@@ -3106,7 +3112,7 @@ def test_internal_mt5_sync_beat_with_new_trade_still_queues_bars(app_ctx, client
     queued = []
 
     def _fake_dispatch(task, *args, account_vm_id=None, kwargs=None, label=None, extra=None, log=None):
-        queued.append({"args": list(args), "queue": "mt5_priority", "label": label})
+        queued.append({"args": list(args), "queue": "mt5_priority.myfxjournal-sg", "label": label})
         return SimpleNamespace(id=f"queued-{len(queued)}")
 
     monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_priority", _fake_dispatch)
@@ -3148,7 +3154,7 @@ def test_internal_mt5_sync_beat_with_new_trade_still_queues_bars(app_ctx, client
     assert queued == [
         {
             "args": [mt5_account.id, [trade.id]],
-            "queue": "mt5_priority",
+            "queue": "mt5_priority.myfxjournal-sg",
             "label": "mt5_auto_bar_sync_batch_after_ingest",
         }
     ]
@@ -3658,7 +3664,7 @@ def test_admin_mt5_backfill_bars_queues_only_missing_m5_timeframes(app_ctx, clie
     import celery_workers.mt5_sync_tasks as mt5_sync_module
 
     def _fake_dispatch_priority(task, *args, account_vm_id=None, kwargs=None, label=None, extra=None, log=None):
-        queued.append({"args": list(args), "queue": "mt5_priority"})
+        queued.append({"args": list(args), "queue": "mt5_priority.myfxjournal-sg"})
 
     monkeypatch.setattr("auth_account.dispatch_mt5_priority", _fake_dispatch_priority)
 
@@ -3669,7 +3675,7 @@ def test_admin_mt5_backfill_bars_queues_only_missing_m5_timeframes(app_ctx, clie
     )
 
     assert response.status_code == 302
-    assert queued == [{"args": [mt5_account.id, second_trade.id], "queue": "mt5_priority"}]
+    assert queued == [{"args": [mt5_account.id, second_trade.id], "queue": "mt5_priority.myfxjournal-sg"}]
 
 
 def test_admin_mt5_backfill_bars_requeues_trade_with_incomplete_recent_m5_coverage(app_ctx, client, monkeypatch):
@@ -3762,7 +3768,7 @@ def test_admin_mt5_backfill_bars_requeues_trade_with_incomplete_recent_m5_covera
     import celery_workers.mt5_sync_tasks as mt5_sync_module
 
     def _fake_dispatch_priority(task, *args, account_vm_id=None, kwargs=None, label=None, extra=None, log=None):
-        queued.append({"args": list(args), "queue": "mt5_priority"})
+        queued.append({"args": list(args), "queue": "mt5_priority.myfxjournal-sg"})
 
     monkeypatch.setattr("auth_account.dispatch_mt5_priority", _fake_dispatch_priority)
 
@@ -3773,7 +3779,7 @@ def test_admin_mt5_backfill_bars_requeues_trade_with_incomplete_recent_m5_covera
     )
 
     assert response.status_code == 302
-    assert queued == [{"args": [mt5_account.id, recent_trade.id], "queue": "mt5_priority"}]
+    assert queued == [{"args": [mt5_account.id, recent_trade.id], "queue": "mt5_priority.myfxjournal-sg"}]
 
 
 def test_sync_all_active_mt5_accounts_uses_sync_queue_with_short_expiry(app_ctx, monkeypatch):
@@ -3799,7 +3805,7 @@ def test_sync_all_active_mt5_accounts_uses_sync_queue_with_short_expiry(app_ctx,
             {
                 "args": [mt5_account_id],
                 "kwargs": kwargs,
-                "queue": "mt5_sync",
+                "queue": "mt5_sync.myfxjournal-sg",
                 "expires": expires,
             }
         )
@@ -3816,7 +3822,7 @@ def test_sync_all_active_mt5_accounts_uses_sync_queue_with_short_expiry(app_ctx,
         {
             "args": [mt5_account.id],
             "kwargs": {"trigger_source": "beat"},
-            "queue": "mt5_sync",
+            "queue": "mt5_sync.myfxjournal-sg",
             "expires": 600,
         }
     ]
@@ -3860,7 +3866,7 @@ def test_sync_all_active_mt5_accounts_dispatches_one_stalest_account(app_ctx, mo
             {
                 "args": [mt5_account_id],
                 "kwargs": kwargs,
-                "queue": "mt5_sync",
+                "queue": "mt5_sync.myfxjournal-sg",
                 "expires": expires,
             }
         )
@@ -3877,7 +3883,7 @@ def test_sync_all_active_mt5_accounts_dispatches_one_stalest_account(app_ctx, mo
         {
             "args": [stale_account.id],
             "kwargs": {"trigger_source": "beat"},
-            "queue": "mt5_sync",
+            "queue": "mt5_sync.myfxjournal-sg",
             "expires": 600,
         }
     ]
@@ -3905,7 +3911,7 @@ def test_sync_all_active_mt5_accounts_skips_when_sync_queue_busy(app_ctx, monkey
         captured.append({"args": [mt5_account_id]})
 
     def _fake_get_queue_depth(queue_name):
-        if queue_name == "mt5_sync":
+        if queue_name == "mt5_sync.myfxjournal-sg":
             return 1
         return 0
 
@@ -3918,7 +3924,7 @@ def test_sync_all_active_mt5_accounts_skips_when_sync_queue_busy(app_ctx, monkey
     mt5_sync_module.sync_all_active_mt5_accounts.run()
 
     assert captured == []
-    assert "MT5 beat skipped sync_queue_busy" in caplog.text
+    assert "MT5 beat skipped no_eligible_account" in caplog.text
 
 
 def test_sync_all_active_mt5_accounts_skips_locked_account_and_picks_next(app_ctx, monkeypatch):
@@ -4009,7 +4015,7 @@ def test_sync_all_active_mt5_accounts_skips_paused_accounts(app_ctx, monkeypatch
             {
                 "args": [mt5_account_id],
                 "kwargs": kwargs,
-                "queue": "mt5_sync",
+                "queue": "mt5_sync.myfxjournal-sg",
                 "expires": expires,
             }
         )
@@ -4026,7 +4032,7 @@ def test_sync_all_active_mt5_accounts_skips_paused_accounts(app_ctx, monkeypatch
         {
             "args": [active_account.id],
             "kwargs": {"trigger_source": "beat"},
-            "queue": "mt5_sync",
+            "queue": "mt5_sync.myfxjournal-sg",
             "expires": 600,
         }
     ]
@@ -4060,7 +4066,7 @@ def test_sync_mt5_account_sends_free_trial_expired_email_on_first_pause(app_ctx,
     queued_pause_tasks = []
 
     def _fake_dispatch_pause(task, mt5_account_id, *, account_vm_id=None, label=None, extra=None, log=None):
-        queued_pause_tasks.append({"args": [mt5_account_id], "queue": "mt5_setup"})
+        queued_pause_tasks.append({"args": [mt5_account_id], "queue": "mt5_setup.myfxjournal-sg"})
 
     sent_emails = []
 
@@ -4084,7 +4090,7 @@ def test_sync_mt5_account_sends_free_trial_expired_email_on_first_pause(app_ctx,
     assert result == {"error": "MT5 sync not allowed: expired"}
     assert mt5_account.sync_paused_at is not None
     assert mt5_account.sync_pause_reason == "expired"
-    assert queued_pause_tasks == [{"args": [mt5_account.id], "queue": "mt5_setup"}]
+    assert queued_pause_tasks == [{"args": [mt5_account.id], "queue": "mt5_setup.myfxjournal-sg"}]
     assert len(sent_emails) == 1
     assert sent_emails[0]["to"] == user.email
     assert sent_emails[0]["subject"] == "Your MyFXJournal free trial has ended"
@@ -4107,24 +4113,18 @@ def test_sync_all_active_mt5_accounts_skips_when_sync_queues_are_backed_up(app_c
         user_id=user.id,
         trade_account_id=trade_account.id,
         account_number="86868686",
+        vm_id="MYFXJOURNAL-SG",
     )
 
     captured = []
 
     def _fake_dispatch_sync(task, mt5_account_id, *, account_vm_id=None, kwargs=None, expires=None, label=None, extra=None, log=None):
-        captured.append(
-            {
-                "args": [mt5_account_id],
-                "kwargs": kwargs,
-                "queue": "mt5_sync",
-                "expires": expires,
-            }
-        )
+        captured.append({"args": [mt5_account_id]})
 
     def _fake_get_queue_depth(queue_name):
-        if queue_name == "mt5_sync":
+        if queue_name == "mt5_sync.myfxjournal-sg":
             return 140
-        if queue_name == "mt5_priority":
+        if queue_name == "mt5_priority.myfxjournal-sg":
             return 11
         return 0
 
@@ -4132,12 +4132,12 @@ def test_sync_all_active_mt5_accounts_skips_when_sync_queues_are_backed_up(app_c
 
     monkeypatch.setattr("celery_workers.cache.get_queue_depth", _fake_get_queue_depth)
     monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_sync", _fake_dispatch_sync)
-    caplog.set_level(logging.WARNING, logger="celery_workers.mt5_sync_tasks")
+    caplog.set_level(logging.INFO, logger="celery_workers.mt5_sync_tasks")
 
     mt5_sync_module.sync_all_active_mt5_accounts.run()
 
     assert captured == []
-    assert "MT5 beat skipped queue_depth_total=151" in caplog.text
+    assert "MT5 beat skipped no_eligible_account" in caplog.text
 
 
 def test_admin_mt5_create_persists_inactive_account_when_setup_queue_fails(app_ctx, client, monkeypatch):

@@ -1,11 +1,32 @@
 # CURRENT_STATE
 
-Last Updated: 2026-05-26
+Last Updated: 2026-05-27
+
+## Weekly AI universal payload (2026-05-27)
+
+- One universal weekly JSON payload is built by `helpers/universal_weekly_payload.py` (`build_universal_weekly_payload`, `format_universal_weekly_payload`). `build_trade_payload` returns this shape; the same object is stored in `AIGeneratedResponse.payload_json` and sent to pass-1 via `build_dashboard_advice_messages` (pretty-printed JSON user message).
+- Payload slim-down (2026-05-27): merged `review_scope` + `sample_context` into `week_summary` / `evidence_boundary`; canonical `post_loss_sequences[]` replaces `primary_sequences`, `post_loss_response`, and per-trade `post_loss_context`; removed prompt-like prose from `coaching_frame_triggers`; `primary_issue_evidence_level` → `week_summary.issue_scope`; trades add `trade_date_label`, `tp_capture_pct`, `closed_before_tp`, `closed_before_sl`, `risk_outlier`; slim `risk_authority` (basis/stable/risk_judgment_allowed only).
+- `prompts/dashboard_advice.txt` + `REVIEW_JSON_OUTPUT_INSTRUCTIONS` aligned to final universal paths — no `notes_coverage`, `SURFACE_FACTS`, `strategy_coverage_pct`, or detailed bar microstructure; frame guidance lives in prompt, not payload.
+- Citation rewrite (`helpers/weekly_review_ref_rewrite.py`) prefers `trade_date_label`, falls back to legacy `opened_at`.
+- Admin weekly audit: `sample_context` derived from `evidence_boundary` when absent (backward compat for old stored payloads).
+- Tests: `tests/test_universal_weekly_payload.py`, updated `tests/test_ai_service.py`, `tests/test_dashboard_weekly_ai.py`.
+
+## Weekly AI pass-1 uses full audit payload (superseded 2026-05-27)
+
+- Superseded by universal payload refactor above. Pass-1 and admin audit now share one slim interpreted payload, not the former full internal JSON.
+
+## Weekly AI compressed prompt payload slimming (superseded 2026-05-27)
+
+- Previously pass-1 used a compressed slice from `helpers/weekly_prompt_payload.py`. Removed — replaced by universal payload builder.
+
+## Weekly AI compressed prompt payload (2026-05-26, superseded 2026-05-27)
+
+- Superseded by universal payload refactor.
 
 ## Admin Send Email compose (2026-05-26)
 
-- `GET /dashboard/admin/access/send-email` (`admin_send_email`): admin-gated Gmail-style compose with searchable multi-select recipients, adjustable inactive filter (last login older than N days), Quill rich text (bold/italic/links/images), `{{name}}` placeholder, live preview for first selected recipient, and sequential per-recipient send with progress + summary.
-- `GET /dashboard/admin/access/send-email/recipients` + `POST /dashboard/admin/access/send-email/send-one`: JSON APIs; sends via existing Resend path with `from_header` from `ADMIN_EMAIL_FROM` (default `admin@myfxjournal.com`). Client delays between sends (`ADMIN_EMAIL_SEND_DELAY_MS`, default 400ms).
+- `GET /dashboard/admin/access/send-email` (`admin_send_email`): admin-gated compose with searchable multi-select recipients, adjustable inactive filter (last login older than N days), native textarea body editor (no CDN editor dependency), clear `{{name}}` username token guidance, live sample/recipient preview, and sequential per-recipient send with confirmation, progress, and summary.
+- `GET /dashboard/admin/access/send-email/recipients` + `POST /dashboard/admin/access/send-email/send-one`: JSON APIs; sends via existing Resend path with `from_header` from `ADMIN_EMAIL_FROM` (default `admin@myfxjournal.com`). Client sends plain text bodies and Resend fallback HTML preserves line breaks; client delays between sends (`ADMIN_EMAIL_SEND_DELAY_MS`, default 400ms).
 - `auth_account.send_email_placeholder` accepts optional `from_header`; helpers `apply_admin_email_placeholders`, `html_to_plain_email_text`, `_resolve_admin_broadcast_from_header`.
 - UI: `templates/admin_send_email.html`, `static/css/admin_send_email.css`, `static/js/admin_send_email.js`; nav link in `partials/admin_shell_start.html`.
 - Tests: `tests/test_admin_send_email.py`, `tests/test_send_email.py` (custom from), `tests/test_admin_route_gating.py` route list.
@@ -22,15 +43,6 @@ Last Updated: 2026-05-26
 - Edit form moves status into the Timing section; strategy select + readonly description and import note sit in nested Journal sub-sections. New-trade manual entry form unchanged (flat sections).
 - `static/js/trade_form_collapsible.js` opens collapsed sections when HTML5 validation fails. Edit route passes strategy description + source timezone context for template rendering only.
 - Tests: `tests/test_trades_routes.py::test_trade_edit_uses_progressive_disclosure_sections`.
-
-## Weekly AI compressed prompt payload (2026-05-26)
-
-- Added `helpers/weekly_prompt_payload.py` with `build_weekly_prompt_payload` + `format_weekly_prompt_payload`: lean pass-1 model input with review scope, evidence boundaries, deduped strategy context, high-signal trades, primary sequences, coaching frame triggers, and constraints. Full `build_trade_payload` output still persists unchanged in `AIGeneratedResponse.payload_json`.
-- `build_dashboard_advice_messages` now sends the compressed payload to pass-1; `format_payload_for_prompt` remains for audit/debug and other callers.
-- Audit follow-up aligned stale prompt-contract references to `WEEK_SUMMARY`, `PRIMARY_SEQUENCES`, `COACHING_FRAME_TRIGGERS`, `CONSTRAINTS`, and `HIGH_SIGNAL_TRADES.ref`; it also fixed same-symbol re-entry labels so only actual post-loss retries set `same_symbol_after_loss`.
-- `prompts/dashboard_advice.txt` + `REVIEW_JSON_OUTPUT_INSTRUCTIONS` patched for narrow-week framing (not low-value), optional strength, ungated Reward→Cost→Mislesson via `coaching_frame_triggers`, and style transformation examples.
-- Follow-up: `reward_cost_mislesson` now requires engaging substantive trade notes on flagged post-loss re-entries (credit possible planned re-entry, do not rubber-stamp post-trade notes or wins; frame as planned re-entry vs post-hoc justification; improvement asks for pre-entry re-entry reason).
-- Tests: `tests/test_weekly_prompt_payload.py` (strategy dedupe, noise exclusion, bundles, low-trade scope, winning retry trigger, market context compression, pass-1 wiring, note-aware re-entry prompt + payload).
 
 ## SEO hero/panel copy refinement (2026-05-26)
 
@@ -132,7 +144,8 @@ Last Updated: 2026-05-26
 
 ## Multi-VM MT5 queue affinity (2026-05-24)
 
-- Added `helpers/mt5_dispatch.py`: VM slug normalization, scoped queue names, centralized `dispatch_mt5_*` helpers, wrong-VM guard with bounded re-dispatch, setup target/failover helpers. Flag `FXJ_MT5_MULTI_VM` defaults off (legacy queues unchanged until enabled).
+- Added `helpers/mt5_dispatch.py`: VM slug normalization, scoped queue names, centralized `dispatch_mt5_*` helpers, wrong-VM guard with bounded re-dispatch, setup target/failover helpers.
+- **2026-05-26:** Removed `FXJ_MT5_MULTI_VM` gate — all MT5 sync/priority/setup/cleanup/pause tasks always publish to VM-scoped queues (`mt5_*.<slug>`). Beat uses per-VM queue busy checks; missing `vm_id` skips account-bound dispatch. VM workers listen on scoped queues only; optional `FXJ_MT5_LISTEN_LEGACY_QUEUES=1` for migration drain.
 - Producers refactored: beat (per-VM busy check when flag on), sync/bar/pause/cleanup/setup paths in `celery_workers/mt5_sync_tasks.py`, `celery_workers/mt5_setup_tasks.py`, `routes/mt5_internal.py`, `routes/trade_accounts.py`, `auth_account.py`, `helpers/core.py`.
 - Setup failover for public/default setup: cleans partial VM artifacts, clears runtime fields, re-queues on next VM from `FXJ_MT5_SETUP_VM_IDS` up to `FXJ_MT5_SETUP_FAILOVER_MAX_VMS`. Admin targeted setup uses `allow_failover=False` + optional `target_vm_id` selector.
 - `get_vm_id()` now prefers `COMPUTERNAME` over `VM_ID`. PowerShell workers dual-listen scoped + legacy queues. Admin Worker VMs panel shows per-VM scoped queue depths and no-worker warnings. Runbook: `context/MULTI_VM_MT5.md`, decision D-008.

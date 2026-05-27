@@ -16,6 +16,7 @@ from sqlalchemy.orm import load_only, selectinload
 
 from helpers.ai_market_context import build_trade_market_context
 from helpers.journal_context import format_journal_payload_for_prompt
+from helpers.risk_comparison import enrich_serialized_trades_with_risk_comparison
 from helpers.scoring import compute_emotional_index, prepare_closed_trade_signal_inputs
 from helpers.trade_analysis import (
     build_trade_annotations as _build_trade_annotations,
@@ -23,6 +24,7 @@ from helpers.trade_analysis import (
     get_trade_identity as _get_trade_identity,
     get_trade_session as _get_trade_session,
 )
+from helpers.universal_weekly_payload import build_universal_weekly_payload, format_universal_weekly_payload
 from helpers.weekly_signals import build_weekly_signals as _build_weekly_signals
 from helpers.weekly_review_ref_rewrite import (
     build_weekly_review_citation_lookup,
@@ -114,9 +116,9 @@ Use this exact shape:
 }
 
 Rules for refs:
-- Use only ref values present in HIGH_SIGNAL_TRADES.
+- Use only ref values present in trades.
 - Prefer 1-2 refs per item, maximum 3.
-- Across summary.text and takeaways, include at least one cited representative trade or bundle when any HIGH_SIGNAL_TRADES.ref is available and a non-misleading example exists.
+- Across summary.text and takeaways, include at least one cited representative trade or bundle when any trades[].ref is available and a non-misleading example exists.
 - Use a second cited trade only when it creates a useful contrast (best vs worst, before vs after a loss, early exit vs cleaner hold, or session/context contrast).
 - Use bundle refs like B1 for bundled trade ideas and trade refs like T1 for solo trade ideas.
 - improvement.refs and strength.refs must always be an empty list.
@@ -132,16 +134,17 @@ Rules for text fields:
 - summary.text must stay as the single opening paragraph.
 - takeaways should contain 1-3 items by default. Use 4 only when the fourth item is genuinely distinct and useful.
 - summary.text must identify one dominant diagnosis for the week, not merely restate performance.
-- Use WEEK_SUMMARY.coaching_stance and WEEK_SUMMARY.primary_issue as stance rails before writing. Treat WEEK_SUMMARY.primary_issue as the default lead signal when present.
-- Use WEEK_SUMMARY.primary_issue_evidence_level for intensity. If it is isolated, frame the issue as one watch item, not a repeated habit. If it is strong, be more direct.
-- Use COACHING_FRAME_TRIGGERS as concise writing cues, not as backend-written review copy. Do not invent traps, motives, danger windows, false lessons, or better lessons beyond the trigger facts and instructions.
-- If COACHING_FRAME_TRIGGERS includes reward_cost_mislesson, use Reward -> Cost -> Mislesson -> Better lesson even when coaching_hypotheses is empty or absent.
+- Use week_summary.coaching_stance and week_summary.primary_issue as stance rails before writing. Treat week_summary.primary_issue as the default lead signal when present.
+- Use week_summary.issue_scope for intensity. If it is isolated, frame the issue as one watch item, not a repeated habit. If it is repeated or strong, be more direct.
+- Use coaching_frame_triggers and coaching_hypotheses as concise writing cues, not as backend-written review copy. Do not invent traps, motives, danger windows, false lessons, or better lessons beyond the trigger facts and instructions.
+- If coaching_frame_triggers or coaching_hypotheses includes reward_cost_mislesson / outcome_disguised_habit framing, use Reward -> Cost -> Mislesson -> Better lesson even when coaching_hypotheses is empty or absent.
 - When using reward_cost_mislesson, explain the contrast pair: which trade rewarded the habit, which trade exposed the cost or risk, and what the trader may mislearn from the winner. Avoid generic lessons like "a winning retry does not make the habit safe" unless the review section names the rewarded trade or symbol and explains the sequence mechanism.
 - For reward_cost_mislesson, use this writing shape across summary/takeaways: Reward -> Cost -> Mislesson -> Better lesson. Do not flatten it into "the problem is the decision after the loss." Name the rewarded trade, say what it reinforced, name the exposed cost or risk, then state the corrected rule.
 - Do not restate the same mechanism twice. If the core idea is already stated, deepen it with the contrast, mislesson, or corrected rule instead of repeating it.
 - When a flagged post-loss same-symbol or same-idea re-entry has a substantive trade note (sweep/liquidity, HTF thesis unchanged, reclaim, same zone, FVG rejection, better confirmation), mention the note directly; credit what may be legitimate; do not treat the post-trade note or winning outcome as proof; frame the risk as planned re-entry vs post-hoc justification, not confirmed revenge/repair; improvement should require writing the re-entry reason before entering next time.
 - A flat clean week is neutral, not a loss; hold the process steady and suggest only a small measurement or refinement.
-- If CONSTRAINTS.do_not_claim or CONSTRAINTS.do_not_focus_on rules limit a claim, obey them even when the week was profitable.
+- When constraints.do_not_claim blocks risk claims, obey them even when the week was profitable.
+- Obey risk_authority.risk_judgment_allowed when it blocks account-risk escalation claims.
 - Never mention internal labels such as week_archetype, execution_class, coaching_stance, primary_issue, ranked_issues, issue_evidence_level, or do_not_lead_with.
 - A profitable week with leaky or bad execution should acknowledge the good result without endorsing the leak; a losing week with good execution should protect confidence and avoid overhauling the process.
 - summary.text must start with the human conclusion, then support it with data.
@@ -161,8 +164,8 @@ Rules for text fields:
 - If improvement.text blocks same-symbol re-entry after a loss, experiment.text must not be another same-symbol cap with logging added. Use a different lever, such as recording skipped retries, checking whether the next trade is a genuinely fresh decision, or measuring the first post-loss decision across all symbols.
 - Use plain English in every text field (summary, takeaways, improvement, strength, experiment), not only for sizing: short sentences, everyday trading words, calm coach tone—never academic or consultant speak.
 - Examples: prefer "risked more" / "larger position" over "escalated sizing"; "jumped back in after a loss" over "reactive re-engagement"; "closed before your target" over "suboptimal TP capture"; "one trade drove the week" over "outlier dominance."
-- When the compressed payload provides explicit risk or size-change fields, prefer those anchors over lot-size inference.
-- The plain-text payload lists WEEK_SUMMARY before HIGH_SIGNAL_TRADES; use that order when framing the review.
+- When trades provide explicit risk or size-change fields (trade_risk_pct, risk_pct_vs_prev, risk_pct_vs_prev_symbol), prefer those anchors over lot-size inference.
+- Read execution_outcome and coaching_hypotheses before citing trades when framing the review.
 - Never mention ref aliases like T1 or B2 inside any text field.
 - Do not include any keys other than summary, takeaways, improvement, strength, and experiment.
 """.strip()
@@ -1281,20 +1284,33 @@ def _build_week_behaviour_patterns(merged_trades):
     same_symbol_post_loss_reentry_count = 0
     larger_size_after_loss_count = 0
     potential_revenge_count = 0
-    for trade in closed_trades:
-        annotation = trade_annotations.get(getattr(trade, "id", None), {})
+    chronological_closed = sorted(closed_trades, key=lambda item: (
+        getattr(item, "opened_at", None) or datetime.min,
+        getattr(item, "closed_at", None) or datetime.min,
+        getattr(item, "id", 0) or 0,
+    ))
+    previous_trade = None
+    for trade in chronological_closed:
+        identity = _get_trade_identity(trade)
+        annotation = trade_annotations.get(identity, {})
         if bool(annotation.get("is_post_loss_trade")):
             post_loss_reentry_count += 1
         if bool(annotation.get("is_post_loss_same_symbol_trade")):
             same_symbol_post_loss_reentry_count += 1
         if bool(annotation.get("is_potential_revenge")) or bool(getattr(trade, "is_revenge", False)):
             potential_revenge_count += 1
-        if (
-            _coerce_float(annotation.get("prev_trade_pnl")) is not None
-            and _coerce_float(annotation.get("prev_trade_pnl")) < 0
-            and str(annotation.get("size_vs_prev_trade") or "").strip().lower() == "larger"
-        ):
-            larger_size_after_loss_count += 1
+        if previous_trade is not None:
+            prev_pnl = resolve_net_pnl(previous_trade)
+            if prev_pnl is not None and prev_pnl < 0:
+                prev_risk = resolve_planned_risk_dollars(previous_trade)
+                current_risk = resolve_planned_risk_dollars(trade)
+                if (
+                    prev_risk not in (None, 0)
+                    and current_risk is not None
+                    and (current_risk - prev_risk) / abs(prev_risk) > 0.15
+                ):
+                    larger_size_after_loss_count += 1
+        previous_trade = trade
     return {
         "post_loss_reentry_count": post_loss_reentry_count,
         "same_symbol_post_loss_reentry_count": same_symbol_post_loss_reentry_count,
@@ -1807,10 +1823,8 @@ def build_trade_payload(
                 "trade_number_in_session": annotation.get("trade_number_in_session"),
                 "prev_trade_pnl": annotation.get("prev_trade_pnl"),
                 "minutes_since_prev_close": annotation.get("minutes_since_prev_close"),
-                "size_vs_prev_trade": annotation.get("size_vs_prev_trade"),
                 "prev_symbol_trade_pnl": annotation.get("prev_symbol_trade_pnl"),
                 "minutes_since_prev_symbol_close": annotation.get("minutes_since_prev_symbol_close"),
-                "size_vs_prev_symbol_trade": annotation.get("size_vs_prev_symbol_trade"),
                 "loss_streak_before_trade": annotation.get("loss_streak_before_trade"),
                 "is_post_loss_trade": bool(annotation.get("is_post_loss_trade")),
                 "same_symbol_reentry": bool(annotation.get("same_symbol_reentry")),
@@ -1845,6 +1859,8 @@ def build_trade_payload(
                 "market_context": market_context_lookup.get(identity, {}),
             }
         )
+
+    enrich_serialized_trades_with_risk_comparison(serialized_trades)
 
     historical_ctx = _build_historical_context(
         user_id=user_id,
@@ -2010,16 +2026,9 @@ def build_trade_payload(
             "equity_has_outlier_dominance": analytics["summary"].get("equity_has_outlier_dominance", False),
             "bundle_count": bundle_count,
             "confirmed_revenge_trade_count": signals.get("confirmed_revenge_trade_count", 0),
-            "heuristic_revenge_trade_count": signals.get("heuristic_revenge_trade_count", 0),
-            "confirmed_reactive_trade_count": signals.get("confirmed_reactive_trade_count", 0),
-            "heuristic_reactive_trade_count": signals.get("heuristic_reactive_trade_count", 0),
-            "reactive_trade_count": signals.get("reactive_trade_count", 0),
-            "reactive_signal_trade_count": signals.get("reactive_signal_trade_count", 0),
-            "confirmed_corrective_trade_count": signals.get("confirmed_corrective_trade_count", 0),
-            "heuristic_corrective_trade_count": signals.get("heuristic_corrective_trade_count", 0),
-            "corrective_trade_count": signals.get("corrective_trade_count", 0),
-            "corrective_signal_trade_count": signals.get("corrective_signal_trade_count", 0),
             "revenge_trade_count": signals.get("revenge_trade_count", 0),
+            "reactive_trade_count": signals.get("reactive_trade_count", 0),
+            "corrective_trade_count": signals.get("corrective_trade_count", 0),
             "best_trade_pnl": (
                 analytics["summary"]["best_trade"]["pnl"]
                 if analytics["summary"]["best_trade"]
@@ -2034,7 +2043,11 @@ def build_trade_payload(
         },
         "trades": serialized_trades,
     }
-    return payload
+    return build_universal_weekly_payload(payload)
+
+
+def _trade_citation_ref(trade):
+    return str((trade or {}).get("ref") or (trade or {}).get("review_ref") or "").strip().upper()
 
 
 def has_trade_data_for_period(*, user_id, trade_account_id=None, period_start_utc=None, period_end_utc=None):
@@ -2248,16 +2261,9 @@ def format_payload_for_prompt(payload):
             f"- largest_trade_abs_pnl_share_pct: {_format_percent(summary.get('largest_trade_abs_pnl_share_pct'))}",
             f"- bundle_count: {summary.get('bundle_count', 0)}",
             f"- confirmed_revenge_trade_count: {summary.get('confirmed_revenge_trade_count', 0)}",
-            f"- heuristic_revenge_trade_count: {summary.get('heuristic_revenge_trade_count', 0)}",
-            f"- confirmed_reactive_trade_count: {summary.get('confirmed_reactive_trade_count', 0)}",
-            f"- heuristic_reactive_trade_count: {summary.get('heuristic_reactive_trade_count', 0)}",
-            f"- reactive_trade_count: {summary.get('reactive_trade_count', 0)}",
-            f"- reactive_signal_trade_count: {summary.get('reactive_signal_trade_count', 0)}",
-            f"- confirmed_corrective_trade_count: {summary.get('confirmed_corrective_trade_count', 0)}",
-            f"- heuristic_corrective_trade_count: {summary.get('heuristic_corrective_trade_count', 0)}",
-            f"- corrective_trade_count: {summary.get('corrective_trade_count', 0)}",
-            f"- corrective_signal_trade_count: {summary.get('corrective_signal_trade_count', 0)}",
             f"- revenge_trade_count: {summary.get('revenge_trade_count', 0)}",
+            f"- reactive_trade_count: {summary.get('reactive_trade_count', 0)}",
+            f"- corrective_trade_count: {summary.get('corrective_trade_count', 0)}",
             f"- best_trade_pnl: {_format_signed_currency(summary.get('best_trade_pnl'))}",
             f"- worst_trade_pnl: {_format_signed_currency(summary.get('worst_trade_pnl'))}",
             f"- max_drawdown_amount: {_format_currency_magnitude(summary.get('max_drawdown'))}",
@@ -2588,7 +2594,7 @@ def format_payload_for_prompt(payload):
                 lines.append(
                     f"- revenge_evidence.strong_sequences[{index}]: ref={seq.get('ref') or '-'}, "
                     f"minutes_since_prev_close={_format_number(seq.get('minutes_since_prev_close'))}, "
-                    f"size_vs_prev_trade={seq.get('size_vs_prev_trade') or '-'}, confirmed={_format_bool(seq.get('confirmed'))}"
+                    f"risk_pct_vs_prev={seq.get('risk_pct_vs_prev') or '-'}, confirmed={_format_bool(seq.get('confirmed'))}"
                 )
 
     if four_week_patterns:
@@ -2750,10 +2756,10 @@ def format_payload_for_prompt(payload):
                 f"   trade_number_in_session: {trade.get('trade_number_in_session') if trade.get('trade_number_in_session') is not None else '-'}",
                 f"   prev_trade_pnl: {_format_signed_currency(trade.get('prev_trade_pnl'))}",
                 f"   minutes_since_prev_close: {_format_number(trade.get('minutes_since_prev_close'))}",
-                f"   size_vs_prev_trade: {trade.get('size_vs_prev_trade') or '-'}",
+                f"   risk_pct_vs_prev: {trade.get('risk_pct_vs_prev') or '-'}",
                 f"   prev_symbol_trade_pnl: {_format_signed_currency(trade.get('prev_symbol_trade_pnl'))}",
                 f"   minutes_since_prev_symbol_close: {_format_number(trade.get('minutes_since_prev_symbol_close'))}",
-                f"   size_vs_prev_symbol_trade: {trade.get('size_vs_prev_symbol_trade') or '-'}",
+                f"   risk_pct_vs_prev_symbol: {trade.get('risk_pct_vs_prev_symbol') or '-'}",
                 f"   loss_streak_before_trade: {trade.get('loss_streak_before_trade') if trade.get('loss_streak_before_trade') is not None else '-'}",
                 f"   is_post_loss_trade: {_format_bool(trade.get('is_post_loss_trade'))}",
                 f"   same_symbol_reentry: {_format_bool(trade.get('same_symbol_reentry'))}",
@@ -2815,15 +2821,9 @@ def format_payload_for_prompt(payload):
 
 
 def build_dashboard_advice_messages(payload, prompt_filename=None, profile_adjustments=""):
-    from helpers.weekly_prompt_payload import (
-        build_weekly_prompt_payload,
-        format_weekly_prompt_payload,
-    )
-
     prompt_history = get_or_create_prompt_history(prompt_filename)
     payload_json = serialize_payload(payload)
-    prompt_payload = build_weekly_prompt_payload(payload)
-    prompt_input = format_weekly_prompt_payload(prompt_payload)
+    prompt_input = format_universal_weekly_payload(payload)
     if profile_adjustments:
         prompt_input = f"{prompt_input}{profile_adjustments}"
     return prompt_history, [
@@ -3370,9 +3370,9 @@ def generate_dashboard_advice(*, user_id, trade_account_id=None, prompt_filename
         )
         response_payload = request_openai_response(messages, model=get_ai_model())
         allowed_refs = {
-            str(trade.get("review_ref") or "").strip().upper()
+            _trade_citation_ref(trade)
             for trade in payload.get("trades", [])
-            if str(trade.get("review_ref") or "").strip()
+            if _trade_citation_ref(trade)
         }
         experiment_context = payload.get("experiment_context") if isinstance(payload.get("experiment_context"), dict) else {}
         structured_review = _extract_structured_review(
@@ -3544,9 +3544,9 @@ def maybe_generate_weekly_dashboard_advice(
         )
         response_payload = request_openai_response(messages, model=get_ai_model())
         allowed_refs = {
-            str(trade.get("review_ref") or "").strip().upper()
+            _trade_citation_ref(trade)
             for trade in payload.get("trades", [])
-            if str(trade.get("review_ref") or "").strip()
+            if _trade_citation_ref(trade)
         }
         experiment_context = payload.get("experiment_context") if isinstance(payload.get("experiment_context"), dict) else {}
         structured_review = _extract_structured_review(

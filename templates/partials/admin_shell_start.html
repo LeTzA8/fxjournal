@@ -149,8 +149,12 @@
             <span class="admin-stat-value admin-stat-value--compact">{{ admin_broadcast_from }}</span>
           </span>
           <span class="admin-stat-tile admin-stat-tile--static">
-            <span class="admin-stat-label">Placeholder</span>
-            <span class="admin-stat-value">{{ '{{' }}name{{ '}}' }}</span>
+            <span class="admin-stat-label">Reply-to</span>
+            <span class="admin-stat-value admin-stat-value--compact">{{ admin_broadcast_reply_to }}</span>
+          </span>
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">Name token</span>
+            <span class="admin-stat-value admin-stat-value--compact">{{ '{{' }}name{{ '}}' }} = username</span>
           </span>
         </div>
         {% elif section == 'weekly_report' %}
@@ -171,6 +175,7 @@
         {% endif %}
       </div>
 
+      {% if section != 'send_email' %}
       <details class="admin-runtime-details">
         <summary class="admin-runtime-summary">
           <span class="admin-runtime-summary-title">Platform environment</span>
@@ -195,3 +200,4 @@
           </div>
         </div>
       </details>
+      {% endif %}

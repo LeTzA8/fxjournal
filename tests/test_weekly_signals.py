@@ -28,7 +28,7 @@ def _trade(
     is_revenge=False,
     is_potential_revenge=False,
     minutes_since_prev_close=None,
-    size_vs_prev_trade=None,
+    risk_pct_vs_prev=None,
     prev_trade_pnl=None,
     symbol="EURUSD",
 ):
@@ -44,7 +44,7 @@ def _trade(
         "is_revenge": is_revenge,
         "is_potential_revenge": is_potential_revenge,
         "minutes_since_prev_close": minutes_since_prev_close,
-        "size_vs_prev_trade": size_vs_prev_trade,
+        "risk_pct_vs_prev": risk_pct_vs_prev,
         "prev_trade_pnl": prev_trade_pnl,
         "symbol": symbol,
         "closed_at": "2026-04-20 12:00:00 UTC",
@@ -289,7 +289,7 @@ def test_revenge_evidence_repeated_only_when_multiple_strong_or_confirmed_sequen
             is_potential_revenge=True,
             prev_trade_pnl=-50.0,
             minutes_since_prev_close=20.0,
-            size_vs_prev_trade="larger",
+            risk_pct_vs_prev="larger",
         ),
     ]
     assert build_revenge_evidence(isolated)["pattern_class"] == "isolated"
@@ -302,7 +302,7 @@ def test_revenge_evidence_repeated_only_when_multiple_strong_or_confirmed_sequen
             is_potential_revenge=True,
             prev_trade_pnl=-50.0,
             minutes_since_prev_close=15.0,
-            size_vs_prev_trade="larger",
+            risk_pct_vs_prev="larger",
         )
     ]
     assert build_revenge_evidence(repeated)["pattern_class"] == "repeated"

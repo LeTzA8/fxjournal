@@ -54,6 +54,6 @@ Major decisions with rationale only.
 ## D-008 MT5 Queue Affinity Uses VM-Scoped Celery Queues
 
 - Decision:
-  when `FXJ_MT5_MULTI_VM=1`, MT5 sync/priority/setup/cleanup/pause tasks publish to `mt5_*.<slug>` queues derived from `MT5Account.vm_id` / setup target VM; workers dual-listen scoped + legacy queues during migration
+  MT5 sync/priority/setup/cleanup/pause tasks always publish to `mt5_*.<slug>` queues derived from `MT5Account.vm_id` / setup target VM; workers consume scoped queues per VM (`COMPUTERNAME` slug). Optional `FXJ_MT5_LISTEN_LEGACY_QUEUES=1` drains legacy queues during migration.
 - Why:
   keeps each Hyonix VM on local terminal paths only, enables controlled setup failover, and avoids cross-VM task theft without separate codebases

@@ -1764,39 +1764,11 @@ def sync_all_active_mt5_accounts():
     from celery_workers.cache import CacheUnavailableError, get_queue_depth, peek_lock_holder
     from helpers.mt5_dispatch import (
         dispatch_mt5_sync,
-        is_mt5_multi_vm_enabled,
         mt5_priority_queue,
         mt5_sync_queue,
-        normalize_vm_id,
+        routing_vm_id,
     )
     from helpers.schema_compat import mt5_trial_columns_available
-
-    try:
-        if is_mt5_multi_vm_enabled():
-            sync_queue_depth = 0
-            priority_queue_depth = 0
-        else:
-            sync_queue_depth = get_queue_depth(MT5_SYNC_QUEUE_NAME)
-            priority_queue_depth = get_queue_depth(MT5_PRIORITY_QUEUE_NAME)
-            total_queue_depth = sync_queue_depth + priority_queue_depth
-            if total_queue_depth > MT5_SYNC_BEAT_MAX_QUEUE_DEPTH:
-                logger.warning(
-                    "MT5 beat skipped queue_depth_total=%s sync_queue_depth=%s priority_queue_depth=%s max=%s",
-                    total_queue_depth,
-                    sync_queue_depth,
-                    priority_queue_depth,
-                    MT5_SYNC_BEAT_MAX_QUEUE_DEPTH,
-                )
-                return
-            if sync_queue_depth > 0:
-                logger.info(
-                    "MT5 beat skipped sync_queue_busy sync_queue_depth=%s priority_queue_depth=%s",
-                    sync_queue_depth,
-                    priority_queue_depth,
-                )
-                return
-    except CacheUnavailableError as exc:
-        logger.warning("MT5 beat queue-depth guard unavailable: %s", exc)
 
     filters = [
         MT5Account.is_active.is_(True),
@@ -1816,33 +1788,31 @@ def sync_all_active_mt5_accounts():
 
     account = None
     for candidate in accounts:
-        if is_mt5_multi_vm_enabled() and not normalize_vm_id(candidate.vm_id):
+        if not routing_vm_id(candidate.vm_id):
             continue
         try:
             if peek_lock_holder(_sync_lock_key(candidate.id)):
                 continue
         except CacheUnavailableError:
             pass
-        if is_mt5_multi_vm_enabled():
-            vm_id = normalize_vm_id(candidate.vm_id)
-            try:
-                scoped_sync_depth = int(get_queue_depth(mt5_sync_queue(vm_id)) or 0)
-                scoped_priority_depth = int(get_queue_depth(mt5_priority_queue(vm_id)) or 0)
-                scoped_total = scoped_sync_depth + scoped_priority_depth
-                if scoped_total > MT5_SYNC_BEAT_MAX_QUEUE_DEPTH:
-                    continue
-                if scoped_sync_depth > 0:
-                    continue
-            except CacheUnavailableError:
-                pass
+        vm_id = routing_vm_id(candidate.vm_id)
+        try:
+            scoped_sync_depth = int(get_queue_depth(mt5_sync_queue(vm_id)) or 0)
+            scoped_priority_depth = int(get_queue_depth(mt5_priority_queue(vm_id)) or 0)
+            scoped_total = scoped_sync_depth + scoped_priority_depth
+            if scoped_total > MT5_SYNC_BEAT_MAX_QUEUE_DEPTH:
+                continue
+            if scoped_sync_depth > 0:
+                continue
+        except CacheUnavailableError:
+            pass
         account = candidate
         break
 
     if account is None:
         logger.info(
-            "MT5 beat skipped no_eligible_account eligible=%s multi_vm=%s",
+            "MT5 beat skipped no_eligible_account eligible=%s",
             len(accounts),
-            is_mt5_multi_vm_enabled(),
         )
         return
 

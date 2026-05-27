@@ -81,7 +81,7 @@ def _create_weekly_review(user, trade_account, prompt_id="weekly-chat"):
             {
                 "trades": [
                     {
-                        "review_ref": "T1",
+                        "ref": "T1",
                         "trade_id": 101,
                         "symbol": "XAUUSD",
                         "opened_at": "2026-04-08T14:30:00Z",
@@ -222,7 +222,7 @@ def test_weekly_review_chat_prompt_exposes_trade_link_refs_without_raw_codes_in_
                 {
                     "trades": [
                         {
-                            "review_ref": "T1",
+                            "ref": "T1",
                             "trade_id": 101,
                             "symbol": "EURUSD",
                             "opened_at": "2026-04-01T09:00:00Z",
@@ -230,7 +230,7 @@ def test_weekly_review_chat_prompt_exposes_trade_link_refs_without_raw_codes_in_
                             "is_bundle": False,
                         },
                         {
-                            "review_ref": "B1",
+                            "ref": "B1",
                             "trade_id": 202,
                             "symbol": "GBPUSD",
                             "opened_at": "2026-04-02T10:00:00Z",
@@ -253,8 +253,8 @@ def test_weekly_review_chat_prompt_exposes_trade_link_refs_without_raw_codes_in_
     assert "T1: EURUSD | 01 Apr 2026 (Wed) (trade)" in user_blob
     assert "B1: GBPUSD bundle | 02 Apr 2026 (Thu) (bundle)" in user_blob
     assert '"refs"' not in user_blob
-    assert '"review_ref":"T1"' in user_blob
-    assert '"review_ref":"B1"' in user_blob
+    assert '"ref":"T1"' in user_blob
+    assert '"ref":"B1"' in user_blob
     assert "EURUSD" in user_blob
     assert "GBPUSD" in user_blob
 
@@ -2176,7 +2176,7 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
                 {
                     "trades": [
                         {
-                            "review_ref": "T1",
+                            "ref": "T1",
                             "trade_id": 101,
                             "symbol": "XAUUSD",
                             "opened_at": "2026-04-01T09:00:00Z",
@@ -2185,7 +2185,7 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
                             "bundle_pubkey": None,
                         },
                         {
-                            "review_ref": "B1",
+                            "ref": "B1",
                             "trade_id": 202,
                             "symbol": "GBPUSD",
                             "opened_at": "2026-04-02T10:00:00Z",
@@ -2346,7 +2346,7 @@ def test_weekly_ai_review_display_drops_original_citations_when_rewrite_omits_tr
                 {
                     "trades": [
                         {
-                            "review_ref": "T1",
+                            "ref": "T1",
                             "trade_id": 101,
                             "symbol": "GBPJPY",
                             "opened_at": "2026-04-20T09:00:00Z",
@@ -2394,7 +2394,7 @@ def test_weekly_ai_review_display_does_not_append_unmentioned_ref_as_trailing_pi
                 {
                     "trades": [
                         {
-                            "review_ref": "T1",
+                            "ref": "T1",
                             "trade_id": 101,
                             "symbol": "NAS100",
                             "opened_at": "2026-04-27T09:00:00Z",
@@ -2403,7 +2403,7 @@ def test_weekly_ai_review_display_does_not_append_unmentioned_ref_as_trailing_pi
                             "bundle_pubkey": None,
                         },
                         {
-                            "review_ref": "T2",
+                            "ref": "T2",
                             "trade_id": 202,
                             "symbol": "USDCAD",
                             "opened_at": "2026-04-28T09:00:00Z",
@@ -2519,7 +2519,7 @@ def test_weekly_ai_review_display_segments_span_full_label_when_present():
                 {
                     "trades": [
                         {
-                            "review_ref": "B1",
+                            "ref": "B1",
                             "trade_id": 1,
                             "symbol": "XAUUSD",
                             "opened_at": "2026-04-06T12:00:00Z",
@@ -2575,7 +2575,7 @@ def test_weekly_ai_review_display_autocites_unique_symbol_mentions():
                 {
                     "trades": [
                         {
-                            "review_ref": "T1",
+                            "ref": "T1",
                             "trade_id": 303,
                             "symbol": "EURCHF",
                             "opened_at": "2026-04-03T08:00:00Z",
@@ -2584,7 +2584,7 @@ def test_weekly_ai_review_display_autocites_unique_symbol_mentions():
                             "bundle_pubkey": None,
                         },
                         {
-                            "review_ref": "T2",
+                            "ref": "T2",
                             "trade_id": 404,
                             "symbol": "XAUUSD",
                             "opened_at": "2026-04-03T11:00:00Z",

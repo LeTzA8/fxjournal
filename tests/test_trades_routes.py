@@ -178,8 +178,9 @@ def test_trade_edit_uses_progressive_disclosure_sections(app_ctx, client):
 
     assert edit_response.status_code == 200
     assert b"trade-summary-compact" in edit_response.data
-    assert b'trade-form-section--instrument trade-form-collapsible" open' in edit_response.data
+    assert b'trade-form-section--instrument trade-form-collapsible"' in edit_response.data
     assert b'trade-form-section--timing trade-form-collapsible"' in edit_response.data
+    assert b'trade-form-collapsible" open' not in edit_response.data
     assert b'name="entry_price"' in edit_response.data
     assert b'name="trade_note"' in edit_response.data
     assert b"Save changes" in edit_response.data

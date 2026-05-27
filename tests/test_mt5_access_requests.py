@@ -100,7 +100,7 @@ def _stub_mt5_setup_queue(monkeypatch, captured=None, *, should_raise=False):
                         for key, value in options.items()
                         if key not in {"label", "extra", "log"}
                     },
-                    "queue": "mt5_setup",
+                    "queue": "mt5_setup.myfxjournal-sg",
                 }
             )
         return {"id": "test-mt5-setup-task"}
@@ -118,7 +118,7 @@ def _stub_mt5_cleanup_queue(monkeypatch, captured=None, *, should_raise=False):
                     "args": [terminal_path, appdata_hash],
                     "kwargs": dict(options.get("kwargs") or {}),
                     "account_vm_id": options.get("account_vm_id"),
-                    "queue": "mt5_setup",
+                    "queue": "mt5_setup.myfxjournal-sg",
                 }
             )
         return {"id": "test-mt5-cleanup-task"}
@@ -217,7 +217,7 @@ def test_user_can_submit_mt5_sync_request_and_send_confirmation_emails(app_ctx, 
     assert mt5_account.mt5_consent_accepted_at is not None
     assert mt5_account.mt5_consent_version == LEGAL_LAST_UPDATED
     assert queued_jobs[0]["args"] == [mt5_account.id]
-    assert queued_jobs[0]["queue"] == "mt5_setup"
+    assert queued_jobs[0]["queue"] == "mt5_setup.myfxjournal-sg"
     assert {email["to_email"] for email in captured} == {"support@example.com", user.email}
     admin_email = next(email for email in captured if email["to_email"] == "support@example.com")
     user_email = next(email for email in captured if email["to_email"] == user.email)
@@ -1381,7 +1381,7 @@ def test_mt5_submission_claims_open_batch_slot_and_queues_setup(app_ctx, client,
     assert batch.total_slots_claimed == 1
     assert mt5_account.account_number == "70110001"
     assert queued_jobs[0]["args"] == [mt5_account.id]
-    assert queued_jobs[0]["queue"] == "mt5_setup"
+    assert queued_jobs[0]["queue"] == "mt5_setup.myfxjournal-sg"
     assert b"MT5 setup started right away. We&#39;ll email you when your sync is ready." in response.data
 
 
@@ -1523,7 +1523,7 @@ def test_user_can_reactivate_archived_mt5_sync(app_ctx, client, monkeypatch):
     assert refreshed.archive_reason is None
     assert refreshed.is_active is False
     assert queued_jobs[0]["args"] == [mt5_account.id]
-    assert queued_jobs[0]["queue"] == "mt5_setup"
+    assert queued_jobs[0]["queue"] == "mt5_setup.myfxjournal-sg"
     assert b"MT5 reactivation started. We&#39;ll email you when your sync is ready again." in response.data
 
 
@@ -1577,7 +1577,6 @@ def test_root_admin_can_archive_mt5_account_and_keep_reactivation_path(app_ctx, 
 
 def test_root_admin_reactivate_archived_mt5_uses_target_vm_dropdown(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "MYFXJOURNAL-SG,VM-OTHER")
     _root_user, _ = _log_in_root_admin(
         client,
@@ -1627,7 +1626,7 @@ def test_root_admin_reactivate_archived_mt5_uses_target_vm_dropdown(app_ctx, cli
                 "target_vm_id": "VM-OTHER",
                 "allow_failover": False,
             },
-            "queue": "mt5_setup",
+            "queue": "mt5_setup.myfxjournal-sg",
         }
     ]
     assert b"MT5 reactivation started." in response.data
@@ -1635,7 +1634,6 @@ def test_root_admin_reactivate_archived_mt5_uses_target_vm_dropdown(app_ctx, cli
 
 def test_root_admin_reactivate_archived_mt5_requires_target_vm_in_multi_vm(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "MYFXJOURNAL-SG")
     _root_user, _ = _log_in_root_admin(
         client,
@@ -1735,7 +1733,7 @@ def test_root_admin_can_delete_vm_files_for_mt5_account_with_terminal_path(app_c
                 "target_vm_id": "MYFXJOURNAL-SG",
             },
             "account_vm_id": "MYFXJOURNAL-SG",
-            "queue": "mt5_setup",
+            "queue": "mt5_setup.myfxjournal-sg",
         }
     ]
     assert b"VM terminal file cleanup queued" in response.data
@@ -2040,6 +2038,7 @@ def test_root_admin_can_delete_vm_files_for_mt5_account_with_only_appdata_hash(a
         server="Broker-Reset-Hash",
         terminal_path=None,
         appdata_hash="A" * 32,
+        vm_id="MYFXJOURNAL-SG",
         is_active=False,
         connection_status=MT5Account.CONNECTION_STATUS_FAILED,
         connection_error_message="Old setup failed",
@@ -2071,9 +2070,10 @@ def test_root_admin_can_delete_vm_files_for_mt5_account_with_only_appdata_hash(a
                 "mt5_account_id": mt5_account.id,
                 "delete_account_row": False,
                 "clear_cleanup_mark": False,
+                "target_vm_id": "MYFXJOURNAL-SG",
             },
-            "account_vm_id": "",
-            "queue": "mt5_setup",
+            "account_vm_id": "MYFXJOURNAL-SG",
+            "queue": "mt5_setup.myfxjournal-sg",
         }
     ]
     assert b"VM terminal file cleanup queued" in response.data
@@ -2250,6 +2250,7 @@ def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, m
     mt5_account_id = mt5_account.id
     mt5_account.terminal_path = r"C:\fake\terminal"
     mt5_account.appdata_hash = "abc123hash"
+    mt5_account.vm_id = "MYFXJOURNAL-SG"
     db.session.commit()
 
     response = client.post(
@@ -2275,8 +2276,9 @@ def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, m
                 "mt5_account_id": mt5_account_id,
                 "delete_account_row": True,
                 "clear_cleanup_mark": False,
+                "target_vm_id": "MYFXJOURNAL-SG",
             },
-            "queue": "mt5_setup",
+            "queue": "mt5_setup.myfxjournal-sg",
         },
     ]
     assert b"MT5 sync disconnected for this trade account." in response.data
@@ -2364,7 +2366,6 @@ def test_user_cannot_unlink_mt5_for_foreign_trade_account_pubkey(app_ctx, client
 
 def test_root_admin_delete_mt5_fails_when_cleanup_cannot_queue(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     _root_user, _ = _log_in_root_admin(
         client,
         email="mt5-delete-skip-root@example.com",
@@ -2406,7 +2407,6 @@ def test_root_admin_delete_mt5_fails_when_cleanup_cannot_queue(app_ctx, client, 
 
 def test_root_admin_delete_mt5_without_vm_files_does_not_require_target_vm(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     _root_user, _ = _log_in_root_admin(
         client,
         email="mt5-delete-no-files-root@example.com",
@@ -2449,7 +2449,6 @@ def test_root_admin_delete_mt5_without_vm_files_does_not_require_target_vm(app_c
 
 def test_root_admin_delete_mt5_passes_target_vm_id(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
-    monkeypatch.setenv("FXJ_MT5_MULTI_VM", "1")
     monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "VM-TARGET,VM-OTHER")
     _root_user, _ = _log_in_root_admin(
         client,

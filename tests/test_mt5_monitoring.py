@@ -120,6 +120,8 @@ def test_check_mt5_sync_health_sends_one_alert_per_outage_and_resets_on_recovery
 
 
 def test_build_mt5_sync_health_snapshot_flags_stale_backlog(monkeypatch):
+    monkeypatch.setenv("FXJ_MT5_LISTEN_LEGACY_QUEUES", "1")
+    monkeypatch.setattr("helpers.mt5_dispatch.parse_setup_vm_ids_env", lambda: [])
     now = datetime(2026, 4, 13, 12, 0, 0, tzinfo=timezone.utc)
     monkeypatch.setattr(
         mt5_monitoring,
@@ -164,6 +166,8 @@ def test_build_mt5_sync_health_snapshot_flags_stale_backlog(monkeypatch):
 
 
 def test_build_mt5_sync_health_snapshot_uses_latest_priority_queue_activity(monkeypatch):
+    monkeypatch.setenv("FXJ_MT5_LISTEN_LEGACY_QUEUES", "1")
+    monkeypatch.setattr("helpers.mt5_dispatch.parse_setup_vm_ids_env", lambda: [])
     now = datetime(2026, 4, 13, 12, 0, 0, tzinfo=timezone.utc)
 
     def _fake_get_queue_depth(queue_name):
