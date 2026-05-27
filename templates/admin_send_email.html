@@ -13,6 +13,9 @@
             id="adminSendEmailRoot"
             data-recipients-url="{{ url_for('admin_send_email_recipients') }}"
             data-send-url="{{ url_for('admin_send_email_send_one') }}"
+            data-signatures-url="{{ url_for('admin_send_email_signatures') }}"
+            data-signatures-save-url="{{ url_for('admin_send_email_signatures_save') }}"
+            data-signatures-delete-url="{{ url_for('admin_send_email_signatures_delete') }}"
             data-csrf-token="{{ csrf_token() }}"
             data-default-inactive-days="{{ default_inactive_days }}"
             data-send-delay-ms="{{ send_delay_ms }}"
@@ -115,6 +118,53 @@
                             placeholder="Write the email body here. Use {{ '{{' }}name{{ '}}' }} if you want the recipient's username inserted. Use Insert logo or Insert image URL for images."
                         ></textarea>
                     </div>
+
+                    <div class="admin-send-email-field admin-send-email-signatures">
+                        <span class="admin-send-email-label-row">
+                            <label for="adminSendEmailSignatureSelect">Saved signatures</label>
+                            <span class="admin-send-email-message-tools">
+                                <button type="button" class="ghost-btn" id="adminSendEmailInsertSignature">Insert signature</button>
+                                <button type="button" class="ghost-btn" id="adminSendEmailSaveSignature">Save signature</button>
+                                <button type="button" class="ghost-btn" id="adminSendEmailDeleteSignature">Delete signature</button>
+                            </span>
+                        </span>
+                        <select id="adminSendEmailSignatureSelect" class="admin-send-email-signature-select">
+                            <option value="">No signature selected</option>
+                        </select>
+                        <p class="field-help soft">Save reusable sign-offs here. Insert adds the selected signature at the cursor or end of the message.</p>
+                    </div>
+
+                    <dialog class="admin-send-email-signature-dialog" id="adminSendEmailSignatureDialog">
+                        <form method="dialog" class="admin-send-email-signature-form" id="adminSendEmailSignatureForm">
+                            <div class="admin-send-email-signature-form-head">
+                                <h3>Save signature</h3>
+                                <p class="soft">Stored for all admins. Supports plain text and the same HTML inserts as the message body.</p>
+                            </div>
+                            <input type="hidden" id="adminSendEmailSignatureId" value="">
+                            <label for="adminSendEmailSignatureName">Name</label>
+                            <input
+                                type="text"
+                                id="adminSendEmailSignatureName"
+                                class="admin-send-email-signature-name"
+                                maxlength="80"
+                                placeholder="Standard sign-off"
+                                autocomplete="off"
+                                required
+                            >
+                            <label for="adminSendEmailSignatureBody">Signature</label>
+                            <textarea
+                                id="adminSendEmailSignatureBody"
+                                class="admin-send-email-signature-body"
+                                rows="6"
+                                placeholder="Best,&#10;{{ '{{' }}name{{ '}}' }}&#10;MyFXJournal"
+                                required
+                            ></textarea>
+                            <div class="admin-send-email-signature-form-actions">
+                                <button type="submit" class="submit-btn">Save</button>
+                                <button type="button" class="ghost-btn" id="adminSendEmailSignatureCancel">Cancel</button>
+                            </div>
+                        </form>
+                    </dialog>
 
                     <div class="admin-send-email-actions">
                         <button type="button" class="submit-btn" id="adminSendEmailSendBtn">Send to selected</button>

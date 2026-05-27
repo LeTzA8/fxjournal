@@ -45,7 +45,7 @@
 
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-    const HTML_LINE_RE = /^\s*<\/?(?:img|a|p|div|span|br|strong|em|ul|ol|li|h[1-6])\b/i;
+    const HTML_LINE_RE = /^\s*<\/?(?:img|a|p|div|span|br|strong|em|ul|ol|li|h[1-6])\b/im;
 
     const escapeHtml = (text) =>
         String(text)

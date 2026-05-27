@@ -2154,6 +2154,126 @@ def admin_broadcast_message_contains_html(message):
     return bool(_ADMIN_EMAIL_HTML_TAG_RE.search(message))
 
 
+ADMIN_BROADCAST_SIGNATURES_KEY = "admin_broadcast_signatures"
+MAX_ADMIN_BROADCAST_SIGNATURES = 24
+MAX_ADMIN_BROADCAST_SIGNATURE_NAME_LEN = 80
+MAX_ADMIN_BROADCAST_SIGNATURE_BODY_LEN = 8192
+
+
+def _normalize_admin_broadcast_signature_item(item):
+    if not isinstance(item, dict):
+        return None
+    signature_id = str(item.get("id") or "").strip()
+    name = str(item.get("name") or "").strip()
+    body = str(item.get("body") or "").strip()
+    updated_at = str(item.get("updated_at") or "").strip()
+    if not signature_id or not name or not body:
+        return None
+    if len(name) > MAX_ADMIN_BROADCAST_SIGNATURE_NAME_LEN:
+        name = name[:MAX_ADMIN_BROADCAST_SIGNATURE_NAME_LEN].rstrip()
+    if len(body) > MAX_ADMIN_BROADCAST_SIGNATURE_BODY_LEN:
+        body = body[:MAX_ADMIN_BROADCAST_SIGNATURE_BODY_LEN].rstrip()
+    return {
+        "id": signature_id,
+        "name": name,
+        "body": body,
+        "updated_at": updated_at,
+    }
+
+
+def list_admin_broadcast_signatures():
+    from helpers.app_settings import get_app_setting_value
+
+    raw = get_app_setting_value(ADMIN_BROADCAST_SIGNATURES_KEY, "[]")
+    try:
+        loaded = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        loaded = []
+    if not isinstance(loaded, list):
+        return []
+    signatures = []
+    for item in loaded:
+        normalized = _normalize_admin_broadcast_signature_item(item)
+        if normalized is not None:
+            signatures.append(normalized)
+    signatures.sort(key=lambda row: row["name"].casefold())
+    return signatures
+
+
+def _persist_admin_broadcast_signatures(signatures, *, updated_by_user_id=None):
+    from models import AppSetting
+
+    payload = json.dumps(signatures, sort_keys=True)
+    setting = db.session.get(AppSetting, ADMIN_BROADCAST_SIGNATURES_KEY)
+    if setting is None:
+        setting = AppSetting(key=ADMIN_BROADCAST_SIGNATURES_KEY, value=payload)
+        db.session.add(setting)
+    else:
+        setting.value = payload
+    setting.updated_at = utcnow_naive()
+    setting.updated_by_user_id = updated_by_user_id
+    db.session.commit()
+    return signatures
+
+
+def save_admin_broadcast_signature(*, signature_id=None, name, body, updated_by_user_id=None):
+    cleaned_name = str(name or "").strip()
+    cleaned_body = str(body or "").strip()
+    if not cleaned_name:
+        raise ValueError("missing_name")
+    if not cleaned_body:
+        raise ValueError("missing_body")
+    if len(cleaned_name) > MAX_ADMIN_BROADCAST_SIGNATURE_NAME_LEN:
+        raise ValueError("name_too_long")
+    if len(cleaned_body) > MAX_ADMIN_BROADCAST_SIGNATURE_BODY_LEN:
+        raise ValueError("body_too_long")
+
+    signatures = list_admin_broadcast_signatures()
+    normalized_id = str(signature_id or "").strip()
+    timestamp = utcnow_naive().replace(microsecond=0).isoformat() + "Z"
+    saved = None
+
+    if normalized_id:
+        for index, item in enumerate(signatures):
+            if item["id"] != normalized_id:
+                continue
+            signatures[index] = {
+                "id": normalized_id,
+                "name": cleaned_name,
+                "body": cleaned_body,
+                "updated_at": timestamp,
+            }
+            saved = signatures[index]
+            break
+        if saved is None:
+            raise ValueError("not_found")
+    else:
+        if len(signatures) >= MAX_ADMIN_BROADCAST_SIGNATURES:
+            raise ValueError("limit_reached")
+        saved = {
+            "id": secrets.token_hex(8),
+            "name": cleaned_name,
+            "body": cleaned_body,
+            "updated_at": timestamp,
+        }
+        signatures.append(saved)
+
+    _persist_admin_broadcast_signatures(signatures, updated_by_user_id=updated_by_user_id)
+    return saved
+
+
+def delete_admin_broadcast_signature(*, signature_id, updated_by_user_id=None):
+    normalized_id = str(signature_id or "").strip()
+    if not normalized_id:
+        raise ValueError("missing_id")
+    signatures = list_admin_broadcast_signatures()
+    next_signatures = [item for item in signatures if item["id"] != normalized_id]
+    if len(next_signatures) == len(signatures):
+        raise ValueError("not_found")
+    _persist_admin_broadcast_signatures(next_signatures, updated_by_user_id=updated_by_user_id)
+    return True
+
+
 def send_email_placeholder(to_email, subject, text_body, html_body=None, *, from_header=None):
     provider = os.getenv("EMAIL_PROVIDER", "placeholder").strip().lower()
     sender = from_header or _resolve_email_from_header()
@@ -4530,6 +4650,61 @@ def register_public_auth_routes(
                 "name": recipient_name,
             }
         ), (200 if sent else 502)
+
+    @app.route("/dashboard/admin/access/send-email/signatures")
+    @admin_required
+    def admin_send_email_signatures():
+        return jsonify({"signatures": list_admin_broadcast_signatures()})
+
+    @app.route("/dashboard/admin/access/send-email/signatures/save", methods=["POST"])
+    @admin_required
+    def admin_send_email_signatures_save():
+        admin_user = get_current_admin_user()
+        payload = request.get_json(silent=True) or {}
+        signature_id = str(payload.get("id") or "").strip() or None
+        name = str(payload.get("name") or "").strip()
+        body = str(payload.get("body") or "").strip()
+        try:
+            saved = save_admin_broadcast_signature(
+                signature_id=signature_id,
+                name=name,
+                body=body,
+                updated_by_user_id=admin_user.id if admin_user else None,
+            )
+        except ValueError as exc:
+            error = str(exc)
+            messages = {
+                "missing_name": "Signature name is required.",
+                "missing_body": "Signature body is required.",
+                "name_too_long": "Signature name is too long.",
+                "body_too_long": "Signature body is too long.",
+                "limit_reached": "Signature limit reached. Delete one before saving another.",
+                "not_found": "Signature not found.",
+            }
+            return jsonify({"error": error, "message": messages.get(error, "Could not save signature.")}), 400
+        return jsonify({"signature": saved, "signatures": list_admin_broadcast_signatures()})
+
+    @app.route("/dashboard/admin/access/send-email/signatures/delete", methods=["POST"])
+    @admin_required
+    def admin_send_email_signatures_delete():
+        admin_user = get_current_admin_user()
+        payload = request.get_json(silent=True) or {}
+        signature_id = str(payload.get("id") or "").strip()
+        if not signature_id:
+            return jsonify({"error": "missing_id", "message": "Signature id is required."}), 400
+        try:
+            delete_admin_broadcast_signature(
+                signature_id=signature_id,
+                updated_by_user_id=admin_user.id if admin_user else None,
+            )
+        except ValueError as exc:
+            error = str(exc)
+            messages = {
+                "missing_id": "Signature id is required.",
+                "not_found": "Signature not found.",
+            }
+            return jsonify({"error": error, "message": messages.get(error, "Could not delete signature.")}), 400
+        return jsonify({"ok": True, "signatures": list_admin_broadcast_signatures()})
 
     @app.route("/dashboard/admin/access/cfd-symbols")
     @root_admin_required
