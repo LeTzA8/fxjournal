@@ -180,5 +180,13 @@
     });
 
     setImportProfile(null, null, false);
+
+    const manualEntry = document.getElementById("manualTradeEntry");
+    if (manualEntry) {
+        const params = new URLSearchParams(window.location.search);
+        if (window.location.hash === "#manual" || params.get("manual") === "1") {
+            manualEntry.open = true;
+        }
+    }
 })();
 

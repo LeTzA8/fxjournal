@@ -46,6 +46,26 @@ def test_html_to_plain_email_text_strips_tags():
     assert auth_account.html_to_plain_email_text("<p>Hello <strong>there</strong></p>") == "Hello there"
 
 
+def test_sanitize_admin_broadcast_html_keeps_logo_img():
+    logo_url = "https://myfxjournal.com/static/site-logo.png"
+    raw = f'<img src="{logo_url}" alt="MyFXJournal" height="36" onerror="alert(1)" />'
+    cleaned = auth_account.sanitize_admin_broadcast_html(raw)
+    assert cleaned == f'<img src="{logo_url}" alt="MyFXJournal" height="36" />'
+    assert "onerror" not in cleaned
+
+
+def test_sanitize_admin_broadcast_html_strips_script_tags():
+    raw = '<script>alert(1)</script><p>Hello</p>'
+    cleaned = auth_account.sanitize_admin_broadcast_html(raw)
+    assert "script" not in cleaned
+    assert "Hello" in cleaned
+
+
+def test_admin_broadcast_message_contains_html_detects_img():
+    assert auth_account.admin_broadcast_message_contains_html("Hi\n<img src=\"x\" />")
+    assert not auth_account.admin_broadcast_message_contains_html("Hi there")
+
+
 def test_admin_send_email_page_requires_admin(app_ctx, client, monkeypatch):
     monkeypatch.setenv("ADMIN_USER_EMAILS", "send-email-admin@example.com")
     suffix = _unique_suffix()
@@ -60,6 +80,7 @@ def test_admin_send_email_page_requires_admin(app_ctx, client, monkeypatch):
     assert response.status_code == 200
     assert b"Send to selected" in response.data
     assert b"adminSendEmailMessage" in response.data
+    assert b"Insert logo" in response.data
     assert b"Name personalization" in response.data
     assert b"quill" not in response.data.lower()
 
@@ -211,6 +232,68 @@ def test_admin_send_email_send_one_accepts_plain_text_body(
     assert captured["payload"]["subject"] == f"Hello {recipient.username}"
     assert f"Hi {recipient.username}<br>Second line" in captured["payload"]["html"]
     assert "{{name}}" not in captured["payload"]["html"]
+
+
+def test_admin_send_email_send_one_accepts_html_body_with_logo(
+    app_ctx, client, monkeypatch
+):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "send-email-logo@example.com")
+    monkeypatch.setenv("EMAIL_SEND_ENABLED", "1")
+    monkeypatch.setenv("EMAIL_PROVIDER", "resend")
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv("ADMIN_EMAIL_FROM", "admin@myfxjournal.com")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://myfxjournal.com")
+
+    captured = {}
+
+    class FakeResendEmails:
+        @staticmethod
+        def send(payload):
+            captured["payload"] = payload
+            return {"id": "email_789"}
+
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "resend",
+        type("FakeResendModule", (), {"Emails": FakeResendEmails, "api_key": None})(),
+    )
+
+    suffix = _unique_suffix()
+    admin = _create_user(
+        username=f"send-email-logo-admin-{suffix}",
+        email="send-email-logo@example.com",
+    )
+    recipient = _create_user(
+        username=f"logo-recipient-{suffix}",
+        email=f"logo-recipient-{suffix}@example.com",
+    )
+    db.session.commit()
+    _login_as(client, admin)
+
+    logo_url = "https://myfxjournal.com/static/site-logo.png"
+    html_body = (
+        'Hi {{name}}<br>\n'
+        f'<img src="{logo_url}" alt="MyFXJournal" height="36" />'
+    )
+
+    response = client.post(
+        "/dashboard/admin/access/send-email/send-one",
+        data=json.dumps(
+            {
+                "user_id": recipient.id,
+                "subject": "Logo test",
+                "html_body": html_body,
+                "text_body": f"Hi {{name}}\n[logo]",
+            }
+        ),
+        content_type="application/json",
+        headers={"X-CSRFToken": _csrf_token(client)},
+    )
+
+    assert response.status_code == 200
+    assert f"Hi {recipient.username}" in captured["payload"]["html"]
+    assert logo_url in captured["payload"]["html"]
+    assert 'alt="MyFXJournal"' in captured["payload"]["html"]
 
 
 def _csrf_token(client):

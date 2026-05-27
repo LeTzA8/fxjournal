@@ -77,7 +77,11 @@
                         {% elif form_mode == 'edit' %}
                         Sections follow how you think through a trade: setup, execution, outcome, timing, then journal.
                         {% else %}
-                        Recommended first win is the import panel on the right. Use this when a trade is not in your file, or you need one quick manual row.
+                        {% if account_type == "FUTURES" %}
+                        Upload your Tradovate performance CSV to add trades in bulk. Expand manual entry below only when you need one row that is not in the file.
+                        {% else %}
+                        Upload your MetaTrader 5 Excel report to add trades in bulk. Expand manual entry below only when you need one row that is not in the file.
+                        {% endif %}
                         {% endif %}
                     </p>
                 </div>
@@ -183,8 +187,111 @@
         </section>
         {% endif %}
 
-        <section class="panel-grid trade-detail-panel-grid {% if form_mode == 'new' %}with-import{% endif %}">
-            <article class="panel entry-panel trade-entry-panel">
+        <section class="panel-grid trade-detail-panel-grid {% if form_mode == 'new' %}trade-new-layout{% endif %}">
+            {% if form_mode == 'new' %}
+            <article class="panel import-panel import-panel--primary">
+                <div class="panel-head import-panel-head">
+                    <h2>{% if account_type == "FUTURES" %}Import from Tradovate{% else %}Import from MetaTrader 5{% endif %}</h2>
+                    <div class="panel-head-meta">
+                        <div class="help-popover">
+                            <button
+                                type="button"
+                                class="help-trigger"
+                                aria-label="{% if account_type == 'FUTURES' %}How to export a Tradovate performance file{% else %}How to export a MetaTrader 5 workbook{% endif %}"
+                            >?</button>
+                            <div class="help-card" role="note">
+                                <p class="help-card-title">{% if account_type == "FUTURES" %}Export from Tradovate{% else %}Export from MT5{% endif %}</p>
+                                <ol class="help-card-list">
+                                    {% if account_type == "FUTURES" %}
+                                    <li>Open the <strong>Performance</strong> area in Tradovate.</li>
+                                    <li>Set the account and date range you want to export.</li>
+                                    <li>Use the export/download action for the performance table.</li>
+                                    <li>Save the file as a <strong>.csv</strong>.</li>
+                                    <li>Upload that CSV here.</li>
+                                    {% else %}
+                                    <li>Open the <strong>Toolbox</strong> window in MetaTrader 5 (<strong>Ctrl+T</strong>).</li>
+                                    <li>In the <strong>History</strong> tab, right-click inside the table.</li>
+                                    <li>Select <strong>Report</strong>, then choose the Excel <strong>.xlsx</strong> option.</li>
+                                    <li>In MT5 this may be labeled <strong>Open XML (MS Office Excel 2007)</strong>.</li>
+                                    <li>Save the file, then upload it here.</li>
+                                    {% endif %}
+                                </ol>
+                            </div>
+                        </div>
+                        <span class="import-panel-kicker soft">{% if account_type == "FUTURES" %}CSV Upload{% else %}XLSX Upload{% endif %}</span>
+                    </div>
+                </div>
+                <p class="import-panel-intro field-help">
+                    {% if account_type == "FUTURES" %}
+                    Tradovate timestamps default to <strong>America/Chicago</strong> unless the file provides explicit timezone data.
+                    {% else %}
+                    Export your trade history from MT5 as <strong>.xlsx</strong> and upload it here — the fastest way to populate your journal.
+                    {% endif %}
+                </p>
+                <form action="{{ url_for('trades.import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook" }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <label for="mt5_file">{% if account_type == "FUTURES" %}Tradovate Performance File{% else %}MT5 Report File{% endif %}</label>
+                    <div id="mt5Dropzone" class="dropzone dropzone--primary" role="button" tabindex="0" aria-label="Upload trade import file" aria-controls="mt5_file">
+                        <p class="dropzone-title">
+                            {% if account_type == "FUTURES" %}
+                            Drag and drop your Tradovate .csv file here
+                            {% else %}
+                            Drag and drop your MT5 .xlsx file here
+                            {% endif %}
+                        </p>
+                        <p class="dropzone-sub">or tap to browse</p>
+                        <input
+                            id="mt5_file"
+                            name="mt5_file"
+                            class="file-input"
+                            type="file"
+                            accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+                            required
+                        >
+                        <p id="mt5FileName" class="dropzone-file"></p>
+                    </div>
+                    <div id="importProfile" class="import-profile" hidden>
+                        <p class="import-profile-title">Import Check</p>
+                        <dl class="import-profile-grid">
+                            <div>
+                                <dt>Detected Platform</dt>
+                                <dd id="importPlatformValue">-</dd>
+                            </div>
+                            <div>
+                                <dt>Detected Market</dt>
+                                <dd id="importMarketValue">-</dd>
+                            </div>
+                            <div>
+                                <dt>Validation</dt>
+                                <dd id="importValidationValue">Waiting for file</dd>
+                            </div>
+                        </dl>
+                    </div>
+                    <p class="import-help">
+                        {% if account_type == "FUTURES" %}
+                        Upload the Tradovate performance export as <code>.csv</code>. Contract code, side, entry, exit, timestamps, and PnL will be mapped automatically.
+                        {% else %}
+                        Upload a MetaTrader 5 report exported as <code>.xlsx</code>. If the file includes close timestamps, duration and session analytics will use them automatically.
+                        {% endif %}
+                    </p>
+                    <div class="form-actions import-form-actions">
+                        <button type="submit" class="submit-btn">{% if account_type == "FUTURES" %}Upload CSV{% else %}Upload XLSX{% endif %}</button>
+                    </div>
+                </form>
+            </article>
+
+            <details class="trade-manual-entry" id="manualTradeEntry">
+                <summary class="trade-manual-entry-summary">
+                    <span class="trade-manual-entry-copy">
+                        <span class="trade-manual-entry-title">Enter one trade manually</span>
+                        <span class="trade-manual-entry-hint soft">Optional · {{ active_trade_account_name }} · {{ "Futures" if account_type == "FUTURES" else "CFD" }}</span>
+                    </span>
+                    <span class="trade-manual-entry-chevron" aria-hidden="true"></span>
+                </summary>
+                <div class="trade-manual-entry-body">
+            {% endif %}
+            <article class="panel entry-panel trade-entry-panel{% if form_mode == 'new' %} trade-entry-panel--manual{% endif %}">
+                {% if form_mode != 'new' %}
                 <div class="panel-head trade-entry-panel-head{% if form_mode == 'view' %} trade-entry-panel-head--view{% endif %}">
                     <div class="trade-entry-panel-head-text">
                         <h2>{% if form_mode == 'view' %}Full record{% elif form_mode == 'edit' %}Fields{% else %}Form{% endif %}</h2>
@@ -194,6 +301,7 @@
                     <a class="submit-btn trade-entry-panel-edit-link" href="{{ url_for('trades.edit_trade', trade_pubkey=trade.pubkey) }}">Edit trade</a>
                     {% endif %}
                 </div>
+                {% endif %}
 
                 {% if form_mode == 'edit' and trade %}
                 <div class="trade-summary-compact" aria-live="polite">
@@ -217,14 +325,6 @@
                         {% endif %}
                     </p>
                     <p class="trade-hero-meta soft">{{ active_trade_account_name }} · {{ "Futures" if account_type == "FUTURES" else "CFD" }} · {{ analytics_timezone }}</p>
-                </div>
-                {% elif form_mode == 'new' %}
-                <div class="trade-hero trade-hero--pills trade-hero--new">
-                    <div class="trade-hero-pill-row">
-                        <span class="trade-hero-pill trade-hero-pill--new-kicker">Manual entry</span>
-                        <span class="trade-hero-pill trade-hero-pill--symbol trade-hero-pill--symbol-muted">{{ active_trade_account_name }}</span>
-                    </div>
-                    <p class="trade-hero-meta soft">{{ "Futures" if account_type == "FUTURES" else "CFD" }} · times use {{ analytics_timezone }}</p>
                 </div>
                 {% endif %}
 
@@ -801,98 +901,9 @@
                 </form>
                 {% endif %}
             </article>
-
-            {% if form_mode == "new" %}
-            <article class="panel import-panel">
-                <div class="panel-head import-panel-head">
-                    <h2>{% if account_type == "FUTURES" %}Import from Tradovate{% else %}Import from MetaTrader 5{% endif %}</h2>
-                    <div class="panel-head-meta">
-                        <div class="help-popover">
-                            <button
-                                type="button"
-                                class="help-trigger"
-                                aria-label="{% if account_type == 'FUTURES' %}How to export a Tradovate performance file{% else %}How to export a MetaTrader 5 workbook{% endif %}"
-                            >?</button>
-                            <div class="help-card" role="note">
-                                <p class="help-card-title">{% if account_type == "FUTURES" %}Export from Tradovate{% else %}Export from MT5{% endif %}</p>
-                                <ol class="help-card-list">
-                                    {% if account_type == "FUTURES" %}
-                                    <li>Open the <strong>Performance</strong> area in Tradovate.</li>
-                                    <li>Set the account and date range you want to export.</li>
-                                    <li>Use the export/download action for the performance table.</li>
-                                    <li>Save the file as a <strong>.csv</strong>.</li>
-                                    <li>Upload that CSV here.</li>
-                                    {% else %}
-                                    <li>Open the <strong>Toolbox</strong> window in MetaTrader 5 (<strong>Ctrl+T</strong>).</li>
-                                    <li>In the <strong>History</strong> tab, right-click inside the table.</li>
-                                    <li>Select <strong>Report</strong>, then choose the Excel <strong>.xlsx</strong> option.</li>
-                                    <li>In MT5 this may be labeled <strong>Open XML (MS Office Excel 2007)</strong>.</li>
-                                    <li>Save the file, then upload it here.</li>
-                                    {% endif %}
-                                </ol>
-                            </div>
-                        </div>
-                        <span class="import-panel-kicker soft">{% if account_type == "FUTURES" %}CSV Upload{% else %}XLSX Upload{% endif %}</span>
-                    </div>
+            {% if form_mode == 'new' %}
                 </div>
-                <p class="import-panel-intro field-help">
-                    {% if account_type == "FUTURES" %}
-                    Tradovate timestamps default to <strong>America/Chicago</strong> unless the file provides explicit timezone data.
-                    {% else %}
-                    MT5 file import is the fastest first step. If the workbook omits timezone data, optional MT5 sync becomes the canonical source later.
-                    {% endif %}
-                </p>
-                <form action="{{ url_for('trades.import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook" }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <label for="mt5_file">{% if account_type == "FUTURES" %}Tradovate Performance File{% else %}MT5 Report File{% endif %}</label>
-                    <div id="mt5Dropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload trade import file" aria-controls="mt5_file">
-                        <p class="dropzone-title">
-                            {% if account_type == "FUTURES" %}
-                            Drag and drop your Tradovate .csv file here
-                            {% else %}
-                            Drag and drop your MT5 .xlsx file here
-                            {% endif %}
-                        </p>
-                        <p class="dropzone-sub">or tap to browse</p>
-                        <input
-                            id="mt5_file"
-                            name="mt5_file"
-                            class="file-input"
-                            type="file"
-                            accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-                            required
-                        >
-                        <p id="mt5FileName" class="dropzone-file"></p>
-                    </div>
-                    <div id="importProfile" class="import-profile" hidden>
-                        <p class="import-profile-title">Import Check</p>
-                        <dl class="import-profile-grid">
-                            <div>
-                                <dt>Detected Platform</dt>
-                                <dd id="importPlatformValue">-</dd>
-                            </div>
-                            <div>
-                                <dt>Detected Market</dt>
-                                <dd id="importMarketValue">-</dd>
-                            </div>
-                            <div>
-                                <dt>Validation</dt>
-                                <dd id="importValidationValue">Waiting for file</dd>
-                            </div>
-                        </dl>
-                    </div>
-                    <p class="import-help">
-                        {% if account_type == "FUTURES" %}
-                        Upload the Tradovate performance export as <code>.csv</code>. Contract code, side, entry, exit, timestamps, and PnL will be mapped automatically.
-                        {% else %}
-                        Fastest first win: upload a MetaTrader 5 report exported as <code>.xlsx</code>. If the file includes close timestamps, duration and session analytics will use them automatically.
-                        {% endif %}
-                    </p>
-                    <div class="form-actions import-form-actions">
-                        <button type="submit" class="submit-btn">{% if account_type == "FUTURES" %}Upload CSV{% else %}Upload XLSX{% endif %}</button>
-                    </div>
-                </form>
-            </article>
+            </details>
             {% endif %}
         </section>
 
@@ -947,13 +958,16 @@
         justify-items: center;
         min-width: 0; }
 
-    .panel-grid.with-import { grid-template-columns: minmax(0, 1.35fr) minmax(280px, 400px);
+    .panel-grid.trade-new-layout {
+        grid-template-columns: minmax(0, 42rem);
         justify-content: center;
         justify-items: stretch;
         align-items: start;
-        gap: 1rem; }
+        gap: 0.85rem;
+    }
 
-    .panel-grid.with-import > .panel {
+    .panel-grid.trade-new-layout > .panel,
+    .panel-grid.trade-new-layout > .trade-manual-entry {
         max-width: none;
     }
 
@@ -1018,9 +1032,97 @@
         margin: 0;
         min-width: 0;
         max-width: none;
-        align-self: start;
-        position: sticky;
-        top: 1rem; }
+        align-self: stretch; }
+
+    .import-panel--primary {
+        padding: 1.15rem 1.2rem 1.28rem;
+        border-color: color-mix(in srgb, var(--good) 28%, var(--border));
+        background:
+            radial-gradient(circle at top center, color-mix(in srgb, var(--good) 8%, transparent), transparent 42%),
+            color-mix(in srgb, var(--card) 98%, transparent);
+    }
+
+    .import-panel--primary .import-panel-head h2 {
+        font-size: clamp(1.08rem, 2.2vw, 1.38rem);
+        letter-spacing: -0.02em;
+    }
+
+    .import-panel--primary .import-panel-intro {
+        margin: 0 0 0.35rem;
+        font-size: 0.86rem;
+        max-width: 58ch;
+    }
+
+    .trade-manual-entry {
+        border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--card) 96%, transparent);
+        box-shadow: 0 18px 38px rgba(2, 6, 23, 0.12);
+        overflow: hidden;
+    }
+
+    .trade-manual-entry-summary {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem 1rem;
+        padding: 0.95rem 1.05rem;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .trade-manual-entry-summary::-webkit-details-marker { display: none; }
+
+    .trade-manual-entry-summary:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--accent) 26%, transparent);
+        outline-offset: -3px;
+    }
+
+    .trade-manual-entry-copy {
+        display: grid;
+        gap: 0.18rem;
+        min-width: 0;
+    }
+
+    .trade-manual-entry-title {
+        font-size: 0.92rem;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+    }
+
+    .trade-manual-entry-hint {
+        font-size: 0.78rem;
+        line-height: 1.4;
+    }
+
+    .trade-manual-entry-chevron {
+        flex-shrink: 0;
+        width: 0.46rem;
+        height: 0.46rem;
+        border-right: 2px solid color-mix(in srgb, var(--muted) 55%, var(--ink));
+        border-bottom: 2px solid color-mix(in srgb, var(--muted) 55%, var(--ink));
+        transform: rotate(45deg);
+        transition: transform 180ms ease;
+    }
+
+    .trade-manual-entry[open] .trade-manual-entry-chevron {
+        transform: rotate(-135deg);
+        margin-top: 0.12rem;
+    }
+
+    .trade-manual-entry-body {
+        border-top: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+        padding: 0.15rem 0.95rem 1rem;
+    }
+
+    .trade-entry-panel--manual {
+        border: none;
+        box-shadow: none;
+        background: transparent;
+        padding: 0.85rem 0 0;
+        max-width: none;
+    }
 
     .import-panel-head h2 {
         min-width: 0;
@@ -1504,16 +1606,6 @@
         margin-bottom: 0;
     }
 
-    .panel-grid.with-import .trade-form--new .trade-fields-grid--2 {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    @media (max-width: 719px) {
-        .panel-grid.with-import .trade-form--new .trade-fields-grid--2 {
-            grid-template-columns: 1fr;
-        }
-    }
-
     .trade-form label:not(.trade-flag-option) { font-size: 0.82rem;
         font-weight: 600;
         text-transform: none;
@@ -1560,6 +1652,17 @@
     .dropzone-title { margin: 0;
         font-size: 0.86rem;
         font-weight: 700; }
+
+    .dropzone--primary {
+        min-height: 10.5rem;
+        padding: 1.35rem 1rem;
+        border-width: 2px;
+        background: color-mix(in srgb, var(--surface) 88%, var(--card));
+    }
+
+    .dropzone--primary .dropzone-title {
+        font-size: 0.94rem;
+    }
 
     .dropzone-sub { margin: 0.28rem 0 0;
         font-size: 0.78rem; }
@@ -1717,11 +1820,8 @@
         line-height: 1.45; }
 
 @media (max-width: 980px) {
-        .panel-grid.with-import { grid-template-columns: 1fr; }
-
-        .import-panel {
-            position: static;
-            order: -1;
+        .panel-grid.trade-new-layout {
+            grid-template-columns: minmax(0, 1fr);
         }
     }
 

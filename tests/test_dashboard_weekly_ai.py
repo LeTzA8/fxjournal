@@ -1348,6 +1348,40 @@ def test_dashboard_home_renders_experiment_card_when_present(app_ctx, client, mo
     assert "Run one-week London-only execution test." in response_text
 
 
+def test_dashboard_home_renders_experiment_empty_state_when_review_has_no_experiment(app_ctx, client, monkeypatch):
+    _create_logged_in_user(
+        client,
+        username="dashboard-ai-no-experiment-user",
+        email="dashboard-ai-no-experiment@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": type("Review", (), {"response_text": "Summary"})(),
+            "weekly_ai_review_display": {
+                "summary": {"text": "Summary", "segments": [{"type": "text", "text": "Summary"}], "refs": [], "citations": []},
+                "takeaways": [],
+                "improvement": {"text": "Improve this week: Keep risk fixed.", "segments": [{"type": "text", "text": "Improve this week: Keep risk fixed."}], "refs": [], "citations": []},
+                "strength": {"text": "", "segments": [], "refs": [], "citations": []},
+                "experiment": {"text": "", "segments": [], "refs": [], "citations": []},
+                "has_citations": False,
+            },
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    response = client.get("/dashboard")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "This Week's Experiment" in response_text
+    assert "No experiment this week — focus on the improvement first" in response_text
+
+
 def test_dashboard_home_uses_state_1_for_active_account_even_when_other_accounts_have_activity(app_ctx, client, monkeypatch):
     user, active_trade_account = _create_logged_in_user(
         client,

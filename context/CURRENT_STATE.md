@@ -27,7 +27,8 @@ Last Updated: 2026-05-27
 
 - `GET /dashboard/admin/access/send-email` (`admin_send_email`): admin-gated compose with searchable multi-select recipients, adjustable inactive filter (last login older than N days), native textarea body editor (no CDN editor dependency), clear `{{name}}` username token guidance, live sample/recipient preview, and sequential per-recipient send with confirmation, progress, and summary.
 - `GET /dashboard/admin/access/send-email/recipients` + `POST /dashboard/admin/access/send-email/send-one`: JSON APIs; sends via existing Resend path with `from_header` from `ADMIN_EMAIL_FROM` (default `admin@myfxjournal.com`). Client sends plain text bodies and Resend fallback HTML preserves line breaks; client delays between sends (`ADMIN_EMAIL_SEND_DELAY_MS`, default 400ms).
-- `auth_account.send_email_placeholder` accepts optional `from_header`; helpers `apply_admin_email_placeholders`, `html_to_plain_email_text`, `_resolve_admin_broadcast_from_header`.
+- **Image insert (2026-05-27):** compose toolbar adds **Insert logo** (public `site-logo.png` URL) and **Insert image URL** (https prompt). When the body contains allowed HTML (`img`, links, basic formatting), the client sends `html_body` and preview renders images; server sanitizes HTML via `sanitize_admin_broadcast_html` before Resend.
+- `auth_account.send_email_placeholder` accepts optional `from_header`; helpers `apply_admin_email_placeholders`, `html_to_plain_email_text`, `sanitize_admin_broadcast_html`, `admin_broadcast_message_contains_html`, `_resolve_admin_broadcast_from_header`.
 - UI: `templates/admin_send_email.html`, `static/css/admin_send_email.css`, `static/js/admin_send_email.js`; nav link in `partials/admin_shell_start.html`.
 - Tests: `tests/test_admin_send_email.py`, `tests/test_send_email.py` (custom from), `tests/test_admin_route_gating.py` route list.
 

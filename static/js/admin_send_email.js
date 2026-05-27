@@ -9,6 +9,7 @@
     const csrfToken = root.dataset.csrfToken || "";
     const placeholderToken = root.dataset.placeholder || "{{name}}";
     const sampleName = root.dataset.sampleName || "Alex";
+    const logoUrl = root.dataset.logoUrl || "";
     const defaultInactiveDays = parseInt(root.dataset.defaultInactiveDays || "30", 10) || 30;
     const sendDelayMs = Math.max(100, parseInt(root.dataset.sendDelayMs || "400", 10) || 400);
 
@@ -24,6 +25,8 @@
     const subjectInput = document.getElementById("adminSendEmailSubject");
     const messageInput = document.getElementById("adminSendEmailMessage");
     const insertPlaceholderBtn = document.getElementById("adminSendEmailInsertPlaceholder");
+    const insertLogoBtn = document.getElementById("adminSendEmailInsertLogo");
+    const insertImageUrlBtn = document.getElementById("adminSendEmailInsertImageUrl");
     const sendBtn = document.getElementById("adminSendEmailSendBtn");
     const sendHint = document.getElementById("adminSendEmailSendHint");
     const progressWrap = document.getElementById("adminSendEmailProgress");
@@ -41,6 +44,55 @@
     let sending = false;
 
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const HTML_LINE_RE = /^\s*<\/?(?:img|a|p|div|span|br|strong|em|ul|ol|li|h[1-6])\b/i;
+
+    const escapeHtml = (text) =>
+        String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+
+    const messageContainsHtml = (text) => HTML_LINE_RE.test(String(text || ""));
+
+    const buildHtmlBody = (text) => {
+        if (!messageContainsHtml(text)) {
+            return "";
+        }
+        return String(text)
+            .split("\n")
+            .map((line) => {
+                const trimmed = line.trim();
+                if (HTML_LINE_RE.test(trimmed)) {
+                    return trimmed;
+                }
+                return escapeHtml(line);
+            })
+            .join("<br>\n");
+    };
+
+    const buildLogoMarkup = () => {
+        if (!logoUrl) {
+            return '<img src="/static/site-logo.png" alt="MyFXJournal" height="36" style="display:block;" />';
+        }
+        return `<img src="${logoUrl}" alt="MyFXJournal" height="36" style="display:block;" />`;
+    };
+
+    const buildImageMarkup = (url) =>
+        `<img src="${url}" alt="" style="display:block;max-width:100%;height:auto;" />`;
+
+    const isSafeImageUrl = (rawUrl) => {
+        const value = String(rawUrl || "").trim();
+        if (!value) {
+            return false;
+        }
+        try {
+            const parsed = new URL(value);
+            return parsed.protocol === "http:" || parsed.protocol === "https:";
+        } catch (_err) {
+            return false;
+        }
+    };
 
     const applyPlaceholders = (text, name) => {
         if (!text) {
@@ -250,7 +302,13 @@
             return;
         }
 
-        previewBody.textContent = applyPlaceholders(message, previewTarget.name);
+        const previewContent = applyPlaceholders(message, previewTarget.name);
+        if (messageContainsHtml(previewContent)) {
+            previewBody.innerHTML = buildHtmlBody(previewContent);
+            return;
+        }
+
+        previewBody.textContent = previewContent;
     }
 
     const insertAtCursor = (field, token) => {
@@ -266,6 +324,22 @@
     const insertPlaceholderAtCursor = () => {
         const active = document.activeElement;
         insertAtCursor(active === subjectInput ? subjectInput : messageInput, placeholderToken);
+    };
+
+    const insertLogoAtCursor = () => {
+        insertAtCursor(messageInput, `\n${buildLogoMarkup()}\n`);
+    };
+
+    const insertImageUrlAtCursor = () => {
+        const rawUrl = window.prompt("Image URL (https://...)", logoUrl || "https://");
+        if (rawUrl === null) {
+            return;
+        }
+        if (!isSafeImageUrl(rawUrl)) {
+            window.alert("Enter a valid http or https image URL.");
+            return;
+        }
+        insertAtCursor(messageInput, `\n${buildImageMarkup(rawUrl.trim())}\n`);
     };
 
     const renderSummary = (sentCount, failedDetails) => {
@@ -304,6 +378,7 @@
         const recipients = getSelectedRecipients();
         const subject = subjectInput.value.trim();
         const textBody = messageInput.value.trim();
+        const htmlBody = buildHtmlBody(textBody);
 
         if (!recipients.length) {
             sendHint.textContent = "Select at least one recipient.";
@@ -360,7 +435,7 @@
                     body: JSON.stringify({
                         user_id: recipient.id,
                         subject,
-                        html_body: "",
+                        html_body: htmlBody,
                         text_body: textBody,
                     }),
                 });
@@ -442,6 +517,12 @@
     subjectInput.addEventListener("input", updatePreview);
     messageInput.addEventListener("input", updatePreview);
     insertPlaceholderBtn.addEventListener("click", insertPlaceholderAtCursor);
+    if (insertLogoBtn) {
+        insertLogoBtn.addEventListener("click", insertLogoAtCursor);
+    }
+    if (insertImageUrlBtn) {
+        insertImageUrlBtn.addEventListener("click", insertImageUrlAtCursor);
+    }
     sendBtn.addEventListener("click", sendToSelected);
 
     inactiveDaysInput.value = String(defaultInactiveDays);

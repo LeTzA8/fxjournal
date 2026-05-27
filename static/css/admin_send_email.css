@@ -78,6 +78,13 @@
     gap: 0.75rem;
 }
 
+.admin-send-email-message-tools {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.35rem;
+}
+
 .admin-send-email-to-wrap {
     display: flex;
     flex-wrap: wrap;
@@ -362,6 +369,13 @@
     white-space: pre-wrap;
 }
 
+.admin-send-email-preview-body img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0.35rem 0;
+}
+
 .admin-send-email-empty-preview {
     margin: 0;
 }
@@ -390,8 +404,13 @@
         flex-direction: column;
     }
 
+    .admin-send-email-message-tools,
     .admin-send-email-insert-placeholder,
     .admin-send-email-actions .submit-btn {
+        width: 100%;
+    }
+
+    .admin-send-email-message-tools .ghost-btn {
         width: 100%;
     }
 }

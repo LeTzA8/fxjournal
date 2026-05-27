@@ -2075,6 +2075,85 @@ def html_to_plain_email_text(html_body):
     return text.strip()
 
 
+_ADMIN_EMAIL_HTML_TAG_RE = re.compile(
+    r"<\s*(/?)\s*(img|a|p|div|span|br|strong|em|ul|ol|li|h[1-6])\b([^>]*)>",
+    re.I,
+)
+_ADMIN_EMAIL_ATTR_RE = re.compile(
+    r'([a-zA-Z_:][\w:.-]*)\s*=\s*("([^"]*)"|\'([^\']*)\'|([^\s>]+))',
+    re.I,
+)
+_ADMIN_EMAIL_ALLOWED_IMG_ATTRS = frozenset({"src", "alt", "height", "width", "style"})
+_ADMIN_EMAIL_ALLOWED_LINK_ATTRS = frozenset({"href", "style"})
+
+
+def _admin_email_attr_is_safe(name, value):
+    lowered = name.lower()
+    if lowered.startswith("on"):
+        return False
+    if "javascript:" in value.lower():
+        return False
+    if lowered in {"src", "href"}:
+        parsed = urlparse(value.strip())
+        return parsed.scheme in {"http", "https", "mailto"}
+    return True
+
+
+def _sanitize_admin_email_tag(tag_name, attrs_text, *, self_closing=False):
+    allowed_attrs = (
+        _ADMIN_EMAIL_ALLOWED_IMG_ATTRS
+        if tag_name.lower() == "img"
+        else _ADMIN_EMAIL_ALLOWED_LINK_ATTRS
+        if tag_name.lower() == "a"
+        else frozenset()
+    )
+    safe_attrs = []
+    for match in _ADMIN_EMAIL_ATTR_RE.finditer(attrs_text or ""):
+        attr_name = match.group(1)
+        attr_value = match.group(3) or match.group(4) or match.group(5) or ""
+        if attr_name.lower() not in allowed_attrs:
+            continue
+        if not _admin_email_attr_is_safe(attr_name, attr_value):
+            continue
+        safe_attrs.append(f'{attr_name}="{attr_value}"')
+    attr_suffix = f" {' '.join(safe_attrs)}" if safe_attrs else ""
+    if tag_name.lower() == "br" or self_closing:
+        return f"<{tag_name}{attr_suffix} />"
+    return f"<{tag_name}{attr_suffix}>"
+
+
+def sanitize_admin_broadcast_html(html_body):
+    if not html_body:
+        return ""
+
+    cleaned = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html_body, flags=re.I | re.S)
+    cleaned = re.sub(r"<!--.*?-->", "", cleaned, flags=re.S)
+
+    def _replace_tag(match):
+        closing = match.group(1)
+        tag_name = match.group(2).lower()
+        attrs_text = match.group(3) or ""
+        if closing:
+            return f"</{tag_name}>"
+        self_closing = tag_name == "br" or attrs_text.rstrip().endswith("/")
+        return _sanitize_admin_email_tag(tag_name, attrs_text, self_closing=self_closing)
+
+    sanitized = _ADMIN_EMAIL_HTML_TAG_RE.sub(_replace_tag, cleaned)
+    sanitized = re.sub(
+        r"<\s*(?!/?\s*(?:img|a|p|div|span|br|strong|em|ul|ol|li|h[1-6])\b)[^>]+>",
+        "",
+        sanitized,
+        flags=re.I,
+    )
+    return sanitized.strip()
+
+
+def admin_broadcast_message_contains_html(message):
+    if not message:
+        return False
+    return bool(_ADMIN_EMAIL_HTML_TAG_RE.search(message))
+
+
 def send_email_placeholder(to_email, subject, text_body, html_body=None, *, from_header=None):
     provider = os.getenv("EMAIL_PROVIDER", "placeholder").strip().lower()
     sender = from_header or _resolve_email_from_header()
@@ -4357,6 +4436,7 @@ def register_public_auth_routes(
             default_inactive_days=default_inactive_days,
             admin_broadcast_from=_resolve_admin_broadcast_from_header(),
             admin_broadcast_reply_to=_resolve_email_reply_to(),
+            admin_broadcast_logo_url=build_external_url("/static/site-logo.png"),
             send_delay_ms=_parse_admin_email_send_delay_ms(
                 os.getenv("ADMIN_EMAIL_SEND_DELAY_MS", "400"),
                 default=400,
@@ -4417,7 +4497,16 @@ def register_public_auth_routes(
 
         recipient_name = recipient.username
         personalized_subject = apply_admin_email_placeholders(subject, recipient_name=recipient_name)
-        personalized_html = apply_admin_email_placeholders(html_body, recipient_name=recipient_name)
+        if html_body:
+            personalized_html = sanitize_admin_broadcast_html(
+                apply_admin_email_placeholders(html_body, recipient_name=recipient_name)
+            )
+        elif admin_broadcast_message_contains_html(text_body):
+            personalized_html = sanitize_admin_broadcast_html(
+                apply_admin_email_placeholders(text_body, recipient_name=recipient_name)
+            )
+        else:
+            personalized_html = ""
         personalized_text = apply_admin_email_placeholders(
             text_body or html_to_plain_email_text(personalized_html),
             recipient_name=recipient_name,

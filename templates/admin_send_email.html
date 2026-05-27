@@ -18,6 +18,7 @@
             data-send-delay-ms="{{ send_delay_ms }}"
             data-placeholder="{{ '{{' }}name{{ '}}' }}"
             data-sample-name="Alex"
+            data-logo-url="{{ admin_broadcast_logo_url }}"
         >
             <div class="admin-send-email-grid">
                 <div class="panel spotlight-panel admin-send-email-main-panel">
@@ -95,15 +96,23 @@
                     <div class="admin-send-email-field">
                         <span class="admin-send-email-label-row">
                             <label for="adminSendEmailMessage">Message</label>
-                            <button type="button" class="ghost-btn admin-send-email-insert-placeholder" id="adminSendEmailInsertPlaceholder">
-                                Insert name token
-                            </button>
+                            <span class="admin-send-email-message-tools">
+                                <button type="button" class="ghost-btn admin-send-email-insert-placeholder" id="adminSendEmailInsertPlaceholder">
+                                    Insert name token
+                                </button>
+                                <button type="button" class="ghost-btn" id="adminSendEmailInsertLogo">
+                                    Insert logo
+                                </button>
+                                <button type="button" class="ghost-btn" id="adminSendEmailInsertImageUrl">
+                                    Insert image URL
+                                </button>
+                            </span>
                         </span>
                         <textarea
                             id="adminSendEmailMessage"
                             class="admin-send-email-message"
                             rows="12"
-                            placeholder="Write the email body here. Use {{ '{{' }}name{{ '}}' }} if you want the recipient's username inserted."
+                            placeholder="Write the email body here. Use {{ '{{' }}name{{ '}}' }} if you want the recipient's username inserted. Use Insert logo or Insert image URL for images."
                         ></textarea>
                     </div>
 

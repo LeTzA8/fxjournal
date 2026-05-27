@@ -1775,12 +1775,18 @@
                         {% endif %}
                     </div>
 
-                    {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.experiment and weekly_ai_review_display.experiment.text %}
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-experiment">
                         <p class="insight-title">🧪 This Week's Experiment</p>
+                        {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.experiment and weekly_ai_review_display.experiment.text %}
                         <p class="insight-body ai-review-copy ai-review-experiment">{% for segment in weekly_ai_review_display.experiment.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
+                        {% elif weekly_ai_is_generating %}
+                        <p class="insight-body ai-generating-copy muted-value">{{ weekly_ai_empty_message|trim }}</p>
+                        {% elif weekly_ai_review and weekly_ai_review_display %}
+                        <p class="insight-body ai-review-copy ai-review-experiment muted-value">No experiment this week — focus on the improvement first, or there isn't enough trade data yet for a useful test.</p>
+                        {% else %}
+                        <p class="insight-body ai-review-copy ai-review-experiment muted-value">Shows here once your review runs.</p>
+                        {% endif %}
                     </div>
-                    {% endif %}
                     {% endif %}
                 </div>
                 {% if weekly_ai_review and weekly_ai_review.id is defined %}
