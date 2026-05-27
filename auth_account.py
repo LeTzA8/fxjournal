@@ -4070,6 +4070,13 @@ def register_public_auth_routes(
                 )
                 user_stats_by_user[row_user_id]["mt5_account_count"] = mt5_account_count or 0
 
+        from helpers.entitlements import build_admin_user_trial_display
+
+        trial_by_user = {
+            user.id: build_admin_user_trial_display(user)
+            for user in users
+        }
+
         users_showing_from = page_offset + 1 if total_user_count else 0
         users_showing_to = min(page_offset + len(users), total_user_count) if total_user_count else 0
 
@@ -4089,7 +4096,59 @@ def register_public_auth_routes(
             pending_users=pending_users,
             accounts_by_user=accounts_by_user,
             user_stats_by_user=user_stats_by_user,
+            trial_by_user=trial_by_user,
         )
+
+    @app.route("/dashboard/admin/access/users/<int:user_id>/extend-trial", methods=["POST"])
+    @root_admin_required
+    def admin_signup_extend_user_trial(user_id):
+        from helpers.entitlements import (
+            ADMIN_TRIAL_EXTEND_DEFAULT_DAYS,
+            ADMIN_TRIAL_EXTEND_MAX_DAYS,
+            ADMIN_TRIAL_EXTEND_MIN_DAYS,
+            extend_premium_trial,
+        )
+
+        user = User.query.filter_by(id=user_id).first()
+        if not user:
+            return build_admin_redirect("users", "User not found.", "error")
+
+        raw_days = request.form.get("days", ADMIN_TRIAL_EXTEND_DEFAULT_DAYS)
+        try:
+            result = extend_premium_trial(user, raw_days)
+        except ValueError as exc:
+            error = str(exc)
+            messages = {
+                "invalid_days": (
+                    f"Enter a trial extension between {ADMIN_TRIAL_EXTEND_MIN_DAYS} "
+                    f"and {ADMIN_TRIAL_EXTEND_MAX_DAYS} days."
+                ),
+                "not_extendable": "That user is grandfathered, paid, or admin — trial extension does not apply.",
+                "trial_not_ended": "Trial extension is only available after the trial has ended or MT5 sync was paused.",
+                "schema_unsupported": "Trial extension is unavailable until entitlement columns are migrated.",
+            }
+            return build_admin_redirect(
+                "users",
+                messages.get(error, "Could not extend that user's trial."),
+                "error",
+            )
+
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return build_admin_redirect(
+                "users",
+                "Trial extension could not be saved. Please try again.",
+                "error",
+            )
+
+        days_granted = result.get("days_granted", raw_days)
+        resumed_mt5_count = int(result.get("resumed_mt5_count") or 0)
+        message = f"Extended {user.username}'s trial by {days_granted} days."
+        if resumed_mt5_count:
+            message += f" Resumed MT5 sync setup for {resumed_mt5_count} linked account(s)."
+        return build_admin_redirect("users", message, "success")
 
     @app.route("/dashboard/admin/access/users/export")
     @admin_required

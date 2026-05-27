@@ -32,6 +32,12 @@ Last Updated: 2026-05-27
 - UI: `templates/admin_send_email.html`, `static/css/admin_send_email.css`, `static/js/admin_send_email.js`; nav link in `partials/admin_shell_start.html`.
 - Tests: `tests/test_admin_send_email.py`, `tests/test_send_email.py` (custom from), `tests/test_admin_route_gating.py` route list.
 
+## Admin users trial visibility + extension (2026-05-27)
+
+- Registered Users panel (`/dashboard/admin/access/users`) now shows premium trial status in **Signals**: summary (`Active`, `Expired`, `Grandfathered`, `Not started`, paid/admin labels), trial start/end UTC timestamps when applicable.
+- Root admins can extend an ended trial from the Tools column: inline days input (1–90, default 14) + **Extend** posts to `POST /dashboard/admin/access/users/<id>/extend-trial`. Extension grants that many full days remaining from now, clears trial-paused MT5 sync stamps, and queues MT5 setup when credentials exist.
+- Helpers: `build_admin_user_trial_display`, `extend_premium_trial` in `helpers/entitlements.py`. Tests: `tests/test_admin_user_trial.py`.
+
 ## Admin users CSV export (2026-05-26)
 
 - `GET /dashboard/admin/access/users/export` (`admin_signup_users_export`): admin-gated download of all users as CSV with columns name (username), email, signup date (`created_at`), last login date (`last_login_at`), last active date (`last_active_at`), using the same UTC timestamp format as the admin users table.

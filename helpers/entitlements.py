@@ -22,6 +22,9 @@ from helpers.utils import utcnow_naive
 
 PREMIUM_TRIAL_DAYS = 14
 MT5_TRIAL_DAYS = PREMIUM_TRIAL_DAYS
+ADMIN_TRIAL_EXTEND_MIN_DAYS = 1
+ADMIN_TRIAL_EXTEND_MAX_DAYS = 90
+ADMIN_TRIAL_EXTEND_DEFAULT_DAYS = 14
 WEEKLY_FOLLOWUP_TRIAL_MESSAGE_LIMIT = 5
 WEEKLY_FOLLOWUP_MAX_USER_MESSAGES_PER_MINUTE = 3
 WEEKLY_FOLLOWUP_RATE_WINDOW_SECONDS = 60
@@ -576,4 +579,213 @@ def get_replay_entitlement(user, trade=None) -> dict:
         "allowed_timeframes": FREE_REPLAY_TIMEFRAMES,
         "max_trade_age_days": FREE_REPLAY_MAX_TRADE_AGE_DAYS,
         "label": "Standard Replay",
+    }
+
+
+def _format_admin_trial_timestamp(value):
+    safe = _safe_naive_datetime(value)
+    if safe is None:
+        return None
+    return safe.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _trial_pause_reasons_to_clear():
+    return frozenset({"expired", "paused", "trial_expired"})
+
+
+def _user_has_trial_paused_mt5(user) -> bool:
+    if not mt5_trial_columns_available() or not getattr(user, "id", None):
+        return False
+    try:
+        from models import MT5Account
+
+        rows = MT5Account.query.filter(
+            MT5Account.user_id == user.id,
+            MT5Account.sync_paused_at.isnot(None),
+        ).all()
+    except Exception:
+        return False
+    for row in rows:
+        reason = str(getattr(row, "sync_pause_reason", "") or "").strip().lower()
+        if reason in _trial_pause_reasons_to_clear():
+            return True
+    return False
+
+
+def build_admin_user_trial_display(user) -> dict:
+    """Compact trial summary for the admin Registered Users panel."""
+    base = {
+        "summary": "Unknown",
+        "started_label": None,
+        "ends_label": None,
+        "days_remaining": None,
+        "can_extend": False,
+        "extend_default_days": ADMIN_TRIAL_EXTEND_DEFAULT_DAYS,
+    }
+    if user is None:
+        return base
+
+    privileged_reason = _workflow_access_reason(user)
+    if privileged_reason == "admin":
+        return {
+            **base,
+            "summary": "Admin — no trial limit",
+            "state": "admin",
+        }
+    if privileged_reason == "schema_compat":
+        return {
+            **base,
+            "summary": "Schema compat — no trial limit",
+            "state": "schema_compat",
+        }
+    if privileged_reason == "grandfathered":
+        return {
+            **base,
+            "summary": "Grandfathered",
+            "state": "grandfathered",
+        }
+    if privileged_reason == "plan_paid":
+        tier = _user_plan_tier(user).title()
+        return {
+            **base,
+            "summary": f"{tier} plan — no trial limit",
+            "state": "plan_paid",
+        }
+
+    trial_state = get_trial_state(user)
+    state = trial_state.get("state")
+    started_at = trial_state.get("started_at")
+    days_remaining = trial_state.get("days_remaining")
+    started_label = _format_admin_trial_timestamp(started_at)
+    ends_at = (
+        _safe_naive_datetime(started_at) + timedelta(days=PREMIUM_TRIAL_DAYS)
+        if started_at is not None
+        else None
+    )
+    ends_label = _format_admin_trial_timestamp(ends_at)
+
+    if state == "not_started":
+        return {
+            **base,
+            "summary": f"Not started ({PREMIUM_TRIAL_DAYS}-day trial available)",
+            "state": state,
+            "days_remaining": PREMIUM_TRIAL_DAYS,
+        }
+
+    if state == "active":
+        day_word = "day" if days_remaining == 1 else "days"
+        return {
+            **base,
+            "summary": f"Active · {days_remaining} {day_word} left",
+            "state": state,
+            "started_label": started_label,
+            "ends_label": ends_label,
+            "days_remaining": days_remaining,
+        }
+
+    if state == "paused":
+        return {
+            **base,
+            "summary": "Paused · trial ended",
+            "state": state,
+            "started_label": started_label,
+            "ends_label": ends_label,
+            "days_remaining": 0,
+            "can_extend": True,
+        }
+
+    can_extend = state == "expired" or _user_has_trial_paused_mt5(user)
+    return {
+        **base,
+        "summary": "Expired",
+        "state": state or "expired",
+        "started_label": started_label,
+        "ends_label": ends_label,
+        "days_remaining": 0,
+        "can_extend": can_extend,
+    }
+
+
+def extend_premium_trial(user, days):
+    """
+    Grant `days` full trial days remaining from now and resume trial-paused MT5 sync.
+
+    Caller owns the surrounding DB transaction commit.
+    """
+    if user is None:
+        raise ValueError("missing_user")
+
+    try:
+        days = int(days)
+    except (TypeError, ValueError):
+        raise ValueError("invalid_days")
+
+    if days < ADMIN_TRIAL_EXTEND_MIN_DAYS or days > ADMIN_TRIAL_EXTEND_MAX_DAYS:
+        raise ValueError("invalid_days")
+
+    if _workflow_access_reason(user) is not None:
+        raise ValueError("not_extendable")
+
+    trial_state = get_trial_state(user)
+    if trial_state.get("state") not in {"expired", "paused"} and not _user_has_trial_paused_mt5(user):
+        raise ValueError("trial_not_ended")
+
+    if not user_premium_trial_column_available():
+        raise ValueError("schema_unsupported")
+
+    now = utcnow_naive()
+    new_started_at = now - timedelta(days=PREMIUM_TRIAL_DAYS - days)
+    user.premium_trial_started_at = new_started_at
+
+    resumed_mt5_accounts = []
+    if mt5_trial_columns_available():
+        from models import MT5Account
+
+        paused_accounts = MT5Account.query.filter(
+            MT5Account.user_id == user.id,
+            MT5Account.sync_paused_at.isnot(None),
+        ).all()
+        for mt5_account in paused_accounts:
+            reason = str(getattr(mt5_account, "sync_pause_reason", "") or "").strip().lower()
+            if reason and reason not in _trial_pause_reasons_to_clear():
+                continue
+            mt5_account.sync_paused_at = None
+            mt5_account.sync_pause_reason = None
+            if hasattr(mt5_account, "mt5_trial_started_at"):
+                mt5_account.mt5_trial_started_at = new_started_at
+            resumed_mt5_accounts.append(mt5_account)
+
+        trade_accounts = getattr(user, "trade_accounts", None)
+        if trade_accounts is not None:
+            try:
+                for trade_account in trade_accounts:
+                    if hasattr(trade_account, "mt5_trial_started_at"):
+                        trade_account.mt5_trial_started_at = new_started_at
+            except TypeError:
+                pass
+
+    for mt5_account in resumed_mt5_accounts:
+        if mt5_account.is_orphaned:
+            continue
+        if not str(getattr(mt5_account, "investor_password_encrypted", "") or "").strip():
+            continue
+        try:
+            from celery_workers.mt5_setup_tasks import setup_mt5_terminal
+            from helpers.mt5_dispatch import dispatch_mt5_setup
+
+            dispatch_mt5_setup(
+                setup_mt5_terminal,
+                mt5_account.id,
+                target_vm_id=getattr(mt5_account, "vm_id", None),
+                allow_failover=True,
+                label="admin_trial_extension",
+                extra={"mt5_account_id": mt5_account.id},
+            )
+        except Exception:
+            continue
+
+    return {
+        "trial_state": get_trial_state(user),
+        "days_granted": days,
+        "resumed_mt5_count": len(resumed_mt5_accounts),
     }

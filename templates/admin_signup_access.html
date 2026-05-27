@@ -211,6 +211,7 @@
                             {% set is_root_email = user.email|lower in root_admin_emails %}
                             {% set user_accounts = accounts_by_user.get(user.id, []) %}
                             {% set user_stats = user_stats_by_user.get(user.id, {}) %}
+                            {% set trial = trial_by_user.get(user.id, {}) %}
                             <tr>
                                 <td>
                                     <div class="user-cell">
@@ -250,6 +251,15 @@
                                 </td>
                                 <td>
                                     <div class="user-cell user-metrics">
+                                        <span class="admin-trial-summary{% if trial.get('state') == 'grandfathered' %} admin-trial-summary--grandfathered{% elif trial.get('state') == 'expired' or trial.get('state') == 'paused' %} admin-trial-summary--expired{% elif trial.get('state') == 'active' %} admin-trial-summary--active{% endif %}">
+                                            Trial: {{ trial.get('summary') or 'Unknown' }}
+                                        </span>
+                                        {% if trial.get('started_label') %}
+                                        <span>Trial started: {{ trial.started_label }}</span>
+                                        {% endif %}
+                                        {% if trial.get('ends_label') %}
+                                        <span>Trial ends: {{ trial.ends_label }}</span>
+                                        {% endif %}
                                         <span>Last login: {{ user.last_login_at.strftime("%Y-%m-%d %H:%M UTC") if user.last_login_at else "-" }}</span>
                                         <span>Last active: {{ user.last_active_at.strftime("%Y-%m-%d %H:%M UTC") if user.last_active_at else "-" }}</span>
                                         <span>Last trade: {{ user_stats.get("last_trade_at").strftime("%Y-%m-%d %H:%M UTC") if user_stats.get("last_trade_at") else "-" }}</span>
@@ -301,6 +311,27 @@
                                         <button type="button" class="ghost-btn danger-btn" onclick="openUnbundleDialog({{ user.id }})">Unbundle All</button>
                                         {% else %}
                                         <button type="button" class="ghost-btn" disabled aria-disabled="true" title="No trade accounts available">No Accounts</button>
+                                        {% endif %}
+                                        {% if trial.get('can_extend') %}
+                                        <form
+                                            action="{{ url_for('admin_signup_extend_user_trial', user_id=user.id) }}"
+                                            method="post"
+                                            class="admin-trial-extend-form"
+                                        >
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <label class="soft admin-trial-extend-label" for="adminTrialExtendDays{{ user.id }}">Extend trial</label>
+                                            <input
+                                                type="number"
+                                                id="adminTrialExtendDays{{ user.id }}"
+                                                name="days"
+                                                class="admin-trial-extend-days"
+                                                min="1"
+                                                max="90"
+                                                value="{{ trial.get('extend_default_days', 14) }}"
+                                                aria-label="Trial extension days for {{ user.username }}"
+                                            >
+                                            <button type="submit" class="submit-btn admin-btn-tool">Extend</button>
+                                        </form>
                                         {% endif %}
                                     </div>
                                     {% else %}
