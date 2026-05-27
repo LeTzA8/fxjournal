@@ -6,6 +6,9 @@
 
     const recipientsUrl = root.dataset.recipientsUrl || "";
     const sendUrl = root.dataset.sendUrl || "";
+    const signaturesUrl = root.dataset.signaturesUrl || "";
+    const signaturesSaveUrl = root.dataset.signaturesSaveUrl || "";
+    const signaturesDeleteUrl = root.dataset.signaturesDeleteUrl || "";
     const csrfToken = root.dataset.csrfToken || "";
     const placeholderToken = root.dataset.placeholder || "{{name}}";
     const sampleName = root.dataset.sampleName || "Alex";
@@ -36,9 +39,22 @@
     const previewRecipient = document.getElementById("adminSendEmailPreviewRecipient");
     const previewSubject = document.getElementById("adminSendEmailPreviewSubject");
     const previewBody = document.getElementById("adminSendEmailPreviewBody");
+    const signatureSelect = document.getElementById("adminSendEmailSignatureSelect");
+    const insertSignatureBtn = document.getElementById("adminSendEmailInsertSignature");
+    const saveSignatureBtn = document.getElementById("adminSendEmailSaveSignature");
+    const deleteSignatureBtn = document.getElementById("adminSendEmailDeleteSignature");
+    const signatureStatus = document.getElementById("adminSendEmailSignatureStatus");
+    const signatureDialog = document.getElementById("adminSendEmailSignatureDialog");
+    const signatureDialogTitle = document.getElementById("adminSendEmailSignatureDialogTitle");
+    const signatureForm = document.getElementById("adminSendEmailSignatureForm");
+    const signatureIdInput = document.getElementById("adminSendEmailSignatureId");
+    const signatureNameInput = document.getElementById("adminSendEmailSignatureName");
+    const signatureBodyInput = document.getElementById("adminSendEmailSignatureBody");
+    const signatureCancelBtn = document.getElementById("adminSendEmailSignatureCancel");
 
     const selectedById = new Map();
     let visibleRecipients = [];
+    let signatures = [];
     let fetchTimer = null;
     let highlightedIndex = -1;
     let sending = false;
@@ -68,7 +84,7 @@
                 }
                 return escapeHtml(line);
             })
-            .join("<br>\n");
+            .join("<br>");
     };
 
     const buildLogoMarkup = () => {
@@ -107,6 +123,7 @@
         );
 
     const setEmptyPreview = (message) => {
+        previewBody.classList.remove("is-html");
         previewBody.textContent = "";
         const empty = document.createElement("p");
         empty.className = "soft admin-send-email-empty-preview";
@@ -304,10 +321,12 @@
 
         const previewContent = applyPlaceholders(message, previewTarget.name);
         if (messageContainsHtml(previewContent)) {
+            previewBody.classList.add("is-html");
             previewBody.innerHTML = buildHtmlBody(previewContent);
             return;
         }
 
+        previewBody.classList.remove("is-html");
         previewBody.textContent = previewContent;
     }
 
@@ -340,6 +359,186 @@
             return;
         }
         insertAtCursor(messageInput, `\n${buildImageMarkup(rawUrl.trim())}\n`);
+    };
+
+    const setSignatureStatus = (message) => {
+        if (signatureStatus) {
+            signatureStatus.textContent = message;
+        }
+    };
+
+    const getSelectedSignature = () => {
+        const signatureId = signatureSelect ? signatureSelect.value : "";
+        if (!signatureId) {
+            return null;
+        }
+        return signatures.find((item) => item.id === signatureId) || null;
+    };
+
+    const renderSignatureSelect = (preferredId = "") => {
+        if (!signatureSelect) {
+            return;
+        }
+        const selectedId = preferredId || signatureSelect.value || "";
+        signatureSelect.textContent = "";
+        const placeholder = document.createElement("option");
+        placeholder.value = "";
+        placeholder.textContent = signatures.length ? "Choose a saved signature" : "No saved signatures yet";
+        signatureSelect.appendChild(placeholder);
+        signatures.forEach((signature) => {
+            const option = document.createElement("option");
+            option.value = signature.id;
+            option.textContent = signature.name;
+            signatureSelect.appendChild(option);
+        });
+        signatureSelect.value = signatures.some((item) => item.id === selectedId) ? selectedId : "";
+        if (deleteSignatureBtn) {
+            deleteSignatureBtn.disabled = !signatureSelect.value;
+        }
+    };
+
+    const fetchSignatures = async () => {
+        if (!signaturesUrl) {
+            return;
+        }
+        try {
+            const response = await fetch(signaturesUrl, {
+                credentials: "same-origin",
+                headers: { "X-Requested-With": "XMLHttpRequest" },
+            });
+            if (!response.ok) {
+                throw new Error("fetch_failed");
+            }
+            const data = await response.json();
+            signatures = Array.isArray(data.signatures) ? data.signatures : [];
+            renderSignatureSelect();
+        } catch (_err) {
+            signatures = [];
+            renderSignatureSelect();
+            setSignatureStatus("Could not load saved signatures.");
+        }
+    };
+
+    const getMessageSelection = () => {
+        const start = messageInput.selectionStart;
+        const end = messageInput.selectionEnd;
+        if (start == null || end == null || start === end) {
+            return "";
+        }
+        return messageInput.value.slice(start, end);
+    };
+
+    const openSignatureDialog = () => {
+        if (!signatureDialog || !signatureForm) {
+            return;
+        }
+        const selected = getSelectedSignature();
+        const selectedText = getMessageSelection();
+        if (selected) {
+            signatureDialogTitle.textContent = "Edit signature";
+            signatureIdInput.value = selected.id;
+            signatureNameInput.value = selected.name;
+            signatureBodyInput.value = selected.body;
+        } else {
+            signatureDialogTitle.textContent = "Save signature";
+            signatureIdInput.value = "";
+            signatureNameInput.value = "";
+            signatureBodyInput.value = selectedText;
+        }
+        signatureDialog.showModal();
+        signatureNameInput.focus();
+    };
+
+    const closeSignatureDialog = () => {
+        if (signatureDialog && signatureDialog.open) {
+            signatureDialog.close();
+        }
+    };
+
+    const saveSignatureFromDialog = async () => {
+        if (!signaturesSaveUrl) {
+            return;
+        }
+        const payload = {
+            id: signatureIdInput.value.trim() || undefined,
+            name: signatureNameInput.value.trim(),
+            body: signatureBodyInput.value.trim(),
+        };
+        try {
+            const response = await fetch(signaturesSaveUrl, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken,
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.message || "Could not save signature.");
+            }
+            signatures = Array.isArray(data.signatures) ? data.signatures : signatures;
+            const savedId = data.signature && data.signature.id ? data.signature.id : "";
+            renderSignatureSelect(savedId);
+            closeSignatureDialog();
+            setSignatureStatus(
+                payload.id ? "Signature updated." : "Signature saved."
+            );
+        } catch (err) {
+            window.alert(err.message || "Could not save signature.");
+        }
+    };
+
+    const insertSelectedSignature = () => {
+        const selected = getSelectedSignature();
+        if (!selected) {
+            setSignatureStatus("Choose a saved signature first, or save a new one.");
+            signatureSelect.focus();
+            return;
+        }
+        const body = selected.body || "";
+        const needsGap =
+            messageInput.value.length > 0 &&
+            !messageInput.value.endsWith("\n");
+        const prefix = needsGap ? "\n\n" : messageInput.value.length ? "\n" : "";
+        insertAtCursor(messageInput, `${prefix}${body}`);
+        setSignatureStatus(`Inserted "${selected.name}".`);
+    };
+
+    const deleteSelectedSignature = async () => {
+        const selected = getSelectedSignature();
+        if (!selected) {
+            setSignatureStatus("Choose a saved signature to delete.");
+            signatureSelect.focus();
+            return;
+        }
+        const confirmed = window.confirm(`Delete saved signature "${selected.name}"?`);
+        if (!confirmed) {
+            return;
+        }
+        try {
+            const response = await fetch(signaturesDeleteUrl, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken,
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+                body: JSON.stringify({ id: selected.id }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(data.message || "Could not delete signature.");
+            }
+            signatures = Array.isArray(data.signatures) ? data.signatures : [];
+            renderSignatureSelect();
+            setSignatureStatus(`Deleted "${selected.name}".`);
+        } catch (err) {
+            window.alert(err.message || "Could not delete signature.");
+        }
     };
 
     const renderSummary = (sentCount, failedDetails) => {
@@ -523,10 +722,47 @@
     if (insertImageUrlBtn) {
         insertImageUrlBtn.addEventListener("click", insertImageUrlAtCursor);
     }
+    if (insertSignatureBtn) {
+        insertSignatureBtn.addEventListener("click", insertSelectedSignature);
+    }
+    if (saveSignatureBtn) {
+        saveSignatureBtn.addEventListener("click", openSignatureDialog);
+    }
+    if (deleteSignatureBtn) {
+        deleteSignatureBtn.addEventListener("click", deleteSelectedSignature);
+    }
+    if (signatureSelect) {
+        signatureSelect.addEventListener("change", () => {
+            if (deleteSignatureBtn) {
+                deleteSignatureBtn.disabled = !signatureSelect.value;
+            }
+        });
+        signatureSelect.addEventListener("dblclick", () => {
+            if (signatureSelect.value) {
+                openSignatureDialog();
+            }
+        });
+    }
+    if (signatureForm) {
+        signatureForm.addEventListener("submit", (event) => {
+            event.preventDefault();
+            saveSignatureFromDialog();
+        });
+    }
+    if (signatureCancelBtn) {
+        signatureCancelBtn.addEventListener("click", closeSignatureDialog);
+    }
+    if (signatureDialog) {
+        signatureDialog.addEventListener("cancel", (event) => {
+            event.preventDefault();
+            closeSignatureDialog();
+        });
+    }
     sendBtn.addEventListener("click", sendToSelected);
 
     inactiveDaysInput.value = String(defaultInactiveDays);
     updatePreview();
     updateSendHint();
     fetchRecipients();
+    fetchSignatures();
 })();

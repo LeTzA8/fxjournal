@@ -240,7 +240,10 @@
 }
 
 .admin-send-email-subject,
-.admin-send-email-message {
+.admin-send-email-message,
+.admin-send-email-signature-select,
+.admin-send-email-signature-name,
+.admin-send-email-signature-body {
     width: 100%;
     border-radius: 12px;
     border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
@@ -262,8 +265,40 @@
     resize: vertical;
 }
 
+.admin-send-email-signature-select {
+    padding: 0.65rem 0.75rem;
+}
+
+.admin-send-email-signature-form {
+    display: grid;
+    gap: 0.75rem;
+    min-width: min(100%, 34rem);
+}
+
+.admin-send-email-signature-form-head h3 {
+    margin: 0 0 0.35rem;
+}
+
+.admin-send-email-signature-form-head p {
+    margin: 0;
+}
+
+.admin-send-email-signature-name,
+.admin-send-email-signature-body {
+    padding: 0.65rem 0.75rem;
+}
+
+.admin-send-email-signature-body {
+    min-height: 8rem;
+    line-height: 1.55;
+    resize: vertical;
+}
+
 .admin-send-email-subject:focus,
-.admin-send-email-message:focus {
+.admin-send-email-message:focus,
+.admin-send-email-signature-select:focus,
+.admin-send-email-signature-name:focus,
+.admin-send-email-signature-body:focus {
     outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
     outline-offset: 1px;
 }
@@ -367,6 +402,10 @@
     color: var(--ink);
     overflow-wrap: anywhere;
     white-space: pre-wrap;
+}
+
+.admin-send-email-preview-body.is-html {
+    white-space: normal;
 }
 
 .admin-send-email-preview-body img {

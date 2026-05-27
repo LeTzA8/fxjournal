@@ -131,13 +131,14 @@
                         <select id="adminSendEmailSignatureSelect" class="admin-send-email-signature-select">
                             <option value="">No signature selected</option>
                         </select>
-                        <p class="field-help soft">Save reusable sign-offs here. Insert adds the selected signature at the cursor or end of the message.</p>
+                        <p class="field-help soft" id="adminSendEmailSignatureStatus" role="status" aria-live="polite">Save reusable sign-offs here. Select one to edit, insert, or delete.</p>
                     </div>
 
-                    <dialog class="admin-send-email-signature-dialog" id="adminSendEmailSignatureDialog">
-                        <form method="dialog" class="admin-send-email-signature-form" id="adminSendEmailSignatureForm">
+                    <dialog class="admin-send-email-signature-dialog confirm-dialog" id="adminSendEmailSignatureDialog">
+                        <div class="confirm-dialog-shell">
+                        <form class="admin-send-email-signature-form" id="adminSendEmailSignatureForm">
                             <div class="admin-send-email-signature-form-head">
-                                <h3>Save signature</h3>
+                                <h3 id="adminSendEmailSignatureDialogTitle">Save signature</h3>
                                 <p class="soft">Stored for all admins. Supports plain text and the same HTML inserts as the message body.</p>
                             </div>
                             <input type="hidden" id="adminSendEmailSignatureId" value="">
@@ -159,11 +160,12 @@
                                 placeholder="Best,&#10;{{ '{{' }}name{{ '}}' }}&#10;MyFXJournal"
                                 required
                             ></textarea>
-                            <div class="admin-send-email-signature-form-actions">
+                            <div class="dialog-actions inline-actions admin-send-email-signature-form-actions">
                                 <button type="submit" class="submit-btn">Save</button>
                                 <button type="button" class="ghost-btn" id="adminSendEmailSignatureCancel">Cancel</button>
                             </div>
                         </form>
+                        </div>
                     </dialog>
 
                     <div class="admin-send-email-actions">

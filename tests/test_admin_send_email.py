@@ -358,6 +358,80 @@ def test_admin_send_email_send_one_accepts_html_body_with_logo(
     assert 'alt="MyFXJournal"' in captured["payload"]["html"]
 
 
+def test_admin_send_email_signatures_save_list_and_delete(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "send-email-signatures@example.com")
+    suffix = _unique_suffix()
+    admin = _create_user(
+        username=f"send-email-signatures-admin-{suffix}",
+        email="send-email-signatures@example.com",
+    )
+    db.session.commit()
+    _login_as(client, admin)
+
+    list_response = client.get("/dashboard/admin/access/send-email/signatures")
+    assert list_response.status_code == 200
+    assert list_response.get_json()["signatures"] == []
+
+    save_response = client.post(
+        "/dashboard/admin/access/send-email/signatures/save",
+        data=json.dumps(
+            {
+                "name": "Standard sign-off",
+                "body": "Best,\n{{name}}\nMyFXJournal",
+            }
+        ),
+        content_type="application/json",
+        headers={"X-CSRFToken": _csrf_token(client)},
+    )
+    assert save_response.status_code == 200
+    save_payload = save_response.get_json()
+    signature_id = save_payload["signature"]["id"]
+    assert save_payload["signature"]["name"] == "Standard sign-off"
+    assert len(save_payload["signatures"]) == 1
+
+    update_response = client.post(
+        "/dashboard/admin/access/send-email/signatures/save",
+        data=json.dumps(
+            {
+                "id": signature_id,
+                "name": "Updated sign-off",
+                "body": "Thanks,\n{{name}}",
+            }
+        ),
+        content_type="application/json",
+        headers={"X-CSRFToken": _csrf_token(client)},
+    )
+    assert update_response.status_code == 200
+    assert update_response.get_json()["signature"]["name"] == "Updated sign-off"
+
+    delete_response = client.post(
+        "/dashboard/admin/access/send-email/signatures/delete",
+        data=json.dumps({"id": signature_id}),
+        content_type="application/json",
+        headers={"X-CSRFToken": _csrf_token(client)},
+    )
+    assert delete_response.status_code == 200
+    assert delete_response.get_json()["signatures"] == []
+
+
+def test_admin_send_email_page_includes_signature_controls(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "send-email-signature-ui@example.com")
+    suffix = _unique_suffix()
+    admin = _create_user(
+        username=f"send-email-signature-ui-admin-{suffix}",
+        email="send-email-signature-ui@example.com",
+    )
+    db.session.commit()
+    _login_as(client, admin)
+
+    response = client.get("/dashboard/admin/access/send-email")
+
+    assert response.status_code == 200
+    assert b"adminSendEmailSignatureDialog" in response.data
+    assert b"Save signature" in response.data
+    assert b"data-signatures-save-url" in response.data
+
+
 def _csrf_token(client):
     response = client.get("/dashboard/admin/access/send-email")
     assert response.status_code == 200
