@@ -423,6 +423,7 @@ def inject_trade_account_context():
         "default_canonical_url": default_canonical_url,
         "google_site_verification": os.getenv("GOOGLE_SITE_VERIFICATION", "").strip(),
         "google_analytics_measurement_id": os.getenv("GOOGLE_ANALYTICS_MEASUREMENT_ID", "").strip(),
+        "waitlist_user_email": (current_user.email or "") if current_user else "",
     }
 
 

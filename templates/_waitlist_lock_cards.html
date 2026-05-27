@@ -1,0 +1,37 @@
+{% macro mt5_waitlist_lock_card(lock_variant) %}
+<div class="waitlist-lock-card">
+    {% if lock_variant == 'expired' %}
+    <p>Your MT5 sync trial has ended. MT5 sync access is opening gradually as we scale infrastructure — request an extension or join the Trader waitlist for full access.</p>
+    <div class="waitlist-lock-card-actions">
+        <button
+            type="button"
+            class="ghost-btn"
+            data-waitlist-trigger="trader"
+            data-waitlist-source="mt5_trial_expired"
+            data-waitlist-feature="mt5_trial_extension"
+            data-waitlist-cta-context="mt5_trial_expired_extension"
+        >Request extension</button>
+        <button
+            type="button"
+            class="submit-btn"
+            data-waitlist-trigger="trader"
+            data-waitlist-source="mt5_trial_expired"
+            data-waitlist-feature="mt5_sync"
+            data-waitlist-cta-context="mt5_trial_expired_waitlist"
+        >Join Trader waitlist</button>
+    </div>
+    {% elif lock_variant == 'paused' %}
+    <p>MT5 sync is paused for this account. Join the Trader waitlist for uninterrupted sync when access opens.</p>
+    <div class="waitlist-lock-card-actions">
+        <button
+            type="button"
+            class="submit-btn"
+            data-waitlist-trigger="trader"
+            data-waitlist-source="mt5_trial_expired"
+            data-waitlist-feature="mt5_sync"
+            data-waitlist-cta-context="mt5_sync_paused_waitlist"
+        >Join Trader waitlist</button>
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}

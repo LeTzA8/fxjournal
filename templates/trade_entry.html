@@ -166,22 +166,23 @@
                         <div class="trade-chart-tf-group" id="tradeChartTfGroup" role="group" aria-label="Chart timeframe">
                             <button type="button" class="trade-chart-tf-btn is-active" data-trade-tf="M5" aria-pressed="true">5m</button>
                             <button type="button" class="trade-chart-tf-btn" data-trade-tf="M15" aria-pressed="false">15m</button>
-                            <span class="trade-chart-tf-upgrade" title="1-minute replay is part of Advanced Replay on Trader">
-                                <span class="trade-chart-tf-upgrade-label">1m</span>
-                                <a href="{{ url_for('pricing_page') }}" class="trade-chart-tf-upgrade-badge">Trader</a>
-                            </span>
+                            <button type="button" class="trade-chart-tf-btn trade-chart-tf-btn--gated" data-trade-tf="M1" aria-pressed="false">1m</button>
                         </div>
                     </div>
                 </div>
                 <div class="trade-chart-body">
+                    <div id="tradeChartLockMount"></div>
                     <div id="tradeChartContainer" class="trade-chart-container"></div>
                     <p class="trade-chart-status soft" id="tradeChartStatus">Loading chart data&hellip;</p>
                 </div>
             </div>
+            {% include "_waitlist_modal.html" %}
             <script>
                 window.__TRADE_CHART_DATA_URL__ = "{{ url_for('trades.trade_chart_data', trade_pubkey=trade.pubkey) }}";
+                window.__TRADE_CHART_PRICING_URL__ = "{{ url_for('pricing_page') }}";
             </script>
             <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+            <script src="{{ url_for('static', filename='js/waitlist_modal.js') }}" defer></script>
             <script src="{{ url_for('static', filename='js/trade_chart.js') }}"></script>
             {% endif %}
         </section>

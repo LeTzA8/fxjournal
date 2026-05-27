@@ -1711,9 +1711,8 @@ def test_dashboard_home_shows_continuity_in_hero_when_no_cfd_accounts(app_ctx, c
 
     assert response.status_code == 200
     assert b'class="dash-continuity-row dash-continuity-row--mt5"' not in response.data
-    assert b"Not linked" in response.data
-    assert b"1 new trade" in response.data
-    assert b"Waiting for week" in response.data
+    assert b"ai-hero-grid no-mt5" in response.data
+    assert b"ES" in response.data
 
 
 def test_dashboard_home_marks_running_trade_rows(app_ctx, client, monkeypatch):

@@ -66,6 +66,7 @@
                     type="button"
                     class="submit-btn pricing-cta-btn"
                     data-waitlist-trigger="trader"
+                    data-waitlist-source="pricing_page"
                     data-waitlist-feature="advanced_replay"
                     data-waitlist-cta-context="pricing_tier_card"
                     aria-haspopup="dialog"
@@ -108,6 +109,7 @@
                     type="button"
                     class="ghost-btn pricing-cta-btn"
                     data-waitlist-trigger="pro"
+                    data-waitlist-source="pricing_page"
                     data-waitlist-feature="multi_timeframe_replay"
                     data-waitlist-cta-context="pricing_tier_card"
                     aria-haspopup="dialog"
@@ -215,34 +217,8 @@
     </section>
 </section>
 
-{# ── Waitlist modal ── #}
-<div id="waitlistModal" class="pricing-modal" role="dialog" aria-modal="true" aria-labelledby="waitlistModalTitle" hidden>
-    <div class="pricing-modal-backdrop" data-waitlist-close></div>
-    <div class="pricing-modal-card">
-        <button type="button" class="pricing-modal-close" data-waitlist-close aria-label="Close">&times;</button>
-        <p class="pricing-modal-eyebrow">Join the waitlist</p>
-        <h2 id="waitlistModalTitle" class="pricing-modal-title">Early access to <span id="waitlistModalTier">Trader</span></h2>
-        <p class="pricing-modal-body">You'll hear first when this tier opens — along with an early-access rate as a thank-you for joining early.</p>
-        <form id="waitlistForm" novalidate>
-            <input type="hidden" id="waitlistTierInput" name="tier" value="trader">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="pricing-modal-field">
-                <label for="waitlistEmail">Email address</label>
-                <input
-                    type="email"
-                    id="waitlistEmail"
-                    name="email"
-                    autocomplete="email"
-                    placeholder="you@example.com"
-                    required
-                >
-            </div>
-            <button type="submit" class="submit-btn pricing-modal-submit">Join waitlist</button>
-        </form>
-        <p id="waitlistSuccess" class="pricing-modal-success" hidden>You're on the list. We'll be in touch.</p>
-        <p id="waitlistError" class="pricing-modal-error" hidden>Something went wrong — please try again.</p>
-    </div>
-</div>
+{% include "_waitlist_modal.html" %}
+<script src="{{ url_for('static', filename='js/waitlist_modal.js') }}" defer></script>
 
 <style>
 /* ── Landing layout inheritance ── */
@@ -777,47 +753,6 @@ body.landing-layout main {
 .pricing-bottom-cta .muted { margin: 0 0 1.5rem; }
 .pricing-bottom-cta-actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
 
-/* ── Modal ── */
-.pricing-modal { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
-.pricing-modal[hidden] { display: none; }
-.pricing-modal-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,0.45); backdrop-filter: blur(2px); }
-.pricing-modal-card {
-    position: relative;
-    z-index: 1;
-    background: var(--surface, #fff);
-    border: 1px solid var(--border, #e2e8f0);
-    border-radius: 16px;
-    padding: 2.25rem 2rem;
-    width: 100%;
-    max-width: 440px;
-    box-shadow: 0 24px 64px rgba(15,23,42,0.18);
-}
-.pricing-modal-close {
-    position: absolute;
-    top: 1rem; right: 1rem;
-    background: none; border: none; cursor: pointer;
-    font-size: 1.4rem; color: var(--muted); line-height: 1; padding: 4px 8px;
-}
-.pricing-modal-eyebrow { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--accent); margin: 0 0 0.35rem; }
-.pricing-modal-title { font-size: 1.4rem; font-weight: 800; margin: 0 0 0.75rem; letter-spacing: -0.03em; }
-.pricing-modal-body { font-size: 0.9rem; color: var(--muted); line-height: 1.7; margin: 0 0 1.5rem; }
-.pricing-modal-field { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
-.pricing-modal-field label { font-size: 0.85rem; font-weight: 600; color: var(--ink); }
-.pricing-modal-field input {
-    padding: 0.65rem 0.9rem;
-    border: 1px solid var(--border, #e2e8f0);
-    border-radius: 8px;
-    font-size: 0.95rem;
-    color: var(--ink);
-    background: var(--surface, #fff);
-    outline: none;
-    transition: border-color 0.15s;
-}
-.pricing-modal-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
-.pricing-modal-submit { width: 100%; justify-content: center; }
-.pricing-modal-success { margin: 0.75rem 0 0; font-size: 0.875rem; color: var(--good); font-weight: 600; }
-.pricing-modal-error { margin: 0.75rem 0 0; font-size: 0.875rem; color: var(--bad); }
-
 @media (prefers-reduced-motion: reduce) {
     .pricing-card--featured,
     .pricing-card--featured::before,
@@ -831,121 +766,5 @@ body.landing-layout main {
 }
 </style>
 {% include "partials/public_header_styles.html" %}
-
-<script>
-(function () {
-    var modal = document.getElementById("waitlistModal");
-    var tierInput = document.getElementById("waitlistTierInput");
-    var tierLabel = document.getElementById("waitlistModalTier");
-    var form = document.getElementById("waitlistForm");
-    var sourceInput = document.createElement("input");
-    sourceInput.type = "hidden";
-    sourceInput.name = "source";
-    sourceInput.value = "pricing_page";
-    form.appendChild(sourceInput);
-    var featureInput = document.createElement("input");
-    featureInput.type = "hidden";
-    featureInput.name = "feature_interest";
-    featureInput.value = "advanced_replay";
-    form.appendChild(featureInput);
-    var ctaContextInput = document.createElement("input");
-    ctaContextInput.type = "hidden";
-    ctaContextInput.name = "cta_context";
-    ctaContextInput.value = "pricing_modal";
-    form.appendChild(ctaContextInput);
-    var emailInput = document.getElementById("waitlistEmail");
-    var successMsg = document.getElementById("waitlistSuccess");
-    var errorMsg = document.getElementById("waitlistError");
-
-    var tierLabels = { trader: "Trader", pro: "Pro" };
-
-    function openModal(tier, featureInterest, ctaContext) {
-        tierInput.value = tier || "trader";
-        tierLabel.textContent = tierLabels[tier] || "Trader";
-        featureInput.value = featureInterest || (tier === "pro" ? "multi_timeframe_replay" : "advanced_replay");
-        ctaContextInput.value = ctaContext || "pricing_modal";
-        successMsg.hidden = true;
-        errorMsg.hidden = true;
-        form.style.display = "";
-        emailInput.value = "";
-        modal.hidden = false;
-        emailInput.focus();
-    }
-
-    function closeModal() {
-        modal.hidden = true;
-    }
-
-    document.querySelectorAll("[data-waitlist-trigger]").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-            openModal(
-                btn.getAttribute("data-waitlist-trigger"),
-                btn.getAttribute("data-waitlist-feature"),
-                btn.getAttribute("data-waitlist-cta-context")
-            );
-        });
-    });
-
-    document.querySelectorAll("[data-waitlist-close]").forEach(function (el) {
-        el.addEventListener("click", closeModal);
-    });
-
-    modal.addEventListener("keydown", function (e) {
-        if (e.key === "Escape") closeModal();
-    });
-
-    form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        var email = emailInput.value.trim();
-        var tier = tierInput.value;
-        var source = sourceInput.value;
-        var featureInterest = featureInput.value;
-        var ctaContext = ctaContextInput.value;
-        var csrf = form.querySelector("[name=csrf_token]").value;
-
-        if (!email) {
-            emailInput.focus();
-            return;
-        }
-
-        var submitBtn = form.querySelector("[type=submit]");
-        submitBtn.disabled = true;
-        submitBtn.textContent = "Joining…";
-
-        fetch("{{ url_for('pricing_waitlist_post') }}", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRFToken": csrf,
-                "X-Requested-With": "XMLHttpRequest",
-            },
-            body: JSON.stringify({
-                email: email,
-                tier: tier,
-                source: source,
-                feature_interest: featureInterest,
-                cta_context: ctaContext
-            }),
-        })
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-                if (data.ok) {
-                    form.style.display = "none";
-                    successMsg.hidden = false;
-                } else {
-                    errorMsg.textContent = data.error || "Something went wrong — please try again.";
-                    errorMsg.hidden = false;
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = "Join waitlist";
-                }
-            })
-            .catch(function () {
-                errorMsg.hidden = false;
-                submitBtn.disabled = false;
-                submitBtn.textContent = "Join waitlist";
-            });
-    });
-})();
-</script>
 {% include "partials/public_header_script.html" %}
 {% endblock %}

@@ -2,6 +2,7 @@
 
 {% from "_behavior_badges.html" import render_behavior_badges %}
 {% from "_app_page_hero.html" import app_page_hero %}
+{% from "_waitlist_lock_cards.html" import mt5_waitlist_lock_card %}
 
 {% block head_extra %}
 <style>
@@ -1351,9 +1352,10 @@
                         <button
                             type="button"
                             class="ghost-btn"
-                            data-mt5-capacity-notify
-                            data-waitlist-email="{{ user_email }}"
-                            data-csrf-token="{{ csrf_token() }}"
+                            data-waitlist-trigger="trader"
+                            data-waitlist-source="dashboard_mt5_capacity"
+                            data-waitlist-feature="mt5_sync"
+                            data-waitlist-cta-context="mt5_setup_capacity_closed"
                         >Notify me when MT5 setup opens</button>
                         {% endif %}
                     </div>
@@ -1391,11 +1393,9 @@
                     <div class="mt5-selected-account-card">
                         <span class="mt5-selected-account-label">Sync Paused</span>
                         <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                        <span class="mt5-selected-account-meta">Join the Trader waitlist when you want sync reactivation access.</span>
                     </div>
-                    <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
-                        <a href="{{ url_for('pricing_page') }}" class="ghost-btn">View Pricing</a>
-                    </div>
+                    {% set _mt5_waitlist_lock = 'expired' if mt5_selected_row.mt5_trial_state and mt5_selected_row.mt5_trial_state.state == 'expired' else 'paused' %}
+                    {{ mt5_waitlist_lock_card(_mt5_waitlist_lock) }}
                     <form
                         method="post"
                         action="{{ url_for('trade_accounts.unlink_mt5_sync') }}"
@@ -1407,6 +1407,9 @@
                         <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
                     </form>
                     {% elif mt5_selected_status == "linked" and mt5_selected_account %}
+                    {% if mt5_selected_row.mt5_trial_state and mt5_selected_row.mt5_trial_state.state == 'expired' and mt5_selected_row.mt5_trial_state.show_trial_ui %}
+                    {{ mt5_waitlist_lock_card('expired') }}
+                    {% endif %}
                     <div class="mt5-selected-account-card mt5-selected-account-card--compact">
                         <span class="mt5-selected-account-label">
                             <span class="help-label">
@@ -1835,11 +1838,20 @@
                         </div>
                         {% endfor %}
                     </div>
-                    {% if not chat_can_send and chat_gate_message %}
-                    <div class="weekly-review-chat-upgrade" data-review-chat-upgrade>
+                    {% if weekly_review_chat_send_state %}
+                    <div class="weekly-review-chat-upgrade" data-review-chat-upgrade{% if chat_can_send %} hidden{% endif %}>
+                        {% if chat_gate_message %}
                         <p>{{ chat_gate_message }}</p>
+                        {% endif %}
                         {% if chat_cta %}
-                        <a href="{{ chat_cta.url }}" class="ghost-link btn-link">{{ chat_cta.label }} &rarr;</a>
+                        <button
+                            type="button"
+                            class="ghost-btn"
+                            data-waitlist-trigger="trader"
+                            data-waitlist-source="{{ chat_cta.source }}"
+                            data-waitlist-feature="{{ chat_cta.feature_interest }}"
+                            data-waitlist-cta-context="{{ 'weekly_followup_trial_limit' if weekly_review_chat_send_state.error == 'weekly_followup_trial_limit_reached' else 'weekly_followup_trial_required' }}"
+                        >{{ chat_cta.label }}</button>
                         {% endif %}
                     </div>
                     {% endif %}
@@ -5635,9 +5647,12 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_journal.css') }}">
 {% endif %}
 
+{% include "_waitlist_modal.html" %}
+
 {% endblock %}
 
 {% block page_scripts %}
+<script src="{{ url_for('static', filename='js/waitlist_modal.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/trade_filters_shared.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard_page.js') }}"></script>
 {% if show_weekly_journal_preview %}
@@ -5686,71 +5701,4 @@
 })();
 </script>
 {% endif %}
-<script>
-(() => {
-    const notifyButton = document.querySelector("[data-mt5-capacity-notify]");
-    const notifyStatus = document.querySelector("[data-mt5-capacity-notify-status]");
-    if (!notifyButton || typeof window.fetch !== "function") {
-        return;
-    }
-
-    notifyButton.addEventListener("click", async () => {
-        if (notifyButton.disabled) {
-            return;
-        }
-        const email = (notifyButton.getAttribute("data-waitlist-email") || "").trim().toLowerCase();
-        const csrfToken = (notifyButton.getAttribute("data-csrf-token") || "").trim();
-        if (!email) {
-            if (notifyStatus) {
-                notifyStatus.hidden = false;
-                notifyStatus.className = "mt5-capacity-notify-status is-error";
-                notifyStatus.textContent = "Add an email on your account page first, then try again.";
-            }
-            return;
-        }
-
-        notifyButton.disabled = true;
-        if (notifyStatus) {
-            notifyStatus.hidden = true;
-            notifyStatus.className = "mt5-capacity-notify-status";
-        }
-
-        try {
-            const response = await window.fetch("{{ url_for('pricing_waitlist_post') }}", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Accept: "application/json",
-                    "X-CSRFToken": csrfToken,
-                    "X-Requested-With": "XMLHttpRequest",
-                },
-                credentials: "same-origin",
-                body: JSON.stringify({
-                    email,
-                    tier: "trader",
-                    source: "dashboard_mt5_capacity",
-                    feature_interest: "mt5_sync",
-                    cta_context: "mt5_setup_capacity_closed",
-                }),
-            });
-            const payload = await response.json();
-            if (!response.ok || !payload.ok) {
-                throw new Error(payload.error || "Could not save your notification request.");
-            }
-            if (notifyStatus) {
-                notifyStatus.hidden = false;
-                notifyStatus.textContent = "You're on the list. We'll email you when MT5 setup opens.";
-            }
-            notifyButton.textContent = "Notification saved";
-        } catch (error) {
-            notifyButton.disabled = false;
-            if (notifyStatus) {
-                notifyStatus.hidden = false;
-                notifyStatus.className = "mt5-capacity-notify-status is-error";
-                notifyStatus.textContent = error.message || "Something went wrong. Please try again.";
-            }
-        }
-    });
-})();
-</script>
 {% endblock %}

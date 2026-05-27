@@ -6,6 +6,7 @@
 
     var panel = document.getElementById("tradeChartPanel");
     var container = document.getElementById("tradeChartContainer");
+    var lockMount = document.getElementById("tradeChartLockMount");
     var statusEl = document.getElementById("tradeChartStatus");
     var tfGroup = document.getElementById("tradeChartTfGroup");
     if (!panel || !container) return;
@@ -49,6 +50,58 @@
 
     function hidePanel() {
         panel.setAttribute("data-chart-unavailable", "true");
+    }
+
+    function clearLockCard() {
+        if (lockMount) {
+            lockMount.innerHTML = "";
+            lockMount.hidden = true;
+        }
+        if (container) {
+            container.hidden = false;
+        }
+    }
+
+    function showUpgradeLockCard(data) {
+        if (!lockMount) {
+            setStatus(
+                (data && data.message) ||
+                    "1m replay is part of Advanced Replay, opening gradually during beta."
+            );
+            return;
+        }
+
+        destroyChart();
+        if (container) {
+            container.hidden = true;
+        }
+        if (statusEl) {
+            statusEl.style.display = "none";
+        }
+
+        var cta = (data && data.cta) || {};
+        var pricingUrl = window.__TRADE_CHART_PRICING_URL__ || "/pricing";
+        lockMount.hidden = false;
+        lockMount.innerHTML =
+            '<div class="waitlist-lock-card">' +
+            '<p>1m replay is part of Advanced Replay, opening gradually during beta. Join the Trader waitlist for early access.</p>' +
+            '<div class="waitlist-lock-card-actions">' +
+            '<button type="button" class="submit-btn" data-waitlist-trigger="trader"' +
+            ' data-waitlist-source="' +
+            (cta.source || "replay_lock") +
+            '"' +
+            ' data-waitlist-feature="' +
+            (cta.feature_interest || "advanced_replay") +
+            '"' +
+            ' data-waitlist-cta-context="' +
+            (cta.cta_context || "trade_replay_1m") +
+            '">' +
+            (cta.label || "Join Trader waitlist") +
+            "</button>" +
+            '<a href="' +
+            pricingUrl +
+            '" class="ghost-link waitlist-lock-card-link">See pricing</a>' +
+            "</div></div>";
     }
 
     function setStatus(text) {
@@ -601,12 +654,24 @@
     function loadTimeframe(tf) {
         currentTf = tf;
         setTfButtonsActive(tf, null);
+        clearLockCard();
         setStatus("Loading chart…");
         fetch(chartDataUrl(tf))
             .then(function (res) {
-                return res.json();
+                return res.json().then(function (data) {
+                    return { status: res.status, data: data };
+                });
             })
-            .then(function (data) {
+            .then(function (result) {
+                var data = result.data || {};
+                if (data.error === "upgrade_required") {
+                    rememberChartPrefetch(null);
+                    showUpgradeLockCard(data);
+                    if (data.available_timeframes) {
+                        setTfButtonsActive(tf, data.available_timeframes);
+                    }
+                    return;
+                }
                 if (data.status === "unavailable") {
                     rememberChartPrefetch(null);
                     hidePanel();
@@ -638,6 +703,16 @@
                         return;
                     }
                     renderChart(data);
+                    return;
+                }
+                if (data.error === "timeframe_not_available") {
+                    rememberChartPrefetch(null);
+                    setStatus(
+                        data.message || "That replay timeframe is not available yet. Use 5m or 15m replay for now."
+                    );
+                    if (data.available_timeframes) {
+                        setTfButtonsActive(tf, data.available_timeframes);
+                    }
                     return;
                 }
                 rememberChartPrefetch(null);

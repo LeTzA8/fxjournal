@@ -25,6 +25,10 @@
           href="{{ url_for('admin_send_email') }}"
           class="admin-side-nav-link{% if section == 'send_email' %} is-active{% endif %}"
         >Send Email</a>
+        <a
+          href="{{ url_for('admin_waitlist') }}"
+          class="admin-side-nav-link{% if section == 'waitlist' %} is-active{% endif %}"
+        >Waitlist</a>
         {% if is_root_admin %}
         <a
           href="{{ url_for('admin_mt5_accounts') }}"
@@ -72,10 +76,10 @@
             <span class="admin-stat-label">Admins</span>
             <span class="admin-stat-value">{{ overview.admin_users }}</span>
           </a>
-          <span class="admin-stat-tile admin-stat-tile--static">
+          <a href="{{ url_for('admin_waitlist') }}" class="admin-stat-tile">
             <span class="admin-stat-label">Waitlist</span>
             <span class="admin-stat-value">{{ overview.waitlist_people }}</span>
-          </span>
+          </a>
         </div>
         {% elif section == 'codes' %}
         <div class="admin-stat-row">

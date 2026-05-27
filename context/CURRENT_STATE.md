@@ -2,6 +2,16 @@
 
 Last Updated: 2026-05-27
 
+## Contextual waitlist CTAs (2026-05-27)
+
+- Shared waitlist modal extracted to `templates/_waitlist_modal.html` + `static/js/waitlist_modal.js` with updated copy ("Access opens gradually…", success: "We'll email you the moment access opens."). Logged-in users get read-only email prefill via `waitlist_user_email` context (`app.py`).
+- Lock cards: `templates/_waitlist_lock_cards.html` macro + `.waitlist-lock-card` styles in `static/css/app_pages.css`.
+- Placements: pricing (refactored), dashboard weekly chat lock, MT5 capacity notify, MT5 trial expired/paused cards (dashboard + trade accounts), trade replay 1m lock (`static/js/trade_chart.js`), landing roadmap lane CTAs.
+- Backend: extended `WAITLIST_ALLOWED_SOURCES` / `WAITLIST_ALLOWED_FEATURES`; `_trial_cta` source → `ai_followup_lock`; `_replay_waitlist_cta` source → `replay_lock` + `cta_context`.
+- Admin: `GET /dashboard/admin/access/waitlist` + CSV export; Users stat tile links to waitlist page; sidebar nav entry.
+- Tests: `tests/test_waitlist_ctas.py`; updated trades/dashboard/admin gating tests. Stale futures-only continuity hero test aligned with no-MT5 dashboard layout.
+- Post-audit fixes (2026-05-27): MT5 expired lock card copy uses "opening gradually" (no batch framing); `/pricing/waitlist` rejects invalid `source`/`feature_interest` with 400 JSON; modal JS surfaces server `error` on non-2xx even when JSON parse is partial; duplicate-enrichment test renamed; added invalid-input + MT5 lock-card render tests.
+
 ## Weekly AI universal payload (2026-05-27)
 
 - One universal weekly JSON payload is built by `helpers/universal_weekly_payload.py` (`build_universal_weekly_payload`, `format_universal_weekly_payload`). `build_trade_payload` returns this shape; the same object is stored in `AIGeneratedResponse.payload_json` and sent to pass-1 via `build_dashboard_advice_messages` (pretty-printed JSON user message).

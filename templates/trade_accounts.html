@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% from "_app_page_hero.html" import app_page_hero %}
+{% from "_waitlist_lock_cards.html" import mt5_waitlist_lock_card %}
 
 {% block content %}
 <div class="trade-accounts-page">
@@ -122,7 +123,9 @@
                             {% if mt5.status_one_liner %}
                             <p class="account-mt5-oneliner{% if mt5.is_failed %} account-mt5-oneliner--error{% endif %}">{{ mt5.status_one_liner }}</p>
                             {% endif %}
-                            {% if mt5.dashboard_cta_label %}
+                            {% if mt5.waitlist_lock %}
+                            {{ mt5_waitlist_lock_card(mt5.waitlist_lock) }}
+                            {% elif mt5.dashboard_cta_label %}
                             <a href="{{ url_for('dashboard.home', _anchor='mt5-access') }}" class="ghost-link btn-link account-mt5-cta">{{ mt5.dashboard_cta_label }}</a>
                             {% endif %}
                         </div>
@@ -448,8 +451,10 @@
 </dialog>
 
 </div>
+{% include "_waitlist_modal.html" %}
 {% endblock %}
 
 {% block page_scripts %}
+<script src="{{ url_for('static', filename='js/waitlist_modal.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/trade_accounts_page.js') }}"></script>
 {% endblock %}

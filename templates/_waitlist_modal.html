@@ -1,0 +1,51 @@
+<div
+    id="waitlistModal"
+    class="waitlist-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="waitlistModalTitle"
+    hidden
+    data-waitlist-post-url="{{ url_for('pricing_waitlist_post') }}"
+>
+    <div class="waitlist-modal-backdrop" data-waitlist-close></div>
+    <div class="waitlist-modal-card">
+        <button type="button" class="waitlist-modal-close" data-waitlist-close aria-label="Close">&times;</button>
+        <p class="waitlist-modal-eyebrow" id="waitlistModalEyebrow">Join the waitlist</p>
+        <h2 id="waitlistModalTitle" class="waitlist-modal-title">Join the <span id="waitlistModalTier">Trader</span> waitlist</h2>
+        <p class="waitlist-modal-body">Access opens gradually based on infrastructure and feature interest.</p>
+        <form id="waitlistForm" novalidate>
+            <input type="hidden" id="waitlistTierInput" name="tier" value="trader">
+            <input type="hidden" id="waitlistSourceInput" name="source" value="pricing_page">
+            <input type="hidden" id="waitlistFeatureInput" name="feature_interest" value="advanced_replay">
+            <input type="hidden" id="waitlistCtaContextInput" name="cta_context" value="">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="waitlist-modal-field">
+                <label for="waitlistEmail">Email address</label>
+                {% if session.get('user_id') and waitlist_user_email %}
+                <input
+                    type="email"
+                    id="waitlistEmail"
+                    name="email"
+                    autocomplete="email"
+                    value="{{ waitlist_user_email }}"
+                    readonly
+                    required
+                >
+                <p class="waitlist-modal-email-note">Sending as {{ waitlist_user_email }}</p>
+                {% else %}
+                <input
+                    type="email"
+                    id="waitlistEmail"
+                    name="email"
+                    autocomplete="email"
+                    placeholder="you@example.com"
+                    required
+                >
+                {% endif %}
+            </div>
+            <button type="submit" class="submit-btn waitlist-modal-submit">Join waitlist</button>
+        </form>
+        <p id="waitlistSuccess" class="waitlist-modal-success" hidden>You're on the list. We'll email you the moment access opens.</p>
+        <p id="waitlistError" class="waitlist-modal-error" hidden>Something went wrong — please try again.</p>
+    </div>
+</div>

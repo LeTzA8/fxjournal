@@ -109,16 +109,22 @@ SIGNUP_CODE_MODE_REQUIRED = "required"
 WAITLIST_EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
 WAITLIST_ALLOWED_SOURCES = {
     "pricing_page",
+    "replay_lock",
     "replay_gate",
     "mt5_trial_expired",
     "dashboard_sidebar",
     "dashboard_mt5_capacity",
     "ai_review_cta",
+    "ai_followup_lock",
+    "landing_planned",
+    "dashboard_planned",
 }
 WAITLIST_ALLOWED_FEATURES = {
     "advanced_replay",
     "multi_timeframe_replay",
     "mt5_sync",
+    "mt5_trial_extension",
+    "weekly_followup_chat",
     "conversational_review",
     "full_review_history",
     "pattern_tracking",
@@ -2631,6 +2637,7 @@ def register_public_auth_routes(
             "cfd_symbols": "admin_cfd_symbols",
             "weekly_report": "admin_weekly_report",
             "send_email": "admin_send_email",
+            "waitlist": "admin_waitlist",
         }
         endpoint = endpoint_map.get(section, "admin_signup_users")
         if message:
@@ -3018,12 +3025,12 @@ def register_public_auth_routes(
             tier = "trader"
 
         if source not in WAITLIST_ALLOWED_SOURCES:
-            source = "pricing_page"
+            return jsonify({"ok": False, "error": "Invalid waitlist source."}), 400
 
         if not feature_interest:
             feature_interest = "advanced_replay" if tier == "trader" else "multi_timeframe_replay"
         elif feature_interest not in WAITLIST_ALLOWED_FEATURES:
-            feature_interest = "advanced_replay" if tier == "trader" else "multi_timeframe_replay"
+            return jsonify({"ok": False, "error": "Invalid feature interest."}), 400
 
         if cta_context and len(cta_context) > 96:
             cta_context = cta_context[:96]
@@ -4170,6 +4177,141 @@ def register_public_auth_routes(
                 ]
             )
         filename = f"myfxjournal-users-{utcnow_naive().strftime('%Y%m%d')}.csv"
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.route("/dashboard/admin/access/waitlist")
+    @admin_required
+    def admin_waitlist():
+        admin_user = get_current_admin_user()
+        feature_filter = (request.args.get("feature") or "").strip().lower()
+        source_filter = (request.args.get("source") or "").strip().lower()
+        account_filter = (request.args.get("account") or "").strip().lower()
+
+        query = UpgradeWaitlistEntry.query
+        if feature_filter:
+            query = query.filter(UpgradeWaitlistEntry.feature_interest == feature_filter)
+        if source_filter:
+            query = query.filter(UpgradeWaitlistEntry.source == source_filter)
+        if account_filter == "registered":
+            query = query.filter(UpgradeWaitlistEntry.user_id.isnot(None))
+        elif account_filter == "anonymous":
+            query = query.filter(UpgradeWaitlistEntry.user_id.is_(None))
+
+        entries = (
+            query.order_by(
+                UpgradeWaitlistEntry.created_at.desc(),
+                UpgradeWaitlistEntry.id.desc(),
+            )
+            .limit(500)
+            .all()
+        )
+        user_ids = {entry.user_id for entry in entries if entry.user_id}
+        users_by_id = {}
+        if user_ids:
+            users_by_id = {
+                user.id: user
+                for user in User.query.filter(User.id.in_(user_ids)).all()
+            }
+
+        feature_options = [
+            row[0]
+            for row in db.session.query(UpgradeWaitlistEntry.feature_interest)
+            .distinct()
+            .order_by(UpgradeWaitlistEntry.feature_interest.asc())
+            .all()
+            if row[0]
+        ]
+        source_options = [
+            row[0]
+            for row in db.session.query(UpgradeWaitlistEntry.source)
+            .distinct()
+            .order_by(UpgradeWaitlistEntry.source.asc())
+            .all()
+            if row[0]
+        ]
+
+        page_ctx = build_admin_page_context(
+            admin_user=admin_user,
+            section="waitlist",
+            title="MyFXJournal | Waitlist",
+            page_heading="Upgrade waitlist",
+            page_subtitle=(
+                "Review waitlist intent by feature, source, and signup context."
+            ),
+        )
+        page_ctx.update(
+            {
+                "waitlist_entries": entries,
+                "users_by_id": users_by_id,
+                "feature_filter": feature_filter,
+                "source_filter": source_filter,
+                "account_filter": account_filter,
+                "feature_options": feature_options,
+                "source_options": source_options,
+            }
+        )
+        return render_template("admin_waitlist.html", **page_ctx)
+
+    @app.route("/dashboard/admin/access/waitlist/export")
+    @admin_required
+    def admin_waitlist_export():
+        feature_filter = (request.args.get("feature") or "").strip().lower()
+        source_filter = (request.args.get("source") or "").strip().lower()
+        account_filter = (request.args.get("account") or "").strip().lower()
+
+        query = UpgradeWaitlistEntry.query
+        if feature_filter:
+            query = query.filter(UpgradeWaitlistEntry.feature_interest == feature_filter)
+        if source_filter:
+            query = query.filter(UpgradeWaitlistEntry.source == source_filter)
+        if account_filter == "registered":
+            query = query.filter(UpgradeWaitlistEntry.user_id.isnot(None))
+        elif account_filter == "anonymous":
+            query = query.filter(UpgradeWaitlistEntry.user_id.is_(None))
+
+        entries = query.order_by(
+            UpgradeWaitlistEntry.created_at.asc(),
+            UpgradeWaitlistEntry.id.asc(),
+        ).all()
+        user_ids = {entry.user_id for entry in entries if entry.user_id}
+        users_by_id = {}
+        if user_ids:
+            users_by_id = {
+                user.id: user
+                for user in User.query.filter(User.id.in_(user_ids)).all()
+            }
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(
+            [
+                "email",
+                "user",
+                "tier_intent",
+                "feature_interest",
+                "source",
+                "cta_context",
+                "created_at",
+            ]
+        )
+        for entry in entries:
+            linked_user = users_by_id.get(entry.user_id)
+            writer.writerow(
+                [
+                    entry.email,
+                    linked_user.username if linked_user else "",
+                    entry.tier_intent or "",
+                    entry.feature_interest or "",
+                    entry.source or "",
+                    entry.cta_context or "",
+                    _format_admin_timestamp(entry.created_at),
+                ]
+            )
+        filename = f"myfxjournal-waitlist-{utcnow_naive().strftime('%Y%m%d')}.csv"
         return Response(
             output.getvalue(),
             mimetype="text/csv",

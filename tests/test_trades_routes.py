@@ -956,8 +956,9 @@ def test_trade_chart_data_denies_expired_trial_user_requesting_m1(app_ctx, clien
     assert payload["available_timeframes"] == ["M5", "M15"]
     assert payload["required_tier"] == "trader"
     assert payload["upgrade_url"] == "/pricing"
-    assert payload["cta"]["source"] == "replay_gate"
+    assert payload["cta"]["source"] == "replay_lock"
     assert payload["cta"]["feature_interest"] == "advanced_replay"
+    assert payload["cta"]["cta_context"] == "trade_replay_1m"
 
 
 def test_trade_chart_data_active_trial_user_reaches_m1_not_implemented(app_ctx, client):
@@ -1021,4 +1022,4 @@ def test_trade_chart_data_returns_not_implemented_for_paid_tier_m1(app_ctx, clie
     assert payload["requested_timeframe"] == "M1"
     assert payload["available_timeframes"] == ["M5", "M15"]
     assert "timeframe" not in payload
-    assert payload["cta"]["source"] == "replay_gate"
+    assert payload["cta"]["source"] == "replay_lock"

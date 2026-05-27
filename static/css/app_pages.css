@@ -2044,3 +2044,247 @@ body.auth-layout .contact-page .contact-panel {
         justify-content: flex-start;
     }
 }
+
+/* --- Waitlist modal + lock cards --- */
+.waitlist-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.waitlist-modal[hidden] {
+    display: none;
+}
+
+.waitlist-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+}
+
+.waitlist-modal-card {
+    position: relative;
+    z-index: 1;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 16px;
+    padding: 2.25rem 2rem;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+}
+
+.waitlist-modal-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.4rem;
+    color: var(--muted);
+    line-height: 1;
+    padding: 4px 8px;
+}
+
+.waitlist-modal-eyebrow {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 0.35rem;
+}
+
+.waitlist-modal-title {
+    font-size: 1.4rem;
+    font-weight: 800;
+    margin: 0 0 0.75rem;
+    letter-spacing: -0.03em;
+}
+
+.waitlist-modal-body {
+    font-size: 0.9rem;
+    color: var(--muted);
+    line-height: 1.7;
+    margin: 0 0 1.5rem;
+}
+
+.waitlist-modal-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+}
+
+.waitlist-modal-field label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--ink);
+}
+
+.waitlist-modal-field input {
+    padding: 0.65rem 0.9rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    color: var(--ink);
+    background: var(--surface, #fff);
+    outline: none;
+    transition: border-color 0.15s;
+}
+
+.waitlist-modal-field input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.waitlist-modal-field input[readonly] {
+    background: color-mix(in srgb, var(--muted) 8%, var(--surface, #fff));
+    cursor: default;
+}
+
+.waitlist-modal-email-note {
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--muted);
+}
+
+.waitlist-modal-submit {
+    width: 100%;
+    justify-content: center;
+}
+
+.waitlist-modal-success {
+    margin: 0.75rem 0 0;
+    font-size: 0.875rem;
+    color: var(--good);
+    font-weight: 600;
+}
+
+.waitlist-modal-error {
+    margin: 0.75rem 0 0;
+    font-size: 0.875rem;
+    color: var(--bad);
+}
+
+.waitlist-lock-card {
+    margin-top: 0.85rem;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--card) 92%, transparent);
+}
+
+.waitlist-lock-card p {
+    margin: 0 0 0.75rem;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: var(--ink);
+}
+
+.waitlist-lock-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    align-items: center;
+}
+
+.waitlist-lock-card-link {
+    font-size: 0.82rem;
+    color: var(--muted);
+}
+
+.landing-roadmap {
+    margin: 2.5rem auto 0;
+    max-width: min(960px, calc(100% - 2rem));
+}
+
+.landing-roadmap-panel {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.35rem 1.25rem;
+    background: color-mix(in srgb, var(--card) 94%, transparent);
+}
+
+.landing-roadmap-head {
+    margin-bottom: 1rem;
+}
+
+.landing-roadmap-head h2 {
+    margin: 0.25rem 0 0.35rem;
+    font-size: 1.15rem;
+}
+
+.landing-roadmap-head p {
+    margin: 0;
+    font-size: 0.88rem;
+    color: var(--muted);
+    line-height: 1.55;
+}
+
+.landing-roadmap-grid {
+    display: grid;
+    gap: 0.85rem;
+}
+
+@media (min-width: 760px) {
+    .landing-roadmap-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+.landing-roadmap-lane {
+    border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+    border-radius: 12px;
+    padding: 0.85rem 0.95rem;
+}
+
+.landing-roadmap-lane--trader {
+    --roadmap-lane-accent: var(--accent);
+}
+
+.landing-roadmap-lane--pro {
+    --roadmap-lane-accent: #67e8f9;
+}
+
+.landing-roadmap-tier {
+    margin: 0 0 0.45rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--roadmap-lane-accent, var(--accent)) 58%, var(--ink));
+}
+
+.landing-roadmap-list {
+    margin: 0 0 0.65rem;
+    padding-left: 1.1rem;
+    font-size: 0.84rem;
+    line-height: 1.5;
+    color: var(--ink);
+}
+
+.landing-roadmap-cta {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.55;
+    color: var(--muted);
+}
+
+.landing-roadmap-cta button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}

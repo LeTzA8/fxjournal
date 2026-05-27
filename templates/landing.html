@@ -321,6 +321,52 @@
     }
     </style>
 
+    <section class="landing-roadmap landing-section" aria-labelledby="landing-roadmap-title">
+        <div class="landing-roadmap-panel">
+            <div class="landing-roadmap-head">
+                <p class="eyebrow">What's opening next</p>
+                <h2 id="landing-roadmap-title">Planned workflow upgrades</h2>
+                <p>Core journaling stays free. These Trader and Pro surfaces are opening gradually during beta.</p>
+            </div>
+            <div class="landing-roadmap-grid">
+                <section class="landing-roadmap-lane landing-roadmap-lane--trader" aria-label="Trader planned features">
+                    <p class="landing-roadmap-tier">Trader</p>
+                    <ul class="landing-roadmap-list">
+                        <li>Advanced Replay (1m and extended history)</li>
+                        <li>Recurring pattern tracking</li>
+                    </ul>
+                    <p class="landing-roadmap-cta">
+                        Want early access to Advanced Replay or Pattern Tracking?
+                        <button
+                            type="button"
+                            data-waitlist-trigger="trader"
+                            data-waitlist-source="landing_planned"
+                            data-waitlist-feature="advanced_replay"
+                            data-waitlist-cta-context="landing_trader_lane"
+                        >Join the Trader waitlist →</button>
+                    </p>
+                </section>
+                <section class="landing-roadmap-lane landing-roadmap-lane--pro" aria-label="Pro planned features">
+                    <p class="landing-roadmap-tier">Pro</p>
+                    <ul class="landing-roadmap-list">
+                        <li>Multi-timeframe replay</li>
+                        <li>Multiple MT5 accounts</li>
+                    </ul>
+                    <p class="landing-roadmap-cta">
+                        Want early access to Multi-timeframe Replay or multi-account tooling?
+                        <button
+                            type="button"
+                            data-waitlist-trigger="pro"
+                            data-waitlist-source="landing_planned"
+                            data-waitlist-feature="multi_timeframe_replay"
+                            data-waitlist-cta-context="landing_pro_lane"
+                        >Join the Pro waitlist →</button>
+                    </p>
+                </section>
+            </div>
+        </div>
+    </section>
+
     <section class="landing-section comparison-section" id="compare" aria-labelledby="comparison-title" data-reveal-scope>
         <div class="landing-inner">
             <div class="comparison-top">
@@ -3702,10 +3748,12 @@
     }
 </style>
 {% include "partials/public_header_styles.html" %}
+{% include "_waitlist_modal.html" %}
 
 {% endblock %}
 
 {% block page_scripts %}
+<script src="{{ url_for('static', filename='js/waitlist_modal.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/landing_page.js') }}"></script>
 {% include "partials/public_header_script.html" %}
 {% endblock %}

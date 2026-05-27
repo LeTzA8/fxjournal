@@ -1412,12 +1412,13 @@ _REPLAY_REQUEST_TIMEFRAMES = ("M1", "M5", "M15")
 _REPLAY_NOT_IMPLEMENTED_TIMEFRAMES = frozenset({"M1"})
 
 
-def _replay_waitlist_cta(feature_interest="advanced_replay"):
+def _replay_waitlist_cta(feature_interest="advanced_replay", cta_context="trade_replay_1m"):
     return {
         "label": "Join Trader waitlist",
         "url": url_for("pricing_page"),
-        "source": "replay_gate",
+        "source": "replay_lock",
         "feature_interest": feature_interest,
+        "cta_context": cta_context,
     }
 
 

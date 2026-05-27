@@ -44,6 +44,7 @@ def _resolve_account_mt5_state(
             "show_disconnect_form": False,
             "disconnect_action": None,
             "show_reactivate_form": False,
+            "waitlist_lock": None,
         }
 
     is_archived = bool(mt5_account and mt5_account.is_archived)
@@ -66,6 +67,14 @@ def _resolve_account_mt5_state(
         from helpers.entitlements import is_mt5_sync_paused
 
         is_paused = is_mt5_sync_paused(mt5_account)
+
+    waitlist_lock = None
+    if mt5_trial_state and mt5_trial_state.get("show_trial_ui"):
+        trial_state = mt5_trial_state.get("state")
+        if trial_state == "expired":
+            waitlist_lock = "expired"
+        elif trial_state == "paused" or is_paused:
+            waitlist_lock = "paused"
 
     last_sync_at = getattr(mt5_account, "last_synced_at", None) if mt5_account else None
     last_sync_label = _format_short_datetime(last_sync_at)
@@ -167,6 +176,7 @@ def _resolve_account_mt5_state(
         "is_failed": is_failed,
         "is_paused": is_paused,
         "is_active_linked": is_active_linked,
+        "waitlist_lock": waitlist_lock,
     }
 
 

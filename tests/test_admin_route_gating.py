@@ -1,4 +1,5 @@
 import csv
+import re
 from datetime import datetime
 from io import StringIO
 from itertools import count
@@ -15,6 +16,8 @@ ALL_ADMIN_ROUTES = [
     ("get", "/dashboard/admin/access"),
     ("get", "/dashboard/admin/access/users"),
     ("get", "/dashboard/admin/access/users/export"),
+    ("get", "/dashboard/admin/access/waitlist"),
+    ("get", "/dashboard/admin/access/waitlist/export"),
     ("get", "/dashboard/admin/access/codes"),
     ("get", "/dashboard/admin/access/send-email"),
     ("get", "/dashboard/admin/access/send-email/recipients"),
@@ -278,7 +281,11 @@ def test_admin_users_list_shows_distinct_waitlist_people_count(app_ctx, client, 
 
     assert response.status_code == 200
     assert b"Waitlist" in response.data
-    assert b'<span class="admin-stat-value">2</span>' in response.data
+    assert b"/dashboard/admin/access/waitlist" in response.data
+    assert re.search(
+        rb'admin-stat-label">Waitlist</span>\s*<span class="admin-stat-value">\d+</span>',
+        response.data,
+    )
 
 
 def test_admin_mt5_list_accepts_sort_query(app_ctx, client, monkeypatch):

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+{% include 'partials/admin_panel_head.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'partials/admin_shell_start.html' %}
+
+        <section class="panel spotlight-panel">
+            <div class="panel-head">
+                <h2>Waitlist entries</h2>
+                <div class="inline-actions">
+                    <a
+                        href="{{ url_for('admin_waitlist_export', feature=feature_filter or None, source=source_filter or None, account=account_filter or None) }}"
+                        class="ghost-btn"
+                    >Export CSV</a>
+                </div>
+            </div>
+
+            <form class="admin-filter-row" method="get" action="{{ url_for('admin_waitlist') }}">
+                <label>
+                    Feature
+                    <select name="feature">
+                        <option value="">All features</option>
+                        {% for option in feature_options %}
+                        <option value="{{ option }}"{% if feature_filter == option %} selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    Source
+                    <select name="source">
+                        <option value="">All sources</option>
+                        {% for option in source_options %}
+                        <option value="{{ option }}"{% if source_filter == option %} selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    Account
+                    <select name="account">
+                        <option value="">All signups</option>
+                        <option value="registered"{% if account_filter == 'registered' %} selected{% endif %}>Has account</option>
+                        <option value="anonymous"{% if account_filter == 'anonymous' %} selected{% endif %}>Anonymous</option>
+                    </select>
+                </label>
+                <button type="submit" class="ghost-btn">Apply filters</button>
+            </form>
+
+            {% if waitlist_entries %}
+            <div class="admin-table-wrap">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>User</th>
+                            <th>Tier</th>
+                            <th>Feature</th>
+                            <th>Source</th>
+                            <th>Context</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in waitlist_entries %}
+                        {% set linked_user = users_by_id.get(entry.user_id) %}
+                        <tr>
+                            <td>{{ entry.email }}</td>
+                            <td>
+                                {% if linked_user %}
+                                <a href="{{ url_for('admin_signup_users', q=linked_user.email) }}">{{ linked_user.username }}</a>
+                                {% else %}
+                                <span class="soft">Anonymous</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ entry.tier_intent or "-" }}</td>
+                            <td>{{ entry.feature_interest }}</td>
+                            <td>{{ entry.source }}</td>
+                            <td>{{ entry.cta_context or "-" }}</td>
+                            <td>{{ entry.created_at.strftime('%Y-%m-%d %H:%M UTC') if entry.created_at else "-" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="soft">No waitlist entries match these filters.</p>
+            {% endif %}
+        </section>
+
+{% include 'partials/admin_shell_end.html' %}
+{% endblock %}

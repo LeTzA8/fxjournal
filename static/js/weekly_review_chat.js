@@ -171,6 +171,16 @@
                         code === "weekly_followup_trial_required"
                     ) {
                         canSend = false;
+                        const upgrade = root.querySelector("[data-review-chat-upgrade]");
+                        if (upgrade) {
+                            upgrade.hidden = false;
+                            if (payload.message) {
+                                const copy = upgrade.querySelector("p");
+                                if (copy) {
+                                    copy.textContent = payload.message;
+                                }
+                            }
+                        }
                     }
                     const friendly =
                         payload.message ||

@@ -74,7 +74,7 @@ def _trial_cta(feature_interest="trader_workflow") -> dict:
     return {
         "label": "Join Trader waitlist",
         "url": TRIAL_UPGRADE_URL,
-        "source": "trial_gate",
+        "source": "ai_followup_lock",
         "feature_interest": feature_interest,
     }
 
