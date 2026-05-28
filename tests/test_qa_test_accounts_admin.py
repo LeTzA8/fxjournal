@@ -97,7 +97,7 @@ def test_test_accounts_page_renders_expected_cta_json(app_ctx, client):
     html = response.data.decode("utf-8")
     assert "feature_interest" in html
     assert "advanced_replay" in html
-    assert "No CTA expected" in html
+    assert "No waitlist CTA expected" in html
 
 
 def test_test_accounts_reseed_rejects_non_fixture_email(app_ctx, client, monkeypatch):

@@ -1594,3 +1594,235 @@ a.admin-stat-tile:hover {
         font-size: 0.76rem;
     }
 }
+
+/* —— QA test account fixtures —— */
+
+.qa-fixture-kicker {
+    margin: 0 0 0.25rem;
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.qa-fixture-login-panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.85rem 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.qa-fixture-login-title {
+    margin: 0;
+    font-size: clamp(1.15rem, 2vw, 1.35rem);
+    line-height: 1.25;
+}
+
+.qa-fixture-login-hint {
+    margin: 0.45rem 0 0;
+    max-width: 42rem;
+    line-height: 1.55;
+}
+
+.qa-fixture-credential-row {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.qa-fixture-credential-field {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.qa-fixture-credential-field--compact {
+    margin-top: 0.15rem;
+}
+
+.qa-fixture-field-label {
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.qa-fixture-credential-value {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.65rem;
+}
+
+.qa-fixture-secret,
+.qa-fixture-email {
+    font-size: 0.92rem;
+    padding: 0.35rem 0.55rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    word-break: break-all;
+}
+
+.qa-fixture-secret {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+}
+
+.qa-fixture-cli-hint {
+    margin: 0.85rem 0 0;
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.qa-fixture-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+    gap: 0.85rem;
+}
+
+.qa-fixture-card {
+    display: grid;
+    gap: 0.7rem;
+    align-content: start;
+    padding: 0.9rem 1rem;
+    border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    min-width: 0;
+}
+
+.qa-fixture-card--empty {
+    opacity: 0.88;
+    border-style: dashed;
+}
+
+.qa-fixture-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.65rem;
+}
+
+.qa-fixture-card-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.3;
+}
+
+.qa-fixture-card-meta {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.qa-fixture-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.qa-fixture-card-actions .primary-ghost-btn {
+    font-weight: 700;
+}
+
+.qa-fixture-details {
+    border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+    padding-top: 0.55rem;
+}
+
+.qa-fixture-details summary {
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--muted);
+    list-style-position: outside;
+}
+
+.qa-fixture-details summary:hover {
+    color: var(--accent);
+}
+
+.qa-fixture-details[open] summary {
+    margin-bottom: 0.45rem;
+    color: var(--ink);
+}
+
+.qa-fixture-cta-dl {
+    margin: 0;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.qa-fixture-cta-row {
+    display: grid;
+    grid-template-columns: minmax(5.5rem, 7rem) minmax(0, 1fr);
+    gap: 0.35rem 0.65rem;
+    align-items: baseline;
+    font-size: 0.8rem;
+}
+
+.qa-fixture-cta-row dt {
+    margin: 0;
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.qa-fixture-cta-row dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.qa-fixture-cta-row dd code {
+    font-size: 0.78rem;
+}
+
+.qa-fixture-no-cta {
+    margin: 0;
+    font-size: 0.82rem;
+}
+
+.qa-fixture-details--notes .admin-test-notes-form {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.qa-fixture-details--notes .admin-test-notes-input {
+    width: 100%;
+    min-height: 4.5rem;
+    resize: vertical;
+}
+
+.qa-fixture-card-admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    padding-top: 0.55rem;
+    margin-top: 0.15rem;
+    border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+@media (max-width: 680px) {
+    .qa-fixture-login-panel-head {
+        flex-direction: column;
+    }
+
+    .qa-fixture-login-link {
+        width: 100%;
+        text-align: center;
+    }
+
+    .qa-fixture-credential-value .ghost-btn {
+        flex: 1 1 auto;
+        min-width: calc(50% - 0.35rem);
+    }
+
+    .qa-fixture-cta-row {
+        grid-template-columns: 1fr;
+    }
+}
