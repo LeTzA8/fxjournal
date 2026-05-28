@@ -56,6 +56,29 @@
         elements.forEach((el) => el.classList.add("is-visible"));
     };
 
+    const revealInViewport = () => {
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+        revealTargets.forEach((el) => {
+            const rect = el.getBoundingClientRect();
+            if (rect.bottom <= 0 || rect.top >= viewportHeight) {
+                return;
+            }
+            el.classList.add("is-visible");
+        });
+    };
+
+    const revealHashScope = () => {
+        const hash = window.location.hash;
+        if (!hash || hash.length < 2) {
+            return;
+        }
+        const target = document.querySelector(`${hash}[data-reveal-scope]`);
+        if (!target) {
+            return;
+        }
+        markVisible(groups.get(target) || []);
+    };
+
     const setRevealDelays = () => {
         groups.forEach((items, scope) => {
             const baseDelay = Number(scope.dataset.revealBaseDelay || 0);
@@ -147,6 +170,8 @@
     requestAnimationFrame(() => {
         setRevealDelays();
         revealImmediateScopes();
+        revealHashScope();
+        revealInViewport();
         requestAnimationFrame(() => {
             window.setTimeout(() => {
                 const observedScopes = new Set();
@@ -164,9 +189,12 @@
                     }
                     observer.observe(el);
                 });
+                revealInViewport();
             }, 90);
         });
     });
+
+    window.addEventListener("hashchange", revealHashScope);
 
     const onMotionChange = () => {
         if (prefersReducedMotion.matches) {

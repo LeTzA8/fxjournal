@@ -6,6 +6,10 @@
         return;
     }
 
+    if (modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+    }
+
     var postUrl = modal.getAttribute("data-waitlist-post-url") || "/pricing/waitlist";
     var tierInput = document.getElementById("waitlistTierInput");
     var sourceInput = document.getElementById("waitlistSourceInput");
@@ -27,6 +31,17 @@
 
     function defaultSourceForTier(tier) {
         return "pricing_page";
+    }
+
+    function focusWithoutScroll(element) {
+        if (!element || typeof element.focus !== "function") {
+            return;
+        }
+        try {
+            element.focus({ preventScroll: true });
+        } catch (error) {
+            element.focus();
+        }
     }
 
     function openModal(tier, featureInterest, source, ctaContext) {
@@ -60,16 +75,22 @@
             submitBtn.disabled = false;
             submitBtn.textContent = defaultSubmitLabel;
         }
+        var scrollY = window.scrollY;
         modal.hidden = false;
+        document.body.classList.add("waitlist-modal-open");
         if (emailInput && !emailInput.readOnly) {
-            emailInput.focus();
+            focusWithoutScroll(emailInput);
         } else if (submitBtn) {
-            submitBtn.focus();
+            focusWithoutScroll(submitBtn);
+        }
+        if (window.scrollY !== scrollY) {
+            window.scrollTo(0, scrollY);
         }
     }
 
     function closeModal() {
         modal.hidden = true;
+        document.body.classList.remove("waitlist-modal-open");
     }
 
     function markTriggerSaved(trigger) {

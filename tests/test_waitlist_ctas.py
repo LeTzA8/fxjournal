@@ -315,6 +315,7 @@ def test_landing_includes_waitlist_modal_and_roadmap_cta(client):
     assert response.status_code == 200
     html = response.data.decode("utf-8")
     assert 'id="waitlistModal"' in html
+    assert "css/app_pages.css" in html
     assert 'data-waitlist-source="landing_planned"' in html
     assert "landing-roadmap" in html
 
