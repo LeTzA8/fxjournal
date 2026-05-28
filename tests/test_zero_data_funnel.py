@@ -200,7 +200,8 @@ def test_dashboard_zero_data_sample_review_renders_with_badge(app_ctx, client, m
     assert "You're already strong at:" in html
     assert "dash-content--pure-zero" in html
     assert "mt5-side-stack--zero-data-deferred" in html
-    assert "choose-your-path-option--highlight" in html
+    assert "is-guided" in html
+    assert "choose-your-path-option--highlight" not in html
 
 
 def test_dashboard_zero_data_soft_waitlist_hidden_for_new_signup(app_ctx, client, monkeypatch):
