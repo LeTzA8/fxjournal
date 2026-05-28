@@ -676,7 +676,7 @@
 {% endif %}
 <section class="dash-wrap">
 
-    <div class="dash-content" data-dashboard-state="{{ dashboard_state }}">
+    <div class="dash-content{% if is_pure_zero_data %} dash-content--pure-zero{% endif %}" data-dashboard-state="{{ dashboard_state }}">
         {{ app_page_hero(
             "Trading dashboard",
             eyebrow="Dashboard",
@@ -693,9 +693,7 @@
         </section>
         {% endif %}
 
-        {% if show_whats_next_banner and is_pure_zero_data %}
-        {% include "_choose_your_path_card.html" %}
-        {% elif show_whats_next_banner %}
+        {% if show_whats_next_banner and not is_pure_zero_data %}
         <section class="panel journey-banner journey-banner--compact{% if is_state_one and not has_any_trades %} journey-banner--mt5-first{% endif %}">
             <div class="journey-banner-copy">
                 <p class="journey-banner-kicker">What's next</p>
@@ -839,8 +837,13 @@
         </section>
         {% endif %}
 
-        <section class="ai-hero-grid {% if mt5_cfd_accounts %}has-mt5{% else %}no-mt5{% endif %}{% if is_state_one %} state-onboarding{% endif %}" data-reveal-row-step="120" data-reveal-col-step="70">
-            <div class="mt5-side-stack">
+        <section class="ai-hero-grid {% if mt5_cfd_accounts %}has-mt5{% else %}no-mt5{% endif %}{% if is_state_one %} state-onboarding{% endif %}{% if is_pure_zero_data %} ai-hero-grid--pure-zero{% endif %}" data-reveal-row-step="120" data-reveal-col-step="70">
+            {% if is_pure_zero_data %}
+            <div class="zero-data-onboarding-hub">
+                {% include "_choose_your_path_card.html" %}
+            </div>
+            {% endif %}
+            <div class="mt5-side-stack{% if is_pure_zero_data %} mt5-side-stack--zero-data-deferred{% endif %}">
                 {% if mt5_cfd_accounts %}
                 <article id="mt5-access" class="panel mt5-access-panel mt5-workflow-panel{% if show_mt5_guidance %} is-guided{% endif %}{% if is_pure_zero_data or (is_state_one and not has_any_trades) %} mt5-workflow-panel--onboarding{% elif is_state_two %} mt5-workflow-panel--compact{% endif %}">
                     <div class="panel-head">
@@ -1670,7 +1673,7 @@
                     </div>
                     <p class="ai-hero-kicker">Built from synced trade history</p>
                     <h2 class="ai-hero-title">Your weekly AI review</h2>
-                    <p class="ai-hero-copy ai-hero-copy--onboarding">Preview below — yours generates automatically once MT5 sync brings in enough closed trades for a finished week.</p>
+                    <p class="ai-hero-copy ai-hero-copy--onboarding">Preview below — yours generates automatically once this account has enough closed trades for a finished week.</p>
                     {% else %}
                     <div class="ai-hero-badges">
                         <span class="ai-hero-badge">AI Coach</span>
@@ -1741,30 +1744,7 @@
                             <p class="insight-body ai-generating-copy">{{ weekly_ai_empty_message|trim }}</p>
                         </div>
                         {% elif is_state_one and not weekly_ai_review %}
-                        <section id="weekly-ai-sample" class="weekly-ai-sample-panel" aria-label="Sample weekly AI review">
-                            <span class="weekly-ai-sample-badge">Sample · Not your data</span>
-                            <div class="dashboard-ai-preview" aria-hidden="false">
-                                <div class="dashboard-ai-preview-main">
-                                    <p class="dashboard-ai-preview-label">🧠 What mattered this week</p>
-                                    <p class="dashboard-ai-preview-title">EURUSD wins were fine; XAUUSD sizing after the Tuesday loss drove most of the week’s drawdown.</p>
-                                    <p class="dashboard-ai-preview-body">Sample data — not from your trading.</p>
-                                    <ul class="weekly-ai-sample-evidence">
-                                        <li><span class="weekly-ai-sample-ref">Wed · EURUSD</span> — closed +12 pips with planned size.</li>
-                                        <li><span class="weekly-ai-sample-ref">Thu · XAUUSD</span> — lot size 1.4× average after the prior loss.</li>
-                                    </ul>
-                                    <p class="weekly-ai-sample-takeaway"><strong>Implication:</strong> one habit (sizing up after losses) explains most of the red week.</p>
-                                    <p class="weekly-ai-sample-experiment"><strong>Experiment:</strong> after any loss, cap the next trade at your median lot size for five sessions.</p>
-                                </div>
-                                <div class="weekly-ai-sample-prompts" aria-hidden="true">
-                                    <span class="weekly-ai-sample-prompt is-disabled">Ask about this review</span>
-                                    <span class="weekly-ai-sample-prompt is-disabled">What should I change first?</span>
-                                </div>
-                            </div>
-                            <div class="weekly-ai-sample-footer">
-                                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Upload your trades to get your own review</a>
-                                <a href="{{ url_for('trades.new_trade') }}" class="weekly-ai-sample-footer-link">Or add one manually</a>
-                            </div>
-                        </section>
+                        {% include "_weekly_ai_onboarding_sample.html" %}
                         {% else %}
                         <p class="insight-body">{{ weekly_ai_empty_message|trim }}</p>
                         {% endif %}

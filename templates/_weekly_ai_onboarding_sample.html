@@ -1,0 +1,45 @@
+<section id="weekly-ai-sample" class="weekly-ai-onboarding-sample" aria-label="Sample weekly AI review">
+    <span class="weekly-ai-sample-badge">Sample · Not your data</span>
+    <div class="ai-review-panels ai-review-panels--onboarding-sample">
+        <div class="insight-content session-ai-card ai-hero-card ai-review-panel-main">
+            <p class="insight-title">Sample Weekly Review</p>
+            <div class="ai-review-structured">
+                <div class="ai-review-block ai-review-main-insight">
+                    <p class="ai-review-heading">🧠 What mattered this week</p>
+                    <p class="insight-body ai-review-copy ai-review-summary">
+                        Most of the week's drag came from
+                        <span class="ai-citation-btn is-sample" aria-disabled="true">XAUUSD · Thu</span>
+                        sizing after Tuesday's loss, while
+                        <span class="ai-citation-btn is-sample" aria-disabled="true">EURUSD</span>
+                        sessions stayed controlled.
+                    </p>
+                </div>
+                <div class="ai-review-block">
+                    <p class="ai-review-heading">What this suggests</p>
+                    <ul class="ai-review-list">
+                        <li class="ai-review-item">
+                            <p class="insight-body ai-review-copy">Sizing up after a loss is doing more damage than the original stop — the habit matters more than any single session.</p>
+                        </li>
+                        <li class="ai-review-item">
+                            <p class="insight-body ai-review-copy">When size stays fixed, your EURUSD process already looks repeatable enough to protect.</p>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="insight-content session-ai-card ai-hero-card ai-review-panel-improvement ai-review-action-card">
+            <p class="insight-title">🎯 Actionable Improvement</p>
+            <p class="insight-body ai-review-copy ai-review-improvement ai-review-action">Improve this week: After any red trade, keep the next position at your median lot size for five sessions.</p>
+        </div>
+
+        <div class="insight-content session-ai-card ai-hero-card ai-review-panel-strength">
+            <p class="insight-title">✅ Strength to Reinforce</p>
+            <p class="insight-body ai-review-copy ai-review-strength">You're already strong at: Letting EURUSD winners close at planned size without adding back in.</p>
+        </div>
+    </div>
+    <div class="weekly-ai-sample-footer">
+        <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Upload your trades to get your own review</a>
+        <a href="{{ url_for('trades.new_trade') }}" class="weekly-ai-sample-footer-link">Or add one manually</a>
+    </div>
+</section>

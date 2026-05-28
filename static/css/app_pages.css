@@ -2371,6 +2371,96 @@ body.waitlist-modal-open {
     background: color-mix(in srgb, var(--card) 94%, transparent);
 }
 
+.choose-your-path-option--highlight {
+    position: relative;
+    isolation: isolate;
+    border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+    background:
+        radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 14%, transparent), transparent 52%),
+        color-mix(in srgb, var(--card) 94%, transparent);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent),
+        0 0 22px color-mix(in srgb, var(--accent) 18%, transparent),
+        0 0 48px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.choose-your-path-option--highlight::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    z-index: -1;
+    border-radius: inherit;
+    background: conic-gradient(
+        from 0deg,
+        transparent 0deg,
+        color-mix(in srgb, var(--accent) 42%, transparent) 80deg,
+        transparent 150deg,
+        transparent 210deg,
+        color-mix(in srgb, var(--accent) 32%, transparent) 290deg,
+        transparent 360deg
+    );
+    opacity: 0.55;
+    animation: choose-path-glow-spin 8s linear infinite;
+}
+
+@keyframes choose-path-glow-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .choose-your-path-option--highlight::before {
+        animation: none;
+    }
+}
+
+.dash-content.dash-content--pure-zero[data-dashboard-state="state-1"] > .ai-hero-grid.ai-hero-grid--pure-zero.state-onboarding {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    justify-items: center;
+}
+
+.zero-data-onboarding-hub {
+    width: min(100%, 52rem);
+    margin-inline: auto;
+}
+
+.dash-content--pure-zero .mt5-side-stack--zero-data-deferred {
+    display: none;
+    width: min(100%, 52rem);
+    margin-inline: auto;
+}
+
+.dash-content--pure-zero.zero-data-show-mt5 .mt5-side-stack--zero-data-deferred,
+.dash-content--pure-zero:has(#mt5-access:target) .mt5-side-stack--zero-data-deferred {
+    display: grid;
+}
+
+.dash-content--pure-zero .hero-top-main {
+    width: min(100%, 72rem);
+    margin-inline: auto;
+}
+
+.ai-hero-grid--pure-zero.state-onboarding .notes-panel-hero--onboarding .ai-review-panels--onboarding-sample {
+    grid-template-columns: minmax(0, 2.15fr) minmax(220px, 0.85fr);
+    grid-template-areas:
+        "main improve"
+        "main strength";
+}
+
+.weekly-ai-onboarding-sample {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.weekly-ai-onboarding-sample .ai-citation-btn.is-sample {
+    pointer-events: none;
+    cursor: default;
+    opacity: 0.88;
+}
+
 .choose-your-path-option-title {
     margin: 0;
     font-size: 1rem;

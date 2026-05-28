@@ -190,9 +190,17 @@ def test_dashboard_zero_data_sample_review_renders_with_badge(app_ctx, client, m
     response = client.get("/dashboard")
 
     assert response.status_code == 200
-    assert "Sample · Not your data" in response.data.decode("utf-8", errors="ignore")
-    assert b'id="weekly-ai-sample"' in response.data
-    assert b"Upload your trades to get your own review" in response.data
+    html = response.data.decode("utf-8", errors="ignore")
+    assert "Sample · Not your data" in html
+    assert 'id="weekly-ai-sample"' in html
+    assert "Upload your trades to get your own review" in html
+    assert "What mattered this week" in html
+    assert "What this suggests" in html
+    assert "Improve this week:" in html
+    assert "You're already strong at:" in html
+    assert "dash-content--pure-zero" in html
+    assert "mt5-side-stack--zero-data-deferred" in html
+    assert "choose-your-path-option--highlight" in html
 
 
 def test_dashboard_zero_data_soft_waitlist_hidden_for_new_signup(app_ctx, client, monkeypatch):

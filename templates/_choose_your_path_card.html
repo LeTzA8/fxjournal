@@ -15,10 +15,10 @@
             <p class="choose-your-path-option-body">Best if you just want to try the journal first. Log one closed trade to see it on the dashboard.</p>
             <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Add first trade</a>
         </article>
-        <article class="choose-your-path-option choose-your-path-option--secondary">
+        <article class="choose-your-path-option choose-your-path-option--secondary choose-your-path-option--highlight">
             <h3 class="choose-your-path-option-title">Request MT5 sync</h3>
             <p class="choose-your-path-option-body">Auto-import trades from your broker. Access opens gradually as we scale infrastructure.</p>
-            <a href="#mt5-access" class="ghost-btn">Submit MT5 details</a>
+            <a href="#mt5-access" class="ghost-btn" data-zero-data-reveal-mt5>Submit MT5 details</a>
         </article>
         <article class="choose-your-path-option choose-your-path-option--secondary">
             <h3 class="choose-your-path-option-title">Preview a sample review</h3>

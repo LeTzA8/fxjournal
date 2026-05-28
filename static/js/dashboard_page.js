@@ -1,4 +1,29 @@
 (() => {
+    const dashContent = document.querySelector(".dash-content--pure-zero");
+    if (!dashContent) {
+        return;
+    }
+
+    const revealMt5 = () => {
+        dashContent.classList.add("zero-data-show-mt5");
+        const mt5Panel = document.getElementById("mt5-access");
+        if (mt5Panel) {
+            mt5Panel.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+    };
+
+    document.querySelectorAll("[data-zero-data-reveal-mt5]").forEach((trigger) => {
+        trigger.addEventListener("click", () => {
+            revealMt5();
+        });
+    });
+
+    if (window.location.hash === "#mt5-access") {
+        revealMt5();
+    }
+})();
+
+(() => {
     const carousel = document.querySelector("[data-weekly-ai-carousel]");
     if (!carousel) {
         return;

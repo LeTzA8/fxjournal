@@ -16,7 +16,7 @@ Last Updated: 2026-05-28
 - Pure zero-data users (`no trades` + no MT5 account/access request on active CFD row) see `templates/_choose_your_path_card.html` instead of the MT5-first journey banner: upload report, add manual trade, request MT5 sync (`#mt5-access`), preview sample review (`#weekly-ai-sample`).
 - Dashboard flags in `routes/dashboard.py`: `is_pure_zero_data`, `has_mt5_submission` via `helpers/admin_activation.dashboard_row_has_mt5_submission` (excludes `requestable`-only rows).
 - Soft waitlist: muted footer link after 1+ days zero-data (`source=zero_data_dashboard`, `feature=advanced_replay`, `cta_context=zero_data_soft_waitlist`); allowlist in `auth_account.py`.
-- Sample weekly review mock enhanced with badge, evidence bullets, footer CTAs (`templates/index.html`); MT5 panel H2/intro for pure zero-data uses “Want trades to sync automatically?” framing.
+- Pure zero-data layout: centered `Start here` card in `ai-hero-grid`, MT5 login panel hidden until `#mt5-access` / Submit MT5 details; Request MT5 sync card glow; sample weekly review uses real panel structure (`_weekly_ai_onboarding_sample.html`, `app_pages.css`, `dashboard_page.js`).
 - Admin: `helpers/admin_activation.count_pre_activation_users` + Users stat tile; filters `?activation=zero_data_recent|zero_data_stuck` on `/dashboard/admin/access/users`.
 - Styles: `static/css/app_pages.css` (cache `v=15` in `base.html`).
 - Tests: `tests/test_zero_data_funnel.py`; updated `test_dashboard_weekly_ai.py` state-1 banner expectations.
