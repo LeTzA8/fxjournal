@@ -1696,15 +1696,16 @@
                 {% endif %}
                 <div class="weekly-ai-product-carousel{% if not show_weekly_journal_preview %} weekly-ai-product-carousel--single{% endif %}" data-weekly-ai-carousel>
                 <section class="weekly-ai-carousel-slide is-active" data-weekly-ai-carousel-slide aria-label="Weekly AI review">
-                <div class="ai-review-panels">
+                <div class="ai-review-panels{% if is_state_one and not weekly_ai_review %} ai-review-panels--onboarding-sample{% endif %}">
+                    {% if is_state_one and not weekly_ai_review %}
+                    {% include "_weekly_ai_onboarding_sample.html" %}
+                    {% else %}
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-main">
                         <p class="insight-title">
                             {% if weekly_ai_review %}
                             Latest Weekly Review
                             {% elif weekly_ai_is_generating %}
                             Generating Weekly Review
-                            {% elif is_state_one and not weekly_ai_review %}
-                            Sample Weekly Review
                             {% else %}
                             Waiting for Weekly Review
                             {% endif %}
@@ -1743,8 +1744,6 @@
                             <span class="ai-loading-orb" aria-hidden="true"></span>
                             <p class="insight-body ai-generating-copy">{{ weekly_ai_empty_message|trim }}</p>
                         </div>
-                        {% elif is_state_one and not weekly_ai_review %}
-                        {% include "_weekly_ai_onboarding_sample.html" %}
                         {% else %}
                         <p class="insight-body">{{ weekly_ai_empty_message|trim }}</p>
                         {% endif %}
@@ -1787,6 +1786,7 @@
                         <p class="insight-body ai-review-copy ai-review-experiment muted-value">Shows here once your review runs.</p>
                         {% endif %}
                     </div>
+                    {% endif %}
                     {% endif %}
                 </div>
                 {% if weekly_ai_review and weekly_ai_review.id is defined %}
@@ -3280,7 +3280,7 @@
         font-size: 0.86rem;
     }
 
-    .ai-hero-grid.state-onboarding .notes-panel-hero--onboarding .ai-review-panels {
+    .ai-hero-grid.state-onboarding .notes-panel-hero--onboarding .ai-review-panels:not(.ai-review-panels--onboarding-sample) {
         grid-template-columns: 1fr;
         grid-template-areas: "main";
     }
