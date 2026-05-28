@@ -1,0 +1,42 @@
+<section class="panel choose-your-path-card" aria-labelledby="choose-your-path-title">
+    <div class="choose-your-path-head">
+        <p class="choose-your-path-kicker">Start here</p>
+        <h2 id="choose-your-path-title" class="choose-your-path-title">Pick the fastest path to your first review.</h2>
+        <p class="choose-your-path-subtitle">One option. You can always add more later.</p>
+    </div>
+    <div class="choose-your-path-grid">
+        <article class="choose-your-path-option choose-your-path-option--primary">
+            <h3 class="choose-your-path-option-title">Upload an MT5 report</h3>
+            <p class="choose-your-path-option-body">Fastest start. MT5 XLSX or Tradovate CSV. Closed trades unlock your first weekly review.</p>
+            <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Upload report</a>
+        </article>
+        <article class="choose-your-path-option choose-your-path-option--primary">
+            <h3 class="choose-your-path-option-title">Add a trade manually</h3>
+            <p class="choose-your-path-option-body">Best if you just want to try the journal first. Log one closed trade to see it on the dashboard.</p>
+            <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Add first trade</a>
+        </article>
+        <article class="choose-your-path-option choose-your-path-option--secondary">
+            <h3 class="choose-your-path-option-title">Request MT5 sync</h3>
+            <p class="choose-your-path-option-body">Auto-import trades from your broker. Access opens gradually as we scale infrastructure.</p>
+            <a href="#mt5-access" class="ghost-btn">Submit MT5 details</a>
+        </article>
+        <article class="choose-your-path-option choose-your-path-option--secondary">
+            <h3 class="choose-your-path-option-title">Preview a sample review</h3>
+            <p class="choose-your-path-option-body">See what the weekly review looks like — sample data, not your trading.</p>
+            <a href="#weekly-ai-sample" class="ghost-btn">Preview sample</a>
+        </article>
+    </div>
+    {% if show_zero_data_soft_waitlist and not support_view_session_active %}
+    <p class="choose-your-path-foot">
+        Not ready to upload yet?
+        <button
+            type="button"
+            class="zero-data-soft-waitlist-link"
+            data-waitlist-trigger="trader"
+            data-waitlist-source="zero_data_dashboard"
+            data-waitlist-feature="advanced_replay"
+            data-waitlist-cta-context="zero_data_soft_waitlist"
+        >Join the beta list for Advanced Replay and AI follow-ups →</button>
+    </p>
+    {% endif %}
+</section>

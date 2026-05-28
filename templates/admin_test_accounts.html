@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+{% include 'partials/admin_panel_head.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'partials/admin_shell_start.html' %}
+
+        <section class="panel spotlight-panel">
+            <p class="soft admin-test-accounts-notice">
+                These six dummy accounts appear in user totals and analytics. They are tagged with
+                <code>dummy-cta-*@myfxjournal.test</code> emails only. Shared password:
+                <strong>{{ fixture_password }}</strong>
+            </p>
+        </section>
+
+        <section class="panel spotlight-panel">
+            <div class="panel-head">
+                <h2>QA test accounts</h2>
+            </div>
+
+            {% if fixture_rows %}
+            <div class="admin-table-wrap">
+                <table class="admin-table admin-test-accounts-table">
+                    <thead>
+                        <tr>
+                            <th>Scenario</th>
+                            <th>Email</th>
+                            <th>Version</th>
+                            <th>Last seeded (UTC)</th>
+                            <th>Test path</th>
+                            <th>Expected CTA</th>
+                            <th>Notes</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in fixture_rows %}
+                        {% set user = row.user %}
+                        {% set open_path = row.open_test_path %}
+                        <tr>
+                            <td>
+                                <strong>{{ row.label }}</strong>
+                                <div class="soft">{{ row.scenario_key }}</div>
+                                {% if row.last_verified_result %}
+                                <div class="soft">Verify: {{ row.last_verified_result }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if user %}
+                                <code class="admin-test-email" id="fixture-email-{{ row.id }}">{{ user.email }}</code>
+                                <button type="button" class="ghost-btn admin-copy-email-btn" data-copy-target="fixture-email-{{ row.id }}">Copy</button>
+                                {% else %}
+                                <span class="soft">Not seeded</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ row.fixture_version }}</td>
+                            <td>{{ row.last_seeded_at.strftime('%Y-%m-%d %H:%M UTC') if row.last_seeded_at else "-" }}</td>
+                            <td>
+                                {% if open_path %}
+                                <a href="{{ open_path }}" class="ghost-btn" target="_blank" rel="noopener">Open</a>
+                                {% else %}
+                                <span class="soft">—</span>
+                                {% endif %}
+                                {% if is_root_admin and user %}
+                                <a href="{{ url_for('admin_view_user_dashboard', target_user_id=user.id) }}" class="ghost-btn">Support view</a>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if row.expected_cta_rows %}
+                                <ul class="admin-cta-meta-list">
+                                    {% for key, value in row.expected_cta_rows %}
+                                    <li><span class="soft">{{ key }}</span> {{ value }}</li>
+                                    {% endfor %}
+                                </ul>
+                                {% else %}
+                                <span class="soft">No CTA expected</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if row.id %}
+                                <form method="post" action="{{ url_for('admin_test_accounts_notes', sidecar_id=row.id) }}" class="admin-test-notes-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <textarea name="notes" rows="2" class="admin-test-notes-input">{{ row.notes or '' }}</textarea>
+                                    <button type="submit" class="ghost-btn">Save notes</button>
+                                </form>
+                                {% else %}
+                                <span class="soft">—</span>
+                                {% endif %}
+                            </td>
+                            <td class="admin-test-actions-cell">
+                                {% if row.id %}
+                                <form method="post" action="{{ url_for('admin_test_accounts_reseed', sidecar_id=row.id) }}" class="inline-actions">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="ghost-btn">Re-seed</button>
+                                </form>
+                                <form
+                                    method="post"
+                                    action="{{ url_for('admin_test_accounts_delete', sidecar_id=row.id) }}"
+                                    class="inline-actions"
+                                    onsubmit="return confirm('Delete this QA fixture and all related data?');"
+                                >
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="ghost-btn danger-btn">Delete</button>
+                                </form>
+                                {% else %}
+                                <span class="soft">Run CLI seed</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="soft">No QA fixtures in the database. Run <code>flask seed-waitlist-cta-test-data</code>.</p>
+            {% endif %}
+        </section>
+
+{% include 'partials/admin_shell_end.html' %}
+<script>
+(function () {
+    document.querySelectorAll(".admin-copy-email-btn").forEach(function (button) {
+        button.addEventListener("click", function () {
+            var targetId = button.getAttribute("data-copy-target");
+            var node = targetId ? document.getElementById(targetId) : null;
+            if (!node) return;
+            var text = (node.textContent || "").trim();
+            if (!text) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text);
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

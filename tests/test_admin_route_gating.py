@@ -18,6 +18,10 @@ ALL_ADMIN_ROUTES = [
     ("get", "/dashboard/admin/access/users/export"),
     ("get", "/dashboard/admin/access/waitlist"),
     ("get", "/dashboard/admin/access/waitlist/export"),
+    ("get", "/dashboard/admin/access/test-accounts"),
+    ("post", "/dashboard/admin/access/test-accounts/1/notes"),
+    ("post", "/dashboard/admin/access/test-accounts/1/re-seed"),
+    ("post", "/dashboard/admin/access/test-accounts/1/delete"),
     ("get", "/dashboard/admin/access/codes"),
     ("get", "/dashboard/admin/access/send-email"),
     ("get", "/dashboard/admin/access/send-email/recipients"),
@@ -70,6 +74,8 @@ ALL_ADMIN_ROUTES = [
 ]
 
 ROOT_ONLY_ADMIN_ROUTES = [
+    ("post", "/dashboard/admin/access/test-accounts/1/re-seed"),
+    ("post", "/dashboard/admin/access/test-accounts/1/delete"),
     ("get", "/dashboard/admin/access/mt5"),
     ("get", "/dashboard/admin/access/cfd-symbols"),
     ("post", "/dashboard/admin/access/cfd-symbols/1/aliases"),

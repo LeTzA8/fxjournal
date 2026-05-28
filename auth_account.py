@@ -28,11 +28,13 @@ from models import (
     TradeAccount,
     TradeBars,
     TradeInterpretation,
+    QaTestAccount,
     UpgradeWaitlistEntry,
     User,
     UserProfile,
     db,
 )
+from helpers.admin_activation import count_pre_activation_users, zero_data_user_filter_clause
 from helpers.core import (
     SUPPORT_VIEW_ACTIVE_TRADE_ACCOUNT_SESSION_KEY,
     SUPPORT_VIEW_ADMIN_USER_SESSION_KEY,
@@ -118,6 +120,7 @@ WAITLIST_ALLOWED_SOURCES = {
     "ai_followup_lock",
     "landing_planned",
     "dashboard_planned",
+    "zero_data_dashboard",
 }
 WAITLIST_ALLOWED_FEATURES = {
     "advanced_replay",
@@ -2638,6 +2641,7 @@ def register_public_auth_routes(
             "weekly_report": "admin_weekly_report",
             "send_email": "admin_send_email",
             "waitlist": "admin_waitlist",
+            "test_accounts": "admin_test_accounts",
         }
         endpoint = endpoint_map.get(section, "admin_signup_users")
         if message:
@@ -2708,6 +2712,7 @@ def register_public_auth_routes(
                 func.count(func.distinct(UpgradeWaitlistEntry.email))
             ).scalar()
             or 0,
+            **count_pre_activation_users(),
         }
 
     def build_admin_page_context(
@@ -3967,6 +3972,9 @@ def register_public_auth_routes(
             "all",
         }:
             status_filter = "approved"
+        activation_filter = (request.args.get("activation") or "").strip().lower()
+        if activation_filter not in {"zero_data_recent", "zero_data_stuck"}:
+            activation_filter = ""
         search_query = (request.args.get("q") or "").strip()
         users_sort = normalize_admin_users_sort(request.args.get("sort"))
         page = request.args.get("page", 1, type=int) or 1
@@ -3993,6 +4001,14 @@ def register_public_auth_routes(
             if search_query.isdigit():
                 search_filters.append(User.id == int(search_query))
             users_query = users_query.filter(or_(*search_filters))
+
+        if activation_filter:
+            zero_data_cutoff = utcnow_naive() - timedelta(days=7)
+            users_query = users_query.filter(zero_data_user_filter_clause())
+            if activation_filter == "zero_data_recent":
+                users_query = users_query.filter(User.created_at >= zero_data_cutoff)
+            else:
+                users_query = users_query.filter(User.created_at < zero_data_cutoff)
 
         total_user_count = users_query.order_by(None).count()
         total_pages = max((total_user_count + ADMIN_USERS_PER_PAGE - 1) // ADMIN_USERS_PER_PAGE, 1)
@@ -4092,6 +4108,7 @@ def register_public_auth_routes(
             section="users",
             users=users,
             status_filter=status_filter,
+            activation_filter=activation_filter,
             search_query=search_query,
             users_sort=users_sort,
             users_page=page,
@@ -4316,6 +4333,117 @@ def register_public_auth_routes(
             output.getvalue(),
             mimetype="text/csv",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.route("/dashboard/admin/access/test-accounts")
+    @admin_required
+    def admin_test_accounts():
+        from cli.qa_fixtures.admin_ops import (
+            build_fixture_stats,
+            expected_cta_kv_rows,
+            list_fixture_rows,
+            parse_expected_cta,
+            resolve_open_test_path,
+        )
+        from cli.qa_fixtures.registry import SCENARIO_REGISTRY
+        from cli.qa_fixtures.safety import KNOWN_FIXTURE_PASSWORD
+
+        admin_user = get_current_admin_user()
+        rows_by_key = {row.scenario_key: row for row in list_fixture_rows()}
+        fixture_rows = []
+        for scenario_key, meta in sorted(SCENARIO_REGISTRY.items()):
+            sidecar = rows_by_key.get(scenario_key)
+            if sidecar is None:
+                parsed_cta = meta.get("expected_cta")
+                fixture_rows.append(
+                    {
+                        "id": None,
+                        "scenario_key": scenario_key,
+                        "label": meta["label"],
+                        "fixture_version": "—",
+                        "notes": None,
+                        "last_seeded_at": None,
+                        "last_verified_result": None,
+                        "user": None,
+                        "expected_cta_rows": expected_cta_kv_rows(parsed_cta),
+                        "open_test_path": meta.get("test_path"),
+                    }
+                )
+                continue
+            parsed_cta = parse_expected_cta(sidecar.expected_cta_json)
+            fixture_rows.append(
+                {
+                    "id": sidecar.id,
+                    "scenario_key": sidecar.scenario_key,
+                    "label": sidecar.label,
+                    "fixture_version": sidecar.fixture_version,
+                    "notes": sidecar.notes,
+                    "last_seeded_at": sidecar.last_seeded_at,
+                    "last_verified_result": sidecar.last_verified_result,
+                    "user": sidecar.user,
+                    "expected_cta_rows": expected_cta_kv_rows(parsed_cta),
+                    "open_test_path": resolve_open_test_path(sidecar),
+                }
+            )
+        rows = list(rows_by_key.values())
+        page_ctx = build_admin_page_context(
+            admin_user=admin_user,
+            section="test_accounts",
+            title="MyFXJournal | QA Test Accounts",
+            page_heading="QA test accounts",
+            page_subtitle=(
+                "Contextual waitlist CTA fixtures for manual QA. "
+                "Re-seed or delete only dummy-cta-*@myfxjournal.test users."
+            ),
+        )
+        page_ctx.update(
+            {
+                "fixture_rows": fixture_rows,
+                "fixture_stats": build_fixture_stats(rows),
+                "fixture_password": KNOWN_FIXTURE_PASSWORD,
+            }
+        )
+        return render_template("admin_test_accounts.html", **page_ctx)
+
+    @app.route(
+        "/dashboard/admin/access/test-accounts/<int:sidecar_id>/notes",
+        methods=["POST"],
+    )
+    @admin_required
+    def admin_test_accounts_notes(sidecar_id):
+        from cli.qa_fixtures.admin_ops import update_fixture_notes
+
+        update_fixture_notes(sidecar_id, request.form.get("notes", ""))
+        return build_admin_redirect("test_accounts", "Notes saved.", "success")
+
+    @app.route(
+        "/dashboard/admin/access/test-accounts/<int:sidecar_id>/re-seed",
+        methods=["POST"],
+    )
+    @root_admin_required
+    def admin_test_accounts_reseed(sidecar_id):
+        from cli.qa_fixtures.admin_ops import reseed_fixture
+
+        scenario_key = reseed_fixture(sidecar_id)
+        return build_admin_redirect(
+            "test_accounts",
+            f"Re-seeded fixture scenario {scenario_key}.",
+            "success",
+        )
+
+    @app.route(
+        "/dashboard/admin/access/test-accounts/<int:sidecar_id>/delete",
+        methods=["POST"],
+    )
+    @root_admin_required
+    def admin_test_accounts_delete(sidecar_id):
+        from cli.qa_fixtures.admin_ops import delete_fixture
+
+        scenario_key = delete_fixture(sidecar_id)
+        return build_admin_redirect(
+            "test_accounts",
+            f"Deleted fixture scenario {scenario_key}.",
+            "success",
         )
 
     @app.route("/dashboard/admin/access/users/<int:user_id>/regenerate-ai-advice", methods=["POST"])

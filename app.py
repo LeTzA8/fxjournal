@@ -647,6 +647,10 @@ from celery_app import init_celery
 
 init_celery(app)
 
+from cli.qa_fixtures import register_cli as register_qa_fixture_cli
+
+register_qa_fixture_cli(app)
+
 
 
 

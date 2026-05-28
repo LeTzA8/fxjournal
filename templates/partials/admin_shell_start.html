@@ -29,6 +29,10 @@
           href="{{ url_for('admin_waitlist') }}"
           class="admin-side-nav-link{% if section == 'waitlist' %} is-active{% endif %}"
         >Waitlist</a>
+        <a
+          href="{{ url_for('admin_test_accounts') }}"
+          class="admin-side-nav-link{% if section == 'test_accounts' %} is-active{% endif %}"
+        >QA Test Accounts</a>
         {% if is_root_admin %}
         <a
           href="{{ url_for('admin_mt5_accounts') }}"
@@ -80,6 +84,11 @@
             <span class="admin-stat-label">Waitlist</span>
             <span class="admin-stat-value">{{ overview.waitlist_people }}</span>
           </a>
+          <span class="admin-stat-tile admin-stat-tile--static" title="Zero-data: no trades and no MT5 submission">
+            <span class="admin-stat-label">Pre-activation</span>
+            <span class="admin-stat-value">{{ overview.pre_activation_recent }} recent · {{ overview.pre_activation_stuck }} stuck</span>
+            <a href="{{ url_for('admin_signup_users', status=status_filter, activation='zero_data_recent', q=search_query or None) }}" class="admin-stat-drill-link soft">View recent →</a>
+          </span>
         </div>
         {% elif section == 'codes' %}
         <div class="admin-stat-row">
@@ -174,6 +183,23 @@
           <span class="admin-stat-tile admin-stat-tile--static">
             <span class="admin-stat-label">MT5 accounts</span>
             <span class="admin-stat-value">{{ overview.mt5_accounts }}</span>
+          </span>
+        </div>
+        {% elif section == 'test_accounts' %}
+        <div class="admin-stat-row">
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">Fixtures seeded</span>
+            <span class="admin-stat-value">{{ fixture_stats.fixture_count }} / {{ fixture_stats.expected_count }}</span>
+          </span>
+          <span class="admin-stat-tile admin-stat-tile--static">
+            <span class="admin-stat-label">Oldest seed (UTC)</span>
+            <span class="admin-stat-value admin-stat-value--compact">
+              {{ fixture_stats.oldest_last_seeded_at.strftime('%Y-%m-%d %H:%M') if fixture_stats.oldest_last_seeded_at else '—' }}
+            </span>
+          </span>
+          <span class="admin-stat-tile admin-stat-tile--static{% if fixture_stats.drift_count %} admin-stat-tile--warn{% endif %}">
+            <span class="admin-stat-label">Drift flagged</span>
+            <span class="admin-stat-value">{{ fixture_stats.drift_count }}</span>
           </span>
         </div>
         {% endif %}

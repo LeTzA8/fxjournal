@@ -649,7 +649,7 @@
 {% set show_mt5_guidance = is_state_one and not has_any_trades %}
 {% set mt5_use_setup_wizard = (is_state_one and not has_any_trades) or is_state_two %}
 {% set _mt5_use_wizard = mt5_use_setup_wizard %}
-{% set mt5_onboarding_compact = (is_state_one and not has_any_trades) or is_state_two %}
+{% set mt5_onboarding_compact = is_pure_zero_data or (is_state_one and not has_any_trades) or is_state_two %}
 {% set mt5_hide_trial_inline = mt5_use_setup_wizard and mt5_selected_status in ("requestable", "pending") %}
 {% set hero_copy = none %}
 {% if is_state_two %}
@@ -693,7 +693,9 @@
         </section>
         {% endif %}
 
-        {% if show_whats_next_banner %}
+        {% if show_whats_next_banner and is_pure_zero_data %}
+        {% include "_choose_your_path_card.html" %}
+        {% elif show_whats_next_banner %}
         <section class="panel journey-banner journey-banner--compact{% if is_state_one and not has_any_trades %} journey-banner--mt5-first{% endif %}">
             <div class="journey-banner-copy">
                 <p class="journey-banner-kicker">What's next</p>
@@ -840,10 +842,12 @@
         <section class="ai-hero-grid {% if mt5_cfd_accounts %}has-mt5{% else %}no-mt5{% endif %}{% if is_state_one %} state-onboarding{% endif %}" data-reveal-row-step="120" data-reveal-col-step="70">
             <div class="mt5-side-stack">
                 {% if mt5_cfd_accounts %}
-                <article id="mt5-access" class="panel mt5-access-panel mt5-workflow-panel{% if show_mt5_guidance %} is-guided{% endif %}{% if is_state_one and not has_any_trades %} mt5-workflow-panel--onboarding{% elif is_state_two %} mt5-workflow-panel--compact{% endif %}">
+                <article id="mt5-access" class="panel mt5-access-panel mt5-workflow-panel{% if show_mt5_guidance %} is-guided{% endif %}{% if is_pure_zero_data or (is_state_one and not has_any_trades) %} mt5-workflow-panel--onboarding{% elif is_state_two %} mt5-workflow-panel--compact{% endif %}">
                     <div class="panel-head">
                         <div class="panel-title-wrap">
-                            {% if is_state_one and not has_any_trades %}
+                            {% if is_pure_zero_data %}
+                            <h2>Want trades to sync automatically?</h2>
+                            {% elif is_state_one and not has_any_trades %}
                             {% if mt5_selected_account %}
                             <h2>{{ mt5_selected_account.name }}</h2>
                             {% else %}
@@ -883,6 +887,10 @@
                         </span>
                         {% endif %}
                     </div>
+
+                    {% if is_pure_zero_data and not mt5_selected_account %}
+                    <p class="mt5-panel-intro">MT5 sync pulls your trades automatically. Access opens gradually as we scale infrastructure — uploading a report is the fastest start.</p>
+                    {% endif %}
 
                     {% if dashboard_continuity %}
                     <div class="dash-continuity-row dash-continuity-row--mt5" aria-label="Account status">
@@ -1468,7 +1476,10 @@
                 <article id="mt5-access" class="panel mt5-access-panel mt5-overview-panel-empty{% if show_mt5_guidance %} is-guided{% endif %}{% if is_state_one and not has_any_trades %} mt5-workflow-panel--onboarding{% endif %}">
                     <div class="panel-head">
                         <div class="panel-title-wrap">
-                            {% if is_state_one and not has_any_trades %}
+                            {% if is_pure_zero_data %}
+                            <h2>Want trades to sync automatically?</h2>
+                            <p class="panel-account-note">Create a CFD trade account first.</p>
+                            {% elif is_state_one and not has_any_trades %}
                             <h2>Connect MetaTrader 5</h2>
                             <p class="panel-account-note">Create a CFD trade account first.</p>
                             {% else %}
@@ -1730,24 +1741,30 @@
                             <p class="insight-body ai-generating-copy">{{ weekly_ai_empty_message|trim }}</p>
                         </div>
                         {% elif is_state_one and not weekly_ai_review %}
-                        <div class="dashboard-ai-preview" aria-label="Sample weekly AI review">
-                            <div class="dashboard-ai-preview-main">
-                                <p class="dashboard-ai-preview-label">🧠 What mattered this week</p>
-                                <p class="dashboard-ai-preview-title">You were profitable. Your risk still leaked.</p>
-                                <p class="dashboard-ai-preview-body">After losses, your next positions got bigger. That one habit created most of the drawdown.</p>
+                        <section id="weekly-ai-sample" class="weekly-ai-sample-panel" aria-label="Sample weekly AI review">
+                            <span class="weekly-ai-sample-badge">Sample · Not your data</span>
+                            <div class="dashboard-ai-preview" aria-hidden="false">
+                                <div class="dashboard-ai-preview-main">
+                                    <p class="dashboard-ai-preview-label">🧠 What mattered this week</p>
+                                    <p class="dashboard-ai-preview-title">EURUSD wins were fine; XAUUSD sizing after the Tuesday loss drove most of the week’s drawdown.</p>
+                                    <p class="dashboard-ai-preview-body">Sample data — not from your trading.</p>
+                                    <ul class="weekly-ai-sample-evidence">
+                                        <li><span class="weekly-ai-sample-ref">Wed · EURUSD</span> — closed +12 pips with planned size.</li>
+                                        <li><span class="weekly-ai-sample-ref">Thu · XAUUSD</span> — lot size 1.4× average after the prior loss.</li>
+                                    </ul>
+                                    <p class="weekly-ai-sample-takeaway"><strong>Implication:</strong> one habit (sizing up after losses) explains most of the red week.</p>
+                                    <p class="weekly-ai-sample-experiment"><strong>Experiment:</strong> after any loss, cap the next trade at your median lot size for five sessions.</p>
+                                </div>
+                                <div class="weekly-ai-sample-prompts" aria-hidden="true">
+                                    <span class="weekly-ai-sample-prompt is-disabled">Ask about this review</span>
+                                    <span class="weekly-ai-sample-prompt is-disabled">What should I change first?</span>
+                                </div>
                             </div>
-                            <div class="dashboard-ai-preview-side">
-                                <article class="dashboard-ai-preview-card dashboard-ai-preview-card--action">
-                                    <p>🎯 Next fix</p>
-                                    <strong>After a loss, trade normal size.</strong>
-                                </article>
-                                <article class="dashboard-ai-preview-card">
-                                    <p>✅ Keep this</p>
-                                    <strong>You cut losers quickly. Do not change that.</strong>
-                                </article>
+                            <div class="weekly-ai-sample-footer">
+                                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Upload your trades to get your own review</a>
+                                <a href="{{ url_for('trades.new_trade') }}" class="weekly-ai-sample-footer-link">Or add one manually</a>
                             </div>
-                            <p class="dashboard-ai-preview-note">Sample review — yours uses your actual synced trades once the week completes.</p>
-                        </div>
+                        </section>
                         {% else %}
                         <p class="insight-body">{{ weekly_ai_empty_message|trim }}</p>
                         {% endif %}

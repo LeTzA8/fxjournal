@@ -1247,6 +1247,43 @@ class UpgradeWaitlistEntry(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
 
 
+class QaTestAccount(db.Model):
+    """Sidecar metadata for contextual waitlist CTA QA fixture users."""
+
+    __tablename__ = "qa_test_accounts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    scenario_key = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    label = db.Column(db.String(128), nullable=False)
+    fixture_version = db.Column(db.String(32), nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    test_path = db.Column(db.String(255), nullable=True)
+    expected_cta_json = db.Column(db.Text, nullable=True)
+    last_seeded_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    last_verified_at = db.Column(db.DateTime, nullable=True)
+    last_verified_result = db.Column(db.String(32), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+    )
+
+    user = db.relationship(
+        "User",
+        backref=db.backref("qa_test_account", uselist=False, cascade="all, delete-orphan"),
+        lazy=True,
+    )
+
+
 @event.listens_for(Session, "before_flush")
 def mark_deleted_mt5_accounts_for_cleanup(session, _flush_context, _instances):
     deleted_user_ids = {

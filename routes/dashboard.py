@@ -76,6 +76,7 @@ from routes.admin_journal import (
     journal_update_feedback_response,
     journal_update_tags_response,
 )
+from helpers.admin_activation import dashboard_row_has_mt5_submission
 from helpers.utils import login_required, utcnow_naive
 from models import (
     AccountCashFlow,
@@ -1802,6 +1803,13 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
     else:
         dashboard_state = "state-1"
     has_ai_review = weekly_ai_state["weekly_ai_review"] is not None
+    has_mt5_submission = dashboard_row_has_mt5_submission(mt5_sections["mt5_selected_row"])
+    is_pure_zero_data = not has_any_trades and not has_mt5_submission
+    user_created_at = getattr(target_user, "created_at", None)
+    user_age_days = (
+        (utcnow_naive() - user_created_at).days if user_created_at is not None else 0
+    )
+    show_zero_data_soft_waitlist = is_pure_zero_data and user_age_days >= 1
     show_whats_next_banner = (
         not (has_any_trades and has_ai_review)
         and not review_workflow_banner_state["show_workflow_banner"]
@@ -1927,6 +1935,9 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         has_closed_trades=has_closed_trades,
         has_ai_review=has_ai_review,
         show_whats_next_banner=show_whats_next_banner,
+        has_mt5_submission=has_mt5_submission,
+        is_pure_zero_data=is_pure_zero_data,
+        show_zero_data_soft_waitlist=show_zero_data_soft_waitlist,
         weekly_ai_min_closed_trades=MIN_CLOSED_TRADES_FOR_ADVICE,
         small_sample_min_trades=SMALL_SAMPLE_MIN_TRADES,
         win_rate_is_limited_sample=has_closed_trades

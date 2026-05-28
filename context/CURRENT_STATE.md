@@ -1,6 +1,25 @@
 # CURRENT_STATE
 
-Last Updated: 2026-05-27
+Last Updated: 2026-05-28
+
+## Waitlist CTA QA fixtures (2026-05-28)
+
+- `qa_test_accounts` sidecar table (`models.QaTestAccount`, migration `20260528_0061`) — fixture metadata only; no `users` column flags.
+- Flask CLI: `flask seed-waitlist-cta-test-data` / `flask reset-waitlist-cta-test-data` (`cli/qa_fixtures/`) with `--scenario`, `--reset`, `--allow-production`, `--yes`; production gating + TTY `I UNDERSTAND` confirm; `seed_all_fixture_scenarios()` for atomic full reseed.
+- Six scenarios seeded via direct ORM (no register route, no `send_email_placeholder`, no Celery/MT5 dispatch): replay lock, AI follow-up cap, MT5 expired, MT5 paused, zero-data, normal active control. Password `TestPassword123!`; emails `dummy-cta-*@myfxjournal.test`. Replay `test_path` uses trade `pubkey`.
+- Paused vs expired: `get_trial_state` uses `sync_paused_at` only (Scenario D sets `sync_pause_reason=trial_expired` for parity with prod rows).
+- Admin: `GET /dashboard/admin/access/test-accounts` + POST notes/re-seed/delete (`cli/qa_fixtures/admin_ops.py`, `templates/admin_test_accounts.html`); re-seed/delete are root-admin-only; sidebar **QA Test Accounts**; header notes fixtures appear in user totals.
+- Tests: `tests/test_qa_waitlist_cta_fixtures.py`, `tests/test_qa_waitlist_cta_fixture_scenarios.py` (§9.3 + §9.6), `tests/test_qa_test_accounts_admin.py` (§9.5); `tests/test_admin_route_gating.py` route list updated.
+
+## Pre-activation zero-data funnel (2026-05-28)
+
+- Pure zero-data users (`no trades` + no MT5 account/access request on active CFD row) see `templates/_choose_your_path_card.html` instead of the MT5-first journey banner: upload report, add manual trade, request MT5 sync (`#mt5-access`), preview sample review (`#weekly-ai-sample`).
+- Dashboard flags in `routes/dashboard.py`: `is_pure_zero_data`, `has_mt5_submission` via `helpers/admin_activation.dashboard_row_has_mt5_submission` (excludes `requestable`-only rows).
+- Soft waitlist: muted footer link after 1+ days zero-data (`source=zero_data_dashboard`, `feature=advanced_replay`, `cta_context=zero_data_soft_waitlist`); allowlist in `auth_account.py`.
+- Sample weekly review mock enhanced with badge, evidence bullets, footer CTAs (`templates/index.html`); MT5 panel H2/intro for pure zero-data uses “Want trades to sync automatically?” framing.
+- Admin: `helpers/admin_activation.count_pre_activation_users` + Users stat tile; filters `?activation=zero_data_recent|zero_data_stuck` on `/dashboard/admin/access/users`.
+- Styles: `static/css/app_pages.css` (cache `v=15` in `base.html`).
+- Tests: `tests/test_zero_data_funnel.py`; updated `test_dashboard_weekly_ai.py` state-1 banner expectations.
 
 ## Contextual waitlist CTAs (2026-05-27)
 

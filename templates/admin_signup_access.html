@@ -108,9 +108,12 @@
                         <a href="{{ url_for('admin_signup_users', status='suspended', q=search_query or None, sort=users_sort) }}" class="admin-filter{% if status_filter == 'suspended' %} is-active{% endif %}">Suspended</a>
                         <a href="{{ url_for('admin_signup_users', status='admins', q=search_query or None, sort=users_sort) }}" class="admin-filter{% if status_filter == 'admins' %} is-active{% endif %}">Admins</a>
                         <a href="{{ url_for('admin_signup_users', status='all', q=search_query or None, sort=users_sort) }}" class="admin-filter{% if status_filter == 'all' %} is-active{% endif %}">All</a>
+                        <a href="{{ url_for('admin_signup_users', status=status_filter, activation='zero_data_recent', q=search_query or None, sort=users_sort) }}" class="admin-filter{% if activation_filter == 'zero_data_recent' %} is-active{% endif %}">Zero-data (7d)</a>
+                        <a href="{{ url_for('admin_signup_users', status=status_filter, activation='zero_data_stuck', q=search_query or None, sort=users_sort) }}" class="admin-filter{% if activation_filter == 'zero_data_stuck' %} is-active{% endif %}">Zero-data (stuck)</a>
                     </div>
                     <form action="{{ url_for('admin_signup_users') }}" method="get" class="admin-sort-form">
                         <input type="hidden" name="status" value="{{ status_filter }}">
+                        {% if activation_filter %}<input type="hidden" name="activation" value="{{ activation_filter }}">{% endif %}
                         <input type="hidden" name="q" value="{{ search_query }}">
                         <label class="admin-sort-label soft" for="adminUsersSort">Sort</label>
                         <select id="adminUsersSort" name="sort" class="admin-sort-select" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
@@ -133,6 +136,7 @@
                     </form>
                     <form action="{{ url_for('admin_signup_users') }}" method="get" class="admin-search-form">
                         <input type="hidden" name="status" value="{{ status_filter }}">
+                        {% if activation_filter %}<input type="hidden" name="activation" value="{{ activation_filter }}">{% endif %}
                         <input type="hidden" name="sort" value="{{ users_sort }}">
                         <input
                             type="text"

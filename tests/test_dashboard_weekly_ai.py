@@ -1272,7 +1272,8 @@ def test_dashboard_home_shows_no_trades_weekly_ai_message(app_ctx, client, monke
 
     assert response.status_code == 200
     assert b"Sample Weekly Review" in response.data
-    assert b"You were profitable. Your risk still leaked." in response.data
+    assert b"Sample data" in response.data
+    assert b"sizing after the Tuesday loss" in response.data
 
 
 def test_dashboard_home_shows_too_few_trades_weekly_ai_message(app_ctx, client, monkeypatch):
@@ -1439,12 +1440,12 @@ def test_dashboard_home_uses_state_1_for_active_account_even_when_other_accounts
 
     assert response.status_code == 200
     assert b'data-dashboard-state="state-1"' in response.data
-    assert b"journey-banner journey-banner--compact" in response.data
-    assert b"journey-banner--mt5-first" in response.data
-    assert b"Connect MetaTrader 5" in response.data
+    assert b"choose-your-path-card" in response.data
+    assert b"panel journey-banner journey-banner--compact" not in response.data
+    assert b"Want trades to sync automatically?" in response.data
     assert b"data-mt5-setup-wizard" in response.data
     assert b"Sample Weekly Review" in response.data
-    assert b"Import a report while setup runs" in response.data
+    assert b"Import while setup runs</a>" not in response.data
     assert b"mt5-workflow-panel is-guided" in response.data
     assert b'id="trade-journal"' not in response.data
     assert b"Your weekly AI review" in response.data
