@@ -1,0 +1,89 @@
+APPROXIMATE REPLAY GUARDRAILS
+==============================
+
+These rules apply when a trade includes replay_accuracy: "approximate".
+
+In approximate replay mode, chart context uses CFD bars from the trader's
+MT5 broker as a visual proxy for a futures trade. The CFD bars and the
+futures execution are from different instruments and price levels. The
+imported futures execution data (fill prices, timestamps, PnL) is always
+the source of truth.
+
+This file is NOT wired into existing weekly review prompts (Phase 1 scaffold).
+It defines the contract for Phase 2, when proxy bars may be used in AI review.
+Do not add these rules to dashboard_advice.txt, dashboard_advice_rewrite.txt,
+weekly_review_followup.txt, or journal_chat.txt until Phase 2 is implemented.
+
+
+SOURCE OF TRUTH
+---------------
+The following fields from the imported futures CSV are exact and reliable:
+- original_symbol / contract_code   (e.g. NQ, NQH6)
+- entry_time / exit_time            (imported, converted to UTC)
+- entry_price / exit_price          (actual CME fill prices)
+- quantity / contracts
+- pnl / fees
+
+The following data comes from a CFD proxy and is approximate:
+- chart bars (source: mt5_cfd, e.g. NAS100)
+- any bar-derived measurements (MFE, MAE, bar shapes, tick volume)
+
+
+TIMING AND STRUCTURE — ALLOWED
+-------------------------------
+Use timing and structure language freely:
+- "during the New York open"
+- "around the time of the entry"
+- "in the context of a pullback"
+- "near a session overlap"
+- "the timing suggests the entry was during a continuation leg"
+- "the proxy chart indicates this was a choppy period"
+- "the trade was held across two sessions"
+
+
+EXACT PRICE CLAIMS — NOT ALLOWED
+---------------------------------
+Do NOT make exact price claims when the only evidence is proxy CFD bars:
+- Do NOT say: "you entered exactly at the low"
+- Do NOT say: "your stop was 3 points below structure"
+- Do NOT say: "price missed your TP by 0.25"
+- Do NOT say: "MFE was exactly 2.1R"
+- Do NOT say: "a liquidity sweep confirmed your exact futures price"
+- Do NOT say: "you should have held to this specific price level"
+- Do NOT cite mfe_r, mae_r, tp_capture_pct, or exact TP/SL reach
+  as evidence when replay_accuracy is approximate
+
+
+BAR-DERIVED METRICS — NOT AVAILABLE
+------------------------------------
+The following fields are suppressed or unreliable for proxy trades:
+- mfe_r, mae_r
+- tp_capture_pct, closed_before_tp, closed_before_sl
+- post_exit_direction, post_exit_tp_reached
+- exact entry bar body/wick/volume microstructure
+
+If these fields are absent from the payload, do not attempt to infer them
+from the CFD proxy bars or estimate them from the execution prices alone.
+
+
+COACHING APPROACH FOR PROXY TRADES
+-----------------------------------
+Focus coaching on:
+- Session context and time-of-day patterns
+- Hold duration vs the trader's typical duration
+- Broad structural context (was price in an impulsive or corrective phase
+  at the approximate entry time, based on the proxy chart)
+- Behavioral signals: post-loss sequences, risk changes, re-entry patterns
+  (these derive from execution data and are fully reliable)
+
+If a coaching point would require exact bar-derived price evidence that
+is unavailable due to approximate replay, omit the price claim or note
+that exact price context is not available for this trade. Do not manufacture
+precision from approximate data.
+
+
+DISCLAIMER — INCLUDE WHEN CITING PROXY TRADES
+----------------------------------------------
+When referencing chart context for a proxy trade, include a brief note such as:
+"This is based on approximate chart context from a CFD proxy — exact price
+levels are not confirmed."

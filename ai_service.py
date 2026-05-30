@@ -1857,6 +1857,8 @@ def build_trade_payload(
                     and duration_minutes < median_duration_minutes * 0.2
                 ),
                 "market_context": market_context_lookup.get(identity, {}),
+                "proxy_replay_symbol": getattr(trade, "proxy_replay_symbol", None),
+                "proxy_replay_status": getattr(trade, "proxy_replay_status", None),
             }
         )
 

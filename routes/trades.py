@@ -65,6 +65,7 @@ from trading import (
     to_display_timezone,
 )
 from helpers.utils import login_required, utcnow_naive
+from helpers.futures_proxy import resolve_proxy_status, is_futures_trade, proxy_replay_api_block
 
 bp = Blueprint("trades", __name__)
 
@@ -857,6 +858,27 @@ def import_trade_file():
 
         import_stage = "commit_import"
         db.session.add_all(insert_batch)
+
+        # Futures proxy replay scaffold — set proxy metadata on each futures trade row.
+        # Does NOT queue any bar-fetch task; that is Phase 2.
+        if account_type == "FUTURES":
+            from models import User as _User  # noqa: PLC0415
+            import json as _json  # noqa: PLC0415
+            _proxy_user = _User.query.get(user_id)
+            for _trade_row in insert_batch:
+                try:
+                    _res = resolve_proxy_status(_trade_row, _proxy_user)
+                    _trade_row.proxy_replay_symbol = _res["proxy_symbol"]
+                    _trade_row.proxy_replay_status = _res["status"]
+                    if _res.get("window_minutes"):
+                        _trade_row.proxy_replay_window_minutes = _json.dumps(_res["window_minutes"])
+                except Exception as _proxy_exc:
+                    current_app.logger.warning(
+                        "Proxy replay status assignment failed trade_symbol=%s: %s",
+                        getattr(_trade_row, "symbol", "?"),
+                        _proxy_exc,
+                    )
+
         db.session.commit()
         _invalidate_trade_caches(user_id, active_trade_account.id)
         if queue_bundle_review_if_split_candidates(
@@ -1457,14 +1479,61 @@ def trade_chart_data(trade_pubkey):
     user_id = get_effective_user_id()
     trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
 
+    from flask import jsonify
+
+    # Futures trades: return proxy replay block + execution details.
+    # Phase 1: no bars exist yet — always return pending/unavailable state.
+    if is_futures_trade(trade):
+        proxy_block = proxy_replay_api_block(trade)
+        status = (
+            "proxy_pending"
+            if (trade.proxy_replay_status == "pending")
+            else "proxy_unavailable"
+        )
+        entry_dt = ensure_utc_aware(trade.opened_at) if trade.opened_at else None
+        exit_dt = ensure_utc_aware(trade.closed_at) if trade.closed_at else None
+
+        # Determine execution source from import_signature prefix
+        _sig = (trade.import_signature or "").lower()
+        if _sig.startswith("topstep"):
+            _exec_source = "topstep_csv"
+        elif _sig.startswith("tradovate"):
+            _exec_source = "tradovate_csv"
+        else:
+            _exec_source = "futures_csv"
+
+        return jsonify({
+            "status": status,
+            "proxy_replay": proxy_block,
+            # markers contains ONLY timestamp anchors — no price levels for proxy trades
+            "markers": {
+                "entry_time": int(entry_dt.timestamp()) if entry_dt else None,
+                "exit_time": int(exit_dt.timestamp()) if exit_dt else None,
+            },
+            # execution block carries the actual futures fill data (source of truth)
+            "execution": {
+                "symbol": trade.symbol,
+                "contract_code": trade.contract_code,
+                "side": trade.side,
+                "entry_price": trade.entry_price,
+                "exit_price": trade.exit_price,
+                "stop_loss": trade.stop_loss,
+                "take_profit": trade.take_profit,
+                "entry_time": int(entry_dt.timestamp()) if entry_dt else None,
+                "exit_time": int(exit_dt.timestamp()) if exit_dt else None,
+                "lot_size": trade.lot_size,
+                "pnl": trade.pnl,
+                "source_timezone": trade.source_timezone,
+                "execution_source": _exec_source,
+            },
+        })
+
     if not trade.mt5_position or trade.closed_at is None:
         return current_app.response_class(
             response='{"status":"unavailable"}',
             status=200,
             mimetype="application/json",
         )
-
-    from flask import jsonify
 
     # One round-trip for all cached bars (typical hundreds of rows per trade).
     bar_rows = (

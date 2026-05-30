@@ -104,6 +104,79 @@
             "</div></div>";
     }
 
+    function showProxyStatus(data) {
+        var proxy = (data && data.proxy_replay) || {};
+        var proxyStatus = proxy.status || "";
+        var proxySymbol = proxy.proxy_symbol || "";
+        var execution = (data && data.execution) || {};
+
+        var statusMsg;
+        if (proxyStatus === "unavailable_no_mapping") {
+            statusMsg =
+                "No proxy chart available for this instrument. " +
+                "Your execution details are below.";
+        } else if (proxyStatus === "unavailable_no_mt5") {
+            statusMsg =
+                "Connect an MT5 account in Trade Accounts to enable proxy charts " +
+                "for your futures trades.";
+        } else {
+            // pending or any other proxy status
+            var symbolPart = proxySymbol ? proxySymbol + " CFD" : "CFD";
+            statusMsg =
+                "Approximate Replay — proxy chart not yet available. " +
+                "Chart context for this trade will be generated from your broker’s " +
+                symbolPart + " bars.";
+        }
+
+        // Render proxy status panel
+        if (statusEl) {
+            statusEl.style.display = "";
+            statusEl.innerHTML =
+                '<span class="trade-chart-proxy-badge">Approximate Replay</span> ' +
+                '<span class="trade-chart-proxy-msg">' +
+                _escapeHtml(statusMsg) +
+                "</span>";
+        }
+
+        // Populate execution details panel if present in DOM
+        var execPanel = document.getElementById("tradeProxyExecutionPanel");
+        if (execPanel && execution.entry_price != null) {
+            var contractLabel = execution.contract_code || execution.symbol || "";
+            var sideLabel = (execution.side || "").toUpperCase();
+            var entryPrice = execution.entry_price != null ? execution.entry_price : "—";
+            var exitPrice = execution.exit_price != null ? execution.exit_price : "—";
+            var pnl = execution.pnl != null ? execution.pnl : "—";
+            var proxyChip = proxySymbol
+                ? '<span class="trade-chart-proxy-chip">Chart proxy: ' +
+                  _escapeHtml(proxySymbol) +
+                  " (MT5 CFD)</span>"
+                : "";
+
+            execPanel.innerHTML =
+                '<div class="trade-proxy-exec-card">' +
+                '<div class="trade-proxy-exec-heading">Futures Execution Details</div>' +
+                '<dl class="trade-proxy-exec-dl">' +
+                "<dt>Contract</dt><dd>" + _escapeHtml(contractLabel) + "</dd>" +
+                "<dt>Side</dt><dd>" + _escapeHtml(sideLabel) + "</dd>" +
+                "<dt>Entry</dt><dd>" + _escapeHtml(String(entryPrice)) + "</dd>" +
+                "<dt>Exit</dt><dd>" + _escapeHtml(String(exitPrice)) + "</dd>" +
+                "<dt>PnL</dt><dd>" + _escapeHtml(String(pnl)) + "</dd>" +
+                "</dl>" +
+                proxyChip +
+                '<p class="trade-proxy-disclaimer">Proxy chart — prices may not match your futures fills exactly.</p>' +
+                "</div>";
+            execPanel.hidden = false;
+        }
+    }
+
+    function _escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+    }
+
     function setStatus(text) {
         if (statusEl) {
             statusEl.style.display = "";
@@ -680,6 +753,11 @@
                 if (data.status === "pending") {
                     rememberChartPrefetch(null);
                     hidePanel();
+                    return;
+                }
+                if (data.status === "proxy_pending" || data.status === "proxy_unavailable") {
+                    rememberChartPrefetch(null);
+                    showProxyStatus(data);
                     return;
                 }
                 if (data.status === "ready") {

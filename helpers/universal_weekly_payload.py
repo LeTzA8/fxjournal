@@ -334,6 +334,29 @@ def _build_universal_trade(trade, *, strategy_ref):
     if market_summary:
         entry["market_context_summary"] = market_summary
 
+    # Futures proxy replay: annotate and suppress unreliable bar-derived fields.
+    # Suppression is idempotent now (proxy trades have no bars in Phase 1) but defines
+    # the contract for Phase 2 when proxy bars may be present.
+    if trade.get("proxy_replay_status") or trade.get("proxy_replay_symbol"):
+        entry["replay_accuracy"] = "approximate"
+        if trade.get("proxy_replay_symbol"):
+            entry["chart_price_source"] = "cfd_proxy"
+        # Suppress fields that are meaningless when chart bars are from a different instrument
+        _PROXY_SUPPRESSED = (
+            "tp_capture_pct",
+            "closed_before_tp",
+            "closed_before_sl",
+        )
+        for _k in _PROXY_SUPPRESSED:
+            entry.pop(_k, None)
+        # Suppress bar-derived numeric microstructure inside market_context_summary
+        if entry.get("market_context_summary"):
+            _ms = entry["market_context_summary"]
+            for _k in ("mfe_r", "mae_r", "post_exit_direction", "post_exit_tp_reached"):
+                _ms.pop(_k, None)
+            if not _ms:
+                entry.pop("market_context_summary", None)
+
     return entry
 
 

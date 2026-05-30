@@ -1871,6 +1871,66 @@ body.app-layout .trade-accounts-page .helper-note {
     display: none;
 }
 
+/* --- Futures proxy replay scaffold --- */
+.trade-chart-proxy-badge,
+.trade-chart-proxy-badge-head {
+    display: inline-block;
+    padding: 0.15em 0.5em;
+    border-radius: 3px;
+    background: #7c5c00;
+    color: #ffe9a0;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    vertical-align: middle;
+    margin-left: 0.35em;
+}
+.trade-chart-proxy-msg {
+    font-size: 0.78rem;
+    color: var(--text-muted, #888);
+}
+.trade-proxy-exec-card {
+    margin-top: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--card-bg, #1a1a1a);
+    border: 1px solid var(--border, #333);
+    border-radius: 6px;
+    font-size: 0.8rem;
+}
+.trade-proxy-exec-heading {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary, #e0e0e0);
+}
+.trade-proxy-exec-dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.15rem 0.75rem;
+    margin: 0 0 0.5rem;
+}
+.trade-proxy-exec-dl dt {
+    color: var(--text-muted, #888);
+    font-weight: 500;
+}
+.trade-proxy-exec-dl dd {
+    margin: 0;
+    color: var(--text-primary, #e0e0e0);
+}
+.trade-chart-proxy-chip {
+    display: inline-block;
+    padding: 0.1em 0.45em;
+    border-radius: 3px;
+    border: 1px solid var(--border, #333);
+    font-size: 0.7rem;
+    color: var(--text-muted, #888);
+    margin-bottom: 0.4rem;
+}
+.trade-proxy-disclaimer {
+    margin: 0.4rem 0 0;
+    font-size: 0.72rem;
+    color: var(--text-muted, #888);
+}
+
 /* --- Contact page --- */
 body.app-layout .contact-page .dash-content,
 body.auth-layout .contact-page .dash-content {
