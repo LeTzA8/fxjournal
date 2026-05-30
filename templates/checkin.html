@@ -534,58 +534,61 @@
             <input type="hidden" name="trade_type_{{ candidate.trade_pubkey }}" value="{{ candidate.selected_type }}">
             {% endfor %}
 
-            <fieldset class="checkin-fieldset">
-                <legend class="checkin-legend">Step 3. Weekly Check-In</legend>
-                <div class="outlier-section-note">Q1. How was your emotional state during that week?</div>
-                <div class="checkin-options">
-                    {% for option in emotional_state_options %}
-                    <label class="checkin-option">
-                        <input type="radio" name="emotional_state" value="{{ option.value }}" {% if emotional_state_value == option.value %}checked{% endif %}>
-                        <span class="checkin-option-content">
-                            <span class="checkin-option-title">{{ option.label }}</span>
-                        </span>
-                    </label>
-                    {% endfor %}
-                </div>
-            </fieldset>
+            <section class="outlier-review" aria-label="Weekly check-in">
+                <h2 class="checkin-legend">Step 3. Weekly Check-In</h2>
 
-            <fieldset class="checkin-fieldset">
-                <legend class="checkin-legend">Q2. How well did you follow your trading plan that week?</legend>
-                <div class="checkin-options">
-                    {% for option in plan_adherence_options %}
-                    <label class="checkin-option">
-                        <input type="radio" name="plan_adherence" value="{{ option.value }}" {% if plan_adherence_value == option.value %}checked{% endif %}>
-                        <span class="checkin-option-content">
-                            <span class="checkin-option-title">{{ option.label }}</span>
-                        </span>
-                    </label>
-                    {% endfor %}
-                </div>
-            </fieldset>
+                <fieldset class="checkin-fieldset">
+                    <legend class="checkin-legend">Q1. How was your emotional state during that week?</legend>
+                    <div class="checkin-options">
+                        {% for option in emotional_state_options %}
+                        <label class="checkin-option">
+                            <input type="radio" name="emotional_state" value="{{ option.value }}" {% if emotional_state_value == option.value %}checked{% endif %}>
+                            <span class="checkin-option-content">
+                                <span class="checkin-option-title">{{ option.label }}</span>
+                            </span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
 
-            <fieldset class="checkin-fieldset">
-                <legend class="checkin-legend">Q3. How was your overall execution quality that week?</legend>
-                <div class="checkin-options">
-                    {% for option in execution_quality_options %}
-                    <label class="checkin-option">
-                        <input type="radio" name="execution_quality" value="{{ option.value }}" {% if execution_quality_value == option.value %}checked{% endif %}>
-                        <span class="checkin-option-content">
-                            <span class="checkin-option-title">{{ option.label }}</span>
-                        </span>
-                    </label>
-                    {% endfor %}
-                </div>
-            </fieldset>
+                <fieldset class="checkin-fieldset">
+                    <legend class="checkin-legend">Q2. How well did you follow your trading plan that week?</legend>
+                    <div class="checkin-options">
+                        {% for option in plan_adherence_options %}
+                        <label class="checkin-option">
+                            <input type="radio" name="plan_adherence" value="{{ option.value }}" {% if plan_adherence_value == option.value %}checked{% endif %}>
+                            <span class="checkin-option-content">
+                                <span class="checkin-option-title">{{ option.label }}</span>
+                            </span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
 
-            <div class="checkin-context-wrap">
-                <label for="additional_context" class="checkin-legend">Q4. Anything the AI should know? <span class="muted">(optional)</span></label>
-                <textarea
-                    id="additional_context"
-                    name="additional_context"
-                    class="checkin-context"
-                    placeholder="Examples: I broke routine after two losses, I traded around major news, or I was sizing up more than usual."
-                >{{ additional_context_value }}</textarea>
-            </div>
+                <fieldset class="checkin-fieldset">
+                    <legend class="checkin-legend">Q3. How was your overall execution quality that week?</legend>
+                    <div class="checkin-options">
+                        {% for option in execution_quality_options %}
+                        <label class="checkin-option">
+                            <input type="radio" name="execution_quality" value="{{ option.value }}" {% if execution_quality_value == option.value %}checked{% endif %}>
+                            <span class="checkin-option-content">
+                                <span class="checkin-option-title">{{ option.label }}</span>
+                            </span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+
+                <div class="checkin-context-wrap">
+                    <label for="additional_context" class="checkin-legend">Q4. Anything the AI should know? <span class="muted">(optional)</span></label>
+                    <textarea
+                        id="additional_context"
+                        name="additional_context"
+                        class="checkin-context"
+                        placeholder="Examples: I broke routine after two losses, I traded around major news, or I was sizing up more than usual."
+                    >{{ additional_context_value }}</textarea>
+                </div>
+            </section>
 
             <div class="checkin-actions">
                 <button type="submit" class="submit-btn">Save Check-In</button>

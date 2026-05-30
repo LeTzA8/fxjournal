@@ -21,7 +21,6 @@
         {% call app_page_hero(
             "Trade accounts",
             eyebrow="Settings",
-            primary_story="Separate prop challenges, live cash, and demos so PnL and reviews never get mixed.",
             hero_copy=_account_count_label ~ " in your journal.",
             chips=hero_chips,
             extra_class="app-page-hero--settings-hub"
@@ -339,14 +338,14 @@
                 {% endfor %}
             </select>
 
-            <label for="tradeAccountDialogDefaultStrategy">Default strategy for imports &amp; MT5 sync (optional)</label>
+            <label for="tradeAccountDialogDefaultStrategy" id="tradeAccountDialogDefaultStrategyLabel">Default strategy for imports &amp; MT5 sync (optional)</label>
             <select id="tradeAccountDialogDefaultStrategy" name="default_trade_profile_pubkey">
                 <option value="">None — new imports stay without a strategy until you assign one</option>
                 {% for profile in trade_profile_options %}
                 <option value="{{ profile.pubkey }}">{{ profile.name }}</option>
                 {% endfor %}
             </select>
-            <p class="helper-note dialog-field-hint">Only affects newly imported or MT5-synced trades on this account. Manual trades still use the strategy field on the trade form.</p>
+            <p class="helper-note dialog-field-hint" id="tradeAccountDialogDefaultStrategyHint">Only affects newly imported or MT5-synced trades on this account. Manual trades still use the strategy field on the trade form.</p>
 
             <label id="tradeAccountDialogDefaultRow" class="toggle-row" for="tradeAccountDialogDefault">
                 <input id="tradeAccountDialogDefault" name="set_as_default" type="checkbox" value="1">

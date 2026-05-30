@@ -1271,9 +1271,10 @@ def test_dashboard_home_shows_no_trades_weekly_ai_message(app_ctx, client, monke
     response = client.get("/dashboard")
 
     assert response.status_code == 200
-    assert b"Sample Weekly Review" in response.data
-    assert b"Sample data" in response.data
-    assert b"sizing after the Tuesday loss" in response.data
+    # Zero-data state: choose-your-path card + onboarding sample both render.
+    assert b"Sample \xc2\xb7 Not your data" in response.data  # sample badge
+    assert b"sample data, not your trading" in response.data  # choose-your-path card
+    assert b"sizing up on" in response.data  # sample review insight text
 
 
 def test_dashboard_home_shows_too_few_trades_weekly_ai_message(app_ctx, client, monkeypatch):
@@ -1444,7 +1445,7 @@ def test_dashboard_home_uses_state_1_for_active_account_even_when_other_accounts
     assert b"panel journey-banner journey-banner--compact" not in response.data
     assert b"Want trades to sync automatically?" in response.data
     assert b"data-mt5-setup-wizard" in response.data
-    assert b"Sample Weekly Review" in response.data
+    assert b"Sample \xc2\xb7 Not your data" in response.data  # onboarding sample badge
     assert b"Import while setup runs</a>" not in response.data
     assert b"mt5-workflow-panel is-guided" in response.data
     assert b'id="trade-journal"' not in response.data
@@ -1714,6 +1715,68 @@ def test_dashboard_home_shows_continuity_in_hero_when_no_cfd_accounts(app_ctx, c
     assert b'class="dash-continuity-row dash-continuity-row--mt5"' not in response.data
     assert b"ai-hero-grid no-mt5" in response.data
     assert b"ES" in response.data
+
+
+def test_dashboard_futures_state_two_does_not_nudge_mt5(app_ctx, client, monkeypatch):
+    user = User(
+        username="dashboard-futures-state-two-user",
+        email="dashboard-futures-state-two@example.com",
+        password="hashed-password",
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    futures_account = TradeAccount(
+        user_id=user.id,
+        name="Futures Active",
+        account_type="FUTURES",
+        is_default=True,
+    )
+    db.session.add(futures_account)
+    db.session.commit()
+
+    with client.session_transaction() as session_state:
+        session_state["user_id"] = user.id
+        session_state["username"] = user.username
+        session_state["display_timezone"] = "UTC"
+        session_state["active_trade_account_id"] = futures_account.id
+
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=futures_account.id,
+            symbol="ES",
+            side="BUY",
+            entry_price=5200.0,
+            exit_price=5210.0,
+            lot_size=1.0,
+            pnl=500.0,
+            opened_at=datetime(2026, 3, 22, 8, 0, 0),
+            closed_at=datetime(2026, 3, 22, 10, 0, 0),
+        )
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b'data-dashboard-state="state-2"' in response.data
+    assert b"Connect MT5 next" not in response.data
+    assert b"Keep building your journal" in response.data
+    assert b'id="mt5-access"' not in response.data
+    assert b"data-mt5-setup-wizard" not in response.data
 
 
 def test_dashboard_home_marks_running_trade_rows(app_ctx, client, monkeypatch):

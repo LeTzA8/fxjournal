@@ -646,13 +646,13 @@
 {% block content %}
 {% set is_state_one = dashboard_state == "state-1" %}
 {% set is_state_two = dashboard_state == "state-2" %}
-{% set show_mt5_guidance = is_state_one and not has_any_trades %}
-{% set mt5_use_setup_wizard = (is_state_one and not has_any_trades) or is_state_two %}
+{% set show_mt5_guidance = is_active_cfd and is_state_one and not has_any_trades %}
+{% set mt5_use_setup_wizard = is_active_cfd and ((is_state_one and not has_any_trades) or is_state_two) %}
 {% set _mt5_use_wizard = mt5_use_setup_wizard %}
-{% set mt5_onboarding_compact = is_pure_zero_data or (is_state_one and not has_any_trades) or is_state_two %}
+{% set mt5_onboarding_compact = is_active_cfd and (is_pure_zero_data or (is_state_one and not has_any_trades) or is_state_two) %}
 {% set mt5_hide_trial_inline = mt5_use_setup_wizard and mt5_selected_status in ("requestable", "pending") %}
 {% set hero_copy = none %}
-{% if is_state_two %}
+{% if is_state_two and is_active_cfd %}
 {% set hero_copy = "Connect MT5 — automatic sync, no more manual exports." %}
 {% elif is_state_one and not has_any_trades %}
 {% if active_trade_account %}
@@ -694,14 +694,18 @@
         {% endif %}
 
         {% if show_whats_next_banner and not is_pure_zero_data %}
-        <section class="panel journey-banner journey-banner--compact{% if is_state_one and not has_any_trades %} journey-banner--mt5-first{% endif %}">
+        <section class="panel journey-banner journey-banner--compact{% if is_active_cfd and is_state_one and not has_any_trades %} journey-banner--mt5-first{% endif %}">
             <div class="journey-banner-copy">
                 <p class="journey-banner-kicker">What's next</p>
                 <h2 class="journey-banner-title">
-                    {% if is_state_one and not has_any_trades %}
+                    {% if is_active_cfd and is_state_one and not has_any_trades %}
                     Connect MetaTrader 5
-                    {% elif is_state_two %}
+                    {% elif is_active_cfd and is_state_two %}
                     Connect MT5 next
+                    {% elif is_active_futures and is_state_one and not has_any_trades %}
+                    Import your Tradovate history
+                    {% elif is_active_futures and is_state_two %}
+                    Keep building your journal
                     {% elif not has_any_trades %}
                     Add your first trades
                     {% elif not has_closed_trades %}
@@ -713,12 +717,20 @@
                     {% endif %}
                 </h2>
                 <p class="journey-banner-text">
-                    {% if is_state_one and not has_any_trades %}
+                    {% if is_active_cfd and is_state_one and not has_any_trades %}
                     Read-only investor password. Import a report while setup runs if you want a preview.
-                    {% elif is_state_two %}
+                    {% elif is_active_cfd and is_state_two %}
                     Nice, your report is in. Connect MT5 next so you do not have to export again.
+                    {% elif is_active_futures and is_state_one and not has_any_trades %}
+                    Upload your Tradovate performance CSV to populate the journal, or add a trade manually.
+                    {% elif is_active_futures and is_state_two %}
+                    Import more Tradovate history or add trades manually to keep building your sample.
                     {% elif not has_any_trades %}
-                    Import MT5 or Tradovate history, or add a trade manually.
+                    {% if is_active_futures %}
+                    Import your Tradovate history, or add a trade manually.
+                    {% else %}
+                    Import your MT5 history, or add a trade manually.
+                    {% endif %}
                     {% elif not has_closed_trades %}
                     Closed trades with realized P&amp;L unlock stats and your weekly review.
                     {% elif weekly_ai_is_generating %}
@@ -729,7 +741,7 @@
                 </p>
             </div>
             <div class="journey-steps" aria-label="Getting started progress">
-                {% if is_state_one and not has_any_trades %}
+                {% if is_active_cfd and is_state_one and not has_any_trades %}
                 <article class="journey-step is-current">
                     <p class="journey-step-label">Step 1</p>
                     <p class="journey-step-title">Connect MT5</p>
@@ -786,11 +798,17 @@
                 {% endif %}
             </div>
             <div class="journey-actions">
-                {% if is_state_one and not has_any_trades %}
+                {% if is_active_cfd and is_state_one and not has_any_trades %}
                 <a href="#mt5-access" class="trades-btn">Connect MT5</a>
                 <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Import while setup runs</a>
-                {% elif is_state_two %}
+                {% elif is_active_cfd and is_state_two %}
                 <a href="#mt5-access" class="trades-btn">Connect MT5</a>
+                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
+                {% elif is_active_futures and is_state_one and not has_any_trades %}
+                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Import Tradovate CSV</a>
+                <a href="{{ url_for('trades.new_trade') }}" class="ghost-btn">Add a trade manually</a>
+                {% elif is_active_futures and is_state_two %}
+                <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Import or add trades</a>
                 <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
                 {% else %}
                 <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Import or add trades</a>
@@ -803,7 +821,7 @@
         </section>
         {% endif %}
 
-        {% if show_review_workflow_banner %}
+        {% if show_review_workflow_banner and review_workflow_stage != "weekly_checkin" %}
         <section class="panel workflow-banner{% if review_workflow_stage %} is-{{ review_workflow_stage|replace('_', '-') }}{% endif %}">
             <div class="workflow-banner-copy">
                 <p class="workflow-banner-kicker">
@@ -837,13 +855,14 @@
         </section>
         {% endif %}
 
-        <section class="ai-hero-grid {% if mt5_cfd_accounts %}has-mt5{% else %}no-mt5{% endif %}{% if is_state_one %} state-onboarding{% endif %}{% if is_pure_zero_data %} ai-hero-grid--pure-zero{% endif %}" data-reveal-row-step="120" data-reveal-col-step="70">
+        <section class="ai-hero-grid {% if show_mt5_panel %}has-mt5{% else %}no-mt5{% endif %}{% if is_state_one %} state-onboarding{% endif %}{% if is_pure_zero_data %} ai-hero-grid--pure-zero{% endif %}" data-reveal-row-step="120" data-reveal-col-step="70">
             {% if is_pure_zero_data %}
             <div class="zero-data-onboarding-hub">
                 {% include "_choose_your_path_card.html" %}
             </div>
             {% endif %}
             <div class="mt5-side-stack{% if is_pure_zero_data %} mt5-side-stack--zero-data-deferred{% endif %}">
+                {% if show_mt5_panel %}
                 {% if mt5_cfd_accounts %}
                 <article id="mt5-access" class="panel mt5-access-panel mt5-workflow-panel{% if show_mt5_guidance %} is-guided{% endif %}{% if is_pure_zero_data or (is_state_one and not has_any_trades) %} mt5-workflow-panel--onboarding{% elif is_state_two %} mt5-workflow-panel--compact{% endif %}">
                     <div class="panel-head">
@@ -1503,6 +1522,7 @@
                     </div>
                 </article>
                 {% endif %}
+                {% endif %}
                 {% if not is_state_one %}
                 {% set has_any_trend = (
                     week_on_week_trends.win_rate_trend or
@@ -1706,6 +1726,8 @@
                             Latest Weekly Review
                             {% elif weekly_ai_is_generating %}
                             Generating Weekly Review
+                            {% elif weekly_ai_needs_checkin %}
+                            Weekly Review
                             {% else %}
                             Waiting for Weekly Review
                             {% endif %}
@@ -1744,6 +1766,14 @@
                             <span class="ai-loading-orb" aria-hidden="true"></span>
                             <p class="insight-body ai-generating-copy">{{ weekly_ai_empty_message|trim }}</p>
                         </div>
+                        {% elif weekly_ai_needs_checkin %}
+                        <div class="ai-checkin-prompt" aria-label="Weekly review ready — complete check-in or generate now">
+                            <p class="insight-body ai-checkin-prompt-copy">Your review is ready to generate. A quick check-in gives the AI better context — or skip it and get the review now.</p>
+                            <div class="ai-checkin-prompt-actions">
+                                <a href="{{ url_for('checkin.checkin') }}" class="trades-btn">Open Check-In</a>
+                                <a href="{{ url_for('dashboard.home', get_review='1') }}" class="ghost-btn">Get Review Now</a>
+                            </div>
+                        </div>
                         {% else %}
                         <p class="insight-body">{{ weekly_ai_empty_message|trim }}</p>
                         {% endif %}
@@ -1755,7 +1785,12 @@
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.improvement.text %}
                         <p class="insight-body ai-review-copy ai-review-improvement ai-review-action">{% for segment in weekly_ai_review_display.improvement.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
                         {% elif weekly_ai_is_generating %}
-                        <p class="insight-body ai-generating-copy muted-value">{{ weekly_ai_empty_message|trim }}</p>
+                        <div class="ai-generating-shell ai-generating-shell--side" aria-live="polite" aria-busy="true">
+                            <span class="ai-loading-orb ai-loading-orb--sm" aria-hidden="true"></span>
+                            <p class="insight-body ai-generating-copy muted-value">Generating…</p>
+                        </div>
+                        {% elif weekly_ai_needs_checkin %}
+                        <p class="insight-body ai-review-copy ai-review-improvement muted-value">Ready after your review generates.</p>
                         {% else %}
                         <p class="insight-body ai-review-copy ai-review-improvement muted-value">Shows here once your review runs.</p>
                         {% endif %}
@@ -1766,7 +1801,12 @@
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.strength.text %}
                         <p class="insight-body ai-review-copy ai-review-strength">{% for segment in weekly_ai_review_display.strength.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
                         {% elif weekly_ai_is_generating %}
-                        <p class="insight-body ai-generating-copy muted-value">{{ weekly_ai_empty_message|trim }}</p>
+                        <div class="ai-generating-shell ai-generating-shell--side" aria-live="polite" aria-busy="true">
+                            <span class="ai-loading-orb ai-loading-orb--sm" aria-hidden="true"></span>
+                            <p class="insight-body ai-generating-copy muted-value">Generating…</p>
+                        </div>
+                        {% elif weekly_ai_needs_checkin %}
+                        <p class="insight-body ai-review-copy ai-review-strength muted-value">Ready after your review generates.</p>
                         {% elif weekly_ai_review and weekly_ai_review_display %}
                         <p class="insight-body ai-review-copy ai-review-strength muted-value">No strength called out this week — the review focused on what to change first.</p>
                         {% else %}
@@ -1779,7 +1819,12 @@
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.experiment and weekly_ai_review_display.experiment.text %}
                         <p class="insight-body ai-review-copy ai-review-experiment">{% for segment in weekly_ai_review_display.experiment.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
                         {% elif weekly_ai_is_generating %}
-                        <p class="insight-body ai-generating-copy muted-value">{{ weekly_ai_empty_message|trim }}</p>
+                        <div class="ai-generating-shell ai-generating-shell--side" aria-live="polite" aria-busy="true">
+                            <span class="ai-loading-orb ai-loading-orb--sm" aria-hidden="true"></span>
+                            <p class="insight-body ai-generating-copy muted-value">Generating…</p>
+                        </div>
+                        {% elif weekly_ai_needs_checkin %}
+                        <p class="insight-body ai-review-copy ai-review-experiment muted-value">Ready after your review generates.</p>
                         {% elif weekly_ai_review and weekly_ai_review_display %}
                         <p class="insight-body ai-review-copy ai-review-experiment muted-value">No experiment this week — focus on the improvement first, or there isn't enough trade data yet for a useful test.</p>
                         {% else %}
@@ -2227,7 +2272,7 @@
                     <div class="panel-empty-state panel-empty-state-large">
                         <p class="panel-empty-kicker">Get started</p>
                         <h3 class="panel-empty-title">Import your trade history or add your first trade.</h3>
-                        <p class="panel-empty-copy">This table becomes your journal once trades are in. You will use it to review executions, attach strategies, clean up imports, and revisit specific days.</p>
+                        <p class="panel-empty-copy">Your journal populates here once you import or add trades.</p>
                         <div class="panel-empty-actions">
                             <a href="{{ url_for('trades.new_trade') }}" class="trades-btn">Open Import & Entry</a>
                             <a href="{{ url_for('trade_accounts.trade_accounts') }}" class="ghost-btn">Trade Accounts</a>
@@ -2280,7 +2325,7 @@
                     <div class="panel-empty-state">
                         <p class="panel-empty-kicker">Week on week</p>
                         <h3 class="panel-empty-title">Closed trades unlock weekly comparisons.</h3>
-                        <p class="panel-empty-copy">Once you have completed trades, this panel will compare your current week against the previous one so you can spot early consistency changes instead of guessing from memory.</p>
+                        <p class="panel-empty-copy">Compares this week against the previous once you have closed trades.</p>
                     </div>
                     {% endif %}
                 </article>
@@ -2371,7 +2416,7 @@
                             Your equity curve will appear here once you add trade history.
                             {% endif %}
                         </h3>
-                        <p class="panel-empty-copy">This chart visualizes your running realized PnL over time. It becomes one of the fastest ways to spot drawdowns, recovery phases, and whether your edge is actually compounding.</p>
+                        <p class="panel-empty-copy">Tracks your running realized PnL trade by trade once closes come in.</p>
                     </div>
                     {% endif %}
                 </article>
@@ -2403,7 +2448,7 @@
                     <p class="insight-note">Most active sessions on the current trade account.</p>
                     {% else %}
                     <div class="insight-content">
-                        <p class="insight-body">Session performance will appear once you log closed trades on this account. Start with a few completed trades to compare win rate, volume, and net PnL by session.</p>
+                        <p class="insight-body">Appears after your first closed trades on this account.</p>
                     </div>
                     {% endif %}
                 </article>
@@ -3970,6 +4015,10 @@
         min-height: 180px;
         text-align: center; }
 
+    .ai-generating-shell--side {
+        min-height: 64px;
+        gap: 0.5rem; }
+
     .ai-loading-orb {
         width: 44px;
         height: 44px;
@@ -3979,9 +4028,29 @@
         box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 24%, transparent);
         animation: ai-spin 900ms linear infinite; }
 
+    .ai-loading-orb--sm {
+        width: 22px;
+        height: 22px;
+        border-width: 2px; }
+
     .ai-generating-copy {
         max-width: 48ch;
         margin-top: 0; }
+
+    .ai-checkin-prompt {
+        display: grid;
+        gap: 1rem;
+        align-content: center;
+        min-height: 140px; }
+
+    .ai-checkin-prompt-copy {
+        max-width: 52ch; }
+
+    .ai-checkin-prompt-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center; }
 
     .ai-hero-meta {
         display: grid;

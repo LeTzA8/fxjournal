@@ -56,6 +56,7 @@ from trading import (
     parse_futures_contract_code,
     parse_import_signature_datetime,
     parse_mt5_xlsx_stream,
+    parse_topstep_csv_stream,
     parse_tradovate_csv_stream,
     resolve_pips,
     resolve_pnl,
@@ -751,7 +752,7 @@ def import_trade_file():
     uploaded_file = request.files.get("mt5_file")
     if not uploaded_file or not uploaded_file.filename:
         flash(
-            "Please choose a Tradovate CSV file to upload."
+            "Please choose a Tradovate or Topstep CSV file to upload."
             if account_type == "FUTURES"
             else "Please choose an MT5 XLSX file to upload.",
             "error",
@@ -764,7 +765,12 @@ def import_trade_file():
         detected_profile = detect_trade_import_profile(uploaded_file.stream)
         if detected_profile is None:
             flash(
-                "We could not recognize that import file. Please use an MT5 Positions workbook or a Tradovate Performance CSV.",
+                "We could not recognize that import file. Please use "
+                + (
+                    "a Tradovate Performance CSV or Topstep export CSV."
+                    if account_type == "FUTURES"
+                    else "an MT5 Positions workbook."
+                ),
                 "error",
             )
             return redirect(url_for("trades.new_trade"))
@@ -784,7 +790,11 @@ def import_trade_file():
         uploaded_file.stream.seek(0)
         parser_name = detected_profile.get("parser")
         import_stage = f"parse_{parser_name or 'unknown'}"
-        if parser_name == "tradovate_csv":
+        if parser_name == "topstep_csv":
+            parsed_rows, total_rows, skipped_rows = parse_topstep_csv_stream(
+                uploaded_file.stream
+            )
+        elif parser_name == "tradovate_csv":
             parsed_rows, total_rows, skipped_rows = parse_tradovate_csv_stream(
                 uploaded_file.stream
             )
@@ -794,7 +804,7 @@ def import_trade_file():
             )
         if not parsed_rows:
             flash(
-                "No valid trade rows were found in this Tradovate CSV."
+                f"No valid trade rows were found in this {detected_profile.get('platform', 'futures')} CSV."
                 if account_type == "FUTURES"
                 else "No valid trade rows were found in this MT5 file.",
                 "error",
@@ -802,8 +812,14 @@ def import_trade_file():
             return redirect(url_for("trades.new_trade"))
 
         import_stage = "build_insert_batch"
+        _futures_prefix = "topstep" if parser_name == "topstep_csv" else "tradovate"
         import_signature = build_import_signature(
-            "tradovate" if account_type == "FUTURES" else "mt5"
+            _futures_prefix if account_type == "FUTURES" else "mt5"
+        )
+        _futures_note = (
+            "Imported from Topstep Export CSV"
+            if parser_name == "topstep_csv"
+            else "Imported from Tradovate Performance CSV"
         )
         batch_result = build_normalized_trade_insert_batch(
             user_id=user_id,
@@ -813,9 +829,7 @@ def import_trade_file():
             use_import_dedupe_key=True,
             dedupe_by_mt5_position_only=False,
             default_system_trade_note=(
-                "Imported from Tradovate Performance CSV"
-                if account_type == "FUTURES"
-                else "Imported from MT5 Positions"
+                _futures_note if account_type == "FUTURES" else "Imported from MT5 Positions"
             ),
         )
         insert_batch = batch_result["insert_batch"]
@@ -938,9 +952,14 @@ def import_trade_file():
         if uncertain_bits:
             uncertain_msg = " Validation details: " + ", ".join(uncertain_bits) + "."
 
+        _source_label = (
+            detected_profile.get("platform", "Futures") + " CSV"
+            if account_type == "FUTURES"
+            else "Positions"
+        )
         flash(
             f"Imported {len(insert_batch)} trade{'s' if len(insert_batch) != 1 else ''} from "
-            f"{'Tradovate CSV' if account_type == 'FUTURES' else 'Positions'}. "
+            f"{_source_label}. "
             f"Parsed rows: {len(parsed_rows)}/{total_rows}. "
             f"Skipped: {skipped_rows + validation_skipped}. "
             f"{'Duplicate trades' if account_type == 'FUTURES' else 'Duplicate positions'}: {duplicate_count}."
@@ -987,7 +1006,7 @@ def import_trade_file():
             extra_detail = f" Details: {str(exc).strip()[:240]}"
         flash(
             (
-                "We could not process that upload. Please check the Tradovate CSV format and try again."
+                "We could not process that upload. Please check the CSV format and try again."
                 if account_type == "FUTURES"
                 else "We could not process that upload. Please check the MT5 export format and try again."
             )

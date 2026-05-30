@@ -96,6 +96,7 @@ from trading import (
     classify_trading_session,
     format_duration_minutes,
     format_trade_symbol,
+    normalize_account_type,
     resolve_net_pnl,
     to_display_timezone,
 )
@@ -760,6 +761,7 @@ def _get_review_workflow_banner_state(user_id, active_trade_account, user_trades
             "button_href": None,
             "show_skip": False,
             "closed_trade_count": 0,
+            "checkin_complete": True,
         }
 
     if _has_bundle_candidates(user_id, active_trade_account):
@@ -772,6 +774,7 @@ def _get_review_workflow_banner_state(user_id, active_trade_account, user_trades
             "button_href": url_for("trades.bundle_review"),
             "show_skip": False,
             "closed_trade_count": 0,
+            "checkin_complete": False,
         }
 
     period = get_weekly_dashboard_period(now_utc=utcnow_naive())
@@ -794,6 +797,7 @@ def _get_review_workflow_banner_state(user_id, active_trade_account, user_trades
             "button_href": None,
             "show_skip": False,
             "closed_trade_count": 0,
+            "checkin_complete": True,
         }
 
     try:
@@ -816,6 +820,7 @@ def _get_review_workflow_banner_state(user_id, active_trade_account, user_trades
             "button_href": None,
             "show_skip": False,
             "closed_trade_count": closed_trade_count,
+            "checkin_complete": True,
         }
 
     outliers = detect_outliers(closed_trades)
@@ -829,6 +834,7 @@ def _get_review_workflow_banner_state(user_id, active_trade_account, user_trades
             "button_href": url_for("checkin.checkin"),
             "show_skip": False,
             "closed_trade_count": closed_trade_count,
+            "checkin_complete": False,
         }
 
     if outliers["standalone_candidates"]:
@@ -841,6 +847,7 @@ def _get_review_workflow_banner_state(user_id, active_trade_account, user_trades
             "button_href": url_for("checkin.checkin"),
             "show_skip": False,
             "closed_trade_count": closed_trade_count,
+            "checkin_complete": False,
         }
 
     weekly_checkin_was_skipped = existing_checkin is not None and not is_weekly_checkin_complete(existing_checkin)
@@ -863,6 +870,7 @@ def _get_review_workflow_banner_state(user_id, active_trade_account, user_trades
         "button_href": url_for("checkin.checkin"),
         "show_skip": not weekly_checkin_was_skipped,
         "closed_trade_count": closed_trade_count,
+        "checkin_complete": False,
     }
 
 
@@ -1199,7 +1207,7 @@ def _build_week_on_week_insight(current_week_stats, previous_week_stats):
     return "No prior completed trade week to compare yet."
 
 
-def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trades, generate=True):
+def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trades, generate=True, checkin_complete=True):
     account_id = getattr(active_trade_account, "id", None)
     weekly_ai_review = None
     weekly_ai_review_text = ""
@@ -1208,6 +1216,7 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
     weekly_ai_period_label = ""
     weekly_ai_empty_message = DEFAULT_WEEKLY_AI_EMPTY_MESSAGE
     weekly_ai_is_generating = False
+    weekly_ai_needs_checkin = False
     displayed_review_period = None
 
     latest_trade_period = get_latest_trade_week_period(
@@ -1239,7 +1248,27 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
             current_app.logger.warning("Weekly AI review query unavailable: %s", exc)
             weekly_ai_empty_message = WEEKLY_AI_UNAVAILABLE_MESSAGE
 
-        weekly_ai_review = current_period_review or fallback_review
+        ai_status = None
+        try:
+            ai_status = get_ai_status(
+                user_id,
+                trade_account_id=account_id,
+                period_start_utc=latest_trade_period["period_start_utc"],
+            )
+        except CacheUnavailableError as exc:
+            current_app.logger.warning("Weekly AI status unavailable: %s", exc)
+
+        # When checkin is not complete and no review exists for the current period,
+        # suppress the previous week's fallback and block auto-generation so the
+        # AI panel can prompt the user to complete the check-in first.
+        # Exception: if a review is already in-flight (user already clicked "Get Review Now"),
+        # let the generating state show rather than the checkin prompt.
+        if not checkin_complete and current_period_review is None and ai_status not in {"queued", "running"}:
+            weekly_ai_review = None
+            weekly_ai_needs_checkin = True
+            generate = False
+        else:
+            weekly_ai_review = current_period_review or fallback_review
         if reviews_available and weekly_ai_review is not None:
             weekly_ai_review_text = normalize_dashboard_advice_text(weekly_ai_review.response_text)
             weekly_ai_review_display = _build_weekly_ai_review_display(
@@ -1254,16 +1283,6 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
                     "period_start_utc": weekly_ai_review.period_start_utc,
                     "period_end_utc": weekly_ai_review.period_end_utc,
                 }
-
-        ai_status = None
-        try:
-            ai_status = get_ai_status(
-                user_id,
-                trade_account_id=account_id,
-                period_start_utc=latest_trade_period["period_start_utc"],
-            )
-        except CacheUnavailableError as exc:
-            current_app.logger.warning("Weekly AI status unavailable: %s", exc)
 
         if reviews_available and current_period_review is None and not generate:
             weekly_ai_empty_message = DEFAULT_WEEKLY_AI_EMPTY_MESSAGE
@@ -1377,6 +1396,7 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
         "weekly_ai_period_label": weekly_ai_period_label,
         "weekly_ai_empty_message": weekly_ai_empty_message,
         "weekly_ai_is_generating": weekly_ai_is_generating,
+        "weekly_ai_needs_checkin": weekly_ai_needs_checkin,
     }
 
 
@@ -1775,17 +1795,26 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         current_week_stats,
         previous_week_stats,
     )
-    weekly_ai_state = _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trades, generate=not is_admin_view)
-    weekly_ai_review_text = weekly_ai_state.get("weekly_ai_review_text", "")
-    if not weekly_ai_review_text and weekly_ai_state["weekly_ai_review"] is not None:
-        weekly_ai_review_text = normalize_dashboard_advice_text(
-            weekly_ai_state["weekly_ai_review"].response_text
-        )
     review_workflow_banner_state = _get_review_workflow_banner_state(
         user_id,
         active_trade_account,
         user_trades,
     )
+    checkin_complete = review_workflow_banner_state.get("checkin_complete", True)
+    force_review = request.args.get("get_review") == "1" and not is_admin_view
+    weekly_ai_state = _get_weekly_ai_state(
+        user_id,
+        active_trade_account,
+        timezone_name,
+        user_trades,
+        generate=(not is_admin_view) and (checkin_complete or force_review),
+        checkin_complete=checkin_complete or force_review,
+    )
+    weekly_ai_review_text = weekly_ai_state.get("weekly_ai_review_text", "")
+    if not weekly_ai_review_text and weekly_ai_state["weekly_ai_review"] is not None:
+        weekly_ai_review_text = normalize_dashboard_advice_text(
+            weekly_ai_state["weekly_ai_review"].response_text
+        )
     onboarding_banner_state = _get_onboarding_banner_state(user_id)
     has_any_trades = bool(user_trades)
     has_trades = has_any_trades
@@ -1805,6 +1834,14 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
     has_ai_review = weekly_ai_state["weekly_ai_review"] is not None
     has_mt5_submission = dashboard_row_has_mt5_submission(mt5_sections["mt5_selected_row"])
     is_pure_zero_data = not has_any_trades and not has_mt5_submission
+    active_account_type = (
+        normalize_account_type(active_trade_account.account_type)
+        if active_trade_account is not None
+        else "CFD"
+    )
+    is_active_cfd = active_account_type == "CFD"
+    is_active_futures = active_account_type == "FUTURES"
+    show_mt5_panel = is_active_cfd
     user_created_at = getattr(target_user, "created_at", None)
     user_age_days = (
         (utcnow_naive() - user_created_at).days if user_created_at is not None else 0
@@ -1918,6 +1955,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         weekly_ai_period_label=weekly_ai_state["weekly_ai_period_label"],
         weekly_ai_empty_message=weekly_ai_state["weekly_ai_empty_message"],
         weekly_ai_is_generating=weekly_ai_state["weekly_ai_is_generating"],
+        weekly_ai_needs_checkin=weekly_ai_state.get("weekly_ai_needs_checkin", False),
         show_onboarding_banner=show_onboarding_banner,
         onboarding_was_skipped=onboarding_banner_state["onboarding_was_skipped"],
         dashboard_continuity=dashboard_continuity,
@@ -1949,6 +1987,10 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         mt5_selected_status=mt5_sections["mt5_selected_status"],
         mt5_dashboard_next=mt5_sections["mt5_dashboard_next"],
         mt5_batch_state=mt5_sections["mt5_batch_state"],
+        active_account_type=active_account_type,
+        is_active_cfd=is_active_cfd,
+        is_active_futures=is_active_futures,
+        show_mt5_panel=show_mt5_panel,
     )
 
 
@@ -2581,6 +2623,12 @@ def analytics():
             timezone_name=timezone_name,
         )
 
+    active_account_type = (
+        normalize_account_type(active_trade_account.account_type)
+        if active_trade_account is not None
+        else "CFD"
+    )
+
     return render_template(
         "analytics.html",
         title="MyFXJournal | Analytics",
@@ -2591,6 +2639,9 @@ def analytics():
         rr_summary=rr_summary,
         has_any_trades=bool((analytics_payload.get("summary") or {}).get("total_trades")),
         small_sample_min_trades=SMALL_SAMPLE_MIN_TRADES,
+        active_account_type=active_account_type,
+        is_active_cfd=active_account_type == "CFD",
+        is_active_futures=active_account_type == "FUTURES",
     )
 
 

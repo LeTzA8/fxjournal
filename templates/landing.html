@@ -56,15 +56,6 @@
                 New accounts may be reviewed before first login while we onboard carefully.
             </p>
             {% endif %}
-            <section class="landing-relief landing-reveal" id="workflow" data-reveal-delay="980" aria-labelledby="landing-relief-title">
-                <h2 id="landing-relief-title">Journal your trades without turning it into a second job.</h2>
-                <div class="landing-relief-lines">
-                    <p><strong>No exports.</strong> Connect MT5 once — trades sync automatically.</p>
-                    <p><strong>No manual reviews.</strong> Your weekly review is built for you.</p>
-                    <p><strong>One clear fix.</strong> Not a report. Not a list.</p>
-                </div>
-            </section>
-
             <div class="landing-actions landing-reveal" data-reveal-delay="1040">
                 {% if user_logged_in %}
                 <a href="{{ url_for('dashboard.home') }}" class="submit-btn">Open Dashboard</a>

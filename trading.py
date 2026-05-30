@@ -548,6 +548,42 @@ TRADOVATE_REQUIRED_FIELDS = frozenset(
         "soldTimestamp",
     }
 )
+TOPSTEP_REQUIRED_FIELDS = frozenset(
+    {
+        "Id",
+        "ContractName",
+        "EnteredAt",
+        "ExitedAt",
+        "EntryPrice",
+        "ExitPrice",
+        "PnL",
+        "Size",
+        "Type",
+    }
+)
+# Matches Topstep timestamp format: "05/30/2026 02:05:11 +08:00"
+_TOPSTEP_DT_RE = re.compile(
+    r"^(\d{1,2}/\d{1,2}/\d{4})\s+(\d{2}:\d{2}:\d{2})\s+([+-]\d{2}:\d{2})$"
+)
+
+
+def _parse_topstep_timestamp(text):
+    """Parse Topstep timestamp 'MM/DD/YYYY HH:MM:SS ±HH:MM' to (utc_naive, tz_label)."""
+    if not text:
+        return None, None
+    m = _TOPSTEP_DT_RE.match(str(text).strip())
+    if not m:
+        return None, None
+    date_part, time_part, tz_part = m.group(1), m.group(2), m.group(3)
+    try:
+        dt_naive = datetime.strptime(f"{date_part} {time_part}", "%m/%d/%Y %H:%M:%S")
+        sign = 1 if tz_part[0] == "+" else -1
+        h, mins = int(tz_part[1:3]), int(tz_part[4:6])
+        offset = timedelta(hours=h, minutes=mins) * sign
+        aware = dt_naive.replace(tzinfo=timezone(offset))
+        return aware.astimezone(timezone.utc).replace(tzinfo=None), tz_part
+    except (ValueError, IndexError):
+        return None, None
 
 WEEKDAY_NAMES = [
     "Monday",
@@ -1714,6 +1750,12 @@ def detect_trade_import_profile(file_stream):
         return None
 
     file_stream.seek(0)
+    profile = sniff_topstep_csv_stream(file_stream)
+    file_stream.seek(0)
+    if profile is not None:
+        return profile
+
+    file_stream.seek(0)
     profile = sniff_tradovate_csv_stream(file_stream)
     file_stream.seek(0)
     if profile is not None:
@@ -1820,6 +1862,110 @@ def parse_tradovate_csv_stream(file_stream):
                 "commission": commission,
                 "opened_at": opened_at,
                 "closed_at": closed_at,
+                "source_timezone": source_timezone,
+            }
+        )
+
+    return parsed, total, skipped
+
+
+def sniff_topstep_csv_stream(file_stream):
+    raw_bytes = file_stream.read()
+    if not raw_bytes:
+        return None
+    if raw_bytes.startswith(b"PK"):
+        return None
+    decoded_text = _decode_text_bytes(raw_bytes)
+    if not decoded_text.strip():
+        return None
+    if "\x00" in decoded_text[:4096]:
+        return None
+    try:
+        reader = csv.DictReader(io.StringIO(decoded_text, newline=""))
+        field_names = set(reader.fieldnames or [])
+    except csv.Error:
+        return None
+    if not TOPSTEP_REQUIRED_FIELDS.issubset(field_names):
+        return None
+    return {
+        "platform": "Topstep",
+        "market_type": "Futures",
+        "account_type": "FUTURES",
+        "parser": "topstep_csv",
+    }
+
+
+def parse_topstep_csv_stream(file_stream):
+    raw_bytes = file_stream.read()
+    if not raw_bytes:
+        return [], 0, 0
+    decoded_text = _decode_text_bytes(raw_bytes)
+    if not decoded_text.strip():
+        return [], 0, 0
+    reader = csv.DictReader(io.StringIO(decoded_text))
+    if not reader.fieldnames or not TOPSTEP_REQUIRED_FIELDS.issubset(set(reader.fieldnames)):
+        return [], 0, 0
+
+    parsed = []
+    skipped = 0
+    total = 0
+
+    for row in reader:
+        if not row or not any(str(v or "").strip() for v in row.values()):
+            continue
+        total += 1
+
+        contract_code = normalize_symbol(row.get("ContractName"))
+        parsed_contract = parse_futures_contract_code(contract_code)
+        if parsed_contract is None:
+            skipped += 1
+            continue
+
+        entered_utc, entered_tz = _parse_topstep_timestamp(row.get("EnteredAt"))
+        exited_utc, exited_tz = _parse_topstep_timestamp(row.get("ExitedAt"))
+
+        if entered_utc is None or exited_utc is None:
+            skipped += 1
+            continue
+
+        source_timezone = entered_tz or exited_tz or "UTC"
+
+        qty = parse_float_value(row.get("Size"))
+        entry_price = parse_float_value(row.get("EntryPrice"))
+        exit_price = parse_float_value(row.get("ExitPrice"))
+        pnl = parse_float_value(row.get("PnL"))
+        commission = parse_float_value(row.get("Fees"))
+        trade_type = str(row.get("Type") or "").strip().upper()
+        external_id = str(row.get("Id") or "").strip()
+
+        if (
+            qty is None
+            or qty <= 0
+            or entry_price is None
+            or exit_price is None
+            or not external_id
+            or trade_type not in ("LONG", "SHORT")
+        ):
+            skipped += 1
+            continue
+
+        side = "BUY" if trade_type == "LONG" else "SELL"
+
+        parsed.append(
+            {
+                "symbol": parsed_contract["root_symbol"],
+                "contract_code": parsed_contract["contract_code"],
+                "external_id": external_id,
+                "side": side,
+                "lot_size": qty,
+                "entry_price": entry_price,
+                "exit_price": exit_price,
+                "stop_loss": None,
+                "take_profit": None,
+                "pnl": pnl,
+                "commission": commission,
+                "opened_at": entered_utc,
+                "closed_at": exited_utc,
                 "source_timezone": source_timezone,
             }
         )

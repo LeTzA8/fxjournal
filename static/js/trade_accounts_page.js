@@ -109,7 +109,22 @@
     const sizeInput = document.getElementById("tradeAccountDialogSize");
     const typeInput = document.getElementById("tradeAccountDialogType");
     const defaultStrategySelect = document.getElementById("tradeAccountDialogDefaultStrategy");
+    const defaultStrategyLabel = document.getElementById("tradeAccountDialogDefaultStrategyLabel");
+    const defaultStrategyHint = document.getElementById("tradeAccountDialogDefaultStrategyHint");
     const editorButtons = Array.from(document.querySelectorAll("[data-open-trade-account-editor]"));
+
+    const syncDefaultStrategyCopyForAccountType = () => {
+        if (!typeInput || !defaultStrategyLabel || !defaultStrategyHint) {
+            return;
+        }
+        const isFutures = String(typeInput.value || "").trim().toUpperCase() === "FUTURES";
+        defaultStrategyLabel.textContent = isFutures
+            ? "Default strategy for imports (optional)"
+            : "Default strategy for imports & MT5 sync (optional)";
+        defaultStrategyHint.textContent = isFutures
+            ? "Only affects newly imported trades on this account. Manual trades still use the strategy field on the trade form."
+            : "Only affects newly imported or MT5-synced trades on this account. Manual trades still use the strategy field on the trade form.";
+    };
 
     if (
         editorDialog &&
@@ -144,6 +159,7 @@
             defaultInput.checked = false;
             typeInput.value = "CFD";
             defaultStrategySelect.value = "";
+            syncDefaultStrategyCopyForAccountType();
         };
 
         const openEditor = (trigger) => {
@@ -168,6 +184,7 @@
                     trigger.dataset.editorDefaultTradeProfilePubkey || "";
             }
 
+            syncDefaultStrategyCopyForAccountType();
             editorDialog.showModal();
             requestAnimationFrame(() => nameInput.focus());
         };
@@ -188,6 +205,7 @@
         });
 
         editorCancel.addEventListener("click", closeEditor);
+        typeInput.addEventListener("change", syncDefaultStrategyCopyForAccountType);
         editorDialog.addEventListener("close", () => {
             resetEditor();
             activeEditorTrigger = null;

@@ -48,7 +48,11 @@
                     {% if has_any_trades %}
                     You already have trades in the journal, but analytics learns from realized outcomes. Closed trades are what power win rate, expectancy, drawdown, session performance, and pair breakdowns worth trusting.
                     {% else %}
-                    Import your MT5 or Tradovate history, or add a manual trade, to start filling the journal. Once you have closed trades in the journal, this page turns into a full breakdown of edge quality, session timing, and consistency.
+                    {% if is_active_futures %}
+                    Import your Tradovate history, or add a manual trade, to start filling the journal. Once you have closed trades in the journal, this page turns into a full breakdown of edge quality, session timing, and consistency.
+                    {% else %}
+                    Import your MT5 history, or add a manual trade, to start filling the journal. Once you have closed trades in the journal, this page turns into a full breakdown of edge quality, session timing, and consistency.
+                    {% endif %}
                     {% endif %}
                 </p>
                 <p class="empty-state-guidance">
@@ -67,6 +71,8 @@
                     <p class="empty-step-copy">
                         {% if has_any_trades %}
                         Complete
+                        {% elif is_active_futures %}
+                        Start with Tradovate history or a manual trade entry.
                         {% else %}
                         Start with MT5 history or a manual trade entry.
                         {% endif %}

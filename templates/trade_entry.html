@@ -192,23 +192,21 @@
             {% if form_mode == 'new' %}
             <article class="panel import-panel import-panel--primary">
                 <div class="panel-head import-panel-head">
-                    <h2>{% if account_type == "FUTURES" %}Import from Tradovate{% else %}Import from MetaTrader 5{% endif %}</h2>
+                    <h2>{% if account_type == "FUTURES" %}Import Futures CSV{% else %}Import from MetaTrader 5{% endif %}</h2>
                     <div class="panel-head-meta">
                         <div class="help-popover">
                             <button
                                 type="button"
                                 class="help-trigger"
-                                aria-label="{% if account_type == 'FUTURES' %}How to export a Tradovate performance file{% else %}How to export a MetaTrader 5 workbook{% endif %}"
+                                aria-label="{% if account_type == 'FUTURES' %}How to export a futures performance file{% else %}How to export a MetaTrader 5 workbook{% endif %}"
                             >?</button>
                             <div class="help-card" role="note">
-                                <p class="help-card-title">{% if account_type == "FUTURES" %}Export from Tradovate{% else %}Export from MT5{% endif %}</p>
+                                <p class="help-card-title">{% if account_type == "FUTURES" %}Export from Tradovate or Topstep{% else %}Export from MT5{% endif %}</p>
                                 <ol class="help-card-list">
                                     {% if account_type == "FUTURES" %}
-                                    <li>Open the <strong>Performance</strong> area in Tradovate.</li>
-                                    <li>Set the account and date range you want to export.</li>
-                                    <li>Use the export/download action for the performance table.</li>
-                                    <li>Save the file as a <strong>.csv</strong>.</li>
-                                    <li>Upload that CSV here.</li>
+                                    <li><strong>Tradovate:</strong> Open the <strong>Performance</strong> area, set your date range, and export the performance table as a <strong>.csv</strong>.</li>
+                                    <li><strong>Topstep:</strong> Go to your Topstep account dashboard, open <strong>Trade History</strong>, and use the export/download action to save a <strong>.csv</strong>.</li>
+                                    <li>Upload the CSV here — the format is detected automatically.</li>
                                     {% else %}
                                     <li>Open the <strong>Toolbox</strong> window in MetaTrader 5 (<strong>Ctrl+T</strong>).</li>
                                     <li>In the <strong>History</strong> tab, right-click inside the table.</li>
@@ -224,18 +222,18 @@
                 </div>
                 <p class="import-panel-intro field-help">
                     {% if account_type == "FUTURES" %}
-                    Tradovate timestamps default to <strong>America/Chicago</strong> unless the file provides explicit timezone data.
+                    Supports <strong>Tradovate</strong> and <strong>Topstep</strong> CSV exports. The format is detected automatically from the file headers.
                     {% else %}
                     Export your trade history from MT5 as <strong>.xlsx</strong> and upload it here — the fastest way to populate your journal.
                     {% endif %}
                 </p>
-                <form action="{{ url_for('trades.import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Tradovate CSV" if account_type == "FUTURES" else "MT5 workbook" }}">
+                <form action="{{ url_for('trades.import_trade_file') }}" method="post" enctype="multipart/form-data" class="import-form" data-themed-validation data-active-market-type="{{ "Futures" if account_type == "FUTURES" else "CFD" }}" data-expected-upload-label="{{ "Futures CSV" if account_type == "FUTURES" else "MT5 workbook" }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <label for="mt5_file">{% if account_type == "FUTURES" %}Tradovate Performance File{% else %}MT5 Report File{% endif %}</label>
+                    <label for="mt5_file">{% if account_type == "FUTURES" %}Futures Performance File{% else %}MT5 Report File{% endif %}</label>
                     <div id="mt5Dropzone" class="dropzone dropzone--primary" role="button" tabindex="0" aria-label="Upload trade import file" aria-controls="mt5_file">
                         <p class="dropzone-title">
                             {% if account_type == "FUTURES" %}
-                            Drag and drop your Tradovate .csv file here
+                            Drag and drop your Tradovate or Topstep .csv file here
                             {% else %}
                             Drag and drop your MT5 .xlsx file here
                             {% endif %}

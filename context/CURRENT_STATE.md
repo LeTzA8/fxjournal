@@ -1,6 +1,36 @@
 # CURRENT_STATE
 
-Last Updated: 2026-05-28
+Last Updated: 2026-05-30
+
+## Weekly AI review checkin gate (2026-05-30)
+
+- Auto-generation is now gated on check-in completion: `_get_weekly_ai_state` accepts `checkin_complete` (from `_get_review_workflow_banner_state`) and when False + no current-period review exists, suppresses the fallback/previous-week review and skips generation.
+- Exception: if a review is already in-flight (`ai_status in {"queued","running"}`), the generating state shows regardless of check-in status (user previously clicked "Get Review Now").
+- `?get_review=1` query param on `/dashboard` bypasses the check-in gate for one load, setting `force_review=True` and treating `checkin_complete=True`.
+- `_get_review_workflow_banner_state` now returns `checkin_complete` in all branches (True when no trades this period or check-in done; False when any workflow stage is pending). Reordered in `home()` so banner state is computed before AI state.
+- `weekly_ai_needs_checkin` context variable passed to template; when True the AI panel shows an empty state with "Open Check-In" and "Get Review Now" buttons instead of the previous-week's review or a waiting message.
+- `weekly_checkin` stage of the workflow banner is suppressed in the template (`review_workflow_stage != "weekly_checkin"` guard) — the AI panel replaces it. `bundle_review` and `classification` banners are unaffected.
+- Loading state: side panels (Improvement, Strength, Experiment) now show `ai-generating-shell--side` with `ai-loading-orb--sm` spinner when `weekly_ai_is_generating`, instead of just muted text.
+- Tests: updated `test_dashboard_shows_finish_checkin_after_skip` to expect "Open Check-In"/"Get Review Now" (panel) not "Finish Check-In" (suppressed banner); fixed two pre-existing stale assertions (`b"Sample Weekly Review"` → actual sample badge text); fixed pre-existing FUTURES account test (`test_dashboard_home_prompts_switch_when_active_account_is_not_cfd`) to reflect `show_mt5_panel=False` for non-CFD accounts.
+
+## Topstep CSV import support (2026-05-30)
+
+- Added `TOPSTEP_REQUIRED_FIELDS`, `_TOPSTEP_DT_RE`, `_parse_topstep_timestamp()`, `sniff_topstep_csv_stream()`, and `parse_topstep_csv_stream()` to `trading.py`.
+- Topstep export format: `Id,ContractName,EnteredAt,ExitedAt,EntryPrice,ExitPrice,Fees,PnL,Size,Type,...` with timestamps as `MM/DD/YYYY HH:MM:SS ±HH:MM`. PnL is gross; Fees is the total per-trade cost (commission + exchange).
+- `_parse_topstep_timestamp` parses the Topstep timestamp format (not ISO) directly to UTC-naive; stores the explicit offset string (e.g. `+08:00`) as `source_timezone`.
+- `detect_trade_import_profile()` now tries Topstep before Tradovate and MT5; field-based detection means no format ambiguity.
+- `routes/trades.py`: imports `parse_topstep_csv_stream`; `import_trade_file` handles `topstep_csv` parser branch; import signature prefix `topstep`; system note `Imported from Topstep Export CSV`; flash and error messages now use detected platform name rather than hardcoded "Tradovate".
+- `templates/trade_entry.html`: heading, help card, intro text, dropzone label, and `data-expected-upload-label` updated to cover both Tradovate and Topstep for FUTURES accounts.
+- No model or migration changes required; the normalized row shape is identical to Tradovate.
+
+## Account-type import surface split (2026-05-30)
+
+- Futures active accounts hide all MT5 UI (dashboard MT5 panel, journey-banner MT5 nudges, choose-your-path MT5 sync card). Copy points to Tradovate CSV import instead.
+- CFD active accounts hide Tradovate references in onboarding/import empty states; MT5 XLSX + MT5 sync remain.
+- Dashboard passes `active_account_type`, `is_active_cfd`, `is_active_futures`, `show_mt5_panel`; analytics empty state uses the same split.
+- Trade Accounts create/edit dialog strategy labels toggle MT5 wording via `static/js/trade_accounts_page.js` when account type changes.
+- Import error for unrecognized files is account-type specific in `routes/trades.py`.
+- Tests: futures zero-data + state-2 dashboard in `tests/test_zero_data_funnel.py`, `tests/test_dashboard_weekly_ai.py`.
 
 ## Waitlist CTA QA fixtures (2026-05-28)
 

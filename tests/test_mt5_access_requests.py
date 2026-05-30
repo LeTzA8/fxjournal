@@ -773,8 +773,10 @@ def test_dashboard_home_prompts_switch_when_active_account_is_not_cfd(app_ctx, c
     response = client.get("/dashboard")
 
     assert response.status_code == 200
-    assert b"Switch your active dashboard account to a CFD trade account" in response.data
+    # FUTURES active accounts hide the MT5 panel entirely (show_mt5_panel=False for non-CFD).
     assert b"Start MT5 Sync" not in response.data
+    assert b'ai-hero-grid no-mt5' in response.data  # MT5 panel absent from grid
+    assert b"Tradovate" in response.data  # futures-specific content shown instead
 
 
 def test_legacy_approved_request_can_be_completed_via_direct_mt5_submission(app_ctx, client, monkeypatch):

@@ -447,3 +447,42 @@ def test_admin_pre_activation_filter_lists(app_ctx, client, monkeypatch):
     stuck_html = stuck_response.data.decode("utf-8", errors="ignore")
     assert stuck.username in stuck_html
     assert recent_a.username not in stuck_html
+
+
+def test_dashboard_zero_data_futures_hides_mt5_paths(app_ctx, client, monkeypatch):
+    user = User(
+        username="zero-data-futures-user",
+        email="zero-data-futures@example.com",
+        password="hashed-password",
+        email_verified=True,
+        signup_status="approved",
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    futures_account = TradeAccount(
+        user_id=user.id,
+        name="Futures Main",
+        account_type="FUTURES",
+        is_default=True,
+    )
+    db.session.add(futures_account)
+    db.session.commit()
+
+    with client.session_transaction() as session_state:
+        session_state["user_id"] = user.id
+        session_state["username"] = user.username
+        session_state["display_timezone"] = "UTC"
+        session_state["active_trade_account_id"] = futures_account.id
+
+    _patch_weekly_ai_empty(monkeypatch)
+
+    response = client.get("/dashboard")
+    html = response.data.decode("utf-8", errors="ignore")
+
+    assert response.status_code == 200
+    assert "Upload a Tradovate report" in html
+    assert "Submit MT5 details" not in html
+    assert 'id="mt5-access"' not in html
+    assert "Request MT5 sync" not in html
+    assert "MT5 XLSX" not in html
