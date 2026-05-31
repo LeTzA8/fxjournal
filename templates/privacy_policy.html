@@ -46,9 +46,10 @@
             service, and remember basic product state.</li>
             <li>Waitlist or early-access requests where we offer them, including email, stated plan or feature interest,
             and optional context fields you submit on pricing or signup pages.</li>
-            <li>If paid billing is enabled: limited payment-related metadata from our processor (such as subscription
-            status or customer identifiers at the processor). Payment card numbers are handled by the processor, not
-            stored directly by us in routine flows.</li>
+            <li>If paid billing is enabled: limited payment-related metadata from our payment processor (currently
+            Stripe), such as subscription status, plan tier, or customer identifiers at the processor. Payment card
+            numbers and full payment details are handled by Stripe under its own terms and privacy policy; we do not
+            store card numbers directly.</li>
             <li>Messages you send in optional weekly-review follow-up chat (conversational Q&amp;A), and assistant replies we
             return, including threaded history stored with that weekly review so the conversation can resume coherently.</li>
             <li>Persisted AI outputs (for example stored weekly AI review text plus structured payloads used to render or
@@ -81,8 +82,10 @@
             diagnose technical issues, investigate abuse, and resolve support requests. Routine troubleshooting access does
             not include editing your trade data or placing trades.</li>
             <li>Generate AI-assisted outputs, including weekly AI reviews, optional conversational follow-up tied to a
-            stored weekly review, and reflections shown elsewhere in the app, including troubleshooting using stored
-            prompts and responses tied to failures or quality gaps.</li>
+            stored weekly review, AI journal features where you direct the scope of trade context sent (for example
+            selecting a review window, recent trades, or a specific trade before AI receives data), and reflections
+            shown elsewhere in the app, including troubleshooting using stored prompts and responses tied to failures
+            or quality gaps.</li>
         </ul>
 
         <h2>3. AI Processing and Data Sharing</h2>
@@ -194,17 +197,24 @@
             history associated with that data.
         </p>
 
-        <h2>8. Children</h2>
+        <h2>8. Age Requirement</h2>
         <p>
-            MyFXJournal is not directed to children under 13, and we do not knowingly collect personal information
-            from children under 13.
+            MyFXJournal is a financial journaling service intended for adults. You must be at least 18 years old to
+            create an account and use the service. We do not knowingly collect personal information from anyone
+            under 18. If we become aware that we have collected information from someone under 18, we will take
+            reasonable steps to delete it.
         </p>
 
         <h2>9. International Processing</h2>
         <p>
-            Our service providers may process data in jurisdictions other than your own. By using MyFXJournal, you
-            understand that your information may be transferred to and processed in countries where we or our
-            providers operate, subject to reasonable safeguards.
+            MyFXJournal is operated from Singapore and we process personal data in accordance with Singapore's
+            Personal Data Protection Act 2012 (PDPA) and other applicable privacy laws.
+        </p>
+        <p>
+            Our service providers may process data in jurisdictions other than your own, including the United States
+            (cloud hosting, AI processing, email delivery) and other regions where our infrastructure partners operate.
+            By using MyFXJournal, you understand that your information may be transferred to and processed in these
+            countries subject to reasonable safeguards.
         </p>
 
         <h2>10. Policy Changes</h2>
