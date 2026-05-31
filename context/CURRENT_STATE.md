@@ -1,6 +1,12 @@
 # CURRENT_STATE
 
-Last Updated: 2026-05-30
+Last Updated: 2026-05-31
+
+## Weekly AI review gate CTAs in panel (2026-05-31)
+
+- When bundle review or revenge/classification review blocks the weekly AI review, the AI review panel now shows the same primary CTA as the top workflow banner (e.g. Review Bundles, Review Revenge Signals) instead of a generic waiting message.
+- Check-in gating remains in the AI panel with Open Check-In / Finish Check-In (after skip), Get Review Now, and optional Skip for now; workflow-gate stages take priority over the check-in prompt when both would apply (e.g. pending historical bundle review).
+- Side panels (Improvement, Strength, Experiment) use a shared `weekly_ai_any_gate` state while any review gate is active.
 
 ## Futures CFD-proxy replay scaffold — Phase 1 (2026-05-30)
 

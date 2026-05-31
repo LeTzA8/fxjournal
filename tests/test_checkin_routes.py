@@ -228,9 +228,8 @@ def test_dashboard_shows_finish_checkin_after_skip(app_ctx, client, monkeypatch)
 
     assert response.status_code == 200
     # The weekly_checkin banner is replaced by the AI panel checkin-prompt state.
-    assert b"Open Check-In" in response.data
+    assert b"Finish Check-In" in response.data
     assert b"Get Review Now" in response.data
-    assert b"Finish Check-In" not in response.data
     assert b"You skipped it earlier" not in response.data
 
 

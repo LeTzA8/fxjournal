@@ -1716,6 +1716,11 @@
                 {% endif %}
                 <div class="weekly-ai-product-carousel{% if not show_weekly_journal_preview %} weekly-ai-product-carousel--single{% endif %}" data-weekly-ai-carousel>
                 <section class="weekly-ai-carousel-slide is-active" data-weekly-ai-carousel-slide aria-label="Weekly AI review">
+                {% if not (is_state_one and not weekly_ai_review) %}
+                {% set weekly_ai_workflow_gated = show_review_workflow_banner and review_workflow_stage in ("bundle_review", "classification") and not weekly_ai_review and not weekly_ai_is_generating %}
+                {% set weekly_ai_checkin_gated = (weekly_ai_needs_checkin or (show_review_workflow_banner and review_workflow_stage == "weekly_checkin")) and not weekly_ai_review and not weekly_ai_is_generating %}
+                {% set weekly_ai_any_gate = weekly_ai_workflow_gated or weekly_ai_checkin_gated %}
+                {% endif %}
                 <div class="ai-review-panels{% if is_state_one and not weekly_ai_review %} ai-review-panels--onboarding-sample{% endif %}">
                     {% if is_state_one and not weekly_ai_review %}
                     {% include "_weekly_ai_onboarding_sample.html" %}
@@ -1726,7 +1731,13 @@
                             Latest Weekly Review
                             {% elif weekly_ai_is_generating %}
                             Generating Weekly Review
-                            {% elif weekly_ai_needs_checkin %}
+                            {% elif weekly_ai_workflow_gated %}
+                            {% if review_workflow_stage == "bundle_review" %}
+                            Bundle Review Required
+                            {% else %}
+                            Trade Review Required
+                            {% endif %}
+                            {% elif weekly_ai_checkin_gated %}
                             Weekly Review
                             {% else %}
                             Waiting for Weekly Review
@@ -1766,12 +1777,30 @@
                             <span class="ai-loading-orb" aria-hidden="true"></span>
                             <p class="insight-body ai-generating-copy">{{ weekly_ai_empty_message|trim }}</p>
                         </div>
-                        {% elif weekly_ai_needs_checkin %}
+                        {% elif weekly_ai_workflow_gated %}
+                        <div class="ai-checkin-prompt" aria-label="Weekly review blocked — complete required step first">
+                            <p class="insight-body ai-checkin-prompt-copy">{{ review_workflow_note }}</p>
+                            <div class="ai-checkin-prompt-actions">
+                                <a href="{{ review_workflow_button_href }}" class="trades-btn">{{ review_workflow_button_label }}</a>
+                                {% if review_workflow_stage == "bundle_review" %}
+                                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Trades</a>
+                                {% elif review_workflow_stage == "classification" %}
+                                <a href="{{ url_for('trades.trades') }}" class="ghost-btn">Open Journal</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% elif weekly_ai_checkin_gated %}
                         <div class="ai-checkin-prompt" aria-label="Weekly review ready — complete check-in or generate now">
                             <p class="insight-body ai-checkin-prompt-copy">Your review is ready to generate. A quick check-in gives the AI better context — or skip it and get the review now.</p>
                             <div class="ai-checkin-prompt-actions">
-                                <a href="{{ url_for('checkin.checkin') }}" class="trades-btn">Open Check-In</a>
+                                <a href="{{ url_for('checkin.checkin') }}" class="trades-btn">{{ review_workflow_button_label if show_review_workflow_banner and review_workflow_stage == "weekly_checkin" else "Open Check-In" }}</a>
                                 <a href="{{ url_for('dashboard.home', get_review='1') }}" class="ghost-btn">Get Review Now</a>
+                                {% if review_workflow_show_skip %}
+                                <form action="{{ url_for('checkin.skip_checkin') }}" method="post">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="workflow-banner-skip">Skip for now</button>
+                                </form>
+                                {% endif %}
                             </div>
                         </div>
                         {% else %}
@@ -1789,7 +1818,7 @@
                             <span class="ai-loading-orb ai-loading-orb--sm" aria-hidden="true"></span>
                             <p class="insight-body ai-generating-copy muted-value">Generating…</p>
                         </div>
-                        {% elif weekly_ai_needs_checkin %}
+                        {% elif weekly_ai_any_gate %}
                         <p class="insight-body ai-review-copy ai-review-improvement muted-value">Ready after your review generates.</p>
                         {% else %}
                         <p class="insight-body ai-review-copy ai-review-improvement muted-value">Shows here once your review runs.</p>
@@ -1805,7 +1834,7 @@
                             <span class="ai-loading-orb ai-loading-orb--sm" aria-hidden="true"></span>
                             <p class="insight-body ai-generating-copy muted-value">Generating…</p>
                         </div>
-                        {% elif weekly_ai_needs_checkin %}
+                        {% elif weekly_ai_any_gate %}
                         <p class="insight-body ai-review-copy ai-review-strength muted-value">Ready after your review generates.</p>
                         {% elif weekly_ai_review and weekly_ai_review_display %}
                         <p class="insight-body ai-review-copy ai-review-strength muted-value">No strength called out this week — the review focused on what to change first.</p>
@@ -1823,7 +1852,7 @@
                             <span class="ai-loading-orb ai-loading-orb--sm" aria-hidden="true"></span>
                             <p class="insight-body ai-generating-copy muted-value">Generating…</p>
                         </div>
-                        {% elif weekly_ai_needs_checkin %}
+                        {% elif weekly_ai_any_gate %}
                         <p class="insight-body ai-review-copy ai-review-experiment muted-value">Ready after your review generates.</p>
                         {% elif weekly_ai_review and weekly_ai_review_display %}
                         <p class="insight-body ai-review-copy ai-review-experiment muted-value">No experiment this week — focus on the improvement first, or there isn't enough trade data yet for a useful test.</p>

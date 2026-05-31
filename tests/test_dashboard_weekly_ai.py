@@ -2011,11 +2011,26 @@ def test_dashboard_home_does_not_mark_closed_timestamp_trade_as_running(app_ctx,
 
 
 def test_dashboard_home_shows_bundle_review_banner_only_when_pending(app_ctx, client, monkeypatch):
-    _user, trade_account = _create_logged_in_user(
+    user, trade_account = _create_logged_in_user(
         client,
         username="dashboard-bundle-banner-user",
         email="dashboard-bundle-banner@example.com",
     )
+    db.session.add(
+        Trade(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            symbol="NAS100",
+            side="BUY",
+            entry_price=18000.0,
+            exit_price=17950.0,
+            lot_size=0.01,
+            pnl=-50.0,
+            opened_at=datetime(2026, 3, 22, 8, 0, 0),
+            closed_at=datetime(2026, 3, 22, 10, 0, 0),
+        )
+    )
+    db.session.commit()
     monkeypatch.setattr(
         dashboard_routes,
         "_get_weekly_ai_state",
@@ -2042,6 +2057,8 @@ def test_dashboard_home_shows_bundle_review_banner_only_when_pending(app_ctx, cl
     assert b"Review Bundles" not in initial_response.data
     assert pending_response.status_code == 200
     assert b"Review Bundles" in pending_response.data
+    assert b"Bundle Review Required" in pending_response.data
+    assert pending_response.data.count(b"Review Bundles") == 2
     assert completed_response.status_code == 200
     assert b"Review Bundles" not in completed_response.data
 
@@ -2087,7 +2104,8 @@ def test_dashboard_home_prioritizes_bundle_review_over_weekly_checkin(app_ctx, c
 
     assert response.status_code == 200
     assert b"Review Bundles" in response.data
-    assert response.data.count(b"Review Bundles") == 1
+    assert b"Bundle Review Required" in response.data
+    assert response.data.count(b"Review Bundles") == 2
     assert b"Open Check-In" not in response.data
     assert b"Review Revenge Signals" not in response.data
 
@@ -2145,6 +2163,7 @@ def test_dashboard_home_shows_classification_banner_before_weekly_checkin(app_ct
 
     assert response.status_code == 200
     assert b"Review Revenge Signals" in response.data
+    assert b"Trade Review Required" in response.data
     assert b"Review possible revenge sequences next." in response.data
     assert b"Open Check-In" not in response.data
     assert b"Review Bundles" not in response.data
