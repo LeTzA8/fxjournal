@@ -1815,6 +1815,7 @@ def build_trade_payload(
             {
                 "review_ref": review_ref,
                 "trade_id": getattr(trade, "id", None),
+                "trade_pubkey": (getattr(trade, "pubkey", None) or None),
                 "symbol": format_trade_symbol(trade),
                 "contract_code": (trade.contract_code or "").strip() or None,
                 "strategy_name": strategy_context["strategy_name"],

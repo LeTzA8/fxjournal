@@ -4,6 +4,16 @@
 {% from "_app_page_hero.html" import app_page_hero %}
 {% from "_waitlist_lock_cards.html" import mt5_waitlist_lock_card %}
 
+{% macro render_ai_review_segments(segments) -%}
+{%- for segment in segments -%}
+{%- if segment.type == "text" -%}
+{{ segment.text }}
+{%- elif segment.type == "citation" -%}
+<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type or '' }}"{% if segment.ref %} data-citation-ref="{{ segment.ref }}"{% endif %}{% if segment.trade_id is defined and segment.trade_id is not none and segment.trade_id != '' %} data-citation-trade-id="{{ segment.trade_id }}"{% endif %}{% if segment.trade_pubkey %} data-citation-trade-pubkey="{{ segment.trade_pubkey }}"{% endif %}{% if segment.bundle_key %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>
+{%- endif -%}
+{%- endfor -%}
+{%- endmacro %}
+
 {% block head_extra %}
 <style>
     .admin-view-banner {
@@ -1749,7 +1759,7 @@
                             {% if weekly_ai_review_display.summary.text %}
                             <div class="ai-review-block ai-review-main-insight">
                                 <p class="ai-review-heading">🧠 What mattered this week</p>
-                                <p class="insight-body ai-review-copy ai-review-summary">{% for segment in weekly_ai_review_display.summary.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
+                                <p class="insight-body ai-review-copy ai-review-summary">{{ render_ai_review_segments(weekly_ai_review_display.summary.segments) }}</p>
                                 {% if weekly_ai_review.trade_count_used is defined and weekly_ai_review.trade_count_used < 3 %}
                                 <p class="ai-review-confidence-note">⚠️ Confidence is limited (few trades or missing notes)</p>
                                 {% endif %}
@@ -1762,7 +1772,7 @@
                                 <ul class="ai-review-list">
                                     {% for takeaway in weekly_ai_review_display.takeaways[:2] %}
                                     <li class="ai-review-item">
-                                        <p class="insight-body ai-review-copy">{% for segment in takeaway.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
+                                        <p class="insight-body ai-review-copy">{{ render_ai_review_segments(takeaway.segments) }}</p>
                                     </li>
                                     {% endfor %}
                                 </ul>
@@ -1812,7 +1822,7 @@
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-improvement ai-review-action-card">
                         <p class="insight-title">🎯 Actionable Improvement</p>
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.improvement.text %}
-                        <p class="insight-body ai-review-copy ai-review-improvement ai-review-action">{% for segment in weekly_ai_review_display.improvement.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
+                        <p class="insight-body ai-review-copy ai-review-improvement ai-review-action">{{ render_ai_review_segments(weekly_ai_review_display.improvement.segments) }}</p>
                         {% elif weekly_ai_is_generating %}
                         <div class="ai-generating-shell ai-generating-shell--side" aria-live="polite" aria-busy="true">
                             <span class="ai-loading-orb ai-loading-orb--sm" aria-hidden="true"></span>
@@ -1828,7 +1838,7 @@
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-strength">
                         <p class="insight-title">✅ Strength to Reinforce</p>
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.strength.text %}
-                        <p class="insight-body ai-review-copy ai-review-strength">{% for segment in weekly_ai_review_display.strength.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
+                        <p class="insight-body ai-review-copy ai-review-strength">{{ render_ai_review_segments(weekly_ai_review_display.strength.segments) }}</p>
                         {% elif weekly_ai_is_generating %}
                         <div class="ai-generating-shell ai-generating-shell--side" aria-live="polite" aria-busy="true">
                             <span class="ai-loading-orb ai-loading-orb--sm" aria-hidden="true"></span>
@@ -1846,7 +1856,7 @@
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-experiment">
                         <p class="insight-title">🧪 This Week's Experiment</p>
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.experiment and weekly_ai_review_display.experiment.text %}
-                        <p class="insight-body ai-review-copy ai-review-experiment">{% for segment in weekly_ai_review_display.experiment.segments -%}{% if segment.type == "text" -%}{{ segment.text }}{%- elif segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% else %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- endif %}{%- endfor %}</p>
+                        <p class="insight-body ai-review-copy ai-review-experiment">{{ render_ai_review_segments(weekly_ai_review_display.experiment.segments) }}</p>
                         {% elif weekly_ai_is_generating %}
                         <div class="ai-generating-shell ai-generating-shell--side" aria-live="polite" aria-busy="true">
                             <span class="ai-loading-orb ai-loading-orb--sm" aria-hidden="true"></span>
@@ -1898,7 +1908,7 @@
                     </div>
                     <div class="weekly-review-chat-log" data-review-chat-log aria-live="polite">
                         {% for message in weekly_review_chat_history or [] %}
-                        <div class="weekly-review-chat-bubble weekly-review-chat-bubble--{{ message.role }}">{%- for segment in message.segments -%}{%- if segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% elif segment.citation_type == "bundle" %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- else -%}{{ segment.text }}{%- endif %}{%- endfor -%}</div>
+                        <div class="weekly-review-chat-bubble weekly-review-chat-bubble--{{ message.role }}">{{ render_ai_review_segments(message.segments) }}</div>
                         {% if message.show_followup_prompts %}
                         <div class="weekly-review-chat-prompts weekly-review-chat-prompts--dynamic" data-review-chat-dynamic aria-label="Suggested follow-up questions">{%- for prompt in message.suggested_prompts -%}<button type="button" data-review-chat-prompt="{{ prompt }}"{% if not chat_can_send %} disabled{% endif %}>{{ prompt }}</button>{%- endfor -%}</div>
                         {% endif %}
@@ -2157,6 +2167,7 @@
                         </div>
                         <a href="{{ url_for('trades.trades') }}" class="trades-btn">Open Trades</a>
                     </div>
+                    <p class="citation-status soft" data-citation-status role="status" hidden></p>
                     {% if recent_trades %}
                     <div class="table-controls">
                         <div id="tradeFilters" class="filter-row">
@@ -2231,6 +2242,7 @@
                                     class="{{ row_classes|join(' ') }}"
                                     {% if trade_detail_href %}data-trade-detail-url="{{ trade_detail_href }}"{% endif %}
                                     data-trade-id="{{ trade.trade_id or '' }}"
+                                    data-trade-pubkey="{{ trade.trade_pubkey or '' }}"
                                     data-symbol="{{ trade.symbol }}"
                                     data-strategy="{{ trade.trade_profile_label }}"
                                     data-side="{{ trade.side }}"
@@ -5094,6 +5106,15 @@
         background: color-mix(in srgb, var(--bundle-accent, var(--accent)) 14%, var(--surface));
     }
 
+    .citation-status {
+        margin: -0.35rem 0 0.75rem;
+        font-size: 0.86rem;
+    }
+
+    .citation-status.is-error {
+        color: var(--bad);
+    }
+
     .trade-log tbody tr.citation-hit td,
     .trade-log tbody tr.citation-hit.running-trade td,
     .trade-log tbody tr.citation-hit.bundle-row td,
@@ -5933,7 +5954,7 @@
 {% block page_scripts %}
 <script src="{{ url_for('static', filename='js/waitlist_modal.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/trade_filters_shared.js') }}"></script>
-<script src="{{ url_for('static', filename='js/dashboard_page.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard_page.js', v='20260602-citations') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard_trade_note.js') }}"></script>
 {% if show_weekly_journal_preview %}
 <script src="{{ url_for('static', filename='js/admin_journal.js') }}"></script>
@@ -5945,7 +5966,7 @@
 <script src="{{ url_for('static', filename='js/dashboard_latest_trade_chart.js') }}"></script>
 {% endif %}
 {% if weekly_ai_review and weekly_ai_review.id is defined %}
-<script src="{{ url_for('static', filename='js/weekly_review_chat.js') }}"></script>
+<script src="{{ url_for('static', filename='js/weekly_review_chat.js', v='20260602-citations') }}"></script>
 {% endif %}
 {% if weekly_ai_is_generating %}
 <script>

@@ -32,9 +32,16 @@
         button.setAttribute("tabindex", "0");
         button.dataset.citationTone = segment.tone || "neutral";
         button.dataset.citationType = segment.citation_type || "";
-        if (segment.citation_type === "trade" && segment.trade_id !== undefined && segment.trade_id !== null) {
+        if (segment.ref) {
+            button.dataset.citationRef = String(segment.ref);
+        }
+        if (segment.trade_id !== undefined && segment.trade_id !== null && segment.trade_id !== "") {
             button.dataset.citationTradeId = String(segment.trade_id);
-        } else if (segment.citation_type === "bundle" && segment.bundle_key) {
+        }
+        if (segment.trade_pubkey) {
+            button.dataset.citationTradePubkey = String(segment.trade_pubkey);
+        }
+        if (segment.bundle_key) {
             button.dataset.citationBundle = String(segment.bundle_key);
         }
         button.textContent = segment.label || "";

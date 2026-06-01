@@ -2,6 +2,12 @@
 
 Last Updated: 2026-06-02
 
+## Dashboard weekly review citation highlights (2026-06-02)
+
+- Dashboard weekly review citation pills now emit all known row-resolution metadata (`ref`, `trade_id`, `trade_pubkey`, `bundle_key`) instead of choosing only trade or bundle attributes. Dashboard trade rows expose `data-trade-pubkey` alongside `data-trade-id` and `data-bundle`.
+- Citation click/key handlers register before the trade-filter shared library guard, so highlight/scroll behavior survives filter initialization failures. Resolution now tries trade id, trade pubkey, bundle key, then symbol fallback; unresolved citations show a visible trade-panel status instead of silently scrolling with no highlight.
+- Weekly review payloads now store `trade_pubkey` for future generated reviews. Existing reviews still work through trade id/bundle/symbol fallback.
+
 ## Removed futures CFD-proxy replay scaffold (2026-06-02)
 
 - Dropped Phase 1 approximate-replay scaffold: `helpers/futures_proxy.py`, `prompts/futures_proxy_replay_guardrails.txt`, proxy chart UI/CSS/JS, import-time proxy metadata, futures-specific `trade_chart_data` branch, weekly-payload proxy suppression, and five `test_futures_proxy_*` modules.

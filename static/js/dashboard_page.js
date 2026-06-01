@@ -526,10 +526,15 @@
     ];
     const bundleRowsByKey = new Map();
     const rowsByTradeId = new Map();
+    const rowsByTradePubkey = new Map();
     rows.forEach((row) => {
         const tradeId = (row.dataset.tradeId || "").trim();
         if (tradeId) {
             rowsByTradeId.set(tradeId, row);
+        }
+        const tradePubkey = (row.dataset.tradePubkey || "").trim();
+        if (tradePubkey) {
+            rowsByTradePubkey.set(tradePubkey, row);
         }
         const bundleKey = (row.dataset.bundle || "").trim();
         if (!bundleKey) {
@@ -578,6 +583,250 @@
     noMatchRow.className = "no-match-row hidden-row";
     noMatchRow.innerHTML = '<td colspan="6" class="muted">No trades match current filters.</td>';
     tbody.appendChild(noMatchRow);
+
+    const citationStatus = tradeLogPanel?.querySelector("[data-citation-status]") || null;
+    let citationResetTimer = null;
+    const CITATION_HIGHLIGHT_MS = 3200;
+    let clearAllFilters = () => {
+        rows.forEach((row) => row.classList.remove("hidden-row"));
+        noMatchRow.classList.add("hidden-row");
+    };
+
+    const clearCitationStatus = () => {
+        if (!citationStatus) {
+            return;
+        }
+        citationStatus.textContent = "";
+        citationStatus.hidden = true;
+        citationStatus.classList.remove("is-error");
+    };
+    const showCitationStatus = (message, isError = false) => {
+        if (!citationStatus) {
+            return;
+        }
+        citationStatus.textContent = message;
+        citationStatus.hidden = false;
+        citationStatus.classList.toggle("is-error", isError);
+    };
+    const clearCitationHighlights = () => {
+        rows.forEach((row) => {
+            row.classList.remove("citation-hit");
+            row.querySelectorAll("td").forEach((cell) => {
+                cell.removeAttribute("data-citation-highlight");
+            });
+        });
+    };
+    const pulseCitationRows = (targetRows) => {
+        clearCitationStatus();
+        clearCitationHighlights();
+        targetRows.forEach((row) => {
+            if (row.classList.contains("hidden-row")) {
+                return;
+            }
+            row.classList.remove("citation-hit");
+            void row.offsetWidth;
+            row.classList.add("citation-hit");
+            row.querySelectorAll("td").forEach((cell) => {
+                cell.setAttribute("data-citation-highlight", "1");
+            });
+        });
+        if (citationResetTimer) {
+            window.clearTimeout(citationResetTimer);
+        }
+        citationResetTimer = window.setTimeout(clearCitationHighlights, CITATION_HIGHLIGHT_MS);
+    };
+    const findScrollableParent = (element, preferredContainer) => {
+        if (
+            preferredContainer &&
+            preferredContainer.contains(element) &&
+            preferredContainer.scrollHeight > preferredContainer.clientHeight + 1
+        ) {
+            return preferredContainer;
+        }
+        let node = element.parentElement;
+        while (node && node !== document.documentElement) {
+            const style = window.getComputedStyle(node);
+            if (
+                /(auto|scroll|overlay)/.test(style.overflowY) &&
+                node.scrollHeight > node.clientHeight + 1
+            ) {
+                return node;
+            }
+            node = node.parentElement;
+        }
+        return preferredContainer;
+    };
+    const scrollRowIntoTradeLog = (row, behavior = "smooth") => {
+        if (!row) {
+            return;
+        }
+        const shell = findScrollableParent(row, tradeLogScrollShell);
+        if (!shell || shell.scrollHeight <= shell.clientHeight + 1) {
+            return;
+        }
+
+        const rowRect = row.getBoundingClientRect();
+        const shellRect = shell.getBoundingClientRect();
+        const rowOffset = rowRect.top - shellRect.top + shell.scrollTop;
+        const targetScrollTop =
+            rowOffset - (shell.clientHeight - row.offsetHeight) / 2;
+        const maxScroll = Math.max(0, shell.scrollHeight - shell.clientHeight);
+        const nextScrollTop = Math.min(maxScroll, Math.max(0, targetScrollTop));
+        if (Math.abs(shell.scrollTop - nextScrollTop) <= 1) {
+            return;
+        }
+        shell.scrollTo({ top: nextScrollTop, behavior });
+    };
+    const scrollPageToTradePanel = () => {
+        if (!tradeLogPanel) {
+            return false;
+        }
+        const rect = tradeLogPanel.getBoundingClientRect();
+        const topMargin = 72;
+        const bottomMargin = 16;
+        if (rect.top >= topMargin && rect.bottom <= window.innerHeight - bottomMargin) {
+            return false;
+        }
+        window.scrollTo({
+            top: Math.max(0, window.scrollY + rect.top - topMargin),
+            behavior: "smooth",
+        });
+        return true;
+    };
+    const focusCitationRows = (targetRows) => {
+        if (!targetRows.length) {
+            showCitationStatus("That cited trade is not currently in this table.", true);
+            if (tradeLogPanel) {
+                tradeLogPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+            return;
+        }
+
+        const hadHiddenRows = targetRows.some((row) => row.classList.contains("hidden-row"));
+        if (hadHiddenRows) {
+            clearAllFilters();
+        }
+
+        const visibleRows = targetRows.filter((row) => !row.classList.contains("hidden-row"));
+        const anchorRow = visibleRows[0] || targetRows[0];
+        const rowsToHighlight = visibleRows.length ? visibleRows : targetRows;
+
+        const finishFocus = () => {
+            scrollRowIntoTradeLog(anchorRow, "auto");
+            pulseCitationRows(rowsToHighlight);
+        };
+
+        const pageWillScroll = scrollPageToTradePanel();
+        if (pageWillScroll || hadHiddenRows) {
+            window.setTimeout(finishFocus, pageWillScroll ? 520 : 120);
+            return;
+        }
+        finishFocus();
+    };
+
+    const labelSymbolFromCitationButton = (button) => {
+        const label = (button.textContent || "").trim();
+        if (!label) {
+            return "";
+        }
+        const head = label.split("|")[0].trim();
+        if (!head) {
+            return "";
+        }
+        if (/bundle$/i.test(head)) {
+            return head.replace(/\s+bundle$/i, "").trim().toUpperCase();
+        }
+        return head.toUpperCase();
+    };
+    const resolveRowsForCitationButton = (button) => {
+        const tradeId = (button.dataset.citationTradeId || "").trim();
+        if (tradeId) {
+            const normalizedTradeId = Number(tradeId);
+            const row =
+                rowsByTradeId.get(tradeId) ||
+                (Number.isFinite(normalizedTradeId)
+                    ? rowsByTradeId.get(String(normalizedTradeId))
+                    : null) ||
+                document.getElementById(`trade-row-${tradeId}`);
+            if (row) {
+                return [row];
+            }
+        }
+
+        const tradePubkey = (button.dataset.citationTradePubkey || "").trim();
+        if (tradePubkey) {
+            const row = rowsByTradePubkey.get(tradePubkey);
+            if (row) {
+                return [row];
+            }
+        }
+
+        const bundleKey = (button.dataset.citationBundle || "").trim();
+        if (bundleKey) {
+            const bundleRows = bundleRowsByKey.get(bundleKey) || [];
+            if (bundleRows.length) {
+                return bundleRows;
+            }
+        }
+
+        const symbol = labelSymbolFromCitationButton(button);
+        if (!symbol) {
+            return [];
+        }
+
+        const symbolMatches = rows.filter((row) => {
+            const rowSymbol = (row.dataset.symbol || "").trim().toUpperCase();
+            return rowSymbol === symbol || rowSymbol.startsWith(`${symbol}.`);
+        });
+        if (!symbolMatches.length) {
+            return [];
+        }
+
+        const label = (button.textContent || "").trim().toLowerCase();
+        if (label.includes("bundle")) {
+            const bundled = symbolMatches.filter((row) => row.classList.contains("bundle-row"));
+            return bundled.length ? bundled : symbolMatches;
+        }
+
+        return symbolMatches.length === 1 ? symbolMatches : [symbolMatches[0]];
+    };
+
+    const activateCitationButton = (button) => {
+        if (!button) {
+            return;
+        }
+        focusCitationRows(resolveRowsForCitationButton(button));
+    };
+
+    const bindCitationButton = (button) => {
+        if (!button || button.dataset.citationBound === "1") {
+            return;
+        }
+        button.dataset.citationBound = "1";
+        button.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                activateCitationButton(button);
+            }
+        });
+    };
+
+    window.FXJActivateWeeklyReviewCitation = activateCitationButton;
+    window.FXJBindWeeklyReviewCitationButton = bindCitationButton;
+    citationButtons.forEach(bindCitationButton);
+    document.addEventListener("click", (event) => {
+        const button = event.target.closest(".ai-citation-btn");
+        if (
+            !button ||
+            button.classList.contains("is-sample") ||
+            button.getAttribute("aria-disabled") === "true"
+        ) {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        activateCitationButton(button);
+    });
 
     const tradeFiltersShared = window.FXJTradeFiltersShared;
     if (!tradeFiltersShared) {
@@ -686,7 +935,7 @@
         sortRows();
         applyFilters();
     };
-    const clearAllFilters = () => {
+    clearAllFilters = () => {
         if (filterField) {
             filterField.value = "";
         }
@@ -697,177 +946,6 @@
         });
         updateValueControl();
         applyAll();
-    };
-    let citationResetTimer = null;
-    const CITATION_HIGHLIGHT_MS = 3200;
-    const clearCitationHighlights = () => {
-        rows.forEach((row) => {
-            row.classList.remove("citation-hit");
-            row.querySelectorAll("td").forEach((cell) => {
-                cell.removeAttribute("data-citation-highlight");
-            });
-        });
-    };
-    const pulseCitationRows = (targetRows) => {
-        clearCitationHighlights();
-        targetRows.forEach((row) => {
-            if (row.classList.contains("hidden-row")) {
-                return;
-            }
-            row.classList.remove("citation-hit");
-            void row.offsetWidth;
-            row.classList.add("citation-hit");
-            row.querySelectorAll("td").forEach((cell) => {
-                cell.setAttribute("data-citation-highlight", "1");
-            });
-        });
-        if (citationResetTimer) {
-            window.clearTimeout(citationResetTimer);
-        }
-        citationResetTimer = window.setTimeout(clearCitationHighlights, CITATION_HIGHLIGHT_MS);
-    };
-    const findScrollableParent = (element, preferredContainer) => {
-        if (
-            preferredContainer &&
-            preferredContainer.contains(element) &&
-            preferredContainer.scrollHeight > preferredContainer.clientHeight + 1
-        ) {
-            return preferredContainer;
-        }
-        let node = element.parentElement;
-        while (node && node !== document.documentElement) {
-            const style = window.getComputedStyle(node);
-            if (
-                /(auto|scroll|overlay)/.test(style.overflowY) &&
-                node.scrollHeight > node.clientHeight + 1
-            ) {
-                return node;
-            }
-            node = node.parentElement;
-        }
-        return preferredContainer;
-    };
-    const scrollRowIntoTradeLog = (row, behavior = "smooth") => {
-        if (!row) {
-            return;
-        }
-        const shell = findScrollableParent(row, tradeLogScrollShell);
-        if (!shell || shell.scrollHeight <= shell.clientHeight + 1) {
-            return;
-        }
-
-        const rowRect = row.getBoundingClientRect();
-        const shellRect = shell.getBoundingClientRect();
-        const rowOffset = rowRect.top - shellRect.top + shell.scrollTop;
-        const targetScrollTop =
-            rowOffset - (shell.clientHeight - row.offsetHeight) / 2;
-        const maxScroll = Math.max(0, shell.scrollHeight - shell.clientHeight);
-        const nextScrollTop = Math.min(maxScroll, Math.max(0, targetScrollTop));
-        if (Math.abs(shell.scrollTop - nextScrollTop) <= 1) {
-            return;
-        }
-        shell.scrollTo({ top: nextScrollTop, behavior });
-    };
-    const scrollPageToTradePanel = () => {
-        if (!tradeLogPanel) {
-            return false;
-        }
-        const rect = tradeLogPanel.getBoundingClientRect();
-        const topMargin = 72;
-        const bottomMargin = 16;
-        if (rect.top >= topMargin && rect.bottom <= window.innerHeight - bottomMargin) {
-            return false;
-        }
-        window.scrollTo({
-            top: Math.max(0, window.scrollY + rect.top - topMargin),
-            behavior: "smooth",
-        });
-        return true;
-    };
-    const focusCitationRows = (targetRows) => {
-        if (!targetRows.length) {
-            if (tradeLogPanel) {
-                tradeLogPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-            }
-            return;
-        }
-
-        const hadHiddenRows = targetRows.some((row) => row.classList.contains("hidden-row"));
-        if (hadHiddenRows) {
-            clearAllFilters();
-        }
-
-        const visibleRows = targetRows.filter((row) => !row.classList.contains("hidden-row"));
-        const anchorRow = visibleRows[0] || targetRows[0];
-        const rowsToHighlight = visibleRows.length ? visibleRows : targetRows;
-
-        const finishFocus = () => {
-            scrollRowIntoTradeLog(anchorRow, "auto");
-            pulseCitationRows(rowsToHighlight);
-        };
-
-        const pageWillScroll = scrollPageToTradePanel();
-        if (pageWillScroll || hadHiddenRows) {
-            window.setTimeout(finishFocus, pageWillScroll ? 520 : 120);
-            return;
-        }
-        finishFocus();
-    };
-
-    const labelSymbolFromCitationButton = (button) => {
-        const label = (button.textContent || "").trim();
-        if (!label) {
-            return "";
-        }
-        const head = label.split("|")[0].trim();
-        if (!head) {
-            return "";
-        }
-        if (/bundle$/i.test(head)) {
-            return head.replace(/\s+bundle$/i, "").trim().toUpperCase();
-        }
-        return head.toUpperCase();
-    };
-    const resolveRowsForCitationButton = (button) => {
-        const tradeId = (button.dataset.citationTradeId || "").trim();
-        if (tradeId) {
-            const row =
-                rowsByTradeId.get(tradeId) ||
-                rowsByTradeId.get(String(Number(tradeId))) ||
-                document.getElementById(`trade-row-${tradeId}`);
-            if (row) {
-                return [row];
-            }
-        }
-
-        const bundleKey = (button.dataset.citationBundle || "").trim();
-        if (bundleKey) {
-            const bundleRows = bundleRowsByKey.get(bundleKey) || [];
-            if (bundleRows.length) {
-                return bundleRows;
-            }
-        }
-
-        const symbol = labelSymbolFromCitationButton(button);
-        if (!symbol) {
-            return [];
-        }
-
-        const symbolMatches = rows.filter((row) => {
-            const rowSymbol = (row.dataset.symbol || "").trim().toUpperCase();
-            return rowSymbol === symbol || rowSymbol.startsWith(`${symbol}.`);
-        });
-        if (!symbolMatches.length) {
-            return [];
-        }
-
-        const label = (button.textContent || "").trim().toLowerCase();
-        if (label.includes("bundle")) {
-            const bundled = symbolMatches.filter((row) => row.classList.contains("bundle-row"));
-            return bundled.length ? bundled : symbolMatches;
-        }
-
-        return symbolMatches.length === 1 ? symbolMatches : [symbolMatches[0]];
     };
 
     if (filterField) {
@@ -884,43 +962,6 @@
     if (clearFiltersBtn) {
         clearFiltersBtn.addEventListener("click", clearAllFilters);
     }
-
-    const activateCitationButton = (button) => {
-        if (!button) {
-            return;
-        }
-        focusCitationRows(resolveRowsForCitationButton(button));
-    };
-
-    const bindCitationButton = (button) => {
-        if (!button || button.dataset.citationBound === "1") {
-            return;
-        }
-        button.dataset.citationBound = "1";
-        button.addEventListener("keydown", (event) => {
-            if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                activateCitationButton(button);
-            }
-        });
-    };
-
-    window.FXJActivateWeeklyReviewCitation = activateCitationButton;
-    window.FXJBindWeeklyReviewCitationButton = bindCitationButton;
-    citationButtons.forEach(bindCitationButton);
-    document.addEventListener("click", (event) => {
-        const button = event.target.closest(".ai-citation-btn");
-        if (
-            !button ||
-            button.classList.contains("is-sample") ||
-            button.getAttribute("aria-disabled") === "true"
-        ) {
-            return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        activateCitationButton(button);
-    });
 
     if (sortSelect) {
         sortSelect.addEventListener("change", applyAll);

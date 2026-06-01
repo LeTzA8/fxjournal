@@ -331,8 +331,10 @@ def test_weekly_review_chat_route_stores_user_and_assistant_messages(app_ctx, cl
             "bundle_key": None,
             "citation_type": "trade",
             "label": "XAUUSD | 08 Apr 2026 (Wed)",
+            "ref": "T1",
             "tone": "bad",
             "trade_id": 101,
+            "trade_pubkey": None,
             "type": "citation",
         },
         {"text": " loss because it drove most of the damage.", "type": "text"},
@@ -655,6 +657,94 @@ def test_dashboard_home_renders_weekly_review_chat_inside_review_panel(app_ctx, 
     assert "Why did risk drive this review?" in response_text
     assert "Was this bad luck or my execution?" not in response_text
     assert "weekly_review_chat.js" in response_text
+
+
+def test_dashboard_home_renders_citation_and_trade_row_resolution_attrs(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-citation-attrs-user",
+        email="dashboard-citation-attrs@example.com",
+    )
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="XAUUSD",
+        side="SELL",
+        entry_price=2300.0,
+        exit_price=2292.0,
+        lot_size=0.5,
+        pnl=125.0,
+        opened_at=datetime(2026, 4, 8, 14, 30),
+        closed_at=datetime(2026, 4, 8, 15, 10),
+    )
+    db.session.add(trade)
+    db.session.flush()
+    apply_interpretation(
+        trade,
+        bundle_pubkey="bundle-citation-attrs",
+        source="test",
+        user_id=user.id,
+    )
+    db.session.commit()
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-citation-attrs")
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": review,
+            "weekly_ai_review_display": {
+                "summary": {
+                    "text": "XAUUSD carried the week.",
+                    "segments": [
+                        {
+                            "type": "citation",
+                            "label": "XAUUSD | 08 Apr 2026 (Wed)",
+                            "citation_type": "trade",
+                            "ref": "T1",
+                            "trade_id": trade.id,
+                            "trade_pubkey": trade.pubkey,
+                            "bundle_key": "bundle-citation-attrs",
+                            "tone": "good",
+                        },
+                        {"type": "text", "text": " carried the week."},
+                    ],
+                    "refs": ["T1"],
+                    "citations": [],
+                },
+                "takeaways": [],
+                "improvement": {"text": "", "segments": [], "refs": [], "citations": []},
+                "strength": {"text": "", "segments": [], "refs": [], "citations": []},
+                "experiment": {},
+                "has_citations": True,
+            },
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    response = client.get("/dashboard")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'data-citation-ref="T1"' in response_text
+    assert f'data-citation-trade-id="{trade.id}"' in response_text
+    assert f'data-citation-trade-pubkey="{trade.pubkey}"' in response_text
+    assert 'data-citation-bundle="bundle-citation-attrs"' in response_text
+    assert f'data-trade-id="{trade.id}"' in response_text
+    assert f'data-trade-pubkey="{trade.pubkey}"' in response_text
+    assert 'data-bundle="bundle-citation-attrs"' in response_text
+    assert 'data-citation-status' in response_text
+
+
+def test_dashboard_citation_binding_is_not_filter_library_dependent():
+    source = Path("static/js/dashboard_page.js").read_text(encoding="utf-8")
+
+    assert source.index("window.FXJActivateWeeklyReviewCitation") < source.index(
+        "const tradeFiltersShared = window.FXJTradeFiltersShared",
+    )
+    assert "That cited trade is not currently in this table." in source
 
 
 def test_dashboard_home_shows_admin_ai_journal_carousel_tab(app_ctx, client, monkeypatch):
@@ -2387,6 +2477,7 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
                         {
                             "ref": "T1",
                             "trade_id": 101,
+                            "trade_pubkey": "trade-xau",
                             "symbol": "XAUUSD",
                             "opened_at": "2026-04-01T09:00:00Z",
                             "pnl": 125.0,
@@ -2396,6 +2487,7 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
                         {
                             "ref": "B1",
                             "trade_id": 202,
+                            "trade_pubkey": "trade-gbp",
                             "symbol": "GBPUSD",
                             "opened_at": "2026-04-02T10:00:00Z",
                             "pnl": -42.0,
@@ -2421,8 +2513,16 @@ def test_weekly_ai_review_display_rewrites_internal_refs_into_inline_pills():
     ]
     assert display["summary"]["segments"][0]["label"] == "XAUUSD | 01 Apr 2026 (Wed)"
     assert display["summary"]["segments"][0]["tone"] == "good"
+    assert display["summary"]["segments"][0]["ref"] == "T1"
+    assert display["summary"]["segments"][0]["trade_id"] == 101
+    assert display["summary"]["segments"][0]["trade_pubkey"] == "trade-xau"
+    assert display["summary"]["segments"][0]["bundle_key"] is None
     assert display["summary"]["segments"][2]["label"] == "GBPUSD bundle | 02 Apr 2026 (Thu)"
     assert display["summary"]["segments"][2]["tone"] == "bad"
+    assert display["summary"]["segments"][2]["ref"] == "B1"
+    assert display["summary"]["segments"][2]["trade_id"] == 202
+    assert display["summary"]["segments"][2]["trade_pubkey"] == "trade-gbp"
+    assert display["summary"]["segments"][2]["bundle_key"] == "bundle-xyz"
     assert display["takeaways"][0]["segments"][0]["type"] == "citation"
     assert display["takeaways"][0]["segments"][0]["label"] == "XAUUSD | 01 Apr 2026 (Wed)"
     assert display["takeaways"][0]["segments"][0]["tone"] == "good"
@@ -2695,7 +2795,9 @@ def test_weekly_review_chat_reply_display_trims_redundant_date_before_citation()
             "type": "citation",
             "label": "NAS100 | 25 May 2026 (Mon)",
             "citation_type": "trade",
+            "ref": "T1",
             "trade_id": 901,
+            "trade_pubkey": None,
             "bundle_key": None,
             "tone": "bad",
         },

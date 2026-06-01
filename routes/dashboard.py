@@ -368,7 +368,9 @@ def _build_review_text_segments(text, citations):
                 "type": "citation",
                 "label": str(citation.get("label") or citation.get("inline_label") or "").strip(),
                 "citation_type": citation.get("type"),
+                "ref": citation.get("ref"),
                 "trade_id": citation.get("trade_id"),
+                "trade_pubkey": citation.get("trade_pubkey"),
                 "bundle_key": citation.get("bundle_key"),
                 "tone": citation.get("tone") or "neutral",
             }

@@ -50,7 +50,12 @@ def build_weekly_review_citation_lookup(payload_json, timezone_name):
             opened_local = to_display_timezone(opened_at, timezone_name)
             date_label = opened_local.strftime("%d %b %Y (%a)") if opened_local is not None else None
         bundle_key = str(trade.get("bundle_pubkey") or "").strip()
+        trade_pubkey = str(trade.get("trade_pubkey") or trade.get("pubkey") or "").strip()
         trade_id = trade.get("trade_id")
+        try:
+            normalized_trade_id = int(trade_id)
+        except (TypeError, ValueError):
+            normalized_trade_id = None
         try:
             pnl_value = float(trade.get("pnl"))
         except (TypeError, ValueError):
@@ -62,6 +67,8 @@ def build_weekly_review_citation_lookup(payload_json, timezone_name):
             lookup[review_ref] = {
                 "ref": review_ref,
                 "type": "bundle",
+                "trade_id": normalized_trade_id,
+                "trade_pubkey": trade_pubkey or None,
                 "bundle_key": bundle_key or None,
                 "inline_label": f"{symbol} bundle",
                 "label": f"{symbol} bundle{label_suffix}",
@@ -69,16 +76,13 @@ def build_weekly_review_citation_lookup(payload_json, timezone_name):
             }
             continue
 
-        try:
-            normalized_trade_id = int(trade_id)
-        except (TypeError, ValueError):
-            normalized_trade_id = None
-
         label_suffix = f" | {date_label}" if date_label else ""
         lookup[review_ref] = {
             "ref": review_ref,
             "type": "trade",
             "trade_id": normalized_trade_id,
+            "trade_pubkey": trade_pubkey or None,
+            "bundle_key": bundle_key or None,
             "inline_label": symbol,
             "label": f"{symbol}{label_suffix}" if label_suffix else symbol,
             "tone": tone,
