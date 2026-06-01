@@ -703,6 +703,9 @@
     const clearCitationHighlights = () => {
         rows.forEach((row) => {
             row.classList.remove("citation-hit");
+            row.querySelectorAll("td").forEach((cell) => {
+                cell.removeAttribute("data-citation-highlight");
+            });
         });
     };
     const pulseCitationRows = (targetRows) => {
@@ -714,6 +717,9 @@
             row.classList.remove("citation-hit");
             void row.offsetWidth;
             row.classList.add("citation-hit");
+            row.querySelectorAll("td").forEach((cell) => {
+                cell.setAttribute("data-citation-highlight", "1");
+            });
         });
         if (citationResetTimer) {
             window.clearTimeout(citationResetTimer);
@@ -802,13 +808,66 @@
 
         const pageWillScroll = scrollPageToTradePanel();
         if (pageWillScroll || hadHiddenRows) {
-            window.requestAnimationFrame(() => {
-                window.requestAnimationFrame(finishFocus);
-            });
-            window.setTimeout(finishFocus, 480);
+            window.setTimeout(finishFocus, pageWillScroll ? 520 : 120);
             return;
         }
         finishFocus();
+    };
+
+    const labelSymbolFromCitationButton = (button) => {
+        const label = (button.textContent || "").trim();
+        if (!label) {
+            return "";
+        }
+        const head = label.split("|")[0].trim();
+        if (!head) {
+            return "";
+        }
+        if (/bundle$/i.test(head)) {
+            return head.replace(/\s+bundle$/i, "").trim().toUpperCase();
+        }
+        return head.toUpperCase();
+    };
+    const resolveRowsForCitationButton = (button) => {
+        const tradeId = (button.dataset.citationTradeId || "").trim();
+        if (tradeId) {
+            const row =
+                rowsByTradeId.get(tradeId) ||
+                rowsByTradeId.get(String(Number(tradeId))) ||
+                document.getElementById(`trade-row-${tradeId}`);
+            if (row) {
+                return [row];
+            }
+        }
+
+        const bundleKey = (button.dataset.citationBundle || "").trim();
+        if (bundleKey) {
+            const bundleRows = bundleRowsByKey.get(bundleKey) || [];
+            if (bundleRows.length) {
+                return bundleRows;
+            }
+        }
+
+        const symbol = labelSymbolFromCitationButton(button);
+        if (!symbol) {
+            return [];
+        }
+
+        const symbolMatches = rows.filter((row) => {
+            const rowSymbol = (row.dataset.symbol || "").trim().toUpperCase();
+            return rowSymbol === symbol || rowSymbol.startsWith(`${symbol}.`);
+        });
+        if (!symbolMatches.length) {
+            return [];
+        }
+
+        const label = (button.textContent || "").trim().toLowerCase();
+        if (label.includes("bundle")) {
+            const bundled = symbolMatches.filter((row) => row.classList.contains("bundle-row"));
+            return bundled.length ? bundled : symbolMatches;
+        }
+
+        return symbolMatches.length === 1 ? symbolMatches : [symbolMatches[0]];
     };
 
     if (filterField) {
@@ -830,20 +889,7 @@
         if (!button) {
             return;
         }
-        const citationType = (button.dataset.citationType || "").trim();
-        if (citationType === "bundle") {
-            const bundleKey = (button.dataset.citationBundle || "").trim();
-            focusCitationRows(bundleRowsByKey.get(bundleKey) || []);
-            return;
-        }
-
-        if (citationType === "trade") {
-            const tradeId = (button.dataset.citationTradeId || "").trim();
-            const row =
-                rowsByTradeId.get(tradeId) ||
-                (tradeId ? document.getElementById(`trade-row-${tradeId}`) : null);
-            focusCitationRows(row ? [row] : []);
-        }
+        focusCitationRows(resolveRowsForCitationButton(button));
     };
 
     const bindCitationButton = (button) => {
@@ -851,15 +897,10 @@
             return;
         }
         button.dataset.citationBound = "1";
-        const activateCitation = () => {
-            activateCitationButton(button);
-        };
-
-        button.addEventListener("click", activateCitation);
         button.addEventListener("keydown", (event) => {
             if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
-                activateCitation();
+                activateCitationButton(button);
             }
         });
     };
@@ -867,6 +908,19 @@
     window.FXJActivateWeeklyReviewCitation = activateCitationButton;
     window.FXJBindWeeklyReviewCitationButton = bindCitationButton;
     citationButtons.forEach(bindCitationButton);
+    document.addEventListener("click", (event) => {
+        const button = event.target.closest(".ai-citation-btn");
+        if (
+            !button ||
+            button.classList.contains("is-sample") ||
+            button.getAttribute("aria-disabled") === "true"
+        ) {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        activateCitationButton(button);
+    });
 
     if (sortSelect) {
         sortSelect.addEventListener("change", applyAll);

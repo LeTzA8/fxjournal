@@ -5217,10 +5217,10 @@
 
     @keyframes trade-citation-pulse {
         0% {
-            background: color-mix(in srgb, var(--accent) 42%, var(--surface));
+            background-color: color-mix(in srgb, var(--accent) 52%, var(--surface));
         }
         100% {
-            background: color-mix(in srgb, var(--accent) 24%, var(--surface));
+            background-color: color-mix(in srgb, var(--accent) 38%, var(--surface));
         }
     }
 
@@ -5888,6 +5888,28 @@
         .trade-log .table-shell { max-height: min(52vh, 430px); } }
 
     @media (max-width: 480px) { .metric-grid { grid-template-columns: 1fr; } }
+
+    .trade-log tbody tr.citation-hit > td,
+    .trade-log tbody tr.citation-hit.running-trade > td,
+    .trade-log tbody tr.citation-hit.bundle-row > td,
+    .trade-log tbody tr.citation-hit.running-trade.bundle-row > td,
+    .trade-log tbody tr > td[data-citation-highlight="1"] {
+        background-color: color-mix(in srgb, var(--accent) 38%, var(--surface)) !important;
+        animation: trade-citation-pulse 2.4s ease;
+        border-top-color: color-mix(in srgb, var(--accent) 44%, var(--border)) !important;
+        border-bottom-color: color-mix(in srgb, var(--accent) 44%, var(--border)) !important;
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 58%, white 42%) !important;
+    }
+
+    .trade-log tbody tr.citation-hit > td:first-child,
+    .trade-log tbody tr.citation-hit.running-trade > td:first-child,
+    .trade-log tbody tr.citation-hit.bundle-row > td:first-child,
+    .trade-log tbody tr.citation-hit.running-trade.bundle-row > td:first-child,
+    .trade-log tbody tr > td[data-citation-highlight="1"]:first-child {
+        box-shadow:
+            inset 4px 0 0 color-mix(in srgb, var(--accent) 88%, white 12%),
+            inset 0 0 0 1px color-mix(in srgb, var(--accent) 58%, white 42%) !important;
+    }
 
     @media (prefers-reduced-motion: reduce) { .chart-glow,
         .chart-area,
