@@ -35,6 +35,17 @@
         "boughtTimestamp",
         "soldTimestamp",
     ];
+    const topstepHeaders = [
+        "Id",
+        "ContractName",
+        "EnteredAt",
+        "ExitedAt",
+        "EntryPrice",
+        "ExitPrice",
+        "PnL",
+        "Size",
+        "Type",
+    ];
     const parseCsvHeader = (text) => {
         const lines = String(text || "").split(/\r?\n/).filter((line) => line.trim());
         if (!lines.length) {
@@ -58,6 +69,9 @@
         try {
             const textSample = await file.slice(0, 8192).text();
             const csvHeader = parseCsvHeader(textSample);
+            if (csvHeader.length && topstepHeaders.every((header) => csvHeader.includes(header))) {
+                return { platform: "Topstep", market: "Futures" };
+            }
             if (csvHeader.length && tradovateHeaders.every((header) => csvHeader.includes(header))) {
                 return { platform: "Tradovate", market: "Futures" };
             }

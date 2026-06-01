@@ -186,6 +186,80 @@ def test_trade_edit_uses_progressive_disclosure_sections(app_ctx, client):
     assert b"Save changes" in edit_response.data
 
 
+def test_trade_note_api_get_and_post(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-note-api-user",
+        email="trade-note-api@example.com",
+    )
+
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=1.10120,
+        lot_size=1.00,
+        pnl=120.0,
+        opened_at=datetime(2026, 3, 10, 9, 0, 0),
+        closed_at=datetime(2026, 3, 10, 10, 24, 0),
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    get_response = client.get(f"/api/trades/{trade.pubkey}/note")
+    assert get_response.status_code == 200
+    get_payload = get_response.get_json()
+    assert get_payload["has_trade_note"] is False
+    assert get_payload["trade_note"] == ""
+    assert "EURUSD" in get_payload["trade_label"]
+
+    post_response = client.post(
+        f"/api/trades/{trade.pubkey}/note",
+        json={"trade_note": "Quick dashboard note."},
+    )
+    assert post_response.status_code == 200
+    post_payload = post_response.get_json()
+    assert post_payload["ok"] is True
+    assert post_payload["has_trade_note"] is True
+    assert post_payload["trade_note"] == "Quick dashboard note."
+
+    db.session.refresh(trade)
+    assert trade.trade_note == "Quick dashboard note."
+
+
+def test_trade_note_api_rejects_overlong_note(app_ctx, client):
+    _user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-note-length-user",
+        email="trade-note-length@example.com",
+    )
+
+    trade = Trade(
+        user_id=trade_account.user_id,
+        trade_account_id=trade_account.id,
+        symbol="GBPUSD",
+        side="SELL",
+        entry_price=1.25000,
+        exit_price=1.24800,
+        lot_size=0.50,
+        pnl=100.0,
+        opened_at=datetime(2026, 3, 11, 9, 0, 0),
+        closed_at=datetime(2026, 3, 11, 10, 0, 0),
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    response = client.post(
+        f"/api/trades/{trade.pubkey}/note",
+        json={"trade_note": "x" * (trades_routes.TRADE_NOTE_MAX_LENGTH + 1)},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "trade_note_too_long"
+
+
 def test_trade_detail_shows_only_relevant_movement_metric_by_account_type(app_ctx, client):
     user, cfd_account = _create_logged_in_user(
         client,

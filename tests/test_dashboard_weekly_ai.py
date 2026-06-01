@@ -11,6 +11,9 @@ from ai_service import (
     WEEKLY_DASHBOARD_KIND,
     build_weekly_review_chat_messages,
     load_prompt_text,
+    pack_weekly_review_chat_assistant_content,
+    parse_weekly_review_chat_model_output,
+    unpack_weekly_review_chat_assistant_content,
 )
 from models import AIGeneratedResponse, AIPromptHistory, JournalSession, MT5Account, MT5SyncBatch, WeeklyReviewChatMessage
 
@@ -300,7 +303,12 @@ def test_weekly_review_chat_route_stores_user_and_assistant_messages(app_ctx, cl
         calls["review_id"] = review_record.id
         calls["message"] = user_message
         calls["history"] = [message.content for message in chat_history or []]
-        return "Start with the XAUUSD loss [T1] because it drove most of the damage.", {}, "gpt-test"
+        return (
+            "Start with the XAUUSD loss [T1] because it drove most of the damage.",
+            ["What happened right after the loss?"],
+            {},
+            "gpt-test",
+        )
 
     monkeypatch.setattr(
         dashboard_routes,
@@ -316,6 +324,7 @@ def test_weekly_review_chat_route_stores_user_and_assistant_messages(app_ctx, cl
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["reply"] == "Start with the XAUUSD loss because it drove most of the damage."
+    assert payload["suggested_prompts"] == ["What happened right after the loss?"]
     assert payload["segments"] == [
         {"text": "Start with the ", "type": "text"},
         {
@@ -341,7 +350,47 @@ def test_weekly_review_chat_route_stores_user_and_assistant_messages(app_ctx, cl
     assert [message.role for message in messages] == ["user", "user", "assistant"]
     assert messages[-2].content == "Which trade should I review first?"
     assert messages[-1].content.startswith("Start with the XAUUSD loss")
+    assert "What happened right after the loss?" in messages[-1].content
     assert messages[-1].model_used == "gpt-test"
+
+
+def test_parse_weekly_review_chat_model_output_json():
+    raw = json.dumps(
+        {
+            "reply": "Timing was tight after the loss.",
+            "suggested_prompts": [
+                "Which retry was fastest?",
+                "What should I wait for next time",
+            ],
+        }
+    )
+    reply, prompts = parse_weekly_review_chat_model_output(raw)
+    assert reply == "Timing was tight after the loss."
+    assert prompts == [
+        "Which retry was fastest?",
+        "What should I wait for next time?",
+    ]
+
+
+def test_pack_and_unpack_weekly_review_chat_assistant_content():
+    packed = pack_weekly_review_chat_assistant_content(
+        "Short answer.",
+        ["First follow-up?", "Second follow-up?"],
+    )
+    reply, prompts = unpack_weekly_review_chat_assistant_content(packed)
+    assert reply == "Short answer."
+    assert prompts == ["First follow-up?", "Second follow-up?"]
+
+
+def test_mark_last_assistant_followup_prompts_only_on_latest():
+    history = [
+        {"role": "assistant", "suggested_prompts": ["Old question?"]},
+        {"role": "user", "text": "Hi"},
+        {"role": "assistant", "suggested_prompts": ["New question?"]},
+    ]
+    marked = dashboard_routes._mark_last_assistant_followup_prompts(history)
+    assert marked[0]["show_followup_prompts"] is False
+    assert marked[2]["show_followup_prompts"] is True
 
 
 def test_weekly_review_chat_route_rejects_wrong_active_account(app_ctx, client, monkeypatch):
@@ -411,7 +460,7 @@ def test_weekly_review_chat_route_is_rate_limited(app_ctx, client, monkeypatch):
     review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-rl")
 
     def fake_reply(*_a, **_k):
-        return "brief", {}, "gpt-test"
+        return "brief", [], {}, "gpt-test"
 
     monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fake_reply)
 
@@ -442,7 +491,7 @@ def test_weekly_review_chat_admin_bypasses_usage_limits(app_ctx, client, monkeyp
     review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-admin-rl")
 
     def fake_reply(*_a, **_k):
-        return "brief", {}, "gpt-test"
+        return "brief", [], {}, "gpt-test"
 
     monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fake_reply)
 
@@ -510,7 +559,7 @@ def test_weekly_review_chat_route_counts_only_user_messages_for_trial_limit(app_
     db.session.commit()
 
     def fake_reply(*_a, **_k):
-        return "brief", {}, "gpt-test"
+        return "brief", [], {}, "gpt-test"
 
     monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fake_reply)
 
@@ -559,7 +608,7 @@ def test_weekly_review_chat_grandfathered_user_bypasses_trial_expiry(app_ctx, cl
     review = _create_weekly_review(user, trade_account, prompt_id="weekly-chat-grandfathered")
 
     def fake_reply(*_a, **_k):
-        return "brief", {}, "gpt-test"
+        return "brief", [], {}, "gpt-test"
 
     monkeypatch.setattr(dashboard_routes, "generate_weekly_review_chat_reply", fake_reply)
 
@@ -1548,7 +1597,9 @@ def test_dashboard_home_uses_state_3_when_active_account_has_active_mt5(app_ctx,
     assert b"Session Performance" in response.data
 
 
-def test_build_dashboard_continuity_row_returns_status_only_without_next_action():
+def test_build_dashboard_continuity_row_returns_status_only_without_next_action(monkeypatch):
+    fixed_now = datetime(2026, 5, 25, 21, 0, 0)
+    monkeypatch.setattr(dashboard_routes, "utcnow_naive", lambda: fixed_now)
     review_stub = type("ReviewStub", (), {"response_text": "Weekly review body."})()
     result = dashboard_routes._build_dashboard_continuity_row(
         active_trade_account=type("AccountStub", (), {"id": 7})(),
@@ -1902,6 +1953,48 @@ def test_dashboard_recent_trade_rows_link_to_trade_detail(app_ctx, client, monke
     assert b"data-trade-detail-url=" in response.data
     assert f'/dashboard/trades/{trade.pubkey}"'.encode() in response.data
     assert b"trade-opened-link" in response.data
+
+
+def test_dashboard_recent_trade_rows_show_inline_note_action(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-trade-note-user",
+        email="dashboard-trade-note@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+    trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.085,
+        exit_price=1.091,
+        lot_size=0.01,
+        pnl=60.0,
+        trade_note="Already noted.",
+        opened_at=datetime(2026, 3, 22, 8, 0, 0),
+        closed_at=datetime(2026, 3, 22, 10, 0, 0),
+    )
+    db.session.add(trade)
+    db.session.commit()
+
+    response = client.get("/dashboard")
+
+    assert response.status_code == 200
+    assert b'data-trade-note-url-pattern="/api/trades/__TRADE_PUBKEY__/note"' in response.data
+    assert b'data-has-trade-note="1"' in response.data
+    assert b"Edit note" in response.data
+    assert b"id=\"dashboardTradeNoteDialog\"" in response.data
 
 
 def test_dashboard_home_shows_possible_behavior_badges_in_recent_trades(app_ctx, client, monkeypatch):
@@ -2552,6 +2645,98 @@ def test_weekly_ai_review_display_does_not_append_unmentioned_ref_as_trailing_pi
     ]
     assert takeaway_labels == ["USDCAD | 28 Apr 2026 (Tue)"]
     assert "NAS100 | 27 Apr 2026 (Mon)" not in takeaway_labels
+
+
+def test_strip_weekly_review_chat_ref_codes_removes_symbol_pair_brackets():
+    out = dashboard_routes._strip_weekly_review_chat_ref_codes(
+        "The NAS100 sequence [NAS100-NAS100] shows repeats."
+    )
+    assert out == "The NAS100 sequence shows repeats."
+
+    assert (
+        dashboard_routes._strip_weekly_review_chat_ref_codes(
+            "The 28 May NAS100 sequence NAS100-NAS100 did the same."
+        )
+        == "The 28 May NAS100 sequence did the same."
+    )
+
+
+def test_weekly_review_chat_reply_display_trims_redundant_date_before_citation():
+    review = type(
+        "Review",
+        (),
+        {
+            "payload_json": json.dumps(
+                {
+                    "trades": [
+                        {
+                            "ref": "T1",
+                            "trade_id": 901,
+                            "symbol": "NAS100",
+                            "trade_date_label": "25 May 2026 (Mon)",
+                            "opened_at": "2026-05-25T14:30:00Z",
+                            "pnl": -50.0,
+                            "is_bundle": False,
+                        }
+                    ]
+                }
+            ),
+        },
+    )()
+    display = dashboard_routes._build_weekly_review_chat_reply_display(
+        review,
+        "The 25 May [T1] chain shows repeats.",
+        "UTC",
+    )
+    assert display["text"] == "The 25 May NAS100 chain shows repeats."
+    assert display["segments"] == [
+        {"type": "text", "text": "The "},
+        {
+            "type": "citation",
+            "label": "NAS100 | 25 May 2026 (Mon)",
+            "citation_type": "trade",
+            "trade_id": 901,
+            "bundle_key": None,
+            "tone": "bad",
+        },
+        {"type": "text", "text": " chain shows repeats."},
+    ]
+
+
+def test_rewrite_weekly_review_chat_reply_text_expands_bracketed_refs():
+    lookup = {
+        "T1": {
+            "ref": "T1",
+            "type": "trade",
+            "trade_id": 901,
+            "inline_label": "NAS100",
+            "label": "NAS100 | 25 May 2026 (Mon)",
+            "tone": "bad",
+        }
+    }
+    out = dashboard_routes._rewrite_weekly_review_chat_reply_text(
+        "The 25 May [T1] chain shows repeats.",
+        lookup,
+    )
+    assert out == "The 25 May NAS100 chain shows repeats."
+
+
+def test_rewrite_weekly_review_chat_reply_text_strips_clitic_brackets():
+    lookup = {
+        "B1": {
+            "ref": "B1",
+            "type": "bundle",
+            "bundle_key": "bundle-key",
+            "inline_label": "GBPUSD bundle",
+            "label": "GBPUSD bundle | 31 Mar 2026 (Tue)",
+            "tone": "bad",
+        }
+    }
+    out = dashboard_routes._rewrite_weekly_review_chat_reply_text(
+        "The [B1]d trade was the lone loss.",
+        lookup,
+    )
+    assert out == "The trade was the lone loss."
 
 
 def test_rewrite_review_text_refs_drops_stray_clitic_after_brackets_and_labels():

@@ -12,6 +12,7 @@ from ai_service import (
     AIRequestError,
     MIN_CLOSED_TRADES_FOR_ADVICE,
     WEEKLY_REVIEW_CHAT_PROMPT_VERSION,
+    WEEKLY_REVIEW_CHAT_STARTER_PROMPT_LIMIT,
     WEEKLY_DASHBOARD_KIND,
     build_dashboard_review_display,
     count_closed_trade_ideas_in_period,
@@ -20,7 +21,9 @@ from ai_service import (
     get_latest_weekly_dashboard_advice,
     get_weekly_dashboard_period,
     normalize_dashboard_advice_text,
+    pack_weekly_review_chat_assistant_content,
     should_generate_weekly_dashboard_advice,
+    unpack_weekly_review_chat_assistant_content,
     weekly_review_generation_past_market_week_cutoff,
     weekly_review_text_preserves_display_format,
 )
@@ -135,6 +138,18 @@ LEGACY_WEEKLY_REVIEW_CHAT_PROMPTS = [
 _WEEKLY_REVIEW_CHAT_REF_CODE_RE = re.compile(r"\b[BT]\d+\b", re.IGNORECASE)
 _WEEKLY_REVIEW_CHAT_BRACKETED_REFS_RE = re.compile(
     r"\s*[\(\[\{]\s*[BT]\d+(?:\s*,\s*[BT]\d+)*\s*[\)\]\}]",
+    re.IGNORECASE,
+)
+_WEEKLY_REVIEW_CHAT_SYMBOL_PAIR_REFS_RE = re.compile(
+    r"\s*[\(\[\{]\s*[A-Za-z][A-Za-z0-9]{0,15}\s*[-\u2013]\s*[A-Za-z][A-Za-z0-9]{0,15}\s*[\)\]\}]",
+    re.IGNORECASE,
+)
+_WEEKLY_REVIEW_CHAT_DUPLICATE_SYMBOL_PAIR_RE = re.compile(
+    r"\s*[\(\[\{]?\s*([A-Za-z][A-Za-z0-9]{0,15})\s*[-\u2013]\s*\1\s*[\)\]\}]?",
+    re.IGNORECASE,
+)
+_WEEKLY_REVIEW_CHAT_REDUNDANT_DATE_SUFFIX_RE = re.compile(
+    r"(\d{1,2}\s+[A-Za-z]{3})\s*$",
     re.IGNORECASE,
 )
 
@@ -401,10 +416,92 @@ def _strip_weekly_review_chat_ref_codes(text):
     if not normalized:
         return ""
     normalized = _WEEKLY_REVIEW_CHAT_BRACKETED_REFS_RE.sub("", normalized)
+    normalized = _WEEKLY_REVIEW_CHAT_SYMBOL_PAIR_REFS_RE.sub("", normalized)
+    normalized = _WEEKLY_REVIEW_CHAT_DUPLICATE_SYMBOL_PAIR_RE.sub(" ", normalized)
     normalized = _WEEKLY_REVIEW_CHAT_REF_CODE_RE.sub("", normalized)
     normalized = re.sub(r"\s{2,}", " ", normalized)
     normalized = re.sub(r"\s+([,.;:!?])", r"\1", normalized)
     return normalized.strip()
+
+
+def _rewrite_weekly_review_chat_reply_text(text, citation_lookup):
+    normalized = str(text or "").strip()
+    if not normalized or not citation_lookup:
+        return normalized
+
+    ref_codes = [ref for ref in citation_lookup.keys() if ref]
+    if not ref_codes:
+        return normalized
+
+    ref_pattern = "|".join(re.escape(ref) for ref in sorted(ref_codes, key=len, reverse=True))
+    bracket_close = (
+        r"\s*[\)\]\}](?:['\u2019']?[ds](?=\s|[,.;:!?]|$))?"
+    )
+    bracketed_ref_pattern = re.compile(
+        rf"[\(\[\{{]\s*(?:{ref_pattern})(?:\s*,\s*(?:{ref_pattern}))*{bracket_close}",
+        re.IGNORECASE,
+    )
+    clitic_after_bracket_re = re.compile(
+        r"[\)\]\}]\s*['\u2019']?[ds](?=\s|[,.;:!?]|$)",
+        re.IGNORECASE,
+    )
+
+    def replace_bracket_group(match):
+        group = match.group(0) or ""
+        if clitic_after_bracket_re.search(group):
+            return " "
+        refs = re.findall(rf"\b(?:{ref_pattern})\b", group, flags=re.IGNORECASE)
+        labels = []
+        for raw_ref in refs:
+            citation = citation_lookup.get(str(raw_ref or "").strip().upper())
+            if not isinstance(citation, dict):
+                continue
+            label = str(citation.get("inline_label") or citation.get("label") or "").strip()
+            if label and label not in labels:
+                labels.append(label)
+        if not labels:
+            return " "
+        prefix = normalized[: match.start()]
+        context_window = prefix[-80:]
+        if all(
+            re.search(rf"(?<!\w){re.escape(label)}(?!\w)", context_window, flags=re.IGNORECASE)
+            for label in labels
+        ):
+            return " "
+        if len(labels) == 1:
+            return f" {labels[0]} "
+        return f" {', '.join(labels)} "
+
+    normalized = bracketed_ref_pattern.sub(replace_bracket_group, normalized)
+    return _rewrite_review_text_refs(normalized, citation_lookup)
+
+
+def _trim_redundant_date_prefix_before_chat_citations(segments):
+    if not segments:
+        return segments
+
+    trimmed = []
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        if segment.get("type") != "citation":
+            trimmed.append(segment)
+            continue
+
+        label = str(segment.get("label") or segment.get("inline_label") or "").strip()
+        if trimmed and trimmed[-1].get("type") == "text" and label:
+            previous_text = str(trimmed[-1].get("text") or "")
+            date_match = _WEEKLY_REVIEW_CHAT_REDUNDANT_DATE_SUFFIX_RE.search(previous_text)
+            if date_match:
+                date_token = date_match.group(1)
+                if re.search(re.escape(date_token), label, flags=re.IGNORECASE):
+                    leading = previous_text[: date_match.start()].rstrip()
+                    if leading:
+                        trimmed[-1] = {"type": "text", "text": f"{leading} "}
+                    else:
+                        trimmed.pop()
+        trimmed.append(segment)
+    return trimmed
 
 
 def _build_weekly_review_chat_reply_display(review_record, reply_text, timezone_name):
@@ -413,38 +510,85 @@ def _build_weekly_review_chat_reply_display(review_record, reply_text, timezone_
         timezone_name,
     )
     explicit_refs = _extract_weekly_review_chat_refs(reply_text, citation_lookup)
-    display_text = _rewrite_review_text_refs(reply_text, citation_lookup)
+    display_text = _rewrite_weekly_review_chat_reply_text(reply_text, citation_lookup)
     display_text = _strip_weekly_review_chat_ref_codes(display_text)
     citations = _augment_citations_from_mentions(
         display_text,
         _resolve_weekly_review_citations(explicit_refs, citation_lookup),
         citation_lookup,
     )
+    segments = _trim_redundant_date_prefix_before_chat_citations(
+        _build_review_text_segments(display_text, citations)
+    )
+    segments = _merge_adjacent_chat_text_segments(segments)
     return {
         "text": display_text,
-        "segments": _build_review_text_segments(display_text, citations),
+        "segments": segments,
     }
+
+
+def _merge_adjacent_chat_text_segments(segments):
+    if not segments:
+        return segments
+
+    merged = []
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        if (
+            merged
+            and segment.get("type") == "text"
+            and merged[-1].get("type") == "text"
+        ):
+            merged[-1] = {
+                "type": "text",
+                "text": f"{merged[-1].get('text') or ''}{segment.get('text') or ''}",
+            }
+            continue
+        merged.append(segment)
+    return merged
 
 
 def _build_weekly_review_chat_message_display(review_record, message, timezone_name):
     role = getattr(message, "role", "")
     content = getattr(message, "content", "") or ""
     if role == WeeklyReviewChatMessage.ROLE_ASSISTANT:
+        reply_text, suggested_prompts = unpack_weekly_review_chat_assistant_content(content)
         display = _build_weekly_review_chat_reply_display(
             review_record,
-            content,
+            reply_text,
             timezone_name,
         )
         return {
             "role": role,
             "text": display["text"],
             "segments": display["segments"],
+            "suggested_prompts": suggested_prompts,
         }
     return {
         "role": role,
         "text": content,
         "segments": [{"type": "text", "text": content}],
+        "suggested_prompts": [],
     }
+
+
+def _mark_last_assistant_followup_prompts(chat_history):
+    if not chat_history:
+        return chat_history
+    marked = []
+    last_assistant_index = None
+    for index, message in enumerate(chat_history):
+        if message.get("role") == WeeklyReviewChatMessage.ROLE_ASSISTANT:
+            last_assistant_index = index
+    for index, message in enumerate(chat_history):
+        item = dict(message)
+        item["show_followup_prompts"] = (
+            index == last_assistant_index
+            and bool(item.get("suggested_prompts"))
+        )
+        marked.append(item)
+    return marked
 
 
 def _load_weekly_review_chat_history_display(review_record, user_id, trade_account_id, timezone_name):
@@ -459,10 +603,11 @@ def _load_weekly_review_chat_history_display(review_record, user_id, trade_accou
         .order_by(WeeklyReviewChatMessage.created_at.asc(), WeeklyReviewChatMessage.id.asc())
         .all()
     )
-    return [
+    history = [
         _build_weekly_review_chat_message_display(review_record, message, timezone_name)
         for message in messages
     ]
+    return _mark_last_assistant_followup_prompts(history)
 
 
 def _weekly_review_display_text(display, key):
@@ -1773,6 +1918,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
                 "is_running": trade_is_running,
                 "bundle_pubkey": getattr(trade, "bundle_pubkey", None),
                 "behavior_badges": behavior_badge_map.get(get_trade_identity(trade), []),
+                "has_trade_note": bool((trade.trade_note or "").strip()),
             }
         )
 
@@ -1883,6 +2029,9 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
     weekly_review_chat_prompts = _build_weekly_review_chat_prompts(
         weekly_ai_state.get("weekly_ai_review_display"),
     ) or list(LEGACY_WEEKLY_REVIEW_CHAT_PROMPTS)
+    weekly_review_chat_starter_prompts = weekly_review_chat_prompts[
+        :WEEKLY_REVIEW_CHAT_STARTER_PROMPT_LIMIT
+    ]
     weekly_review = weekly_ai_state["weekly_ai_review"]
     weekly_review_chat_send_state = None
     weekly_review_chat_usage = None
@@ -1906,6 +2055,10 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
             active_trade_account_id,
             timezone_name,
         )
+    weekly_review_chat_has_user_messages = any(
+        message.get("role") == WeeklyReviewChatMessage.ROLE_USER
+        for message in (weekly_review_chat_history or [])
+    )
     # AI journal carousel is internal dogfood only: same gate as /admin/journal (not customers).
     show_weekly_journal_preview = bool(
         target_user is not None
@@ -1946,6 +2099,8 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         weekly_ai_review_text=weekly_ai_review_text,
         weekly_ai_review_display=weekly_ai_state.get("weekly_ai_review_display"),
         weekly_review_chat_prompts=weekly_review_chat_prompts,
+        weekly_review_chat_starter_prompts=weekly_review_chat_starter_prompts,
+        weekly_review_chat_has_user_messages=weekly_review_chat_has_user_messages,
         weekly_review_chat_send_state=weekly_review_chat_send_state,
         weekly_review_chat_usage=weekly_review_chat_usage,
         weekly_review_chat_history=weekly_review_chat_history,
@@ -2085,7 +2240,7 @@ def weekly_review_chat(review_id):
     chat_history.reverse()
 
     try:
-        reply, _response_payload, model_used = generate_weekly_review_chat_reply(
+        reply, suggested_prompts, _response_payload, model_used = generate_weekly_review_chat_reply(
             review,
             message,
             chat_history=chat_history,
@@ -2131,7 +2286,7 @@ def weekly_review_chat(review_id):
                 trade_account_id=account_id,
                 ai_response_id=review.id,
                 role=WeeklyReviewChatMessage.ROLE_ASSISTANT,
-                content=reply,
+                content=pack_weekly_review_chat_assistant_content(reply, suggested_prompts),
                 model_used=model_used,
                 prompt_version=WEEKLY_REVIEW_CHAT_PROMPT_VERSION,
             ),
@@ -2142,6 +2297,7 @@ def weekly_review_chat(review_id):
         {
             "reply": reply_display["text"],
             "segments": reply_display["segments"],
+            "suggested_prompts": suggested_prompts,
         }
     )
 

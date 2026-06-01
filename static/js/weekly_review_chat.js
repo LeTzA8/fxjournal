@@ -79,6 +79,25 @@
         return bubble;
     };
 
+    const createDynamicPromptRow = (prompts) => {
+        const row = document.createElement("div");
+        row.className = "weekly-review-chat-prompts weekly-review-chat-prompts--dynamic";
+        row.setAttribute("data-review-chat-dynamic", "");
+        row.setAttribute("aria-label", "Suggested follow-up questions");
+        (prompts || []).forEach((prompt) => {
+            const text = String(prompt || "").trim();
+            if (!text) {
+                return;
+            }
+            const button = document.createElement("button");
+            button.type = "button";
+            button.dataset.reviewChatPrompt = text;
+            button.textContent = text;
+            row.appendChild(button);
+        });
+        return row;
+    };
+
     const limitErrorMessages = {
         review_limit_reached: "You've reached the follow-up limit for this review.",
         daily_limit_reached: "You've reached today's AI chat limit.",
@@ -91,12 +110,19 @@
 
     const MIN_SEND_SPACING_MS = 2000;
 
+    const scrollChatToBottom = (log) => {
+        if (!log) {
+            return;
+        }
+        log.scrollTop = log.scrollHeight;
+    };
+
     chatRoots.forEach((root) => {
         const form = root.querySelector("[data-review-chat-form]");
         const input = root.querySelector("[data-review-chat-input]");
         const log = root.querySelector("[data-review-chat-log]");
         const error = root.querySelector("[data-review-chat-error]");
-        const promptButtons = root.querySelectorAll("[data-review-chat-prompt]");
+        const starterPrompts = root.querySelector("[data-review-chat-starters]");
         const chatUrl = root.dataset.chatUrl || "";
         const csrfToken = root.dataset.csrfToken || "";
         let canSend = root.dataset.canSend !== "false";
@@ -105,13 +131,30 @@
             return;
         }
 
+        scrollChatToBottom(log);
+
+        const getPromptButtons = () =>
+            root.querySelectorAll(
+                "[data-review-chat-starters] [data-review-chat-prompt], [data-review-chat-dynamic] [data-review-chat-prompt]",
+            );
+
+        const clearDynamicPromptRows = () => {
+            log.querySelectorAll("[data-review-chat-dynamic]").forEach((row) => row.remove());
+        };
+
         const setBusy = (isBusy) => {
             input.disabled = isBusy || !canSend;
             form.querySelectorAll("button").forEach((button) => {
                 button.disabled = isBusy || !canSend;
             });
-            promptButtons.forEach((button) => {
+            getPromptButtons().forEach((button) => {
                 button.disabled = isBusy || !canSend;
+            });
+        };
+
+        const bindPromptButton = (button, submitQuestion) => {
+            button.addEventListener("click", () => {
+                submitQuestion(button.dataset.reviewChatPrompt || button.textContent || "");
             });
         };
 
@@ -145,10 +188,15 @@
 
             const sendStartedAt = Date.now();
             clearError();
+            if (starterPrompts) {
+                starterPrompts.hidden = true;
+            }
             const userBubble = createBubble("user", message);
             log.appendChild(userBubble);
+            scrollChatToBottom(log);
             const loadingBubble = createLoadingBubble();
             log.appendChild(loadingBubble);
+            scrollChatToBottom(log);
             input.value = "";
             setBusy(true);
 
@@ -190,6 +238,7 @@
                     throw new Error(friendly);
                 }
                 loadingBubble.remove();
+                clearDynamicPromptRows();
                 log.appendChild(
                     createBubble(
                         "assistant",
@@ -198,10 +247,21 @@
                         payload.segments,
                     ),
                 );
+                const dynamicPrompts = Array.isArray(payload.suggested_prompts)
+                    ? payload.suggested_prompts
+                    : [];
+                if (dynamicPrompts.length) {
+                    const dynamicRow = createDynamicPromptRow(dynamicPrompts);
+                    dynamicRow.querySelectorAll("[data-review-chat-prompt]").forEach((button) => {
+                        bindPromptButton(button, submitQuestion);
+                    });
+                    log.appendChild(dynamicRow);
+                }
+                scrollChatToBottom(log);
             } catch (err) {
                 loadingBubble.remove();
-                userBubble.remove();
                 showError(err.message || "Could not answer that right now. Please try again.");
+                scrollChatToBottom(log);
             } finally {
                 const elapsed = Date.now() - sendStartedAt;
                 if (elapsed < MIN_SEND_SPACING_MS) {
@@ -219,10 +279,6 @@
             submitQuestion(input.value);
         });
 
-        promptButtons.forEach((button) => {
-            button.addEventListener("click", () => {
-                submitQuestion(button.dataset.reviewChatPrompt || button.textContent || "");
-            });
-        });
+        getPromptButtons().forEach((button) => bindPromptButton(button, submitQuestion));
     });
 })();

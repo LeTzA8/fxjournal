@@ -1891,22 +1891,17 @@
                             {% endif %}
                         </p>
                     </div>
-                    <div class="weekly-review-chat-prompts" aria-label="Quick prompts">
-                        {% for prompt in weekly_review_chat_prompts %}
+                    <div class="weekly-review-chat-prompts weekly-review-chat-prompts--starters" data-review-chat-starters aria-label="Starter prompts"{% if weekly_review_chat_has_user_messages %} hidden{% endif %}>
+                        {% for prompt in weekly_review_chat_starter_prompts %}
                         <button type="button" data-review-chat-prompt="{{ prompt }}"{% if not chat_can_send %} disabled{% endif %}>{{ prompt }}</button>
                         {% endfor %}
                     </div>
                     <div class="weekly-review-chat-log" data-review-chat-log aria-live="polite">
                         {% for message in weekly_review_chat_history or [] %}
-                        <div class="weekly-review-chat-bubble weekly-review-chat-bubble--{{ message.role }}">
-                            {% for segment in message.segments %}
-                                {% if segment.type == "citation" %}
-                                <span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% elif segment.citation_type == "bundle" %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>
-                                {% else %}
-                                {{ segment.text }}
-                                {% endif %}
-                            {% endfor %}
-                        </div>
+                        <div class="weekly-review-chat-bubble weekly-review-chat-bubble--{{ message.role }}">{%- for segment in message.segments -%}{%- if segment.type == "citation" -%}<span class="ai-citation-btn" role="button" tabindex="0" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type }}"{% if segment.citation_type == "trade" %} data-citation-trade-id="{{ segment.trade_id }}"{% elif segment.citation_type == "bundle" %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>{%- else -%}{{ segment.text }}{%- endif %}{%- endfor -%}</div>
+                        {% if message.show_followup_prompts %}
+                        <div class="weekly-review-chat-prompts weekly-review-chat-prompts--dynamic" data-review-chat-dynamic aria-label="Suggested follow-up questions">{%- for prompt in message.suggested_prompts -%}<button type="button" data-review-chat-prompt="{{ prompt }}"{% if not chat_can_send %} disabled{% endif %}>{{ prompt }}</button>{%- endfor -%}</div>
+                        {% endif %}
                         {% endfor %}
                     </div>
                     {% if weekly_review_chat_send_state %}
@@ -2147,11 +2142,18 @@
         {% if not is_state_one %}
         <section class="panel-grid" data-reveal-row-step="140" data-reveal-col-step="90">
             <div class="panel-column panel-column-main">
-                <article class="panel trade-log" id="trade-journal">
+                <article
+                    class="panel trade-log"
+                    id="trade-journal"
+                    {% if not support_view_session_active %}
+                    data-trade-note-url-pattern="{{ url_for('trades.trade_note', trade_pubkey='__TRADE_PUBKEY__') }}"
+                    data-csrf-token="{{ csrf_token() }}"
+                    {% endif %}
+                >
                     <div class="panel-head">
                         <div class="panel-title-wrap">
                             <h2>📒 Trades</h2>
-                            <p class="panel-title-hint soft">Click a row to open details. The opened time is also a link.</p>
+                            <p class="panel-title-hint soft">Click a row for details, or add a note inline.</p>
                         </div>
                         <a href="{{ url_for('trades.trades') }}" class="trades-btn">Open Trades</a>
                     </div>
@@ -2212,6 +2214,9 @@
                                     <th>Side</th>
                                     <th>PnL</th>
                                     <th>Session</th>
+                                    {% if not support_view_session_active %}
+                                    <th>Note</th>
+                                    {% endif %}
                                 </tr>
                             </thead>
                             <tbody>
@@ -2234,6 +2239,7 @@
                                     data-pnl="{{ trade.pnl if trade.pnl is not none else '' }}"
                                     data-session="{{ trade.session_label }}"
                                     data-bundle="{{ trade.bundle_pubkey or '' }}"
+                                    data-has-trade-note="{{ '1' if trade.has_trade_note else '0' }}"
                                 >
                                     <td class="trade-opened-cell">
                                         {% if trade_detail_href %}
@@ -2282,11 +2288,23 @@
                                         {% endif %}
                                     </td>
                                     <td>{{ trade.session_label }}</td>
+                                    {% if not support_view_session_active %}
+                                    <td class="trade-note-cell">
+                                        <button
+                                            type="button"
+                                            class="ghost-btn trade-note-btn{% if not trade.has_trade_note %} trade-note-btn--empty{% endif %}"
+                                            data-trade-note-btn
+                                            aria-label="{% if trade.has_trade_note %}Edit note for {{ trade.symbol }}{% else %}Add note for {{ trade.symbol }}{% endif %}"
+                                        >
+                                            {% if trade.has_trade_note %}Edit note{% else %}Add note{% endif %}
+                                        </button>
+                                    </td>
+                                    {% endif %}
                                 </tr>
                                 {% endfor %}
                                 {% else %}
                                 <tr class="empty-row">
-                                    <td colspan="6">
+                                    <td colspan="{% if support_view_session_active %}6{% else %}7{% endif %}">
                                         <div class="empty-state-copy">
                                             <p>No trades yet.</p>
                                             <p class="empty-state-note">Add your first trade to start building dashboard stats, session breakdowns, and weekly review history.</p>
@@ -2309,6 +2327,35 @@
                     </div>
                     {% endif %}
                 </article>
+
+                {% if recent_trades and not support_view_session_active %}
+                <dialog id="dashboardTradeNoteDialog" class="confirm-dialog action-dialog" aria-labelledby="dashboardTradeNoteTitle">
+                    <div class="confirm-dialog-shell">
+                        <div class="panel-head">
+                            <div class="panel-title-wrap">
+                                <h2 id="dashboardTradeNoteTitle">Add trade note</h2>
+                                <p class="soft" id="dashboardTradeNoteSubtitle"></p>
+                            </div>
+                        </div>
+                        <p class="helper-note" id="dashboardTradeNoteLead">
+                            Capture setup, execution, and what you would repeat or avoid. Notes feed your weekly review.
+                        </p>
+                        <label class="trade-field-label" for="dashboardTradeNoteInput">Trade note</label>
+                        <textarea
+                            id="dashboardTradeNoteInput"
+                            rows="5"
+                            maxlength="8000"
+                            placeholder="Setup, execution, what you would repeat or avoid…"
+                        ></textarea>
+                        <p id="dashboardTradeNoteError" class="bad" hidden></p>
+                        <p id="dashboardTradeNoteStatus" class="good" hidden aria-live="polite"></p>
+                        <div class="inline-actions dialog-actions">
+                            <button type="button" class="ghost-link btn-link" id="dashboardTradeNoteCancel">Cancel</button>
+                            <button type="button" class="trades-btn" id="dashboardTradeNoteSave">Save note</button>
+                        </div>
+                    </div>
+                </dialog>
+                {% endif %}
 
                 <article class="panel week-panel">
                     <div class="panel-head">
@@ -4875,7 +4922,32 @@
         border-collapse: collapse;
         min-width: 620px; }
 
-    .trade-log table { min-width: 560px; }
+    .trade-log table { min-width: 640px; }
+
+    .trade-note-cell {
+        width: 1%;
+        white-space: nowrap;
+    }
+
+    .trade-note-btn {
+        min-height: 34px;
+        padding: 0.28rem 0.58rem;
+        font-size: 0.78rem;
+    }
+
+    .trade-note-btn--empty {
+        color: color-mix(in srgb, var(--ink) 72%, var(--muted));
+    }
+
+    #dashboardTradeNoteDialog textarea {
+        width: 100%;
+        min-height: 8.5rem;
+        resize: vertical;
+    }
+
+    #dashboardTradeNoteDialog .dialog-actions {
+        justify-content: flex-end;
+    }
 
     .running-pnl-inline {
         display: inline-block;
@@ -5426,6 +5498,17 @@
         margin-bottom: 0.6rem;
     }
 
+    .weekly-review-chat-prompts--dynamic {
+        margin-top: -0.15rem;
+        margin-bottom: 0.5rem;
+        max-width: min(88%, 42rem);
+        justify-self: start;
+    }
+
+    .weekly-review-chat-log .weekly-review-chat-prompts--dynamic {
+        margin-bottom: 0.65rem;
+    }
+
     .weekly-review-chat-prompts button,
     .weekly-review-chat-form button {
         border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
@@ -5446,6 +5529,10 @@
         display: grid;
         gap: 0.45rem;
         margin-bottom: 0.55rem;
+        max-height: min(360px, 42vh);
+        overflow-y: auto;
+        padding: 0.35rem 0.2rem 0.15rem;
+        scroll-behavior: smooth;
     }
 
     .weekly-review-chat-bubble {
@@ -5455,6 +5542,12 @@
         font-size: 0.84rem;
         line-height: 1.45;
         white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .weekly-review-chat-bubble .ai-citation-btn {
+        vertical-align: baseline;
+        margin: 0 0.14rem;
     }
 
     .weekly-review-chat-bubble--user {
@@ -5750,6 +5843,7 @@
 <script src="{{ url_for('static', filename='js/waitlist_modal.js') }}" defer></script>
 <script src="{{ url_for('static', filename='js/trade_filters_shared.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard_page.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dashboard_trade_note.js') }}"></script>
 {% if show_weekly_journal_preview %}
 <script src="{{ url_for('static', filename='js/admin_journal.js') }}"></script>
 <script src="{{ url_for('static', filename='js/dashboard_journal.js') }}"></script>

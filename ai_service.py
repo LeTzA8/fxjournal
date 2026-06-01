@@ -68,7 +68,11 @@ WEEKLY_DASHBOARD_KIND = "weekly_dashboard_advice"
 DEFAULT_REWRITE_PROMPT_FILE = "dashboard_advice_rewrite.txt"
 DEFAULT_WEEKLY_REVIEW_CHAT_PROMPT_FILE = "weekly_review_followup.txt"
 DEFAULT_JOURNAL_CHAT_PROMPT_FILE = "journal_chat.txt"
-WEEKLY_REVIEW_CHAT_PROMPT_VERSION = "weekly_review_followup_v1"
+WEEKLY_REVIEW_CHAT_PROMPT_VERSION = "weekly_review_followup_v3"
+DEFAULT_WEEKLY_REVIEW_CHAT_MAX_OUTPUT_TOKENS = 520
+WEEKLY_REVIEW_CHAT_SUGGESTIONS_MARKER = "\n---FXJ_SUGGESTIONS---\n"
+WEEKLY_REVIEW_CHAT_STARTER_PROMPT_LIMIT = 3
+WEEKLY_REVIEW_CHAT_DYNAMIC_PROMPT_LIMIT = 3
 JOURNAL_CHAT_PROMPT_VERSION = "journal_v1"
 WEEKLY_MARKET_TIMEZONE = ZoneInfo("America/New_York")
 WEEKLY_CUTOFF_WEEKDAY = 4
@@ -218,6 +222,18 @@ def get_ai_max_output_tokens():
     except ValueError:
         max_output_tokens = DEFAULT_MAX_OUTPUT_TOKENS
     return max(max_output_tokens, 64)
+
+
+def get_weekly_review_chat_max_output_tokens():
+    raw_value = os.getenv(
+        "WEEKLY_REVIEW_CHAT_MAX_OUTPUT_TOKENS",
+        str(DEFAULT_WEEKLY_REVIEW_CHAT_MAX_OUTPUT_TOKENS),
+    ).strip()
+    try:
+        max_output_tokens = int(raw_value)
+    except ValueError:
+        max_output_tokens = DEFAULT_WEEKLY_REVIEW_CHAT_MAX_OUTPUT_TOKENS
+    return max(max_output_tokens, 128)
 
 
 def get_prompt_source_path(prompt_filename=None):
@@ -3043,6 +3059,94 @@ def _format_weekly_review_chat_ref_map(citation_lookup):
     return "\n".join(lines)
 
 
+def normalize_weekly_review_chat_suggested_prompts(raw_prompts, *, limit=WEEKLY_REVIEW_CHAT_DYNAMIC_PROMPT_LIMIT):
+    normalized = []
+    seen = set()
+    items = raw_prompts if isinstance(raw_prompts, list) else []
+    for raw_prompt in items:
+        text = re.sub(r"\s+", " ", str(raw_prompt or "")).strip()
+        if not text:
+            continue
+        if not text.endswith("?"):
+            text = f"{text}?"
+        key = text.lower()
+        if key in seen:
+            continue
+        normalized.append(text)
+        seen.add(key)
+        if len(normalized) >= limit:
+            break
+    return normalized
+
+
+def _extract_weekly_review_chat_json_candidate(raw_text):
+    text = str(raw_text or "").strip()
+    if not text:
+        return ""
+    if text.startswith("{") and text.endswith("}"):
+        return text
+    fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+    if fence_match:
+        return str(fence_match.group(1) or "").strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        return text[start : end + 1]
+    return text
+
+
+def parse_weekly_review_chat_model_output(raw_text):
+    text = str(raw_text or "").strip()
+    if not text:
+        return "", []
+
+    for candidate in (text, _extract_weekly_review_chat_json_candidate(text)):
+        if not candidate:
+            continue
+        try:
+            parsed = json.loads(candidate)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        reply = str(parsed.get("reply") or "").strip()
+        suggested_prompts = normalize_weekly_review_chat_suggested_prompts(
+            parsed.get("suggested_prompts"),
+        )
+        if reply:
+            return reply, suggested_prompts
+
+    return text, []
+
+
+def pack_weekly_review_chat_assistant_content(reply, suggested_prompts):
+    base = str(reply or "").strip()
+    prompts = normalize_weekly_review_chat_suggested_prompts(suggested_prompts)
+    if not base:
+        return ""
+    if not prompts:
+        return base
+    return (
+        base
+        + WEEKLY_REVIEW_CHAT_SUGGESTIONS_MARKER
+        + json.dumps(prompts, ensure_ascii=False)
+    )
+
+
+def unpack_weekly_review_chat_assistant_content(content):
+    text = str(content or "")
+    if WEEKLY_REVIEW_CHAT_SUGGESTIONS_MARKER not in text:
+        return text.strip(), []
+    reply, _, raw_json = text.partition(WEEKLY_REVIEW_CHAT_SUGGESTIONS_MARKER)
+    try:
+        parsed = json.loads(str(raw_json or "").strip())
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return reply.strip(), []
+    if isinstance(parsed, list):
+        return reply.strip(), normalize_weekly_review_chat_suggested_prompts(parsed)
+    return reply.strip(), []
+
+
 def build_weekly_review_chat_messages(
     review_record,
     user_message,
@@ -3078,10 +3182,10 @@ def build_weekly_review_chat_messages(
         role = str(getattr(message, "role", "") or "").strip().lower()
         if role not in {"user", "assistant"}:
             continue
-        content = _chat_context_rewrite_review_text(
-            getattr(message, "content", "") or "",
-            citation_lookup,
-        )
+        raw_content = getattr(message, "content", "") or ""
+        if role == "assistant":
+            raw_content, _ = unpack_weekly_review_chat_assistant_content(raw_content)
+        content = _chat_context_rewrite_review_text(raw_content, citation_lookup)
         if not content:
             continue
         history_lines.append(f"{role}: {content}")
@@ -3126,11 +3230,16 @@ def generate_weekly_review_chat_reply(
         chat_history=chat_history,
         timezone_name=timezone_name,
     )
-    response_payload = request_openai_response(messages, model=resolved_model)
-    reply = extract_response_text(response_payload)
+    response_payload = request_openai_response(
+        messages,
+        model=resolved_model,
+        max_output_tokens=get_weekly_review_chat_max_output_tokens(),
+    )
+    raw_reply = extract_response_text(response_payload)
+    reply, suggested_prompts = parse_weekly_review_chat_model_output(raw_reply)
     if not reply:
         raise AIRequestError(describe_empty_response(response_payload))
-    return reply, response_payload, resolved_model
+    return reply, suggested_prompts, response_payload, resolved_model
 
 
 def _format_journal_chat_ref_map(payload):
@@ -3248,9 +3357,13 @@ def summarize_response_payload(response_payload):
     return summary
 
 
-def request_openai_response(messages, *, model=None, timeout_seconds=None):
+def request_openai_response(messages, *, model=None, timeout_seconds=None, max_output_tokens=None):
     resolved_model = model or get_ai_model()
-    resolved_max_output_tokens = get_ai_max_output_tokens()
+    resolved_max_output_tokens = (
+        max_output_tokens
+        if max_output_tokens is not None
+        else get_ai_max_output_tokens()
+    )
     resolved_timeout_seconds = timeout_seconds or get_ai_timeout_seconds()
     api_key = get_openai_api_key()
     request_body = {

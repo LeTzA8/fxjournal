@@ -513,6 +513,7 @@
         return;
     }
     const tradeLogPanel = document.getElementById("trade-journal");
+    const tradeLogScrollShell = tradeLogPanel?.querySelector(".table-shell") || null;
     const citationButtons = Array.from(document.querySelectorAll(".ai-citation-btn"));
 
     const bundlePalette = [
@@ -713,6 +714,19 @@
         }
         citationResetTimer = window.setTimeout(clearCitationHighlights, 2600);
     };
+    const scrollRowIntoTradeLog = (row) => {
+        if (!row || !tradeLogScrollShell) {
+            return;
+        }
+        const shellRect = tradeLogScrollShell.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        const rowCenter = rowRect.top + rowRect.height / 2;
+        const shellCenter = shellRect.top + shellRect.height / 2;
+        const delta = rowCenter - shellCenter;
+        if (Math.abs(delta) > 1) {
+            tradeLogScrollShell.scrollBy({ top: delta, behavior: "smooth" });
+        }
+    };
     const focusCitationRows = (targetRows) => {
         if (!targetRows.length) {
             if (tradeLogPanel) {
@@ -721,14 +735,27 @@
             return;
         }
 
-        if (targetRows.some((row) => row.classList.contains("hidden-row"))) {
+        const hadHiddenRows = targetRows.some((row) => row.classList.contains("hidden-row"));
+        if (hadHiddenRows) {
             clearAllFilters();
         }
 
         const visibleRows = targetRows.filter((row) => !row.classList.contains("hidden-row"));
         const anchorRow = visibleRows[0] || targetRows[0];
         highlightCitationRows(targetRows);
-        anchorRow.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        const scrollToAnchor = () => {
+            if (tradeLogPanel) {
+                tradeLogPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            }
+            scrollRowIntoTradeLog(anchorRow);
+        };
+
+        if (hadHiddenRows) {
+            window.requestAnimationFrame(scrollToAnchor);
+            return;
+        }
+        scrollToAnchor();
     };
 
     if (filterField) {

@@ -1,7 +1,7 @@
 import hashlib
 from datetime import datetime
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import load_only, selectinload
 
@@ -68,6 +68,8 @@ from helpers.utils import login_required, utcnow_naive
 from helpers.futures_proxy import resolve_proxy_status, is_futures_trade, proxy_replay_api_block
 
 bp = Blueprint("trades", __name__)
+
+TRADE_NOTE_MAX_LENGTH = 8000
 
 
 def _calculate_trade_risk_reward(target_price, entry_price, stop_loss, side=None, *, signed=False):
@@ -1473,13 +1475,80 @@ def _trade_bar_row_to_ohlc_dict(row):
     }
 
 
+def _trade_note_payload(trade):
+    note_text = (trade.trade_note or "").strip()
+    timezone_name = get_display_timezone_name()
+    opened_local = to_display_timezone(trade.opened_at, timezone_name)
+    opened_label = opened_local.strftime("%d %b %Y %H:%M") if opened_local else "-"
+    return {
+        "trade_note": trade.trade_note or "",
+        "has_trade_note": bool(note_text),
+        "trade_label": f"{format_trade_symbol(trade)} · {opened_label}",
+    }
+
+
+@bp.route("/api/trades/<string:trade_pubkey>/note", methods=["GET", "POST"])
+@login_required
+def trade_note(trade_pubkey):
+    user_id = get_effective_user_id()
+    trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
+
+    if request.method == "GET":
+        return jsonify(_trade_note_payload(trade))
+
+    payload = request.get_json(silent=True) or {}
+    if "trade_note" not in payload:
+        return (
+            jsonify(
+                {
+                    "error": "missing_trade_note",
+                    "message": "Include trade_note in the request body.",
+                }
+            ),
+            400,
+        )
+
+    raw_note = payload.get("trade_note")
+    if raw_note is not None and not isinstance(raw_note, str):
+        return (
+            jsonify(
+                {
+                    "error": "invalid_trade_note",
+                    "message": "trade_note must be text.",
+                }
+            ),
+            400,
+        )
+
+    trade_note_value = (raw_note or "").strip()
+    if len(trade_note_value) > TRADE_NOTE_MAX_LENGTH:
+        return (
+            jsonify(
+                {
+                    "error": "trade_note_too_long",
+                    "message": f"Keep trade notes under {TRADE_NOTE_MAX_LENGTH} characters.",
+                }
+            ),
+            400,
+        )
+
+    trade.trade_note = trade_note_value or None
+    db.session.commit()
+    _invalidate_trade_caches(user_id, trade.trade_account_id)
+
+    return jsonify(
+        {
+            "ok": True,
+            **_trade_note_payload(trade),
+        }
+    )
+
+
 @bp.route("/api/trades/<string:trade_pubkey>/chart-data")
 @login_required
 def trade_chart_data(trade_pubkey):
     user_id = get_effective_user_id()
     trade = get_user_trade_by_pubkey_or_404(user_id, trade_pubkey)
-
-    from flask import jsonify
 
     # Futures trades: return proxy replay block + execution details.
     # Phase 1: no bars exist yet — always return pending/unavailable state.

@@ -1,6 +1,25 @@
 # CURRENT_STATE
 
-Last Updated: 2026-05-31
+Last Updated: 2026-06-02
+
+## Dashboard inline trade notes (2026-06-02)
+
+- Dashboard recent-trades table adds an inline **Add note** / **Edit note** action (hidden in read-only support view).
+- `GET/POST /api/trades/<pubkey>/note` updates only `trade_note` (8000 char cap), invalidates trade caches, and powers a modal editor on the dashboard (`static/js/dashboard_trade_note.js`).
+
+## Weekly review follow-up hybrid prompt buttons (2026-06-02)
+
+- Hybrid follow-up UX: up to 3 starter chips above the chat (hidden after the first user message); each assistant reply returns 2-3 `suggested_prompts` as tap buttons below the latest message only. Model outputs JSON `{reply, suggested_prompts}` (prompt v3); suggestions persist in assistant message content via `---FXJ_SUGGESTIONS---` trailer (no migration). API returns `suggested_prompts`; `weekly_review_chat.js` renders dynamic rows and reuses the same click handler as starters.
+
+## Weekly review follow-up reply length (2026-06-02)
+
+- Follow-up replies were long mainly because `weekly_review_followup.txt` required 4-5 "You could ask:" bullets every turn (on top of 2-5 answer sentences) while the dashboard already exposes quick prompt chips. Prompt v2 caps the main answer at 2-4 sentences, forbids bullet menus, and allows at most one optional closing line. Chat calls use `WEEKLY_REVIEW_CHAT_MAX_OUTPUT_TOKENS` (default 520) instead of the 1500-token weekly review ceiling.
+
+## Weekly review follow-up chat UX fixes (2026-06-02)
+
+- Follow-up chat log is now scroll-contained with auto-scroll on send/reply (matches journal chat behavior); failed sends keep the user bubble visible instead of removing it.
+- Chat reply display expands bracketed refs like `[T1]` to inline trade labels (previously stripped entirely), skips duplicate labels when the symbol is already in the sentence, strips invented `[SYMBOL-SYMBOL]` / `NAS100-NAS100` refs, and removes redundant `DD Mon` text before a dated citation pill when the model cites after a partial date.
+- Chat history bubbles use the same tight Jinja segment rendering as the weekly review panel (fixes citation pills breaking onto separate lines); prompt forbids invented symbol-pair refs.
 
 ## Weekly AI review gate CTAs in panel (2026-05-31)
 
