@@ -158,16 +158,10 @@
                 {% endif %}
                 <p class="trade-hero-meta soft">{{ active_trade_account_name }} · {{ "Futures" if account_type == "FUTURES" else "CFD" }} · {{ analytics_timezone }}</p>
             </div>
-            {% if (trade.mt5_position and not trade_is_running) or (account_type == "FUTURES" and trade.closed_at) %}
+            {% if trade.mt5_position and not trade_is_running %}
             <div class="trade-chart-panel" id="tradeChartPanel">
                 <div class="trade-chart-head">
-                    <h3 class="trade-chart-title">
-                        Price chart
-                        {% if account_type == "FUTURES" %}
-                        <span class="trade-chart-proxy-badge-head">Approximate Replay</span>
-                        {% endif %}
-                    </h3>
-                    {% if account_type != "FUTURES" %}
+                    <h3 class="trade-chart-title">Price chart</h3>
                     <div class="trade-chart-head-right">
                         <div class="trade-chart-tf-group" id="tradeChartTfGroup" role="group" aria-label="Chart timeframe">
                             <button type="button" class="trade-chart-tf-btn is-active" data-trade-tf="M5" aria-pressed="true">5m</button>
@@ -175,15 +169,12 @@
                             <button type="button" class="trade-chart-tf-btn trade-chart-tf-btn--gated" data-trade-tf="M1" aria-pressed="false">1m</button>
                         </div>
                     </div>
-                    {% endif %}
                 </div>
                 <div class="trade-chart-body">
                     <div id="tradeChartLockMount"></div>
                     <div id="tradeChartContainer" class="trade-chart-container"></div>
                     <p class="trade-chart-status soft" id="tradeChartStatus">Loading chart data&hellip;</p>
                 </div>
-                {# Proxy execution panel — populated by trade_chart.js for futures proxy trades #}
-                <div id="tradeProxyExecutionPanel" hidden></div>
             </div>
             {% include "_waitlist_modal.html" %}
             <script>

@@ -8,7 +8,7 @@
     const urlPattern = tradeLogPanel.dataset.tradeNoteUrlPattern || "";
     const csrfToken = tradeLogPanel.dataset.csrfToken || "";
     const titleEl = document.getElementById("dashboardTradeNoteTitle");
-    const subtitleEl = document.getElementById("dashboardTradeNoteSubtitle");
+    const metaEl = document.getElementById("dashboardTradeNoteMeta");
     const inputEl = document.getElementById("dashboardTradeNoteInput");
     const errorEl = document.getElementById("dashboardTradeNoteError");
     const statusEl = document.getElementById("dashboardTradeNoteStatus");
@@ -98,36 +98,37 @@
         if (titleEl) {
             titleEl.textContent = hasTradeNote ? "Edit trade note" : "Add trade note";
         }
-        if (subtitleEl) {
-            subtitleEl.textContent = (row.dataset.symbol || "").trim();
+        if (metaEl) {
+            metaEl.textContent = (row.dataset.symbol || "").trim();
         }
 
         if (typeof dialog.showModal === "function") {
             dialog.showModal();
         }
 
-        if (hasTradeNote) {
-            try {
-                const response = await fetch(noteUrlFor(pubkey), {
-                    credentials: "same-origin",
-                    cache: "no-store",
-                    headers: {
-                        "X-Requested-With": "XMLHttpRequest",
-                    },
-                });
-                const data = await response.json().catch(() => ({}));
-                if (!response.ok) {
-                    showError(responseErrorMessage(response, data, "Could not load this trade note."));
-                    inputEl.focus();
-                    return;
-                }
-                inputEl.value = data.trade_note || "";
-                if (subtitleEl && data.trade_label) {
-                    subtitleEl.textContent = data.trade_label;
-                }
-            } catch (_error) {
-                showError("Could not load this trade note.");
+        try {
+            const response = await fetch(noteUrlFor(pubkey), {
+                credentials: "same-origin",
+                cache: "no-store",
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest",
+                },
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                showError(responseErrorMessage(response, data, "Could not load this trade note."));
+                inputEl.focus();
+                return;
             }
+            inputEl.value = data.trade_note || "";
+            if (metaEl && data.trade_label) {
+                metaEl.textContent = data.trade_label;
+            }
+            if (titleEl) {
+                titleEl.textContent = data.has_trade_note ? "Edit trade note" : "Add trade note";
+            }
+        } catch (_error) {
+            showError("Could not load this trade note.");
         }
 
         inputEl.focus();

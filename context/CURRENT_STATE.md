@@ -2,10 +2,16 @@
 
 Last Updated: 2026-06-02
 
+## Removed futures CFD-proxy replay scaffold (2026-06-02)
+
+- Dropped Phase 1 approximate-replay scaffold: `helpers/futures_proxy.py`, `prompts/futures_proxy_replay_guardrails.txt`, proxy chart UI/CSS/JS, import-time proxy metadata, futures-specific `trade_chart_data` branch, weekly-payload proxy suppression, and five `test_futures_proxy_*` modules.
+- Migration `20260602_0063_drop_futures_proxy_replay_scaffold.py` removes `trades.proxy_replay_*` columns/index and `futures_symbols.proxy_cfd_symbol`. Futures trade detail no longer shows a chart panel unless the trade has `mt5_position` (same as before the scaffold).
+
 ## Dashboard inline trade notes (2026-06-02)
 
 - Dashboard recent-trades table adds an inline **Add note** / **Edit note** action (hidden in read-only support view).
 - `GET/POST /api/trades/<pubkey>/note` updates only `trade_note` (8000 char cap), invalidates trade caches, and powers a modal editor on the dashboard (`static/js/dashboard_trade_note.js`).
+- Modal matches trade-form field styling, right-aligned actions, and loads trade context on open.
 
 ## Weekly review follow-up hybrid prompt buttons (2026-06-02)
 
@@ -26,18 +32,6 @@ Last Updated: 2026-06-02
 - When bundle review or revenge/classification review blocks the weekly AI review, the AI review panel now shows the same primary CTA as the top workflow banner (e.g. Review Bundles, Review Revenge Signals) instead of a generic waiting message.
 - Check-in gating remains in the AI panel with Open Check-In / Finish Check-In (after skip), Get Review Now, and optional Skip for now; workflow-gate stages take priority over the check-in prompt when both would apply (e.g. pending historical bundle review).
 - Side panels (Improvement, Strength, Experiment) use a shared `weekly_ai_any_gate` state while any review gate is active.
-
-## Futures CFD-proxy replay scaffold — Phase 1 (2026-05-30)
-
-- Migration `20260530_0062_futures_proxy_replay_scaffold.py`: adds `trades.proxy_replay_symbol` (String 32), `trades.proxy_replay_status` (String 40), `trades.proxy_replay_window_minutes` (Text/JSON), and `futures_symbols.proxy_cfd_symbol` (String 32). Seeds default futures-root → CFD-proxy mappings: NQ/MNQ→NAS100, ES/MES→US500, YM/MYM→US30, RTY/M2K→US2000, GC/MGC→XAUUSD, CL/MCL→USOIL. Adds index on `(trade_account_id, proxy_replay_status)`.
-- `helpers/futures_proxy.py` (new): five resolver functions — `resolve_proxy_cfd_symbol`, `resolve_proxy_status`, `compute_proxy_window_minutes`, `is_futures_trade`, `proxy_replay_api_block`. No Celery, no MT5, no bar fetching. Proxy window thresholds: ≤30 min→90/90, ≤4 h→180/180, ≤24 h→360/180, >24 h→720/360. Uses existing `parse_futures_contract_code` from trading.py and queries `FuturesSymbol.proxy_cfd_symbol` directly for admin-override support.
-- Import-path scaffold: `routes/trades.py` `import_trade_file` sets `proxy_replay_symbol`, `proxy_replay_status`, `proxy_replay_window_minutes` on each FUTURES trade row after `add_all` and before `commit`. User is loaded from DB by `user_id` (not flask_login). Resolver errors are caught/logged without failing the import. No Celery tasks dispatched.
-- Chart API scaffold: `trade_chart_data` in `routes/trades.py` now branches for futures trades before the `mt5_position` guard. Returns `{"status":"proxy_pending"|"proxy_unavailable", "proxy_replay":{...}, "markers":{entry_time, exit_time only}, "execution":{actual futures prices}}`. Horizontal entry/exit/SL/TP price levels are NOT in `markers` for proxy trades — they are in `execution` only. Existing CFD/MT5 paths unchanged.
-- Frontend: `templates/trade_entry.html` shows the chart panel for closed futures trades (`account_type == "FUTURES" and trade.closed_at`). TF buttons hidden for proxy mode. `tradeProxyExecutionPanel` div added. `static/js/trade_chart.js` handles `proxy_pending`/`proxy_unavailable` statuses via `showProxyStatus()`, populates execution panel. `static/css/app_pages.css` adds proxy badge, execution card, disclaimer styles.
-- Universal payload: `ai_service.py` serializes `proxy_replay_symbol`/`proxy_replay_status` into trade dicts. `helpers/universal_weekly_payload.py` `_build_universal_trade` adds `replay_accuracy="approximate"` and `chart_price_source="cfd_proxy"` for proxy trades and suppresses `tp_capture_pct`, `closed_before_tp`, `closed_before_sl`, `mfe_r`, `mae_r`, `post_exit_direction`, `post_exit_tp_reached` from both the entry and `market_context_summary`. CFD/MT5 trades unaffected.
-- Prompt: `prompts/futures_proxy_replay_guardrails.txt` (new) — defines Phase 2 contract for approximate replay AI rules. NOT wired into `dashboard_advice.txt`, `dashboard_advice_rewrite.txt`, `weekly_review_followup.txt`, or `journal_chat.txt`. Existing prompts unchanged.
-- Tests: 4 new test files (58 tests total) — `test_futures_proxy_resolver.py`, `test_futures_proxy_import.py`, `test_futures_proxy_chart_api.py`, `test_futures_proxy_payload.py`, `test_futures_proxy_prompts.py`. All 58 pass + 121 existing regression tests pass.
-- Phase 2 (deferred): actual bar fetching via `copy_rates_range`, Celery proxy-fetch task, `TradeBars` `source_kind`/`source_symbol` columns, `proxy_replay_status="available"`, vertical time markers on live proxy chart.
 
 ## Weekly AI review checkin gate (2026-05-30)
 

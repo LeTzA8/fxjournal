@@ -2329,29 +2329,27 @@
                 </article>
 
                 {% if recent_trades and not support_view_session_active %}
-                <dialog id="dashboardTradeNoteDialog" class="confirm-dialog action-dialog" aria-labelledby="dashboardTradeNoteTitle">
-                    <div class="confirm-dialog-shell">
-                        <div class="panel-head">
-                            <div class="panel-title-wrap">
-                                <h2 id="dashboardTradeNoteTitle">Add trade note</h2>
-                                <p class="soft" id="dashboardTradeNoteSubtitle"></p>
-                            </div>
+                <dialog id="dashboardTradeNoteDialog" class="confirm-dialog action-dialog dashboard-trade-note-dialog" aria-labelledby="dashboardTradeNoteTitle">
+                    <div class="confirm-dialog-shell dashboard-trade-note-shell">
+                        <div class="dashboard-trade-note-head">
+                            <h2 id="dashboardTradeNoteTitle">Add trade note</h2>
+                            <p class="soft dashboard-trade-note-meta" id="dashboardTradeNoteMeta"></p>
                         </div>
-                        <p class="helper-note" id="dashboardTradeNoteLead">
-                            Capture setup, execution, and what you would repeat or avoid. Notes feed your weekly review.
+                        <p class="soft dashboard-trade-note-lead">
+                            Notes feed your weekly review.
                         </p>
-                        <label class="trade-field-label" for="dashboardTradeNoteInput">Trade note</label>
+                        <label class="sr-only" for="dashboardTradeNoteInput">Trade note</label>
                         <textarea
                             id="dashboardTradeNoteInput"
                             rows="5"
                             maxlength="8000"
-                            placeholder="Setup, execution, what you would repeat or avoid…"
+                            placeholder="What was the setup, how did execution go, and what would you repeat or avoid?"
                         ></textarea>
-                        <p id="dashboardTradeNoteError" class="bad" hidden></p>
-                        <p id="dashboardTradeNoteStatus" class="good" hidden aria-live="polite"></p>
-                        <div class="inline-actions dialog-actions">
-                            <button type="button" class="ghost-link btn-link" id="dashboardTradeNoteCancel">Cancel</button>
-                            <button type="button" class="trades-btn" id="dashboardTradeNoteSave">Save note</button>
+                        <p id="dashboardTradeNoteError" class="bad dashboard-trade-note-feedback" hidden></p>
+                        <p id="dashboardTradeNoteStatus" class="good dashboard-trade-note-feedback" hidden aria-live="polite"></p>
+                        <div class="dashboard-trade-note-actions">
+                            <button type="button" class="ghost-btn" id="dashboardTradeNoteCancel">Cancel</button>
+                            <button type="button" class="submit-btn" id="dashboardTradeNoteSave">Save note</button>
                         </div>
                     </div>
                 </dialog>
@@ -4939,14 +4937,75 @@
         color: color-mix(in srgb, var(--ink) 72%, var(--muted));
     }
 
-    #dashboardTradeNoteDialog textarea {
-        width: 100%;
-        min-height: 8.5rem;
-        resize: vertical;
+    #dashboardTradeNoteDialog .dashboard-trade-note-shell {
+        display: grid;
+        gap: 0.85rem;
     }
 
-    #dashboardTradeNoteDialog .dialog-actions {
+    #dashboardTradeNoteDialog .dashboard-trade-note-head {
+        display: grid;
+        gap: 0.2rem;
+    }
+
+    #dashboardTradeNoteDialog .dashboard-trade-note-head h2 {
+        margin: 0;
+        font-size: 1.05rem;
+        line-height: 1.25;
+    }
+
+    #dashboardTradeNoteDialog .dashboard-trade-note-meta {
+        margin: 0;
+        font-size: 0.82rem;
+    }
+
+    #dashboardTradeNoteDialog .dashboard-trade-note-lead {
+        margin: 0;
+        font-size: 0.8rem;
+        line-height: 1.45;
+    }
+
+    #dashboardTradeNoteDialog textarea {
+        width: 100%;
+        min-height: 7.5rem;
+        resize: vertical;
+        border-radius: 10px;
+        padding: 0.68rem 0.75rem;
+        font: inherit;
+        line-height: 1.5;
+        color: var(--ink);
+        background: color-mix(in srgb, var(--card) 96%, transparent);
+        border: 1px solid var(--field-border);
+        transition: border-color 180ms ease, box-shadow 180ms ease;
+    }
+
+    #dashboardTradeNoteDialog textarea::placeholder {
+        color: color-mix(in srgb, var(--muted) 88%, transparent);
+        font: inherit;
+    }
+
+    #dashboardTradeNoteDialog textarea:focus {
+        outline: none;
+        border-color: var(--field-focus);
+        box-shadow: 0 0 0 4px var(--field-focus-ring);
+    }
+
+    #dashboardTradeNoteDialog .dashboard-trade-note-feedback {
+        margin: 0;
+        font-size: 0.82rem;
+    }
+
+    #dashboardTradeNoteDialog .dashboard-trade-note-actions {
+        display: flex;
         justify-content: flex-end;
+        align-items: center;
+        gap: 0.55rem;
+        flex-wrap: wrap;
+    }
+
+    #dashboardTradeNoteDialog .dashboard-trade-note-actions .submit-btn,
+    #dashboardTradeNoteDialog .dashboard-trade-note-actions .ghost-btn {
+        min-height: 40px;
+        padding: 0.45rem 0.9rem;
     }
 
     .running-pnl-inline {

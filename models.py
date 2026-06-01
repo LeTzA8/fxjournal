@@ -417,7 +417,6 @@ class Trade(db.Model):
             "closed_at",
         ),
         db.Index("ix_trades_user_trade_profile", "user_id", "trade_profile_id"),
-        db.Index("ix_trades_account_proxy_status", "trade_account_id", "proxy_replay_status"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -455,9 +454,6 @@ class Trade(db.Model):
     import_dedupe_key = db.Column(db.String(64), nullable=True, index=True)
     source_timezone = db.Column(db.String(64), nullable=True)
     contract_code = db.Column(db.String(24), nullable=True)
-    proxy_replay_symbol = db.Column(db.String(32), nullable=True)
-    proxy_replay_status = db.Column(db.String(40), nullable=True)
-    proxy_replay_window_minutes = db.Column(db.Text, nullable=True)
     trade_note = db.Column(db.Text, nullable=True)
     system_trade_note = db.Column(db.Text, nullable=True)
     trade_profile_id = db.Column(
@@ -994,7 +990,6 @@ class FuturesSymbol(db.Model):
     currency = db.Column(db.String(16), nullable=False, default="USD")
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
-    proxy_cfd_symbol = db.Column(db.String(32), nullable=True)
 
 
 class AIPromptHistory(db.Model):
