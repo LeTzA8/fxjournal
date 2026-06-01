@@ -699,20 +699,26 @@
         applyAll();
     };
     let citationResetTimer = null;
+    const CITATION_HIGHLIGHT_MS = 3200;
     const clearCitationHighlights = () => {
         rows.forEach((row) => {
             row.classList.remove("citation-hit");
         });
     };
-    const highlightCitationRows = (targetRows) => {
+    const pulseCitationRows = (targetRows) => {
         clearCitationHighlights();
         targetRows.forEach((row) => {
+            if (row.classList.contains("hidden-row")) {
+                return;
+            }
+            row.classList.remove("citation-hit");
+            void row.offsetWidth;
             row.classList.add("citation-hit");
         });
         if (citationResetTimer) {
             window.clearTimeout(citationResetTimer);
         }
-        citationResetTimer = window.setTimeout(clearCitationHighlights, 2600);
+        citationResetTimer = window.setTimeout(clearCitationHighlights, CITATION_HIGHLIGHT_MS);
     };
     const findScrollableParent = (element, preferredContainer) => {
         if (
@@ -735,7 +741,7 @@
         }
         return preferredContainer;
     };
-    const scrollRowIntoTradeLog = (row) => {
+    const scrollRowIntoTradeLog = (row, behavior = "smooth") => {
         if (!row) {
             return;
         }
@@ -754,7 +760,7 @@
         if (Math.abs(shell.scrollTop - nextScrollTop) <= 1) {
             return;
         }
-        shell.scrollTo({ top: nextScrollTop, behavior: "smooth" });
+        shell.scrollTo({ top: nextScrollTop, behavior });
     };
     const scrollPageToTradePanel = () => {
         if (!tradeLogPanel) {
@@ -787,21 +793,22 @@
 
         const visibleRows = targetRows.filter((row) => !row.classList.contains("hidden-row"));
         const anchorRow = visibleRows[0] || targetRows[0];
-        highlightCitationRows(targetRows);
+        const rowsToHighlight = visibleRows.length ? visibleRows : targetRows;
 
-        const scrollToAnchor = () => {
-            scrollRowIntoTradeLog(anchorRow);
+        const finishFocus = () => {
+            scrollRowIntoTradeLog(anchorRow, "auto");
+            pulseCitationRows(rowsToHighlight);
         };
-        const pageWillScroll = scrollPageToTradePanel();
 
-        if (hadHiddenRows || pageWillScroll) {
+        const pageWillScroll = scrollPageToTradePanel();
+        if (pageWillScroll || hadHiddenRows) {
             window.requestAnimationFrame(() => {
-                window.requestAnimationFrame(scrollToAnchor);
+                window.requestAnimationFrame(finishFocus);
             });
-            window.setTimeout(scrollToAnchor, 420);
+            window.setTimeout(finishFocus, 480);
             return;
         }
-        scrollToAnchor();
+        finishFocus();
     };
 
     if (filterField) {

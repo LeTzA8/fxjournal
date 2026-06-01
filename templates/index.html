@@ -5094,13 +5094,22 @@
         background: color-mix(in srgb, var(--bundle-accent, var(--accent)) 14%, var(--surface));
     }
 
-    .trade-log tbody tr.citation-hit td {
-        background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+    .trade-log tbody tr.citation-hit td,
+    .trade-log tbody tr.citation-hit.running-trade td,
+    .trade-log tbody tr.citation-hit.bundle-row td,
+    .trade-log tbody tr.citation-hit.running-trade.bundle-row td {
+        background: color-mix(in srgb, var(--accent) 24%, var(--surface));
         animation: trade-citation-pulse 2.4s ease;
+        border-top-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+        border-bottom-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+        box-shadow: none;
     }
 
-    .trade-log tbody tr.citation-hit td:first-child {
-        box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 78%, white 22%);
+    .trade-log tbody tr.citation-hit td:first-child,
+    .trade-log tbody tr.citation-hit.running-trade td:first-child,
+    .trade-log tbody tr.citation-hit.bundle-row td:first-child,
+    .trade-log tbody tr.citation-hit.running-trade.bundle-row td:first-child {
+        box-shadow: inset 4px 0 0 color-mix(in srgb, var(--accent) 82%, white 18%);
     }
 
     .trade-log tbody tr.running-trade.bundle-row td {
@@ -5208,10 +5217,10 @@
 
     @keyframes trade-citation-pulse {
         0% {
-            background: color-mix(in srgb, var(--accent) 34%, var(--surface));
+            background: color-mix(in srgb, var(--accent) 42%, var(--surface));
         }
         100% {
-            background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+            background: color-mix(in srgb, var(--accent) 24%, var(--surface));
         }
     }
 
