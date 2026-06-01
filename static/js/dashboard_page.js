@@ -714,18 +714,63 @@
         }
         citationResetTimer = window.setTimeout(clearCitationHighlights, 2600);
     };
+    const findScrollableParent = (element, preferredContainer) => {
+        if (
+            preferredContainer &&
+            preferredContainer.contains(element) &&
+            preferredContainer.scrollHeight > preferredContainer.clientHeight + 1
+        ) {
+            return preferredContainer;
+        }
+        let node = element.parentElement;
+        while (node && node !== document.documentElement) {
+            const style = window.getComputedStyle(node);
+            if (
+                /(auto|scroll|overlay)/.test(style.overflowY) &&
+                node.scrollHeight > node.clientHeight + 1
+            ) {
+                return node;
+            }
+            node = node.parentElement;
+        }
+        return preferredContainer;
+    };
     const scrollRowIntoTradeLog = (row) => {
-        if (!row || !tradeLogScrollShell) {
+        if (!row) {
             return;
         }
-        const shellRect = tradeLogScrollShell.getBoundingClientRect();
-        const rowRect = row.getBoundingClientRect();
-        const rowCenter = rowRect.top + rowRect.height / 2;
-        const shellCenter = shellRect.top + shellRect.height / 2;
-        const delta = rowCenter - shellCenter;
-        if (Math.abs(delta) > 1) {
-            tradeLogScrollShell.scrollBy({ top: delta, behavior: "smooth" });
+        const shell = findScrollableParent(row, tradeLogScrollShell);
+        if (!shell || shell.scrollHeight <= shell.clientHeight + 1) {
+            return;
         }
+
+        const rowRect = row.getBoundingClientRect();
+        const shellRect = shell.getBoundingClientRect();
+        const rowOffset = rowRect.top - shellRect.top + shell.scrollTop;
+        const targetScrollTop =
+            rowOffset - (shell.clientHeight - row.offsetHeight) / 2;
+        const maxScroll = Math.max(0, shell.scrollHeight - shell.clientHeight);
+        const nextScrollTop = Math.min(maxScroll, Math.max(0, targetScrollTop));
+        if (Math.abs(shell.scrollTop - nextScrollTop) <= 1) {
+            return;
+        }
+        shell.scrollTo({ top: nextScrollTop, behavior: "smooth" });
+    };
+    const scrollPageToTradePanel = () => {
+        if (!tradeLogPanel) {
+            return false;
+        }
+        const rect = tradeLogPanel.getBoundingClientRect();
+        const topMargin = 72;
+        const bottomMargin = 16;
+        if (rect.top >= topMargin && rect.bottom <= window.innerHeight - bottomMargin) {
+            return false;
+        }
+        window.scrollTo({
+            top: Math.max(0, window.scrollY + rect.top - topMargin),
+            behavior: "smooth",
+        });
+        return true;
     };
     const focusCitationRows = (targetRows) => {
         if (!targetRows.length) {
@@ -745,14 +790,15 @@
         highlightCitationRows(targetRows);
 
         const scrollToAnchor = () => {
-            if (tradeLogPanel) {
-                tradeLogPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
-            }
             scrollRowIntoTradeLog(anchorRow);
         };
+        const pageWillScroll = scrollPageToTradePanel();
 
-        if (hadHiddenRows) {
-            window.requestAnimationFrame(scrollToAnchor);
+        if (hadHiddenRows || pageWillScroll) {
+            window.requestAnimationFrame(() => {
+                window.requestAnimationFrame(scrollToAnchor);
+            });
+            window.setTimeout(scrollToAnchor, 420);
             return;
         }
         scrollToAnchor();
@@ -786,7 +832,9 @@
 
         if (citationType === "trade") {
             const tradeId = (button.dataset.citationTradeId || "").trim();
-            const row = rowsByTradeId.get(tradeId);
+            const row =
+                rowsByTradeId.get(tradeId) ||
+                (tradeId ? document.getElementById(`trade-row-${tradeId}`) : null);
             focusCitationRows(row ? [row] : []);
         }
     };
