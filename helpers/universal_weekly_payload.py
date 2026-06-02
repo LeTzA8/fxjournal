@@ -286,6 +286,10 @@ def _build_universal_trade(trade, *, strategy_ref):
     if date_label:
         entry["trade_date_label"] = date_label
 
+    trade_pubkey = str(trade.get("trade_pubkey") or trade.get("pubkey") or "").strip()
+    if trade_pubkey:
+        entry["trade_pubkey"] = trade_pubkey
+
     if strategy_ref:
         entry["strategy_ref"] = strategy_ref
     if trade.get("realized_rr") is not None:

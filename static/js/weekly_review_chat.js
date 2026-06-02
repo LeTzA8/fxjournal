@@ -30,6 +30,7 @@
         button.className = "ai-citation-btn";
         button.setAttribute("role", "button");
         button.setAttribute("tabindex", "0");
+        button.dataset.citationLabel = segment.label || "";
         button.dataset.citationTone = segment.tone || "neutral";
         button.dataset.citationType = segment.citation_type || "";
         if (segment.ref) {

@@ -728,6 +728,7 @@ def test_dashboard_home_renders_citation_and_trade_row_resolution_attrs(app_ctx,
     response_text = response.get_data(as_text=True)
 
     assert response.status_code == 200
+    assert 'data-citation-label="XAUUSD | 08 Apr 2026 (Wed)"' in response_text
     assert 'data-citation-ref="T1"' in response_text
     assert f'data-citation-trade-id="{trade.id}"' in response_text
     assert f'data-citation-trade-pubkey="{trade.pubkey}"' in response_text
@@ -735,6 +736,7 @@ def test_dashboard_home_renders_citation_and_trade_row_resolution_attrs(app_ctx,
     assert f'data-trade-id="{trade.id}"' in response_text
     assert f'data-trade-pubkey="{trade.pubkey}"' in response_text
     assert 'data-bundle="bundle-citation-attrs"' in response_text
+    assert 'data-date-label="08 Apr 2026 (Wed)"' in response_text
     assert 'data-citation-status' in response_text
 
 
@@ -745,6 +747,8 @@ def test_dashboard_citation_binding_is_not_filter_library_dependent():
         "const tradeFiltersShared = window.FXJTradeFiltersShared",
     )
     assert "That cited trade is not currently in this table." in source
+    assert "dateLabelFromCitationButton" in source
+    assert "rowsMatchingCitationSymbol" in source
 
 
 def test_dashboard_home_shows_admin_ai_journal_carousel_tab(app_ctx, client, monkeypatch):
@@ -2745,6 +2749,60 @@ def test_weekly_ai_review_display_does_not_append_unmentioned_ref_as_trailing_pi
     ]
     assert takeaway_labels == ["USDCAD | 28 Apr 2026 (Tue)"]
     assert "NAS100 | 27 Apr 2026 (Mon)" not in takeaway_labels
+
+
+def test_weekly_ai_review_display_keeps_same_symbol_refs_without_trade_ids():
+    review = type(
+        "Review",
+        (),
+        {
+            "response_text": "Unused fallback text",
+            "response_meta_json": json.dumps(
+                {
+                    "summary": {
+                        "text": "NAS100 was costly, then NAS100 repeated.",
+                        "refs": ["T1", "T2"],
+                    },
+                    "takeaways": [],
+                    "improvement": {"text": "", "refs": []},
+                    "strength": {"text": "", "refs": []},
+                }
+            ),
+            "payload_json": json.dumps(
+                {
+                    "trades": [
+                        {
+                            "ref": "T1",
+                            "symbol": "NAS100",
+                            "trade_date_label": "29 May 2026 (Fri)",
+                            "pnl": -520.78,
+                            "is_bundle": False,
+                        },
+                        {
+                            "ref": "T2",
+                            "symbol": "NAS100",
+                            "trade_date_label": "28 May 2026 (Thu)",
+                            "pnl": -529.62,
+                            "is_bundle": False,
+                        },
+                    ]
+                }
+            ),
+        },
+    )()
+
+    display = dashboard_routes._build_weekly_ai_review_display(review, "UTC")
+    citation_segments = [
+        segment
+        for segment in display["summary"]["segments"]
+        if segment.get("type") == "citation"
+    ]
+
+    assert [segment["ref"] for segment in citation_segments] == ["T1", "T2"]
+    assert [segment["label"] for segment in citation_segments] == [
+        "NAS100 | 29 May 2026 (Fri)",
+        "NAS100 | 28 May 2026 (Thu)",
+    ]
 
 
 def test_strip_weekly_review_chat_ref_codes_removes_symbol_pair_brackets():

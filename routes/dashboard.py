@@ -213,16 +213,27 @@ def _serialize_datetime(value):
     return value.isoformat()
 
 
+def _citation_identity(citation):
+    if not isinstance(citation, dict):
+        return ""
+    citation_type = str(citation.get("type") or "trade").strip() or "trade"
+    if citation_type == "bundle":
+        keys = ("bundle_key", "trade_pubkey", "trade_id", "ref", "label", "inline_label")
+    else:
+        keys = ("trade_pubkey", "trade_id", "ref", "label", "inline_label")
+    for key in keys:
+        value = str(citation.get(key) or "").strip()
+        if value:
+            return f"{citation_type}:{value}"
+    return ""
+
+
 def _dedupe_review_citations(citations, seen_keys):
     deduped = []
     for citation in citations or []:
         if not isinstance(citation, dict):
             continue
-        citation_type = str(citation.get("type") or "").strip()
-        if citation_type == "bundle":
-            identity = f"bundle:{citation.get('bundle_key') or ''}"
-        else:
-            identity = f"trade:{citation.get('trade_id') or ''}"
+        identity = _citation_identity(citation)
         if not identity or identity in seen_keys:
             continue
         seen_keys.add(identity)
@@ -264,12 +275,7 @@ def _augment_citations_from_mentions(text, citations, citation_lookup):
 
     seen_keys = set()
     for citation in deduped:
-        citation_type = str(citation.get("type") or "").strip()
-        identity = (
-            f"bundle:{citation.get('bundle_key') or ''}"
-            if citation_type == "bundle"
-            else f"trade:{citation.get('trade_id') or ''}"
-        )
+        identity = _citation_identity(citation)
         if identity:
             seen_keys.add(identity)
 
@@ -279,12 +285,7 @@ def _augment_citations_from_mentions(text, citations, citation_lookup):
         if re.search(rf"\b{re.escape(label)}\b", normalized, flags=re.IGNORECASE) is None:
             continue
         citation = grouped_citations[0]
-        citation_type = str(citation.get("type") or "").strip()
-        identity = (
-            f"bundle:{citation.get('bundle_key') or ''}"
-            if citation_type == "bundle"
-            else f"trade:{citation.get('trade_id') or ''}"
-        )
+        identity = _citation_identity(citation)
         if not identity or identity in seen_keys:
             continue
         deduped.append(citation)
@@ -300,7 +301,12 @@ def _build_review_text_segments(text, citations):
         return []
 
     matches = []
+    matched_ranges = []
+    matched_keys = set()
     for citation in deduped_citations:
+        identity = _citation_identity(citation)
+        if identity and identity in matched_keys:
+            continue
         full_label = str(citation.get("label") or "").strip()
         short_label = str(citation.get("inline_label") or "").strip()
         candidates = []
@@ -313,19 +319,24 @@ def _build_review_text_segments(text, citations):
 
         best_match = None
         for candidate in candidates:
-            found = re.search(re.escape(candidate), normalized, flags=re.IGNORECASE)
-            if found is None:
-                continue
-            if best_match is None:
-                best_match = found
-                continue
-            if found.start() < best_match.start():
-                best_match = found
-            elif found.start() == best_match.start() and found.end() > best_match.end():
-                best_match = found
+            for found in re.finditer(re.escape(candidate), normalized, flags=re.IGNORECASE):
+                if any(found.start() < end and found.end() > start for start, end in matched_ranges):
+                    continue
+                if best_match is None:
+                    best_match = found
+                    break
+                if found.start() < best_match.start():
+                    best_match = found
+                    break
+                if found.start() == best_match.start() and found.end() > best_match.end():
+                    best_match = found
+                    break
 
         if best_match is None:
             continue
+        if identity:
+            matched_keys.add(identity)
+        matched_ranges.append((best_match.start(), best_match.end()))
         matches.append(
             {
                 "start": best_match.start(),
@@ -338,22 +349,18 @@ def _build_review_text_segments(text, citations):
     matches.sort(key=lambda item: (item["start"], -item["length"]))
     selected_matches = []
     last_end = -1
-    matched_keys = set()
+    selected_keys = set()
     for item in matches:
         start = item["start"]
         end = item["end"]
         citation = item["citation"]
-        citation_type = str(citation.get("type") or "").strip()
-        identity = (
-            f"bundle:{citation.get('bundle_key') or ''}"
-            if citation_type == "bundle"
-            else f"trade:{citation.get('trade_id') or ''}"
-        )
-        if start < last_end or identity in matched_keys:
+        identity = _citation_identity(citation)
+        if start < last_end or (identity and identity in selected_keys):
             continue
         selected_matches.append(item)
         last_end = end
-        matched_keys.add(identity)
+        if identity:
+            selected_keys.add(identity)
 
     segments = []
     cursor = 0
@@ -1889,6 +1896,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
             if opened_local
             else "-"
         )
+        trade_date_label = opened_local.strftime("%d %b %Y (%a)") if opened_local else ""
         trade_date_value = opened_local.strftime("%Y-%m-%d") if opened_local else ""
         opened_at_value = opened_local.isoformat() if opened_local else ""
         trade_profile = getattr(trade, "trade_profile", None)
@@ -1898,6 +1906,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
                 "trade_id": getattr(trade, "id", None),
                 "trade_pubkey": getattr(trade, "pubkey", None) or "",
                 "date": trade_date,
+                "date_label": trade_date_label,
                 "date_value": trade_date_value,
                 "opened_at_value": opened_at_value,
                 "symbol": format_trade_symbol(trade),

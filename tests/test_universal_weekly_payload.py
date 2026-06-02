@@ -76,6 +76,7 @@ def _nas100_two_trade_internal_payload():
             {
                 "review_ref": "T1",
                 "trade_id": 101,
+                "trade_pubkey": "trade-pubkey-101",
                 "symbol": "NAS100",
                 "side": "BUY",
                 "entry_price": 18200.0,
@@ -116,6 +117,7 @@ def _nas100_two_trade_internal_payload():
             {
                 "review_ref": "T2",
                 "trade_id": 102,
+                "trade_pubkey": "trade-pubkey-102",
                 "symbol": "NAS100",
                 "side": "SELL",
                 "pnl": -474.75,
@@ -180,6 +182,7 @@ def test_universal_payload_trade_cleanup():
     for key in forbidden:
         assert key not in trade
     assert trade["ref"] == "T1"
+    assert trade["trade_pubkey"] == "trade-pubkey-101"
     assert trade["symbol"] == "NAS100"
     assert trade["trade_note"]
     assert trade["trade_date_label"] == "15 May 2026 (Fri)"

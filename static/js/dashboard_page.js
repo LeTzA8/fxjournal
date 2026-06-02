@@ -611,9 +611,6 @@
     const clearCitationHighlights = () => {
         rows.forEach((row) => {
             row.classList.remove("citation-hit");
-            row.querySelectorAll("td").forEach((cell) => {
-                cell.removeAttribute("data-citation-highlight");
-            });
         });
     };
     const pulseCitationRows = (targetRows) => {
@@ -626,9 +623,6 @@
             row.classList.remove("citation-hit");
             void row.offsetWidth;
             row.classList.add("citation-hit");
-            row.querySelectorAll("td").forEach((cell) => {
-                cell.setAttribute("data-citation-highlight", "1");
-            });
         });
         if (citationResetTimer) {
             window.clearTimeout(citationResetTimer);
@@ -724,8 +718,12 @@
         finishFocus();
     };
 
+    const citationLabelFromButton = (button) => (
+        button.dataset.citationLabel || button.textContent || ""
+    ).trim();
+
     const labelSymbolFromCitationButton = (button) => {
-        const label = (button.textContent || "").trim();
+        const label = citationLabelFromButton(button);
         if (!label) {
             return "";
         }
@@ -738,6 +736,33 @@
         }
         return head.toUpperCase();
     };
+
+    const dateLabelFromCitationButton = (button) => {
+        const label = citationLabelFromButton(button);
+        const parts = label.split("|").map((part) => part.trim()).filter(Boolean);
+        if (parts.length < 2) {
+            return "";
+        }
+        const datePart = parts[1];
+        const dateMatch = datePart.match(/\b\d{1,2}\s+[A-Za-z]{3}\s+\d{4}\s+\([A-Za-z]{3}\)/);
+        return dateMatch ? dateMatch[0] : datePart;
+    };
+
+    const dateLabelFromRow = (row) => {
+        const explicit = (row.dataset.dateLabel || "").trim();
+        if (explicit) {
+            return explicit;
+        }
+        const openedText = (row.querySelector(".trade-opened-cell")?.textContent || "").trim();
+        const dateMatch = openedText.match(/\b\d{1,2}\s+[A-Za-z]{3}\s+\d{4}\s+\([A-Za-z]{3}\)/);
+        return dateMatch ? dateMatch[0] : "";
+    };
+
+    const rowsMatchingCitationSymbol = (symbol) => rows.filter((row) => {
+        const rowSymbol = (row.dataset.symbol || "").trim().toUpperCase();
+        return rowSymbol === symbol || rowSymbol.startsWith(`${symbol}.`);
+    });
+
     const resolveRowsForCitationButton = (button) => {
         const tradeId = (button.dataset.citationTradeId || "").trim();
         if (tradeId) {
@@ -774,15 +799,27 @@
             return [];
         }
 
-        const symbolMatches = rows.filter((row) => {
-            const rowSymbol = (row.dataset.symbol || "").trim().toUpperCase();
-            return rowSymbol === symbol || rowSymbol.startsWith(`${symbol}.`);
-        });
+        const symbolMatches = rowsMatchingCitationSymbol(symbol);
         if (!symbolMatches.length) {
             return [];
         }
 
-        const label = (button.textContent || "").trim().toLowerCase();
+        const label = citationLabelFromButton(button).toLowerCase();
+        const dateLabel = dateLabelFromCitationButton(button);
+        if (dateLabel) {
+            const datedMatches = symbolMatches.filter((row) => dateLabelFromRow(row) === dateLabel);
+            if (datedMatches.length === 1) {
+                return datedMatches;
+            }
+            if (datedMatches.length && label.includes("bundle")) {
+                const bundledDatedMatches = datedMatches.filter((row) => row.classList.contains("bundle-row"));
+                return bundledDatedMatches.length ? bundledDatedMatches : datedMatches;
+            }
+            if (datedMatches.length) {
+                return datedMatches;
+            }
+        }
+
         if (label.includes("bundle")) {
             const bundled = symbolMatches.filter((row) => row.classList.contains("bundle-row"));
             return bundled.length ? bundled : symbolMatches;

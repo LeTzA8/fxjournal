@@ -2,6 +2,13 @@
 
 Last Updated: 2026-06-02
 
+## Dashboard weekly review trade-row highlight fix (2026-06-02)
+
+- Weekly-review citation targeting now preserves `trade_pubkey` in the slim universal weekly payload, so newly generated reviews can resolve directly to the dashboard trade row instead of falling back to repeated-symbol matching.
+- Dashboard citation rendering now dedupes by bundle key, trade pubkey, trade id, ref, then label; repeated same-symbol refs without ids stay distinct instead of collapsing into one anonymous `trade:` citation.
+- Dashboard rows expose `data-date-label`; citation clicks fall back from exact id/pubkey/bundle to symbol + date and only then to the legacy first-symbol match. If old citations are still date-ambiguous, all dated candidates highlight rather than pretending the top row is exact.
+- Citation highlight styling is now a softer row fill plus left accent, with the old per-cell boxed highlight layer removed. Cache query strings for `dashboard_page.js` and `weekly_review_chat.js` bumped to `20260602-citations-2`.
+
 ## Dashboard weekly review citation highlights (2026-06-02)
 
 - Dashboard weekly review citation pills now emit all known row-resolution metadata (`ref`, `trade_id`, `trade_pubkey`, `bundle_key`) instead of choosing only trade or bundle attributes. Dashboard trade rows expose `data-trade-pubkey` alongside `data-trade-id` and `data-bundle`.
