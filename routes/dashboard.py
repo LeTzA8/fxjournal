@@ -125,7 +125,7 @@ WEEKLY_AI_WAIT_FOR_WEEK_CLOSE_MESSAGE = (
     "once that trading week is complete."
 )
 WEEKLY_AI_PROMPT_FILENAME = "dashboard_advice.txt"
-DASHBOARD_CACHE_PREFIX = "dashboard_v3"
+DASHBOARD_CACHE_PREFIX = "dashboard_v4"
 ANALYTICS_CACHE_PREFIX = "analytics_v5"
 RR_SUMMARY_CACHE_PREFIX = "rr_summary_v5"
 WEEKLY_REVIEW_CHAT_MAX_CHARS = 800
@@ -1059,6 +1059,8 @@ def _serialize_dashboard_cache_payload(analytics):
             "win_rate": summary.get("win_rate"),
             "weekly_pnl": summary.get("weekly_pnl"),
             "net_pnl": summary.get("net_pnl"),
+            "cost_drag": summary.get("cost_drag"),
+            "cost_drag_coverage": summary.get("cost_drag_coverage"),
             "avg_win": summary.get("avg_win"),
             "avg_loss_abs": summary.get("avg_loss_abs"),
         },
@@ -2094,6 +2096,9 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         closed_trade_count=closed_trade_count,
         net_pnl_week=summary.get("weekly_pnl"),
         account_pnl_total=summary.get("net_pnl"),
+        trading_costs=summary.get("cost_drag"),
+        trading_costs_coverage=summary.get("cost_drag_coverage"),
+        has_cost_data=bool((summary.get("cost_drag_coverage") or 0) > 0),
         trades_this_month=trades_this_month,
         avg_win=summary.get("avg_win"),
         avg_loss_abs=summary.get("avg_loss_abs"),

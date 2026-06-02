@@ -539,6 +539,36 @@ def test_build_trade_analytics_merges_bundled_trades_without_losing_fee_math():
     assert analytics["summary"]["net_pnl"] == pytest.approx(48.0)
     assert analytics["closed_records"][0]["raw_pnl"] == pytest.approx(50.0)
     assert analytics["closed_records"][0]["pnl"] == pytest.approx(48.0)
+    assert analytics["summary"]["cost_drag"] == pytest.approx(2.0)
+    assert analytics["summary"]["cost_drag_coverage"] == 1
+
+
+def test_build_trade_analytics_cost_drag_zero_without_fee_fields():
+    trade_account = SimpleNamespace(account_type="CFD", account_size=None)
+    trade = SimpleNamespace(
+        id=1,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=1.10500,
+        stop_loss=None,
+        take_profit=None,
+        lot_size=1.0,
+        contract_code=None,
+        trade_account=trade_account,
+        pnl=100.0,
+        opened_at=datetime(2026, 3, 10, 9, 0, 0),
+        closed_at=datetime(2026, 3, 10, 10, 0, 0),
+    )
+
+    analytics = build_trade_analytics(
+        [trade],
+        display_timezone_name="UTC",
+        now_utc=datetime(2026, 3, 10, 12, 0, 0, tzinfo=timezone.utc),
+    )
+
+    assert analytics["summary"]["cost_drag"] == pytest.approx(0.0)
+    assert analytics["summary"]["cost_drag_coverage"] == 0
 
 
 def test_aggregate_ohlc_bars_merges_m5_into_m15_bucket():

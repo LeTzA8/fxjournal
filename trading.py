@@ -2779,6 +2779,13 @@ def build_trade_analytics(
     positive_net_total = sum(record["pnl"] for record in closed_records if record["pnl"] > 0)
     negative_net_total = sum(record["pnl"] for record in closed_records if record["pnl"] < 0)
     net_pnl = sum(record["pnl"] for record in closed_records)
+    cost_drag = sum(record["raw_pnl"] - record["pnl"] for record in closed_records)
+    cost_drag_coverage = sum(
+        1
+        for record in closed_records
+        if getattr(record["trade"], "commission", None) not in {None, ""}
+        or getattr(record["trade"], "swap", None) not in {None, ""}
+    )
     avg_win = (positive_net_total / wins) if wins else None
     avg_loss_abs = (abs(negative_net_total) / losses) if losses else None
     win_rate = (wins / total_closed * 100.0) if total_closed else 0.0
@@ -3037,6 +3044,8 @@ def build_trade_analytics(
             "breakeven": breakeven,
             "win_rate": win_rate,
             "net_pnl": net_pnl,
+            "cost_drag": cost_drag,
+            "cost_drag_coverage": cost_drag_coverage,
             "weekly_pnl": weekly_pnl,
             "monthly_pnl": monthly_pnl,
             "gross_profit": gross_profit,

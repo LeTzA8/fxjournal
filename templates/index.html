@@ -2019,6 +2019,38 @@
                 <article class="metric">
                     <p class="metric-label">
                         <span class="help-label">
+                            <span class="help-label-text">Account PnL</span>
+                            <span class="help-tooltip">
+                                <button
+                                    type="button"
+                                    class="help-tooltip-button"
+                                    aria-label="Explain Account PnL"
+                                    aria-describedby="dashboard-account-pnl-tooltip"
+                                >?</button>
+                                <span id="dashboard-account-pnl-tooltip" class="help-tooltip-bubble" role="tooltip">Net realized PnL across all closed trades on this account, after commission and swap.</span>
+                            </span>
+                        </span>
+                    </p>
+                    <p class="metric-value{% if not has_closed_trades %} muted-value{% elif account_pnl_total > 0 %} good{% elif account_pnl_total < 0 %} bad{% endif %}">
+                        {% if has_closed_trades %}
+                            {% if account_pnl_total > 0 %}+{% endif %}${{ '%.2f'|format(account_pnl_total) }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </p>
+                    <p class="metric-note">
+                        {% if has_closed_trades %}
+                        After fees &amp; swap · All closed trades
+                        {% elif has_any_trades %}
+                        Account PnL appears after your first closed trade.
+                        {% else %}
+                        Your headline PnL tracks here once trades are logged.
+                        {% endif %}
+                    </p>
+                </article>
+                <article class="metric">
+                    <p class="metric-label">
+                        <span class="help-label">
                             <span class="help-label-text">Win Rate</span>
                             <span class="help-tooltip">
                                 <button
@@ -2115,6 +2147,44 @@
                         Needs at least one closed winner and one closed loser to become useful.
                         {% else %}
                         Closed win/loss averages appear after you log completed winners and losers.
+                        {% endif %}
+                    </p>
+                </article>
+                <article class="metric">
+                    <p class="metric-label">
+                        <span class="help-label">
+                            <span class="help-label-text">Trading Costs</span>
+                            <span class="help-tooltip">
+                                <button
+                                    type="button"
+                                    class="help-tooltip-button"
+                                    aria-label="Explain Trading Costs"
+                                    aria-describedby="dashboard-trading-costs-tooltip"
+                                >?</button>
+                                <span id="dashboard-trading-costs-tooltip" class="help-tooltip-bubble" role="tooltip">Total cost drag from commission and swap deducted from gross PnL. Already included in Account PnL.</span>
+                            </span>
+                        </span>
+                    </p>
+                    <p class="metric-value{% if not has_cost_data %} muted-value{% elif trading_costs and trading_costs > 0 %} bad{% endif %}">
+                        {% if has_cost_data and trading_costs is not none %}
+                            ${{ '%.2f'|format(trading_costs if trading_costs > 0 else 0) }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </p>
+                    <p class="metric-note">
+                        {% if has_cost_data and closed_trade_count %}
+                            {% if trading_costs_coverage < closed_trade_count %}
+                            Based on {{ trading_costs_coverage }} of {{ closed_trade_count }} closed trades with fee data.
+                            {% else %}
+                            Commission &amp; swap · All closed trades with fee data
+                            {% endif %}
+                        {% elif has_closed_trades %}
+                        Appears once commission or swap data is logged.
+                        {% elif has_any_trades %}
+                        Trading costs track when fee fields are present on closed trades.
+                        {% else %}
+                        Cost drag appears after you log trades with commission or swap.
                         {% endif %}
                     </p>
                 </article>
@@ -2487,12 +2557,7 @@
                     </div>
                     <div id="pnlXAxis" class="chart-x-axis"></div>
                     <script id="pnlChartData" type="application/json">{{ chart_points|tojson }}</script>
-                    <p class="summary">
-                        Overall account PnL:
-                        <strong class="{% if account_pnl_total > 0 %}good{% elif account_pnl_total < 0 %}bad{% endif %}">
-                            {% if account_pnl_total > 0 %}+{% endif %}${{ '%.2f'|format(account_pnl_total) }}
-                        </strong>
-                    </p>
+                    <p class="summary insight-note">Running realized PnL by close time. Account PnL is in the metrics above.</p>
                     {% else %}
                     <div class="panel-empty-state panel-empty-state-chart">
                         <p class="panel-empty-kicker">Equity curve</p>

@@ -1,6 +1,12 @@
 # CURRENT_STATE
 
-Last Updated: 2026-06-02
+Last Updated: 2026-06-03
+
+## Dashboard account PnL and trading costs metrics (2026-06-03)
+
+- Hero metric grid adds **Account PnL** (all closed trades, net of commission/swap) as the first tile and **Trading Costs** (sum of gross-to-net cost drag) as the last tile, with partial fee-data coverage messaging when commission/swap is missing on some trades.
+- `build_trade_analytics` summary now exposes `cost_drag` and `cost_drag_coverage`; dashboard cache prefix bumped to `dashboard_v4`.
+- Equity curve panel drops the duplicate under-chart account PnL line in favor of a short pointer to the hero metrics.
 
 ## Dashboard weekly review trade-row highlight fix (2026-06-02)
 
