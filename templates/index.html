@@ -2040,7 +2040,7 @@
                     </p>
                     <p class="metric-note">
                         {% if has_closed_trades %}
-                        After fees &amp; swap · All closed trades
+                        After fees &amp; swap · {{ closed_trade_count }} closed trade{{ 's' if closed_trade_count != 1 else '' }}
                         {% elif has_any_trades %}
                         Account PnL appears after your first closed trade.
                         {% else %}
@@ -2091,6 +2091,7 @@
                     <p class="metric-note {% if has_closed_trades and net_pnl_week > 0 %}good{% elif has_closed_trades and net_pnl_week < 0 %}bad{% endif %}">
                         {% if has_closed_trades %}
                             {% if net_pnl_week > 0 %}Profitable week{% elif net_pnl_week < 0 %}Negative week{% else %}Flat week{% endif %}
+                            · {{ net_pnl_week_trade_count }} trade{{ 's' if net_pnl_week_trade_count != 1 else '' }} since {{ current_week_start.strftime('%d %b') }}
                         {% elif has_any_trades %}
                         Weekly realized PnL appears after closed trades come in.
                         {% else %}

@@ -1,6 +1,14 @@
 # CURRENT_STATE
 
-Last Updated: 2026-06-03
+Last Updated: 2026-06-05
+
+## Dashboard: Realized This Week now computed fresh, Account PnL and week metric notes show trade counts (2026-06-05)
+
+- "Realized This Week" top metric now uses `current_week_stats.get("net_pnl")` (freshly computed from `closed_records` + current Monday 00:00 boundary in the user's display timezone) instead of `summary.get("weekly_pnl")` from the analytics cache. This eliminates the stale-week-boundary risk where a cache built before the week rolled over could serve the previous week's figure as "this week".
+- `net_pnl_week_trade_count` and `current_week_start` added to dashboard template context.
+- "Realized This Week" metric note now shows trade count + week start date: e.g. "Profitable week · 12 trades since 01 Jun".
+- "Account PnL" metric note now shows the exact closed trade count: e.g. "After fees & swap · 29 closed trades" instead of the generic "All closed trades".
+- These two metrics showing the same value is correct when all closed trades fall within the current week; the notes now make the denominator visible so users can verify.
 
 ## Dashboard account PnL and trading costs metrics (2026-06-03)
 
