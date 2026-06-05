@@ -2,6 +2,11 @@
 
 Last Updated: 2026-06-05
 
+## Cache invalidation fix: dashboard_v4 was never being cleared on trade changes (2026-06-05)
+
+- `invalidate()` in `celery_workers/cache.py` listed prefixes through `dashboard_v3` but the current dashboard cache prefix is `dashboard_v4`. Every trade import, edit, delete, and MT5 sync called `invalidate()`, but the `dashboard_v4` key was silently left alive until its 1-hour TTL expired.
+- Added `dashboard_v4` to the invalidation list. Dashboard analytics (Account PnL, Realized This Week, session stats, equity curve) now refresh immediately after any trade change instead of serving stale data for up to an hour.
+
 ## Dashboard: Realized This Week now computed fresh, Account PnL and week metric notes show trade counts (2026-06-05)
 
 - "Realized This Week" top metric now uses `current_week_stats.get("net_pnl")` (freshly computed from `closed_records` + current Monday 00:00 boundary in the user's display timezone) instead of `summary.get("weekly_pnl")` from the analytics cache. This eliminates the stale-week-boundary risk where a cache built before the week rolled over could serve the previous week's figure as "this week".
