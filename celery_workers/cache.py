@@ -139,6 +139,7 @@ def invalidate(user_id, trade_account_id=None):
         cache_key("dashboard", user_id, trade_account_id),
         cache_key("dashboard_v2", user_id, trade_account_id),
         cache_key("dashboard_v3", user_id, trade_account_id),
+        cache_key("dashboard_v4", user_id, trade_account_id),
     ]
     _run_redis(lambda: _client().delete(*keys))
 
