@@ -747,6 +747,7 @@ def import_trade_file():
     parsed_rows = []
     validation_skipped = 0
     duplicate_count = 0
+    duplicate_cost_updates = 0
     import_signature = None
     current_row_index = None
     current_row_context = None
@@ -837,10 +838,11 @@ def import_trade_file():
         insert_batch = batch_result["insert_batch"]
         validation_skipped = batch_result["validation_skipped"]
         duplicate_count = batch_result["duplicate_count"]
+        duplicate_cost_updates = batch_result.get("duplicate_cost_updates", 0)
         failed_symbols = batch_result["failed_symbols"]
         validation_reasons = batch_result["validation_reasons"]
 
-        if not insert_batch:
+        if not insert_batch and not duplicate_cost_updates:
             symbol_msg = ""
             if failed_symbols:
                 failed_list = sorted(failed_symbols)
@@ -858,7 +860,8 @@ def import_trade_file():
             return redirect(url_for("trades.new_trade"))
 
         import_stage = "commit_import"
-        db.session.add_all(insert_batch)
+        if insert_batch:
+            db.session.add_all(insert_batch)
         db.session.commit()
         _invalidate_trade_caches(user_id, active_trade_account.id)
         if queue_bundle_review_if_split_candidates(
@@ -883,7 +886,7 @@ def import_trade_file():
                 active_trade_account.id,
                 exc,
             )
-        if existing_import_count == 0:
+        if existing_import_count == 0 and insert_batch:
             mt5_access_state = build_mt5_access_state(user_id, [active_trade_account])
             show_connect_mt5 = (
                 normalize_account_type(active_trade_account.account_type) == "CFD"
@@ -910,7 +913,6 @@ def import_trade_file():
             if extra > 0:
                 shown = f"{shown}, +{extra} more"
             symbol_msg = f" Unrecognized symbols skipped: {shown}."
-
         uncertain_bits = []
         if validation_reasons["missing_mt5_position"]:
             uncertain_bits.append(
@@ -959,9 +961,23 @@ def import_trade_file():
             if account_type == "FUTURES"
             else "Positions"
         )
+        if insert_batch:
+            outcome_msg = (
+                f"Imported {len(insert_batch)} trade{'s' if len(insert_batch) != 1 else ''} "
+                f"from {_source_label}. "
+            )
+            if duplicate_cost_updates:
+                outcome_msg += (
+                    f"Updated costs on {duplicate_cost_updates} existing "
+                    f"trade{'s' if duplicate_cost_updates != 1 else ''}. "
+                )
+        else:
+            outcome_msg = (
+                f"Updated costs on {duplicate_cost_updates} existing "
+                f"trade{'s' if duplicate_cost_updates != 1 else ''} from {_source_label}. "
+            )
         flash(
-            f"Imported {len(insert_batch)} trade{'s' if len(insert_batch) != 1 else ''} from "
-            f"{_source_label}. "
+            f"{outcome_msg}"
             f"Parsed rows: {len(parsed_rows)}/{total_rows}. "
             f"Skipped: {skipped_rows + validation_skipped}. "
             f"{'Duplicate trades' if account_type == 'FUTURES' else 'Duplicate positions'}: {duplicate_count}."

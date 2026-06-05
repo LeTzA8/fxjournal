@@ -1934,7 +1934,13 @@ def parse_topstep_csv_stream(file_stream):
         entry_price = parse_float_value(row.get("EntryPrice"))
         exit_price = parse_float_value(row.get("ExitPrice"))
         pnl = parse_float_value(row.get("PnL"))
-        commission = parse_float_value(row.get("Fees"))
+        fee_components = [
+            parse_float_value(row.get("Fees")),
+            parse_float_value(row.get("Commissions")),
+        ]
+        commission = sum(value for value in fee_components if value is not None)
+        if all(value is None for value in fee_components):
+            commission = None
         trade_type = str(row.get("Type") or "").strip().upper()
         external_id = str(row.get("Id") or "").strip()
 

@@ -9,8 +9,14 @@ from helpers.core import (
     build_trade_import_dedupe_key,
     create_trade_profile,
 )
-from models import TradeAccount, User, db
-from trading import parse_mt5_xlsx_stream, parse_tradovate_csv_stream
+from models import FuturesSymbol, Trade, TradeAccount, User, db
+from trading import (
+    calculate_trade_net_pnl,
+    clear_cfd_symbol_cache,
+    parse_mt5_xlsx_stream,
+    parse_topstep_csv_stream,
+    parse_tradovate_csv_stream,
+)
 
 
 def test_parse_mt5_xlsx_single_trade():
@@ -229,6 +235,122 @@ def test_parse_tradovate_csv_single_trade():
     assert parsed[0]["lot_size"] == 1.0
     assert parsed[0]["entry_price"] == 5000.0
     assert parsed[0]["exit_price"] == 5002.5
+
+
+def test_parse_topstep_csv_combines_fees_and_commissions_for_net_pnl():
+    csv_bytes = BytesIO(
+        (
+            "Id,ContractName,EnteredAt,ExitedAt,EntryPrice,ExitPrice,Fees,Commissions,PnL,Size,Type\n"
+            "2665990315,MESM6,06/01/2026 09:00:00 +08:00,06/01/2026 09:05:00 +08:00,"
+            "5900.00,5916.50,2.96,2.00,330.00,4,Long\n"
+        ).encode("utf-8")
+    )
+
+    parsed, total, skipped = parse_topstep_csv_stream(csv_bytes)
+
+    assert total == 1
+    assert skipped == 0
+    assert len(parsed) == 1
+    assert parsed[0]["symbol"] == "MES"
+    assert parsed[0]["contract_code"] == "MESM6"
+    assert parsed[0]["commission"] == 4.96
+    assert calculate_trade_net_pnl(parsed[0]["pnl"], parsed[0]["commission"]) == 325.04
+
+
+def test_futures_duplicate_import_refreshes_cost_fields(app_ctx):
+    user = User(
+        username="futures-cost-refresh-user",
+        email="futures-cost-refresh@example.com",
+        password="hashed-password",
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    trade_account = TradeAccount(
+        user_id=user.id,
+        name="Imported Futures",
+        account_type="FUTURES",
+        is_default=True,
+    )
+    db.session.add(trade_account)
+    db.session.flush()
+    if FuturesSymbol.query.filter_by(root_symbol="MES").first() is None:
+        db.session.add(
+            FuturesSymbol(
+                root_symbol="MES",
+                tick_size=0.25,
+                tick_value=5.0,
+                display_name="MES",
+                exchange="CME",
+                currency="USD",
+                sort_order=1,
+                is_active=True,
+            )
+        )
+    db.session.flush()
+    clear_cfd_symbol_cache()
+
+    opened_at = datetime(2026, 6, 1, 1, 0, 0)
+    closed_at = datetime(2026, 6, 1, 1, 5, 0)
+    existing_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="MES",
+        contract_code="MESM6",
+        side="BUY",
+        entry_price=5900.0,
+        exit_price=5916.5,
+        lot_size=4.0,
+        pnl=330.0,
+        commission=2.96,
+        opened_at=opened_at,
+        closed_at=closed_at,
+    )
+    duplicate_existing_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="MES",
+        contract_code="MESM6",
+        side="BUY",
+        entry_price=5900.0,
+        exit_price=5916.5,
+        lot_size=4.0,
+        pnl=330.0,
+        commission=2.96,
+        opened_at=opened_at,
+        closed_at=closed_at,
+    )
+    db.session.add(existing_trade)
+    db.session.add(duplicate_existing_trade)
+    db.session.commit()
+
+    batch_result = build_normalized_trade_insert_batch(
+        user_id=user.id,
+        trade_account=trade_account,
+        rows=[
+            {
+                "symbol": "MES",
+                "contract_code": "MESM6",
+                "side": "BUY",
+                "entry_price": 5900.0,
+                "exit_price": 5916.5,
+                "lot_size": 4.0,
+                "pnl": 330.0,
+                "commission": 4.96,
+                "opened_at": opened_at,
+                "closed_at": closed_at,
+            }
+        ],
+        import_signature="topstep_20260601_010500_abcd1234",
+        default_system_trade_note="Imported from Topstep Export CSV",
+    )
+
+    assert batch_result["insert_batch"] == []
+    assert batch_result["duplicate_count"] == 1
+    assert batch_result["duplicate_cost_updates"] == 2
+    assert existing_trade.commission == 4.96
+    assert duplicate_existing_trade.commission == 4.96
+    assert calculate_trade_net_pnl(existing_trade.pnl, existing_trade.commission) == 325.04
 
 
 def test_trade_import_dedupe_keys_are_stable_and_sensitive():

@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta
+from io import BytesIO
 
 import pytest
 import routes.trades as trades_routes
 from helpers.trade_interpretation import apply_interpretation
-from models import Trade, TradeAccount, TradeBars, User, db
+from models import FuturesSymbol, Trade, TradeAccount, TradeBars, User, db
+from trading import clear_cfd_symbol_cache
 
 
 def _create_logged_in_user(client, username, email):
@@ -31,6 +33,82 @@ def _create_logged_in_user(client, username, email):
         session_state["active_trade_account_id"] = trade_account.id
 
     return user, trade_account
+
+
+def test_topstep_duplicate_import_refreshes_existing_trade_costs(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="topstep-route-cost-refresh-user",
+        email="topstep-route-cost-refresh@example.com",
+    )
+    trade_account.account_type = "FUTURES"
+    if FuturesSymbol.query.filter_by(root_symbol="MES").first() is None:
+        db.session.add(
+            FuturesSymbol(
+                root_symbol="MES",
+                tick_size=0.25,
+                tick_value=5.0,
+                display_name="MES",
+                exchange="CME",
+                currency="USD",
+                sort_order=1,
+                is_active=True,
+            )
+        )
+    db.session.flush()
+    clear_cfd_symbol_cache()
+
+    existing_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="MES",
+        contract_code="MESM6",
+        side="BUY",
+        entry_price=5900.0,
+        exit_price=5916.5,
+        lot_size=4.0,
+        pnl=330.0,
+        commission=2.96,
+        opened_at=datetime(2026, 6, 1, 1, 0, 0),
+        closed_at=datetime(2026, 6, 1, 1, 5, 0),
+    )
+    db.session.add(existing_trade)
+    db.session.commit()
+
+    monkeypatch.setattr(
+        trades_routes,
+        "queue_bundle_review_if_split_candidates",
+        lambda **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        trades_routes,
+        "queue_weekly_ai_review_after_ingest",
+        lambda **_kwargs: None,
+    )
+
+    csv_bytes = (
+        "Id,ContractName,EnteredAt,ExitedAt,EntryPrice,ExitPrice,Fees,Commissions,PnL,Size,Type\n"
+        "2665990315,MESM6,06/01/2026 09:00:00 +08:00,06/01/2026 09:05:00 +08:00,"
+        "5900.00,5916.50,2.96,2.00,330.00,4,Long\n"
+    ).encode("utf-8")
+
+    response = client.post(
+        "/dashboard/import",
+        data={"mt5_file": (BytesIO(csv_bytes), "topstep.csv")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    db.session.refresh(existing_trade)
+    assert existing_trade.commission == 4.96
+    assert Trade.query.filter_by(user_id=user.id).count() == 1
+    with client.session_transaction() as session_state:
+        flash_messages = [message for _category, message in session_state.get("_flashes", [])]
+    assert any(
+        "Updated costs on 1 existing trade from Topstep CSV." in message
+        for message in flash_messages
+    )
+    assert not any("Imported 0 trades" in message for message in flash_messages)
 
 
 def test_manual_trade_detail_shows_rr_and_split_fees(app_ctx, client):

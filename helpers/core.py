@@ -302,7 +302,29 @@ def build_normalized_trade_insert_batch(
     existing_positions = set()
     import_positions = set()
     existing_trade_keys = set()
+    existing_trade_by_key = {}
     import_trade_keys = set()
+    duplicate_cost_updates = 0
+
+    def _optional_float(value):
+        if value in {None, ""}:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _refresh_duplicate_cost_fields(existing_trade, row):
+        updated = False
+        for attr_name in ("commission", "swap"):
+            incoming_value = _optional_float(row.get(attr_name))
+            if incoming_value is None:
+                continue
+            current_value = _optional_float(getattr(existing_trade, attr_name, None))
+            if current_value is None or abs(current_value - incoming_value) > 1e-9:
+                setattr(existing_trade, attr_name, incoming_value)
+                updated = True
+        return updated
 
     if account_type == "FUTURES" and not dedupe_by_mt5_position_only:
         existing_trades = Trade.query.filter_by(
@@ -319,10 +341,12 @@ def build_normalized_trade_insert_batch(
                 Trade.opened_at,
                 Trade.closed_at,
                 Trade.pnl,
+                Trade.commission,
+                Trade.swap,
             )
         ).all()
-        existing_trade_keys = {
-            build_trade_duplicate_key(
+        for trade in existing_trades:
+            trade_key = build_trade_duplicate_key(
                 symbol=trade.symbol,
                 contract_code=trade.contract_code,
                 side=trade.side,
@@ -333,8 +357,8 @@ def build_normalized_trade_insert_batch(
                 closed_at=trade.closed_at,
                 pnl=resolve_pnl(trade),
             )
-            for trade in existing_trades
-        }
+            existing_trade_keys.add(trade_key)
+            existing_trade_by_key.setdefault(trade_key, []).append(trade)
     else:
         existing_positions = {
             pos
@@ -458,6 +482,9 @@ def build_normalized_trade_insert_batch(
                 pnl=pnl,
             )
             if trade_key in existing_trade_keys or trade_key in import_trade_keys:
+                for existing_duplicate_trade in existing_trade_by_key.get(trade_key, ()):
+                    if _refresh_duplicate_cost_fields(existing_duplicate_trade, row):
+                        duplicate_cost_updates += 1
                 duplicate_count += 1
                 continue
             import_trade_keys.add(trade_key)
@@ -525,6 +552,7 @@ def build_normalized_trade_insert_batch(
         "insert_batch": insert_batch,
         "validation_skipped": validation_skipped,
         "duplicate_count": duplicate_count,
+        "duplicate_cost_updates": duplicate_cost_updates,
         "failed_symbols": failed_symbols,
         "validation_reasons": validation_reasons,
     }

@@ -2,6 +2,12 @@
 
 Last Updated: 2026-06-05
 
+## Topstep CSV commissions now included in imported cost/net PnL (2026-06-05)
+
+- Topstep CSV import now sums both `Fees` and optional `Commissions` into the normalized `Trade.commission` cost field. Dashboard Account PnL, Realized This Week, Trading Costs, analytics, running PnL, trade detail net PnL, and weekly AI inputs all use the existing net-PnL resolver, so separate Topstep commissions are deducted once through the normal cost path.
+- Futures duplicate import handling now refreshes stored `commission`/`swap` cost fields from matching duplicate rows instead of only skipping them. Re-uploading the same Topstep CSV after this fix can correct old rows that were imported with `Fees` only, without creating duplicate trades; cost-only re-import flashes now lead with the cost update instead of "Imported 0 trades."
+- Dashboard cost copy now says logged fees, commission, and swap instead of only commission/swap, matching futures exports where exchange fees and broker commissions can be separate columns. The Account PnL metric note uses the same wording.
+
 ## Cache invalidation fix: dashboard_v4 was never being cleared on trade changes (2026-06-05)
 
 - `invalidate()` in `celery_workers/cache.py` listed prefixes through `dashboard_v3` but the current dashboard cache prefix is `dashboard_v4`. Every trade import, edit, delete, and MT5 sync called `invalidate()`, but the `dashboard_v4` key was silently left alive until its 1-hour TTL expired.
@@ -12,12 +18,12 @@ Last Updated: 2026-06-05
 - "Realized This Week" top metric now uses `current_week_stats.get("net_pnl")` (freshly computed from `closed_records` + current Monday 00:00 boundary in the user's display timezone) instead of `summary.get("weekly_pnl")` from the analytics cache. This eliminates the stale-week-boundary risk where a cache built before the week rolled over could serve the previous week's figure as "this week".
 - `net_pnl_week_trade_count` and `current_week_start` added to dashboard template context.
 - "Realized This Week" metric note now shows trade count + week start date: e.g. "Profitable week · 12 trades since 01 Jun".
-- "Account PnL" metric note now shows the exact closed trade count: e.g. "After fees & swap · 29 closed trades" instead of the generic "All closed trades".
+- "Account PnL" metric note now shows the exact closed trade count: e.g. "After fees, commission & swap · 29 closed trades" instead of the generic "All closed trades".
 - These two metrics showing the same value is correct when all closed trades fall within the current week; the notes now make the denominator visible so users can verify.
 
 ## Dashboard account PnL and trading costs metrics (2026-06-03)
 
-- Hero metric grid adds **Account PnL** (all closed trades, net of commission/swap) as the first tile and **Trading Costs** (sum of gross-to-net cost drag) as the last tile, with partial fee-data coverage messaging when commission/swap is missing on some trades.
+- Hero metric grid adds **Account PnL** (all closed trades, net of logged fees/commission/swap) as the first tile and **Trading Costs** (sum of gross-to-net cost drag) as the last tile, with partial fee-data coverage messaging when cost data is missing on some trades.
 - `build_trade_analytics` summary now exposes `cost_drag` and `cost_drag_coverage`; dashboard cache prefix bumped to `dashboard_v4`.
 - Equity curve panel drops the duplicate under-chart account PnL line in favor of a short pointer to the hero metrics.
 
@@ -79,7 +85,7 @@ Last Updated: 2026-06-05
 ## Topstep CSV import support (2026-05-30)
 
 - Added `TOPSTEP_REQUIRED_FIELDS`, `_TOPSTEP_DT_RE`, `_parse_topstep_timestamp()`, `sniff_topstep_csv_stream()`, and `parse_topstep_csv_stream()` to `trading.py`.
-- Topstep export format: `Id,ContractName,EnteredAt,ExitedAt,EntryPrice,ExitPrice,Fees,PnL,Size,Type,...` with timestamps as `MM/DD/YYYY HH:MM:SS ±HH:MM`. PnL is gross; Fees is the total per-trade cost (commission + exchange).
+- Topstep export format: `Id,ContractName,EnteredAt,ExitedAt,EntryPrice,ExitPrice,Fees,PnL,Size,Type,...` with timestamps as `MM/DD/YYYY HH:MM:SS ±HH:MM`. PnL is gross; `Fees` plus optional `Commissions` are imported as the total per-trade cost.
 - `_parse_topstep_timestamp` parses the Topstep timestamp format (not ISO) directly to UTC-naive; stores the explicit offset string (e.g. `+08:00`) as `source_timezone`.
 - `detect_trade_import_profile()` now tries Topstep before Tradovate and MT5; field-based detection means no format ambiguity.
 - `routes/trades.py`: imports `parse_topstep_csv_stream`; `import_trade_file` handles `topstep_csv` parser branch; import signature prefix `topstep`; system note `Imported from Topstep Export CSV`; flash and error messages now use detected platform name rather than hardcoded "Tradovate".

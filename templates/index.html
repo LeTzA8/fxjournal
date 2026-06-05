@@ -2027,7 +2027,7 @@
                                     aria-label="Explain Account PnL"
                                     aria-describedby="dashboard-account-pnl-tooltip"
                                 >?</button>
-                                <span id="dashboard-account-pnl-tooltip" class="help-tooltip-bubble" role="tooltip">Net realized PnL across all closed trades on this account, after commission and swap.</span>
+                                <span id="dashboard-account-pnl-tooltip" class="help-tooltip-bubble" role="tooltip">Net realized PnL across all closed trades on this account, after logged fees, commission, and swap.</span>
                             </span>
                         </span>
                     </p>
@@ -2040,7 +2040,7 @@
                     </p>
                     <p class="metric-note">
                         {% if has_closed_trades %}
-                        After fees &amp; swap · {{ closed_trade_count }} closed trade{{ 's' if closed_trade_count != 1 else '' }}
+                        After fees, commission &amp; swap · {{ closed_trade_count }} closed trade{{ 's' if closed_trade_count != 1 else '' }}
                         {% elif has_any_trades %}
                         Account PnL appears after your first closed trade.
                         {% else %}
@@ -2162,7 +2162,7 @@
                                     aria-label="Explain Trading Costs"
                                     aria-describedby="dashboard-trading-costs-tooltip"
                                 >?</button>
-                                <span id="dashboard-trading-costs-tooltip" class="help-tooltip-bubble" role="tooltip">Total cost drag from commission and swap deducted from gross PnL. Already included in Account PnL.</span>
+                                <span id="dashboard-trading-costs-tooltip" class="help-tooltip-bubble" role="tooltip">Total cost drag from logged fees, commission, and swap deducted from gross PnL. Already included in Account PnL.</span>
                             </span>
                         </span>
                     </p>
@@ -2178,14 +2178,14 @@
                             {% if trading_costs_coverage < closed_trade_count %}
                             Based on {{ trading_costs_coverage }} of {{ closed_trade_count }} closed trades with fee data.
                             {% else %}
-                            Commission &amp; swap · All closed trades with fee data
+                            Fees, commission &amp; swap · All closed trades with fee data
                             {% endif %}
                         {% elif has_closed_trades %}
-                        Appears once commission or swap data is logged.
+                        Appears once fees, commission, or swap data is logged.
                         {% elif has_any_trades %}
                         Trading costs track when fee fields are present on closed trades.
                         {% else %}
-                        Cost drag appears after you log trades with commission or swap.
+                        Cost drag appears after you log trades with fees, commission, or swap.
                         {% endif %}
                     </p>
                 </article>
