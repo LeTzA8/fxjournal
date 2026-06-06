@@ -17,6 +17,9 @@ AI_STATUS_FAILED_TTL = 600
 WORKER_MONITOR_TTL = 60 * 60 * 24
 ADMIN_MT5_MONITOR_TTL = 20
 ADMIN_MT5_MONITOR_CACHE_KEY = "admin_mt5_monitor_snapshot"
+MT5_BROKER_REFRESH_RESULT_PREFIX = "mt5_broker_refresh_result:"
+MT5_BROKER_REFRESH_RESULT_TTL = 3600
+MT5_GUI_BROKER_REFRESH_LOCK_TTL = 120
 
 # Shared across MT5 setup + sync workers on the VM so only one MT5 runtime
 # operation (bootstrap, login, sync, bar fetch, terminal cleanup) runs at a
@@ -394,6 +397,35 @@ def release_mt5_global_lock(token):
 def peek_mt5_global_lock_holder():
     """Return the token of the current MT5 global lock holder (or None)."""
     return peek_lock_holder(MT5_GLOBAL_LOCK_KEY)
+
+
+def mt5_gui_broker_refresh_lock_key(vm_id) -> str:
+    # Reuse the same slug helper as queue routing so the per-VM GUI lock key and
+    # the mt5_setup.<slug> queue can never diverge for the same VM (lazy import
+    # avoids a cache <-> mt5_dispatch import cycle).
+    from helpers.mt5_dispatch import vm_id_to_queue_slug
+
+    return f"mt5_gui_broker_refresh_lock:{vm_id_to_queue_slug(vm_id)}"
+
+
+def mt5_broker_refresh_result_key(job_id) -> str:
+    return f"{MT5_BROKER_REFRESH_RESULT_PREFIX}{job_id}"
+
+
+def set_mt5_broker_refresh_result(job_id, data, ttl=MT5_BROKER_REFRESH_RESULT_TTL):
+    payload = json.dumps(data, separators=(",", ":"), default=str)
+    _run_redis(
+        lambda: _client().setex(
+            mt5_broker_refresh_result_key(job_id),
+            int(ttl),
+            payload,
+        )
+    )
+
+
+def get_mt5_broker_refresh_result(job_id):
+    raw = _run_redis(lambda: _client().get(mt5_broker_refresh_result_key(job_id)))
+    return json.loads(raw) if raw else None
 
 
 def get_queue_depth(queue_name):

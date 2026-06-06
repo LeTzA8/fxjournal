@@ -124,6 +124,9 @@ WEEKLY_AI_WAIT_FOR_WEEK_CLOSE_MESSAGE = (
     "Your weekly AI review is scheduled for after Friday 5:30 PM New York time, "
     "once that trading week is complete."
 )
+WEEKLY_AI_PENDING_MESSAGE = (
+    "This trading week ended. Your weekly AI review will appear here once it is ready."
+)
 WEEKLY_AI_PROMPT_FILENAME = "dashboard_advice.txt"
 DASHBOARD_CACHE_PREFIX = "dashboard_v4"
 ANALYTICS_CACHE_PREFIX = "analytics_v5"
@@ -1414,6 +1417,12 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
         except CacheUnavailableError as exc:
             current_app.logger.warning("Weekly AI status unavailable: %s", exc)
 
+        past_market_week_cutoff = weekly_review_generation_past_market_week_cutoff(
+            user_id=user_id,
+            trade_account_id=account_id,
+            period=latest_trade_period,
+        )
+
         # When checkin is not complete and no review exists for the current period,
         # suppress the previous week's fallback and block auto-generation so the
         # AI panel can prompt the user to complete the check-in first.
@@ -1423,8 +1432,14 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
             weekly_ai_review = None
             weekly_ai_needs_checkin = True
             generate = False
+        elif current_period_review is not None:
+            weekly_ai_review = current_period_review
+        elif ai_status in {"queued", "running"} or past_market_week_cutoff:
+            # After the trading week ends (or while generation is queued), show the
+            # empty/loading panel for the new week instead of the previous review.
+            weekly_ai_review = None
         else:
-            weekly_ai_review = current_period_review or fallback_review
+            weekly_ai_review = fallback_review
         if reviews_available and weekly_ai_review is not None:
             weekly_ai_review_text = normalize_dashboard_advice_text(weekly_ai_review.response_text)
             weekly_ai_review_display = _build_weekly_ai_review_display(
@@ -1440,27 +1455,29 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
                     "period_end_utc": weekly_ai_review.period_end_utc,
                 }
 
-        if reviews_available and current_period_review is None and not generate:
-            weekly_ai_empty_message = DEFAULT_WEEKLY_AI_EMPTY_MESSAGE
-
-        if reviews_available and current_period_review is None and generate:
+        if reviews_available and current_period_review is None:
             if ai_status in {"queued", "running"}:
                 weekly_ai_is_generating = True
                 weekly_ai_empty_message = WEEKLY_AI_GENERATING_MESSAGE
             elif ai_status == "failed":
                 weekly_ai_empty_message = WEEKLY_AI_UNAVAILABLE_MESSAGE
+            elif not generate:
+                if past_market_week_cutoff and not weekly_ai_needs_checkin:
+                    weekly_ai_empty_message = WEEKLY_AI_PENDING_MESSAGE
+                else:
+                    weekly_ai_empty_message = DEFAULT_WEEKLY_AI_EMPTY_MESSAGE
             elif not should_generate_weekly_dashboard_advice(
                 user_id=user_id,
                 trade_account_id=account_id,
                 period_start_utc=latest_trade_period["period_start_utc"],
                 period_end_utc=latest_trade_period["period_end_utc"],
             ):
-                weekly_ai_empty_message = DEFAULT_WEEKLY_AI_EMPTY_MESSAGE
-            elif not weekly_review_generation_past_market_week_cutoff(
-                user_id=user_id,
-                trade_account_id=account_id,
-                period=latest_trade_period,
-            ):
+                weekly_ai_empty_message = (
+                    WEEKLY_AI_PENDING_MESSAGE
+                    if past_market_week_cutoff
+                    else DEFAULT_WEEKLY_AI_EMPTY_MESSAGE
+                )
+            elif not past_market_week_cutoff:
                 weekly_ai_empty_message = WEEKLY_AI_WAIT_FOR_WEEK_CLOSE_MESSAGE
             else:
                 closed_trade_idea_count = count_closed_trade_ideas_in_period(
@@ -1528,6 +1545,8 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
                             weekly_ai_empty_message = WEEKLY_AI_GENERATING_MESSAGE
                         elif ai_status == "failed":
                             weekly_ai_empty_message = WEEKLY_AI_UNAVAILABLE_MESSAGE
+                        elif past_market_week_cutoff:
+                            weekly_ai_empty_message = WEEKLY_AI_PENDING_MESSAGE
 
     if weekly_ai_review and weekly_ai_review.generated_at:
         generated_local = to_display_timezone(weekly_ai_review.generated_at, timezone_name)
@@ -1544,6 +1563,18 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
             f"{period_end_local.strftime('%a %d %b %Y %H:%M')} {timezone_name}"
         )
 
+    weekly_ai_poll_for_status = (
+        weekly_ai_review is None
+        and not weekly_ai_is_generating
+        and not weekly_ai_needs_checkin
+        and latest_trade_period is not None
+        and weekly_review_generation_past_market_week_cutoff(
+            user_id=user_id,
+            trade_account_id=account_id,
+            period=latest_trade_period,
+        )
+    )
+
     return {
         "weekly_ai_review": weekly_ai_review,
         "weekly_ai_review_text": weekly_ai_review_text,
@@ -1553,6 +1584,7 @@ def _get_weekly_ai_state(user_id, active_trade_account, timezone_name, user_trad
         "weekly_ai_empty_message": weekly_ai_empty_message,
         "weekly_ai_is_generating": weekly_ai_is_generating,
         "weekly_ai_needs_checkin": weekly_ai_needs_checkin,
+        "weekly_ai_poll_for_status": weekly_ai_poll_for_status,
     }
 
 
@@ -2128,6 +2160,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         weekly_ai_period_label=weekly_ai_state["weekly_ai_period_label"],
         weekly_ai_empty_message=weekly_ai_state["weekly_ai_empty_message"],
         weekly_ai_is_generating=weekly_ai_state["weekly_ai_is_generating"],
+        weekly_ai_poll_for_status=weekly_ai_state.get("weekly_ai_poll_for_status", False),
         weekly_ai_needs_checkin=weekly_ai_state.get("weekly_ai_needs_checkin", False),
         show_onboarding_banner=show_onboarding_banner,
         onboarding_was_skipped=onboarding_banner_state["onboarding_was_skipped"],
@@ -2182,16 +2215,36 @@ def ai_status():
         user_id=user_id,
         trade_account_id=account_id,
     ) or get_weekly_dashboard_period()
+    period_start_utc = weekly_period.get("period_start_utc") if weekly_period else None
     try:
         status = get_ai_status(
             user_id,
             trade_account_id=account_id,
-            period_start_utc=weekly_period.get("period_start_utc") if weekly_period else None,
+            period_start_utc=period_start_utc,
         )
     except CacheUnavailableError as exc:
         current_app.logger.warning("Weekly AI status poll unavailable: %s", exc)
         status = None
-    return jsonify({"ready": status is None})
+    has_current_review = False
+    if period_start_utc is not None:
+        try:
+            has_current_review = (
+                get_latest_weekly_dashboard_advice(
+                    user_id=user_id,
+                    trade_account_id=account_id,
+                    period_start_utc=period_start_utc,
+                )
+                is not None
+            )
+        except OperationalError as exc:
+            db.session.rollback()
+            current_app.logger.warning("Weekly AI review poll unavailable: %s", exc)
+    return jsonify(
+        {
+            "ready": has_current_review,
+            "status": status,
+        }
+    )
 
 
 @bp.route("/dashboard/weekly-review/<int:review_id>/chat", methods=["POST"])

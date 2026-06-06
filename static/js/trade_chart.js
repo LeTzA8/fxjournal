@@ -401,16 +401,21 @@
         };
     }
 
+    function isGatedTfButton(btn) {
+        return btn && btn.hasAttribute("data-waitlist-trigger");
+    }
+
     function setTfButtonsActive(tf, available) {
         if (!tfGroup) return;
         var buttons = tfGroup.querySelectorAll("[data-trade-tf]");
         for (var i = 0; i < buttons.length; i++) {
             var b = buttons[i];
             var t = b.getAttribute("data-trade-tf");
-            var has = !available || !available.length || available.indexOf(t) >= 0;
-            b.classList.toggle("is-active", t === tf);
+            var gated = isGatedTfButton(b);
+            var has = gated || !available || !available.length || available.indexOf(t) >= 0;
+            b.classList.toggle("is-active", !gated && t === tf);
             b.disabled = !has;
-            b.setAttribute("aria-pressed", t === tf ? "true" : "false");
+            b.setAttribute("aria-pressed", !gated && t === tf ? "true" : "false");
         }
     }
 
@@ -728,6 +733,9 @@
         tfGroup.addEventListener("click", function (ev) {
             var btn = ev.target.closest("[data-trade-tf]");
             if (!btn || btn.disabled) return;
+            if (isGatedTfButton(btn)) {
+                return;
+            }
             var tf = btn.getAttribute("data-trade-tf");
             if (!tf || tf === currentTf) return;
             var fromPrefetch = buildChartPayloadFromPrefetch(tf);

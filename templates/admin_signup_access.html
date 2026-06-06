@@ -442,6 +442,73 @@
                 <p class="helper-note">No broker servers are waiting for VM seeding.</p>
                 {% endif %}
             </article>
+            <article class="panel codes-panel mt5-debug-tools-panel" id="mt5DebugToolsPanel">
+                <div class="panel-head panel-head-stack">
+                    <div>
+                        <h2>MT5 Debug Tools</h2>
+                        <p class="helper-note">
+                            Admin-only broker/server discovery refresh. Manually reproduces the MT5
+                            <strong>Open an Account</strong> → <strong>Find your company</strong> flow on a selected VM.
+                            This does not run automatically during setup or sync.
+                        </p>
+                    </div>
+                    <span class="chip {{ 'success-chip' if mt5_broker_discovery_refresh_enabled else 'default' }}">
+                        Feature {{ "enabled" if mt5_broker_discovery_refresh_enabled else "disabled" }}
+                    </span>
+                </div>
+                <form
+                    id="mt5BrokerRefreshForm"
+                    class="mt5-debug-tools-form"
+                    action="{{ url_for('admin_mt5_broker_discovery_refresh') }}"
+                    method="post"
+                    data-feature-enabled="{{ '1' if mt5_broker_discovery_refresh_enabled else '0' }}"
+                >
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="mt5-debug-tools-grid">
+                        <label class="mt5-debug-field">
+                            <span class="soft">Target VM</span>
+                            <select name="target_vm_id" id="mt5BrokerRefreshVm" required>
+                                <option value="">Choose VM…</option>
+                                {% for vm_id in vm_overview.get('selectable_vm_ids', []) %}
+                                <option value="{{ vm_id }}">{{ vm_id }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label class="mt5-debug-field">
+                            <span class="soft">MT5 account (optional)</span>
+                            <select name="mt5_account_id" id="mt5BrokerRefreshAccount">
+                                <option value="">Base terminal / manual path</option>
+                                {% for option in mt5_debug_account_options or [] %}
+                                <option
+                                    value="{{ option.id }}"
+                                    data-terminal-path="{{ option.terminal_path }}"
+                                    data-terminal-data-dir=""
+                                    data-vm-id="{{ option.vm_id or '' }}"
+                                >{{ option.label }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label class="mt5-debug-field">
+                            <span class="soft">Broker search term</span>
+                            <input type="text" name="broker_search_term" id="mt5BrokerRefreshTerm" value="Exness" maxlength="120" required>
+                        </label>
+                        <label class="mt5-debug-field mt5-debug-field--checkbox">
+                            <input type="checkbox" name="dry_run" id="mt5BrokerRefreshDryRun" value="1">
+                            <span>Dry-run (route only, no MT5 UI)</span>
+                        </label>
+                    </div>
+                    <div class="mt5-debug-preview soft" id="mt5BrokerRefreshPreview" aria-live="polite">
+                        Queue preview: choose a VM to see scoped setup queue routing.
+                    </div>
+                    <div class="mt5-debug-actions">
+                        <button type="submit" class="primary-btn" id="mt5BrokerRefreshSubmit">Run broker discovery refresh</button>
+                    </div>
+                </form>
+                <div class="mt5-debug-result" id="mt5BrokerRefreshResult" hidden>
+                    <p class="soft">Job status</p>
+                    <pre class="mt5-debug-result-pre" id="mt5BrokerRefreshResultBody"></pre>
+                </div>
+            </article>
             <article
                 class="panel codes-panel mt5-vms-panel"
                 data-admin-filter-panel
@@ -851,6 +918,7 @@
             </article>
         </section>
         <script defer src="{{ url_for('static', filename='js/admin_mt5_accounts.js') }}"></script>
+        <script defer src="{{ url_for('static', filename='js/admin_mt5_broker_refresh.js') }}"></script>
         {% elif section == "cfd_symbols" %}
         <section class="panel-grid admin-main-grid admin-cfd-symbols-layout">
             <article

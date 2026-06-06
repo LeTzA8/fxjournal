@@ -1,6 +1,27 @@
 # CURRENT_STATE
 
-Last Updated: 2026-06-05
+Last Updated: 2026-06-07
+
+## Admin MT5 broker discovery refresh debug tool (2026-06-07)
+
+- Root-admin **MT5 Debug Tools** panel on `/dashboard/admin/access/mt5` manually dispatches `run_mt5_broker_discovery_refresh` to the selected VM's scoped `mt5_setup.<slug>` queue. Optional MT5 account selection supplies per-account `terminal_path` / AppData data dir; broker term defaults to `Exness`; dry-run verifies routing without launching MT5.
+- Feature flag `mt5_broker_discovery_refresh_enabled` (default off) blocks real runs in admin + worker; dry-run still allowed. Per-VM Redis GUI lock `mt5_gui_broker_refresh_lock:{vm_id}` plus non-blocking `mt5_global_lock` during real automation.
+- Helper `helpers/mt5_broker_discovery_refresh.py`: PID-scoped pywinauto flow (Open an Account → Find your company), terminal data-dir snapshot diff, failure screenshots under `FXJ_WORKER_LOG_DIR/broker_refresh_screenshots`. Results stored in Redis (`mt5_broker_refresh_result:<job_id>`) and polled from admin JSON endpoint.
+- Tests: `tests/test_mt5_broker_discovery_refresh.py`; admin route gating list updated.
+
+## Visual polish pass — calmer terminal aesthetic (2026-06-07)
+
+- Minimal CSS/template polish across product, public, and admin surfaces: darker Bloomberg-lite feel without layout or logic changes.
+- Trade detail/edit/new accordions: neutral collapsed rows, hidden section emojis, single subtle purple open state; category left-border colors removed.
+- Dashboard/analytics guided panels, choose-your-path card, weekly AI side panels: spinning borders and neon glow removed; semantic profit/loss/warning colors preserved.
+- Public landing/pricing/SEO: reduced glass blur, shimmer, and featured-tier glow; conversion hierarchy unchanged.
+- App shell: neon ribbon and background accent gradients toned down (`base.html`).
+
+## Weekly AI review empty/loading states after week close (2026-06-07)
+
+- After the NY Friday 5:30 PM cutoff for the active review week, the dashboard no longer falls back to the previous week's stored review. The Weekly AI Review panel shows a centered empty state instead, then switches to the existing generating spinner when Redis reports `queued`/`running`.
+- `/api/ai-status` now returns `{ ready, status }` where `ready` means the current-period review exists; dashboard polling reloads on `ready`, `queued`, or `running` so empty panels transition into loading and then the finished review without a manual refresh.
+- During an in-progress week (before cutoff), the previous review still displays so citations and follow-up chat stay available.
 
 ## Topstep CSV commissions now included in imported cost/net PnL (2026-06-05)
 
@@ -124,7 +145,7 @@ Last Updated: 2026-06-05
 
 - Shared waitlist modal extracted to `templates/_waitlist_modal.html` + `static/js/waitlist_modal.js` with updated copy ("Access opens gradually…", success: "We'll email you the moment access opens."). Logged-in users get read-only email prefill via `waitlist_user_email` context (`app.py`).
 - Lock cards: `templates/_waitlist_lock_cards.html` macro + `.waitlist-lock-card` styles in `static/css/app_pages.css`.
-- Placements: pricing (refactored), dashboard weekly chat lock, MT5 capacity notify, MT5 trial expired/paused cards (dashboard + trade accounts), trade replay 1m lock (`static/js/trade_chart.js`), landing roadmap lane CTAs.
+- Placements: pricing (refactored), dashboard weekly chat lock, MT5 capacity notify, MT5 trial expired/paused cards (dashboard + trade accounts), trade replay 1m lock (`templates/trade_entry.html` waitlist trigger on gated 1m button; `static/js/trade_chart.js` skips chart fetch so `waitlist_modal.js` opens in-place; API lock card remains fallback), landing roadmap lane CTAs.
 - Backend: extended `WAITLIST_ALLOWED_SOURCES` / `WAITLIST_ALLOWED_FEATURES`; `_trial_cta` source → `ai_followup_lock`; `_replay_waitlist_cta` source → `replay_lock` + `cta_context`.
 - Admin: `GET /dashboard/admin/access/waitlist` + CSV export; Users stat tile links to waitlist page; sidebar nav entry.
 - Tests: `tests/test_waitlist_ctas.py`; updated trades/dashboard/admin gating tests. Stale futures-only continuity hero test aligned with no-MT5 dashboard layout.
@@ -820,6 +841,7 @@ New admin action "Reset Terminal" on the MT5 accounts table. Lets root admins cl
 - ASCII worker tables: long **value** cells default to 72-char truncation; `FXJ_ASCII_LOG_MAX_WIDTH` widens or `0`/`full` disables truncation; Windows MT5 PowerShell launchers set `FXJ_ASCII_LOG_MAX_WIDTH=0` so skip-reason columns are not cut off (`celery_workers/logging_utils.py`, `scripts/windows/run_mt5_sync_worker.ps1`, `scripts/windows/run_mt5_setup_worker.ps1`)
 - Bundle review and weekly check-in outlier cards now render trade timestamps in the user display timezone instead of raw stored UTC (`routes/trades.py`, `routes/checkin.py`, `templates/bundle_review.html`, `templates/checkin.html`, route tests)
 - After file import or MT5 sync, `queue_bundle_review_if_split_candidates` in `helpers/core.py` may set `bundle_review_requested_at` when `detect_outliers` finds split candidates (`routes/trades.py`, `routes/mt5_internal.py`, `tests/test_bundle_review_queue.py`)
+- `detect_outliers` in `helpers/trade_analysis.py` now also groups bundle candidates on similar exit prices (`same_exit`, `BUNDLE_EXIT_TOLERANCE_PCT` 0.2%) as a weaker signal after split bucket and TP/SL; Bundle Review and check-in cards show “Similar exit price.” (`templates/bundle_review.html`, `templates/checkin.html`, `tests/test_trade_analysis_same_exit.py`)
 - Optional per trade account: `default_trade_profile_id` on `TradeAccount` (null by default) tags **new** import/MT5-sync rows via `resolve_import_default_trade_profile_ids` + `build_normalized_trade_insert_batch` (`migrations/versions/20260405_0037_trade_account_default_strategy.py`, Trade Accounts dialog + `trade_accounts_page.js`, `tests/test_trading_import.py`)
 - Strategies page quick action can set the active trade account default strategy directly from a strategy card (`routes/trade_profiles.py`, `templates/trade_profiles.html`, `tests/test_trade_profiles_routes.py`)
 - App layout: centered narrow hero band (`--app-hero-max-width` on `body.app-layout`, `dash-head`, `app-page-hero`, `analytics-hero`) with full-width panels below

@@ -61,13 +61,16 @@ from helpers.admin_mt5_ops import (
 from helpers.celery_dispatch import describe_celery_broker, dispatch_celery_task
 from helpers.mt5_dispatch import (
     MT5_DISPATCH_SKIPPED_MISSING_VM_MSG,
+    dispatch_mt5_broker_discovery_refresh,
     dispatch_mt5_priority,
     dispatch_mt5_setup,
     mt5_dispatch_was_skipped,
+    mt5_setup_queue,
 )
 from helpers.trade_bars import has_complete_m5_chart_coverage
 from helpers.app_settings import (
     MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY,
+    MT5_BROKER_DISCOVERY_REFRESH_ENABLED_KEY,
     get_bool_app_setting,
     set_bool_app_setting,
 )
@@ -2745,6 +2748,10 @@ def register_public_auth_routes(
                 MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY,
                 False,
             ),
+            "mt5_broker_discovery_refresh_enabled": get_bool_app_setting(
+                MT5_BROKER_DISCOVERY_REFRESH_ENABLED_KEY,
+                False,
+            ),
         }
 
     def render_admin_page(*, admin_user, section, **extra_context):
@@ -5168,6 +5175,26 @@ def register_public_auth_routes(
         mt5_server_seed_open_count = sum(
             1 for row in mt5_server_seed_shortlist if row.status == MT5ServerSeedShortlist.STATUS_OPEN
         )
+        mt5_debug_account_options = []
+        for account in mt5_accounts:
+            terminal_path = str(getattr(account, "terminal_path", "") or "").strip()
+            if not terminal_path:
+                continue
+            user = getattr(account, "user", None)
+            trade_account = getattr(account, "trade_account", None)
+            mt5_debug_account_options.append(
+                {
+                    "id": account.id,
+                    "label": (
+                        f"MT5 {account.account_number} · {account.server} · "
+                        f"{trade_account.name if trade_account else 'Unknown account'} · "
+                        f"{user.username if user else 'Unknown user'}"
+                    ),
+                    "terminal_path": terminal_path,
+                    "appdata_hash": str(getattr(account, "appdata_hash", "") or "").strip() or None,
+                    "vm_id": str(getattr(account, "vm_id", "") or "").strip() or None,
+                }
+            )
         return render_admin_page(
             admin_user=admin_user,
             section="mt5",
@@ -5180,6 +5207,7 @@ def register_public_auth_routes(
             mt5_vm_overview=mt5_vm_overview,
             mt5_server_seed_shortlist=mt5_server_seed_shortlist,
             mt5_server_seed_open_count=mt5_server_seed_open_count,
+            mt5_debug_account_options=mt5_debug_account_options,
         )
 
     @app.route(
@@ -5682,6 +5710,125 @@ def register_public_auth_routes(
             f"MT5 terminal setup queued for account {account.account_number}.",
             "success",
         )
+
+    @app.route("/dashboard/admin/access/mt5/broker-discovery-refresh", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_broker_discovery_refresh():
+        from celery_workers.mt5_setup_tasks import run_mt5_broker_discovery_refresh
+        from helpers.mt5_broker_discovery_refresh import (
+            DEFAULT_BROKER_SEARCH_TERM,
+            resolve_terminal_data_dir,
+        )
+
+        target_vm_id, target_vm_error = _parse_admin_target_vm_id()
+        if target_vm_error:
+            return jsonify({"ok": False, "error": target_vm_error}), 400
+        if not target_vm_id:
+            return jsonify({"ok": False, "error": "Choose a target VM before running broker discovery refresh."}), 400
+
+        payload_json = request.get_json(silent=True) if request.is_json else None
+        raw_account_id = str(
+            request.form.get("mt5_account_id")
+            or (payload_json or {}).get("mt5_account_id")
+            or ""
+        ).strip()
+        mt5_account_id = None
+        terminal_path = (request.form.get("terminal_path") or "").strip()
+        terminal_data_dir = (request.form.get("terminal_data_dir") or "").strip() or None
+        appdata_hash = None
+        if raw_account_id:
+            try:
+                mt5_account_id = int(raw_account_id)
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "Invalid MT5 account selection."}), 400
+            account = MT5Account.query.filter_by(id=mt5_account_id).first()
+            if account is None:
+                return jsonify({"ok": False, "error": "Selected MT5 account was not found."}), 404
+            terminal_path = str(getattr(account, "terminal_path", "") or "").strip() or terminal_path
+            appdata_hash = str(getattr(account, "appdata_hash", "") or "").strip() or None
+            if terminal_path and not terminal_data_dir:
+                terminal_data_dir = resolve_terminal_data_dir(terminal_path, appdata_hash=appdata_hash)
+
+        broker_search_term = (
+            request.form.get("broker_search_term")
+            or (payload_json or {}).get("broker_search_term")
+            or DEFAULT_BROKER_SEARCH_TERM
+        ).strip() or DEFAULT_BROKER_SEARCH_TERM
+        if len(broker_search_term) > 120:
+            return jsonify({"ok": False, "error": "Broker search term must be 120 characters or less."}), 400
+
+        dry_run = str(
+            request.form.get("dry_run")
+            or (payload_json or {}).get("dry_run")
+            or ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        feature_enabled = get_bool_app_setting(MT5_BROKER_DISCOVERY_REFRESH_ENABLED_KEY, default=False)
+        if not dry_run and not feature_enabled:
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "Broker discovery refresh is disabled. Enable mt5_broker_discovery_refresh_enabled or use dry-run.",
+                }
+            ), 403
+
+        queue_name = mt5_setup_queue(target_vm_id)
+        dispatch_result = dispatch_mt5_broker_discovery_refresh(
+            run_mt5_broker_discovery_refresh,
+            target_vm_id=target_vm_id,
+            kwargs={
+                "broker_search_term": broker_search_term,
+                "dry_run": dry_run,
+                "mt5_account_id": mt5_account_id,
+                "terminal_path": terminal_path or None,
+                "terminal_data_dir": terminal_data_dir,
+                "admin_user_id": session.get("user_id"),
+            },
+            label="admin_mt5_broker_discovery_refresh",
+            extra={
+                "admin_user_id": session.get("user_id"),
+                "target_vm_id": target_vm_id,
+                "mt5_account_id": mt5_account_id,
+                "dry_run": dry_run,
+            },
+        )
+        if dispatch_result is None:
+            return jsonify({"ok": False, "error": "Broker discovery refresh could not be queued."}), 500
+
+        job_id = getattr(dispatch_result, "id", None)
+        current_app.logger.info(
+            "Admin queued MT5 broker discovery refresh job_id=%s vm_id=%s queue=%s dry_run=%s mt5_account_id=%s admin_user_id=%s term=%s",
+            job_id,
+            target_vm_id,
+            queue_name,
+            dry_run,
+            mt5_account_id,
+            session.get("user_id"),
+            broker_search_term,
+        )
+        return jsonify(
+            {
+                "ok": True,
+                "job_id": job_id,
+                "queue_name": queue_name,
+                "target_vm_id": target_vm_id,
+                "dry_run": dry_run,
+                "broker_search_term": broker_search_term,
+                "terminal_path": terminal_path or None,
+                "terminal_data_dir": terminal_data_dir,
+                "feature_enabled": feature_enabled,
+                "poll_url": url_for("admin_mt5_broker_discovery_refresh_status", job_id=job_id),
+            }
+        )
+
+    @app.route("/dashboard/admin/access/mt5/broker-discovery-refresh/<job_id>", methods=["GET"])
+    @root_admin_required
+    def admin_mt5_broker_discovery_refresh_status(job_id):
+        from celery_workers.cache import get_mt5_broker_refresh_result
+
+        result = get_mt5_broker_refresh_result(job_id)
+        if result is None:
+            return jsonify({"ok": True, "ready": False, "job_id": job_id}), 202
+        return jsonify({"ok": True, "ready": True, "job_id": job_id, "result": result})
 
     @app.route("/dashboard/admin/access/mt5/vm-delete-files", methods=["POST"])
     @root_admin_required

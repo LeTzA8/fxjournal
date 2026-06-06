@@ -14,6 +14,7 @@ REACTIVE_REENTRY_WINDOW_MINUTES = 75
 REACTIVE_POSSIBLE_THRESHOLD = 1.55
 SAME_TRADE_IDEA_REENTRY_WINDOW_MINUTES = 90
 BUNDLE_TP_SL_TOLERANCE_PCT = 0.002
+BUNDLE_EXIT_TOLERANCE_PCT = 0.002
 CORRECTIVE_REENTRY_WINDOW_MINUTES = 240
 
 
@@ -90,13 +91,13 @@ def _describe_size_change(current_size, previous_size):
     return "larger" if current_size > previous_size else "smaller"
 
 
-def _prices_match(first_price, second_price):
+def _prices_match(first_price, second_price, *, tolerance_pct=BUNDLE_TP_SL_TOLERANCE_PCT):
     first_value = coerce_float(first_price)
     second_value = coerce_float(second_price)
     if first_value is None or second_value is None:
         return False
     baseline = max(abs(first_value), abs(second_value), 1.0)
-    return abs(first_value - second_value) <= baseline * BUNDLE_TP_SL_TOLERANCE_PCT
+    return abs(first_value - second_value) <= baseline * tolerance_pct
 
 
 def _trade_symbol_side(trade):
@@ -497,7 +498,12 @@ def detect_outliers(trades):
                     getattr(representative, "stop_loss", None),
                     getattr(candidate, "stop_loss", None),
                 )
-                if not same_split_bucket and not same_tp and not same_sl:
+                same_exit = _prices_match(
+                    getattr(representative, "exit_price", None),
+                    getattr(candidate, "exit_price", None),
+                    tolerance_pct=BUNDLE_EXIT_TOLERANCE_PCT,
+                )
+                if not same_split_bucket and not same_tp and not same_sl and not same_exit:
                     continue
 
                 member_ids.append(candidate_identity)
@@ -507,6 +513,8 @@ def detect_outliers(trades):
                     reason_keys.add("same_tp")
                 if same_sl:
                     reason_keys.add("same_sl")
+                if same_exit:
+                    reason_keys.add("same_exit")
 
         if len(member_ids) < 2:
             continue
@@ -527,6 +535,8 @@ def detect_outliers(trades):
             match_reason = "same_tp"
         elif "same_sl" in reason_keys:
             match_reason = "same_sl"
+        elif "same_exit" in reason_keys:
+            match_reason = "same_exit"
         else:
             match_reason = "split_bucket"
         bundle_candidates.append(

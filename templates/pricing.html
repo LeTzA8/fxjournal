@@ -236,14 +236,13 @@ body.landing-layout main {
     pointer-events: none;
     z-index: 0;
     background:
-        linear-gradient(170deg, rgba(0, 0, 0, 0.24), transparent 46%),
-        radial-gradient(circle at 14% 14%, rgba(69, 98, 255, 0.06), transparent 48%),
-        radial-gradient(circle at 88% 16%, rgba(72, 84, 214, 0.06), transparent 50%),
-        radial-gradient(circle at 52% 84%, rgba(39, 76, 184, 0.04), transparent 52%),
-        linear-gradient(165deg, color-mix(in srgb, var(--card) 10%, transparent), transparent);
-    backdrop-filter: blur(12px) brightness(0.94);
-    -webkit-backdrop-filter: blur(12px) brightness(0.94);
-    filter: saturate(0.98);
+        linear-gradient(170deg, rgba(0, 0, 0, 0.18), transparent 46%),
+        radial-gradient(circle at 14% 14%, rgba(69, 98, 255, 0.03), transparent 48%),
+        radial-gradient(circle at 88% 16%, rgba(72, 84, 214, 0.03), transparent 50%),
+        linear-gradient(165deg, color-mix(in srgb, var(--card) 8%, transparent), transparent);
+    backdrop-filter: blur(6px) brightness(0.96);
+    -webkit-backdrop-filter: blur(6px) brightness(0.96);
+    filter: saturate(0.94);
 }
 .pricing-wrap > *:not(.landing-glass) {
     position: relative;
@@ -373,30 +372,22 @@ body.landing-layout main {
     --pricing-card-accent: var(--accent);
     --pricing-card-base: #171638;
     --pricing-card-panel: #080b1b;
-    transform: scale(1.028);
-    border-color: color-mix(in srgb, var(--pricing-card-accent) 55%, var(--border));
+    transform: scale(1.02);
+    border-color: color-mix(in srgb, var(--pricing-card-accent) 42%, var(--border));
     background:
-        radial-gradient(circle at top right, color-mix(in srgb, var(--pricing-card-accent) 22%, transparent), transparent 46%),
-        radial-gradient(circle at bottom left, color-mix(in srgb, var(--pricing-card-accent) 8%, transparent), transparent 52%),
+        radial-gradient(circle at top right, color-mix(in srgb, var(--pricing-card-accent) 10%, transparent), transparent 46%),
         var(--pricing-card-base);
-    animation: primary-card-pulse 2.8s ease-in-out infinite;
     box-shadow:
-        0 24px 48px rgba(2, 6, 23, 0.36),
-        0 0 0 1px color-mix(in srgb, var(--pricing-card-accent) 48%, transparent),
-        0 0 28px color-mix(in srgb, var(--pricing-card-accent) 28%, transparent),
-        0 0 64px color-mix(in srgb, var(--pricing-card-accent) 16%, transparent),
-        0 0 120px color-mix(in srgb, var(--pricing-card-accent) 7%, transparent);
+        0 14px 32px rgba(2, 6, 23, 0.28),
+        0 0 0 1px color-mix(in srgb, var(--pricing-card-accent) 28%, transparent);
 }
 
 .pricing-card--featured:hover,
 .pricing-card--featured:focus-within {
-    transform: scale(1.028) translateY(-2px);
+    transform: scale(1.02) translateY(-2px);
     box-shadow:
-        0 24px 48px rgba(2, 6, 23, 0.36),
-        0 0 0 1px color-mix(in srgb, var(--pricing-card-accent) 48%, transparent),
-        0 0 28px color-mix(in srgb, var(--pricing-card-accent) 28%, transparent),
-        0 0 64px color-mix(in srgb, var(--pricing-card-accent) 16%, transparent),
-        0 0 120px color-mix(in srgb, var(--pricing-card-accent) 7%, transparent);
+        0 16px 34px rgba(2, 6, 23, 0.3),
+        0 0 0 1px color-mix(in srgb, var(--pricing-card-accent) 32%, transparent);
 }
 
 .pricing-card--pro {
@@ -429,8 +420,9 @@ body.landing-layout main {
         linear-gradient(#000 0 0) content-box,
         linear-gradient(#000 0 0);
     mask-composite: exclude;
-    animation: primary-card-spin 2.8s linear infinite;
+    animation: none;
     pointer-events: none;
+    opacity: 0;
 }
 
 .pricing-card--featured::after {
@@ -456,7 +448,7 @@ body.landing-layout main {
         linear-gradient(#000 0 0);
     mask-composite: exclude;
     pointer-events: none;
-    opacity: 0.8;
+    opacity: 0;
 }
 
 .pricing-card-badge {

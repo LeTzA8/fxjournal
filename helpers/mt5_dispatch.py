@@ -398,6 +398,33 @@ def dispatch_mt5_cleanup(
     )
 
 
+def dispatch_mt5_broker_discovery_refresh(
+    task,
+    *,
+    target_vm_id,
+    kwargs=None,
+    label=None,
+    extra=None,
+    log=None,
+):
+    vm_id = routing_vm_id(target_vm_id)
+    if not vm_id:
+        _log_dispatch_skip(label or "mt5_broker_refresh", "missing_vm_id", extra=extra)
+        return None
+    queue = mt5_setup_queue(vm_id)
+    publish_kwargs = dict(kwargs or {})
+    publish_kwargs.setdefault("target_vm_id", vm_id)
+    return dispatch_celery_task(
+        task,
+        args=[],
+        kwargs=publish_kwargs,
+        queue=queue,
+        label=label,
+        extra={**(extra or {}), **publish_kwargs, "queue": queue},
+        log=log,
+    )
+
+
 def dispatch_mt5_pause(task, mt5_account_id, *, account_vm_id=None, label=None, extra=None, log=None):
     vm_id = routing_vm_id(account_vm_id)
     if not vm_id:

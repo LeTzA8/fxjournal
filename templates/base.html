@@ -112,7 +112,7 @@
             --muted: #6b7280;
             --good: #16a34a;
             --bad: #dc2626;
-            --neon-ribbon-opacity: 0.9;
+            --neon-ribbon-opacity: 0.42;
             --curve-draw-ease: cubic-bezier(.22, .61, .36, 1);
             --font-ui: "Manrope", "Segoe UI", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
             --font-display: "Sora", "Manrope", "Segoe UI", sans-serif;
@@ -189,7 +189,7 @@
             --muted: #9aa9c7;
             --good: #34e59a;
             --bad: #ff636f;
-            --neon-ribbon-opacity: 1;
+            --neon-ribbon-opacity: 0.5;
             --curve-draw-ease: cubic-bezier(.22, .61, .36, 1);
         }
 
@@ -208,8 +208,8 @@
         body.app-layout {
             --app-hero-max-width: 52rem;
             background:
-                radial-gradient(circle at top, color-mix(in srgb, var(--accent) 12%, transparent), transparent 32%),
-                radial-gradient(circle at 82% 8%, var(--app-bg-accent-spot), transparent 20%),
+                radial-gradient(circle at top, color-mix(in srgb, var(--accent) 6%, transparent), transparent 32%),
+                radial-gradient(circle at 82% 8%, color-mix(in srgb, var(--app-bg-accent-spot) 60%, transparent), transparent 20%),
                 linear-gradient(180deg, var(--bg) 0%, var(--app-bg-deep-mid) 48%, var(--app-bg-deep-end) 100%);
         }
 
@@ -232,7 +232,7 @@
             z-index: -2;
             pointer-events: none;
             opacity: 0;
-            filter: saturate(1.12) contrast(1.04) brightness(0.82);
+            filter: saturate(0.92) contrast(1.02) brightness(0.88);
             transition: opacity 260ms ease;
         }
 

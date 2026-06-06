@@ -1066,16 +1066,9 @@
     }
 
     .is-guided {
-        border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
-        background:
-            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 16%, transparent), transparent 48%),
-            radial-gradient(circle at bottom left, color-mix(in srgb, var(--accent) 6%, transparent), transparent 56%),
-            color-mix(in srgb, var(--surface) 88%, transparent);
-        box-shadow:
-            0 20px 40px rgba(2, 6, 23, 0.24),
-            0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent),
-            0 0 24px color-mix(in srgb, var(--accent) 16%, transparent),
-            0 0 64px color-mix(in srgb, var(--accent) 6%, transparent);
+        border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+        background: color-mix(in srgb, var(--surface) 92%, var(--accent) 2%);
+        box-shadow: 0 8px 20px rgba(2, 6, 23, 0.16);
     }
 
     .empty-state-copy {
@@ -1136,76 +1129,16 @@
 
     .guided-focus-panel {
         position: relative;
-        overflow: hidden;
-        isolation: isolate;
         padding: 0.78rem 0.84rem;
         border-radius: 16px;
-        border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
-        background:
-            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 20%, transparent), transparent 46%),
-            radial-gradient(circle at bottom left, color-mix(in srgb, var(--accent) 8%, transparent), transparent 56%),
-            color-mix(in srgb, var(--surface) 90%, transparent);
-        box-shadow:
-            0 20px 38px rgba(2, 6, 23, 0.28),
-            0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent),
-            0 0 26px color-mix(in srgb, var(--accent) 24%, transparent),
-            0 0 56px color-mix(in srgb, var(--accent) 12%, transparent);
+        border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+        background: color-mix(in srgb, var(--surface) 92%, var(--accent) 2%);
+        box-shadow: 0 8px 20px rgba(2, 6, 23, 0.16);
     }
 
-    .guided-focus-panel::before {
-        content: "";
-        position: absolute;
-        inset: -1px;
-        z-index: 0;
-        border-radius: inherit;
-        padding: 2px;
-        background: conic-gradient(
-            from var(--analytics-focus-angle),
-            transparent 0deg,
-            color-mix(in srgb, white 72%, var(--accent) 28%) 50deg,
-            transparent 105deg,
-            transparent 180deg,
-            color-mix(in srgb, white 52%, var(--accent) 48%) 230deg,
-            transparent 285deg,
-            transparent 360deg
-        );
-        -webkit-mask:
-            linear-gradient(#000 0 0) content-box,
-            linear-gradient(#000 0 0);
-        -webkit-mask-composite: xor;
-        mask:
-            linear-gradient(#000 0 0) content-box,
-            linear-gradient(#000 0 0);
-        mask-composite: exclude;
-        animation: analytics-guided-edge-spin 2.8s linear infinite;
-        pointer-events: none;
-    }
-
+    .guided-focus-panel::before,
     .guided-focus-panel::after {
-        content: "";
-        position: absolute;
-        inset: -1px;
-        z-index: 0;
-        border-radius: inherit;
-        padding: 1.5px;
-        background:
-            linear-gradient(
-                135deg,
-                color-mix(in srgb, white 28%, var(--accent) 72%) 0%,
-                transparent 28%,
-                transparent 68%,
-                color-mix(in srgb, var(--accent) 40%, transparent) 100%
-            );
-        -webkit-mask:
-            linear-gradient(#000 0 0) content-box,
-            linear-gradient(#000 0 0);
-        -webkit-mask-composite: xor;
-        mask:
-            linear-gradient(#000 0 0) content-box,
-            linear-gradient(#000 0 0);
-        mask-composite: exclude;
-        pointer-events: none;
-        opacity: 0.8;
+        display: none;
     }
 
     .guided-focus-panel > * {

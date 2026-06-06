@@ -1451,3 +1451,107 @@ def cleanup_mt5_terminal(
             appdata_hash,
         )
         raise
+
+
+# Time limits bound how long a frozen MT5 UI can hold the shared mt5_global_lock
+# (TTL 600s). soft_time_limit raises SoftTimeLimitExceeded so the task's finally
+# blocks release the GUI + global locks and kill the launched terminal; time_limit
+# is the hard backstop. NOTE: Celery time limits are only enforced on the prefork
+# pool — under --pool=solo (current Windows MT5 workers) they are a no-op, so the
+# 600s global-lock TTL plus the in-helper cooperative timeouts remain the real
+# bound there.
+@celery.task(
+    bind=True,
+    max_retries=0,
+    queue="mt5_setup",
+    soft_time_limit=240,
+    time_limit=300,
+)
+def run_mt5_broker_discovery_refresh(
+    self,
+    *,
+    target_vm_id=None,
+    broker_search_term="Exness",
+    dry_run=False,
+    mt5_account_id=None,
+    terminal_path=None,
+    terminal_data_dir=None,
+    admin_user_id=None,
+    _wrong_vm_redispatch_count=0,
+):
+    """
+    Admin-only broker/server discovery refresh. GUI automation is PID-scoped to
+    the terminal launched for this job only.
+    """
+    from helpers.mt5_broker_discovery_refresh import (
+        DEFAULT_BROKER_SEARCH_TERM,
+        RefreshResult,
+        execute_broker_discovery_refresh_job,
+    )
+    from helpers.mt5_dispatch import guard_wrong_vm_task, mt5_setup_queue, routing_vm_id
+    from celery_workers.cache import set_mt5_broker_refresh_result
+
+    task_id = getattr(getattr(self, "request", None), "id", None)
+    request = getattr(self, "request", None)
+    worker_hostname = getattr(request, "hostname", None)
+    resolved_vm_id = routing_vm_id(target_vm_id)
+    queue_name = mt5_setup_queue(resolved_vm_id) if resolved_vm_id else "mt5_setup"
+    started_at = datetime.now(timezone.utc)
+
+    guard_result = guard_wrong_vm_task(
+        self,
+        target_vm_id=resolved_vm_id,
+        queue_kind="setup",
+        redispatch=lambda queue, kwargs: run_mt5_broker_discovery_refresh.apply_async(
+            kwargs={
+                "target_vm_id": resolved_vm_id,
+                "broker_search_term": broker_search_term,
+                "dry_run": dry_run,
+                "mt5_account_id": mt5_account_id,
+                "terminal_path": terminal_path,
+                "terminal_data_dir": terminal_data_dir,
+                "admin_user_id": admin_user_id,
+                **kwargs,
+            },
+            queue=queue,
+        ),
+    )
+    if guard_result is not None:
+        result = RefreshResult(
+            attempted=True,
+            dry_run=bool(dry_run),
+            broker_search_term=str(broker_search_term or DEFAULT_BROKER_SEARCH_TERM).strip()
+            or DEFAULT_BROKER_SEARCH_TERM,
+            terminal_path=terminal_path,
+            terminal_data_dir=terminal_data_dir,
+            started_at=started_at.isoformat(),
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            queue_name=queue_name,
+            vm_id=resolved_vm_id,
+            vm_name=resolved_vm_id,
+            worker_hostname=worker_hostname,
+            job_id=task_id,
+            mt5_account_id=mt5_account_id,
+            admin_user_id=admin_user_id,
+            success=bool(guard_result.get("requeued")),
+            failed_step=None if guard_result.get("requeued") else "wrong_vm_max_redispatch",
+            error_message=None if guard_result.get("requeued") else str(guard_result.get("error")),
+        )
+        result_dict = result.to_dict()
+        result_dict["status"] = "requeued" if guard_result.get("requeued") else "failed"
+        result_dict["guard_result"] = guard_result
+        if task_id:
+            set_mt5_broker_refresh_result(task_id, result_dict)
+        return result_dict
+
+    return execute_broker_discovery_refresh_job(
+        task_id=task_id,
+        worker_hostname=worker_hostname,
+        target_vm_id=resolved_vm_id,
+        broker_search_term=broker_search_term,
+        dry_run=dry_run,
+        mt5_account_id=mt5_account_id,
+        terminal_path=terminal_path,
+        terminal_data_dir=terminal_data_dir,
+        admin_user_id=admin_user_id,
+    )

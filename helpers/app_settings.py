@@ -3,6 +3,7 @@ from helpers.utils import utcnow_naive
 
 
 MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY = "mt5_auto_bar_sync_public_users"
+MT5_BROKER_DISCOVERY_REFRESH_ENABLED_KEY = "mt5_broker_discovery_refresh_enabled"
 
 _TRUE_VALUES = {"1", "true", "yes", "on", "enabled"}
 _FALSE_VALUES = {"0", "false", "no", "off", "disabled"}

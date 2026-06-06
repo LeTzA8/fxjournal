@@ -9,7 +9,7 @@ body.app-layout .app-page-hero {
     border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
     border-radius: 18px;
     background: color-mix(in srgb, var(--card) 98%, transparent);
-    box-shadow: 0 18px 38px rgba(2, 6, 23, 0.24);
+    box-shadow: 0 10px 22px rgba(2, 6, 23, 0.16);
     max-width: min(var(--app-hero-max-width, 52rem), 100%);
     width: 100%;
 }
@@ -120,11 +120,9 @@ body.app-layout .app-page-hero-actions .ghost-link.app-nav-pill-quiet {
 
 /* Settings hub (strategies, trade accounts): warmer hero + summary strip */
 body.app-layout .app-page-hero--settings-hub {
-    border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
-    background:
-        radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 52%),
-        color-mix(in srgb, var(--card) 98%, transparent);
-    box-shadow: 0 22px 46px rgba(2, 6, 23, 0.26);
+    border-color: color-mix(in srgb, var(--border) 88%, transparent);
+    background: color-mix(in srgb, var(--card) 98%, transparent);
+    box-shadow: 0 10px 22px rgba(2, 6, 23, 0.16);
 }
 
 body.app-layout .app-hub-summary {
@@ -2383,77 +2381,16 @@ body.waitlist-modal-open {
     }
 }
 
-/* Accent glow + spinning border — matches pricing featured card / MT5 guided-focus-panel. */
+/* Guided onboarding path — subtle purple focus, no spinning border. */
 .choose-your-path-option.is-guided {
-    position: relative;
-    overflow: hidden;
-    isolation: isolate;
-    border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
-    background:
-        radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 16%, transparent), transparent 48%),
-        radial-gradient(circle at bottom left, color-mix(in srgb, var(--accent) 6%, transparent), transparent 56%),
-        color-mix(in srgb, var(--card) 94%, transparent);
-    box-shadow:
-        0 20px 40px rgba(2, 6, 23, 0.24),
-        0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent),
-        0 0 24px color-mix(in srgb, var(--accent) 16%, transparent),
-        0 0 64px color-mix(in srgb, var(--accent) 6%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+    background: color-mix(in srgb, var(--card) 94%, var(--accent) 2%);
+    box-shadow: 0 8px 20px rgba(2, 6, 23, 0.16);
 }
 
-.choose-your-path-option.is-guided::before {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    z-index: 0;
-    border-radius: inherit;
-    padding: 2px;
-    background: conic-gradient(
-        from var(--choose-path-focus-angle),
-        transparent 0deg,
-        color-mix(in srgb, white 72%, var(--accent) 28%) 50deg,
-        transparent 105deg,
-        transparent 180deg,
-        color-mix(in srgb, white 52%, var(--accent) 48%) 230deg,
-        transparent 285deg,
-        transparent 360deg
-    );
-    -webkit-mask:
-        linear-gradient(#000 0 0) content-box,
-        linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-    mask:
-        linear-gradient(#000 0 0) content-box,
-        linear-gradient(#000 0 0);
-    mask-composite: exclude;
-    animation: choose-path-guided-edge-spin 2.8s linear infinite;
-    pointer-events: none;
-}
-
+.choose-your-path-option.is-guided::before,
 .choose-your-path-option.is-guided::after {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    z-index: 0;
-    border-radius: inherit;
-    padding: 1.5px;
-    background:
-        linear-gradient(
-            135deg,
-            color-mix(in srgb, white 28%, var(--accent) 72%) 0%,
-            transparent 28%,
-            transparent 68%,
-            color-mix(in srgb, var(--accent) 40%, transparent) 100%
-        );
-    -webkit-mask:
-        linear-gradient(#000 0 0) content-box,
-        linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-    mask:
-        linear-gradient(#000 0 0) content-box,
-        linear-gradient(#000 0 0);
-    mask-composite: exclude;
-    pointer-events: none;
-    opacity: 0.8;
+    display: none;
 }
 
 .choose-your-path-option.is-guided > * {

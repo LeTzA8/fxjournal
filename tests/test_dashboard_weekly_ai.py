@@ -3118,6 +3118,11 @@ def test_weekly_ai_state_falls_back_to_latest_generated_review_for_account(app_c
     monkeypatch.setattr(dashboard_routes, "get_latest_trade_week_period", lambda **kwargs: latest_period)
     monkeypatch.setattr(dashboard_routes, "get_ai_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(dashboard_routes, "should_generate_weekly_dashboard_advice", lambda **kwargs: False)
+    monkeypatch.setattr(
+        dashboard_routes,
+        "weekly_review_generation_past_market_week_cutoff",
+        lambda **kwargs: False,
+    )
 
     weekly_ai_state = dashboard_routes._get_weekly_ai_state(user.id, trade_account, "UTC", [])
 
@@ -3126,6 +3131,110 @@ def test_weekly_ai_state_falls_back_to_latest_generated_review_for_account(app_c
     assert weekly_ai_state["weekly_ai_review_text"] == "Older but valid weekly review"
     assert weekly_ai_state["weekly_ai_period_label"] == "Sat 14 Mar 2026 21:30 UTC"
     assert weekly_ai_state["weekly_ai_is_generating"] is False
+    assert weekly_ai_state["weekly_ai_poll_for_status"] is False
+
+
+def test_weekly_ai_state_shows_empty_after_week_close_without_current_review(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-ai-empty-week-user",
+        email="dashboard-ai-empty-week@example.com",
+    )
+
+    prompt_history = _create_prompt_history("dashboard_advice-empty-week")
+    old_period = {
+        "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
+        "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
+    }
+    latest_period = {
+        "period_start_utc": datetime(2026, 3, 14, 21, 30, 0),
+        "period_end_utc": datetime(2026, 3, 21, 21, 30, 0),
+    }
+    review = AIGeneratedResponse(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        prompt_history_id=prompt_history.id,
+        kind=WEEKLY_DASHBOARD_KIND,
+        model="gpt-5-mini",
+        response_text="Older but valid weekly review",
+        payload_hash="weekly-empty-week-hash",
+        trade_count_used=4,
+        period_start_utc=old_period["period_start_utc"],
+        period_end_utc=old_period["period_end_utc"],
+        generated_at=datetime(2026, 3, 16, 12, 0, 0),
+    )
+    db.session.add(review)
+    db.session.commit()
+
+    monkeypatch.setattr(dashboard_routes, "get_latest_trade_week_period", lambda **kwargs: latest_period)
+    monkeypatch.setattr(dashboard_routes, "get_ai_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dashboard_routes, "should_generate_weekly_dashboard_advice", lambda **kwargs: False)
+    monkeypatch.setattr(
+        dashboard_routes,
+        "weekly_review_generation_past_market_week_cutoff",
+        lambda **kwargs: True,
+    )
+
+    weekly_ai_state = dashboard_routes._get_weekly_ai_state(user.id, trade_account, "UTC", [])
+
+    assert weekly_ai_state["weekly_ai_review"] is None
+    assert weekly_ai_state["weekly_ai_is_generating"] is False
+    assert weekly_ai_state["weekly_ai_poll_for_status"] is True
+    assert (
+        weekly_ai_state["weekly_ai_empty_message"]
+        == dashboard_routes.WEEKLY_AI_PENDING_MESSAGE
+    )
+
+
+def test_weekly_ai_state_shows_generating_when_queued_instead_of_fallback(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-ai-queued-user",
+        email="dashboard-ai-queued@example.com",
+    )
+
+    prompt_history = _create_prompt_history("dashboard_advice-queued")
+    old_period = {
+        "period_start_utc": datetime(2026, 3, 7, 21, 30, 0),
+        "period_end_utc": datetime(2026, 3, 14, 21, 30, 0),
+    }
+    latest_period = {
+        "period_start_utc": datetime(2026, 3, 14, 21, 30, 0),
+        "period_end_utc": datetime(2026, 3, 21, 21, 30, 0),
+    }
+    review = AIGeneratedResponse(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        prompt_history_id=prompt_history.id,
+        kind=WEEKLY_DASHBOARD_KIND,
+        model="gpt-5-mini",
+        response_text="Older but valid weekly review",
+        payload_hash="weekly-queued-hash",
+        trade_count_used=4,
+        period_start_utc=old_period["period_start_utc"],
+        period_end_utc=old_period["period_end_utc"],
+        generated_at=datetime(2026, 3, 16, 12, 0, 0),
+    )
+    db.session.add(review)
+    db.session.commit()
+
+    monkeypatch.setattr(dashboard_routes, "get_latest_trade_week_period", lambda **kwargs: latest_period)
+    monkeypatch.setattr(dashboard_routes, "get_ai_status", lambda *args, **kwargs: "queued")
+    monkeypatch.setattr(dashboard_routes, "should_generate_weekly_dashboard_advice", lambda **kwargs: True)
+    monkeypatch.setattr(
+        dashboard_routes,
+        "weekly_review_generation_past_market_week_cutoff",
+        lambda **kwargs: True,
+    )
+
+    weekly_ai_state = dashboard_routes._get_weekly_ai_state(user.id, trade_account, "UTC", [], generate=False)
+
+    assert weekly_ai_state["weekly_ai_review"] is None
+    assert weekly_ai_state["weekly_ai_is_generating"] is True
+    assert (
+        weekly_ai_state["weekly_ai_empty_message"]
+        == dashboard_routes.WEEKLY_AI_GENERATING_MESSAGE
+    )
 
 
 def test_dashboard_home_shows_onboarding_banner_when_profile_was_skipped(app_ctx, client, monkeypatch):

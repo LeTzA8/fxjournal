@@ -11,6 +11,7 @@ cryptography==46.0.7
 openpyxl==3.1.5
 psycopg[binary]==3.2.13
 psutil
+pywinauto==0.6.9
 python-dotenv==1.0.1
 redis==5.2.1
 requests==2.33.1

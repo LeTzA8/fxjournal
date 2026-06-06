@@ -70,6 +70,10 @@ def test_scenario_replay_lock_renders_1m_lock_card(client, app_ctx, seeded_cta_f
     html = detail.data.decode("utf-8")
     assert "trade-chart-tf-btn--gated" in html
     assert 'data-trade-tf="M1"' in html
+    assert 'data-waitlist-trigger="trader"' in html
+    assert 'data-waitlist-source="replay_lock"' in html
+    assert 'data-waitlist-feature="advanced_replay"' in html
+    assert 'data-waitlist-cta-context="trade_replay_1m"' in html
     assert "tradeChartLockMount" in html
 
     chart = client.get(f"/api/trades/{trade.pubkey}/chart-data?timeframe=M1")

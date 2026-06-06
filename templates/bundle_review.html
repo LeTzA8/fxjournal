@@ -316,6 +316,8 @@
                                 Matching take profit.
                                 {% elif candidate.match_reason == "same_sl" %}
                                 Matching stop loss.
+                                {% elif candidate.match_reason == "same_exit" %}
+                                Similar exit price.
                                 {% else %}
                                 Similar scale-in pattern detected.
                                 {% endif %}

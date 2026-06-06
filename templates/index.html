@@ -1679,7 +1679,7 @@
                     </div>
                     {% else %}
                     <div class="latest-trade-chart-shell latest-trade-chart-shell--empty">
-                        <p class="latest-trade-chart-status soft">Price chart appears here for closed MT5 trades once bars are synced.</p>
+                        <p class="latest-trade-chart-status soft">{% if is_active_futures %}Currently bar replay is not available for futures accounts.{% else %}Price chart appears here for closed MT5 trades once bars are synced.{% endif %}</p>
                     </div>
                     {% endif %}
                     {% else %}
@@ -1758,10 +1758,10 @@
                         <div class="ai-review-structured">
                             {% if weekly_ai_review_display.summary.text %}
                             <div class="ai-review-block ai-review-main-insight">
-                                <p class="ai-review-heading">🧠 What mattered this week</p>
+                                <p class="ai-review-heading">What mattered this week</p>
                                 <p class="insight-body ai-review-copy ai-review-summary">{{ render_ai_review_segments(weekly_ai_review_display.summary.segments) }}</p>
                                 {% if weekly_ai_review.trade_count_used is defined and weekly_ai_review.trade_count_used < 3 %}
-                                <p class="ai-review-confidence-note">⚠️ Confidence is limited (few trades or missing notes)</p>
+                                <p class="ai-review-confidence-note">Confidence is limited (few trades or missing notes)</p>
                                 {% endif %}
                             </div>
                             {% endif %}
@@ -1814,13 +1814,16 @@
                             </div>
                         </div>
                         {% else %}
-                        <p class="insight-body">{{ weekly_ai_empty_message|trim }}</p>
+                        <div class="ai-empty-shell" aria-live="polite">
+                            <p class="ai-empty-kicker">Weekly review</p>
+                            <p class="insight-body ai-empty-copy">{{ weekly_ai_empty_message|trim }}</p>
+                        </div>
                         {% endif %}
                     </div>
 
                     {% if weekly_ai_review or not is_state_one %}
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-improvement ai-review-action-card">
-                        <p class="insight-title">🎯 Actionable Improvement</p>
+                        <p class="insight-title">Actionable Improvement</p>
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.improvement.text %}
                         <p class="insight-body ai-review-copy ai-review-improvement ai-review-action">{{ render_ai_review_segments(weekly_ai_review_display.improvement.segments) }}</p>
                         {% elif weekly_ai_is_generating %}
@@ -1836,7 +1839,7 @@
                     </div>
 
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-strength">
-                        <p class="insight-title">✅ Strength to Reinforce</p>
+                        <p class="insight-title">Strength to Reinforce</p>
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.strength.text %}
                         <p class="insight-body ai-review-copy ai-review-strength">{{ render_ai_review_segments(weekly_ai_review_display.strength.segments) }}</p>
                         {% elif weekly_ai_is_generating %}
@@ -1854,7 +1857,7 @@
                     </div>
 
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-experiment">
-                        <p class="insight-title">🧪 This Week's Experiment</p>
+                        <p class="insight-title">This Week's Experiment</p>
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.experiment and weekly_ai_review_display.experiment.text %}
                         <p class="insight-body ai-review-copy ai-review-experiment">{{ render_ai_review_segments(weekly_ai_review_display.experiment.segments) }}</p>
                         {% elif weekly_ai_is_generating %}
@@ -2798,10 +2801,8 @@
         gap: 0.55rem;
         margin-bottom: 0.65rem;
         padding: 0.62rem 0.75rem;
-        border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
-        background:
-            radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 8%, transparent), transparent 40%),
-            linear-gradient(145deg, color-mix(in srgb, var(--card) 97%, transparent), color-mix(in srgb, var(--surface) 92%, transparent));
+        border-color: color-mix(in srgb, var(--border) 88%, transparent);
+        background: color-mix(in srgb, var(--card) 96%, transparent);
     }
 
     .journey-banner--compact {
@@ -3047,90 +3048,23 @@
     }
 
     .is-guided {
-        border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
-        background:
-            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 16%, transparent), transparent 48%),
-            radial-gradient(circle at bottom left, color-mix(in srgb, var(--accent) 6%, transparent), transparent 56%),
-            color-mix(in srgb, var(--surface) 88%, transparent);
-        box-shadow:
-            0 20px 40px rgba(2, 6, 23, 0.24),
-            0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent),
-            0 0 24px color-mix(in srgb, var(--accent) 16%, transparent),
-            0 0 64px color-mix(in srgb, var(--accent) 6%, transparent);
+        border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+        background: color-mix(in srgb, var(--surface) 92%, var(--accent) 2%);
+        box-shadow: 0 8px 20px rgba(2, 6, 23, 0.16);
     }
 
     .guided-focus-panel {
         position: relative;
-        overflow: hidden;
-        isolation: isolate;
         padding: 0.78rem 0.84rem;
         border-radius: 16px;
-        border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border));
-        background:
-            radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 20%, transparent), transparent 46%),
-            radial-gradient(circle at bottom left, color-mix(in srgb, var(--accent) 8%, transparent), transparent 56%),
-            color-mix(in srgb, var(--surface) 90%, transparent);
-        box-shadow:
-            0 20px 38px rgba(2, 6, 23, 0.28),
-            0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent),
-            0 0 26px color-mix(in srgb, var(--accent) 24%, transparent),
-            0 0 56px color-mix(in srgb, var(--accent) 12%, transparent);
+        border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+        background: color-mix(in srgb, var(--surface) 92%, var(--accent) 2%);
+        box-shadow: 0 8px 20px rgba(2, 6, 23, 0.16);
     }
 
-    .guided-focus-panel::before {
-        content: "";
-        position: absolute;
-        inset: -1px;
-        z-index: 0;
-        border-radius: inherit;
-        padding: 2px;
-        background: conic-gradient(
-            from var(--dashboard-focus-angle),
-            transparent 0deg,
-            color-mix(in srgb, white 72%, var(--accent) 28%) 50deg,
-            transparent 105deg,
-            transparent 180deg,
-            color-mix(in srgb, white 52%, var(--accent) 48%) 230deg,
-            transparent 285deg,
-            transparent 360deg
-        );
-        -webkit-mask:
-            linear-gradient(#000 0 0) content-box,
-            linear-gradient(#000 0 0);
-        -webkit-mask-composite: xor;
-        mask:
-            linear-gradient(#000 0 0) content-box,
-            linear-gradient(#000 0 0);
-        mask-composite: exclude;
-        animation: dashboard-guided-edge-spin 2.8s linear infinite;
-        pointer-events: none;
-    }
-
+    .guided-focus-panel::before,
     .guided-focus-panel::after {
-        content: "";
-        position: absolute;
-        inset: -1px;
-        z-index: 0;
-        border-radius: inherit;
-        padding: 1.5px;
-        background:
-            linear-gradient(
-                135deg,
-                color-mix(in srgb, white 28%, var(--accent) 72%) 0%,
-                transparent 28%,
-                transparent 68%,
-                color-mix(in srgb, var(--accent) 40%, transparent) 100%
-            );
-        -webkit-mask:
-            linear-gradient(#000 0 0) content-box,
-            linear-gradient(#000 0 0);
-        -webkit-mask-composite: xor;
-        mask:
-            linear-gradient(#000 0 0) content-box,
-            linear-gradient(#000 0 0);
-        mask-composite: exclude;
-        pointer-events: none;
-        opacity: 0.8;
+        display: none;
     }
 
     .guided-focus-panel > * {
@@ -3974,7 +3908,7 @@
 
     .ai-review-confidence-note {
         margin: 0.1rem 0 0;
-        color: color-mix(in srgb, #f59e0b 70%, var(--ink));
+        color: var(--warning-ink);
         font-size: 0.86rem;
         font-weight: 700;
         line-height: 1.45;
@@ -4001,24 +3935,17 @@
         letter-spacing: 0.06em;
     }
 
-    .ai-review-panel-improvement .insight-title {
-        color: color-mix(in srgb, #f59e0b 62%, var(--ink));
-    }
-
+    .ai-review-panel-improvement .insight-title,
     .ai-review-panel-strength .insight-title {
-        color: color-mix(in srgb, #22c55e 64%, var(--ink));
+        color: color-mix(in srgb, var(--muted) 45%, var(--ink));
     }
 
     .ai-review-panel-improvement:hover,
-    .ai-review-panel-improvement:focus-within {
-        border-color: color-mix(in srgb, #f59e0b 52%, var(--border));
-        box-shadow: 0 0 0 1px color-mix(in srgb, #f59e0b 28%, transparent), 0 0 16px color-mix(in srgb, #f59e0b 14%, transparent);
-    }
-
+    .ai-review-panel-improvement:focus-within,
     .ai-review-panel-strength:hover,
     .ai-review-panel-strength:focus-within {
-        border-color: color-mix(in srgb, #22c55e 52%, var(--border));
-        box-shadow: 0 0 0 1px color-mix(in srgb, #22c55e 28%, transparent), 0 0 16px color-mix(in srgb, #22c55e 14%, transparent);
+        border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+        box-shadow: 0 4px 14px rgba(2, 6, 23, 0.12);
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -4188,6 +4115,26 @@
         border-width: 2px; }
 
     .ai-generating-copy {
+        max-width: 48ch;
+        margin-top: 0; }
+
+    .ai-empty-shell {
+        display: grid;
+        justify-items: center;
+        align-content: center;
+        gap: 0.55rem;
+        min-height: 180px;
+        text-align: center; }
+
+    .ai-empty-kicker {
+        margin: 0;
+        font-size: 0.68rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--muted) 82%, white 18%); }
+
+    .ai-empty-copy {
         max-width: 48ch;
         margin-top: 0; }
 
@@ -5349,11 +5296,11 @@
     .chart-area.negative { fill: color-mix(in srgb, var(--bad) 14%, transparent); }
 
     .chart-glow { fill: none;
-        stroke-width: 3.4;
+        stroke-width: 2.8;
         stroke-linecap: round;
         stroke-linejoin: round;
-        opacity: 0.16;
-        filter: blur(2.4px);
+        opacity: 0.08;
+        filter: blur(1.8px);
         stroke-dasharray: 1200;
         stroke-dashoffset: 1200;
         animation: draw-line 4.4s var(--curve-draw-ease) forwards; }
@@ -5604,18 +5551,10 @@
 
     @keyframes dashboard-guided-pulse {
         0%, 100% {
-            box-shadow:
-                0 20px 38px rgba(2, 6, 23, 0.28),
-                0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent),
-                0 0 26px color-mix(in srgb, var(--accent) 24%, transparent),
-                0 0 56px color-mix(in srgb, var(--accent) 12%, transparent);
+            box-shadow: 0 8px 20px rgba(2, 6, 23, 0.16);
         }
         50% {
-            box-shadow:
-                0 23px 42px rgba(2, 6, 23, 0.32),
-                0 0 0 1px color-mix(in srgb, var(--accent) 48%, transparent),
-                0 0 30px color-mix(in srgb, var(--accent) 30%, transparent),
-                0 0 64px color-mix(in srgb, var(--accent) 14%, transparent);
+            box-shadow: 0 10px 24px rgba(2, 6, 23, 0.2);
         }
     }
 
@@ -6017,7 +5956,7 @@
 {% if weekly_ai_review and weekly_ai_review.id is defined %}
 <script src="{{ url_for('static', filename='js/weekly_review_chat.js', v='20260602-citations-2') }}"></script>
 {% endif %}
-{% if weekly_ai_is_generating %}
+{% if weekly_ai_is_generating or weekly_ai_poll_for_status %}
 <script>
 (() => {
     const statusUrl = {{ url_for('dashboard.ai_status')|tojson }};
@@ -6038,7 +5977,13 @@
                 return;
             }
             const payload = await response.json();
-            if (payload && payload.ready === true) {
+            const status = payload && payload.status;
+            const shouldReload = payload && (
+                payload.ready === true
+                || status === "queued"
+                || status === "running"
+            );
+            if (shouldReload) {
                 isReloading = true;
                 window.clearInterval(pollTimerId);
                 window.location.reload();

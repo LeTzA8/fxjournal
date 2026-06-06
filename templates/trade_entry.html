@@ -166,7 +166,18 @@
                         <div class="trade-chart-tf-group" id="tradeChartTfGroup" role="group" aria-label="Chart timeframe">
                             <button type="button" class="trade-chart-tf-btn is-active" data-trade-tf="M5" aria-pressed="true">5m</button>
                             <button type="button" class="trade-chart-tf-btn" data-trade-tf="M15" aria-pressed="false">15m</button>
-                            <button type="button" class="trade-chart-tf-btn trade-chart-tf-btn--gated" data-trade-tf="M1" aria-pressed="false">1m</button>
+                            <button
+                                type="button"
+                                class="trade-chart-tf-btn{% if replay_1m_gated %} trade-chart-tf-btn--gated{% endif %}"
+                                data-trade-tf="M1"
+                                aria-pressed="false"
+                                {% if replay_1m_gated %}
+                                data-waitlist-trigger="trader"
+                                data-waitlist-source="replay_lock"
+                                data-waitlist-feature="advanced_replay"
+                                data-waitlist-cta-context="trade_replay_1m"
+                                {% endif %}
+                            >1m</button>
                         </div>
                     </div>
                 </div>
@@ -1356,7 +1367,6 @@
         padding: 0.72rem 0.82rem;
         border-radius: 12px;
         border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
-        border-left-width: 2px;
         background: color-mix(in srgb, var(--surface) 80%, var(--card)); }
 
     .trade-form-collapsible--nested > summary.trade-form-section-summary--nested { gap: 0.35rem 0.55rem; }
@@ -1378,15 +1388,29 @@
         .trade-form-section-chevron { margin-left: auto; }
     }
 
-    .trade-form-section { display: flex;
+    .trade-form-section,
+    .trade-form-collapsible { display: flex;
         flex-direction: column;
         gap: 0.62rem;
         margin: 0 0 1rem;
         padding: 0.92rem 1.02rem 1rem 1.05rem;
         border-radius: 14px;
         border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
-        border-left-width: 3px;
-        background: color-mix(in srgb, var(--card) 65%, transparent); }
+        background: color-mix(in srgb, var(--card) 72%, transparent);
+        transition: border-color 160ms ease, background 160ms ease; }
+
+    .trade-form-collapsible > summary.trade-form-section-summary:hover .trade-form-section-title {
+        color: color-mix(in srgb, var(--accent) 30%, var(--ink)); }
+
+    .trade-form-collapsible[open] {
+        border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+        background: color-mix(in srgb, var(--card) 76%, var(--accent) 3%); }
+
+    .trade-form-collapsible[open] > summary .trade-form-section-title {
+        color: color-mix(in srgb, var(--accent) 44%, var(--ink)); }
+
+    .trade-form-collapsible[open] > summary .trade-form-section-chevron {
+        border-color: color-mix(in srgb, var(--accent) 48%, var(--muted)); }
 
     .trade-fields-grid { display: grid;
         gap: 0.55rem 0.9rem;
@@ -1513,16 +1537,6 @@
         .trade-form--edit .trade-form-collapsible { margin-bottom: 0; }
     }
 
-    .trade-form-section--instrument { border-left-color: color-mix(in srgb, #6eb3ff 72%, var(--border)); }
-
-    .trade-form-section--execution { border-left-color: color-mix(in srgb, #e8b84a 75%, var(--border)); }
-
-    .trade-form-section--performance { border-left-color: color-mix(in srgb, #5fd4b8 68%, var(--border)); }
-
-    .trade-form-section--timing { border-left-color: color-mix(in srgb, #b898ff 72%, var(--border)); }
-
-    .trade-form-section--journal { border-left-color: color-mix(in srgb, #ff8fb8 68%, var(--border)); }
-
     .trade-form-section:last-of-type { margin-bottom: 0.4rem; }
 
     .trade-form-section-title { margin: 0;
@@ -1533,22 +1547,10 @@
         font-weight: 800;
         letter-spacing: 0.07em;
         text-transform: uppercase;
-        color: color-mix(in srgb, var(--muted) 55%, var(--ink)); }
+        color: color-mix(in srgb, var(--muted) 55%, var(--ink));
+        transition: color 160ms ease; }
 
-    .trade-section-emoji { font-size: 1.12rem;
-        line-height: 1;
-        font-style: normal;
-        filter: saturate(1.15); }
-
-    .trade-form-section-title--instrument { color: color-mix(in srgb, #8cc8ff 55%, var(--ink)); }
-
-    .trade-form-section-title--execution { color: color-mix(in srgb, #f0cc6a 52%, var(--ink)); }
-
-    .trade-form-section-title--performance { color: color-mix(in srgb, #6fe8ca 48%, var(--ink)); }
-
-    .trade-form-section-title--timing { color: color-mix(in srgb, #cdb4ff 55%, var(--ink)); }
-
-    .trade-form-section-title--journal { color: color-mix(in srgb, #ffb3cf 52%, var(--ink)); }
+    .trade-section-emoji { display: none; }
 
     .field-help--tight { margin: -0.12rem 0 0.35rem !important; }
 

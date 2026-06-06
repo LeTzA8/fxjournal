@@ -98,8 +98,11 @@ def _calculate_trade_net_pnl(trade_pnl, commission=None, swap=None):
 
 
 def _build_trade_entry_context(user_id, trade):
+    from helpers.entitlements import can_access_advanced_replay
+
     trade_account = trade.trade_account or get_active_trade_account_for_user(user_id)
     profile_form_state = resolve_trade_profile_form_state(user_id, trade=trade)
+    replay_1m_gate = can_access_advanced_replay(trade.user, "M1", trade)
     return {
         "username": get_effective_username(),
         "active_trade_account_name": trade_account.name,
@@ -115,6 +118,7 @@ def _build_trade_entry_context(user_id, trade):
         "selected_trade_profile_pubkey": profile_form_state[
             "selected_trade_profile_pubkey"
         ],
+        "replay_1m_gated": not replay_1m_gate["allowed"],
     }
 
 

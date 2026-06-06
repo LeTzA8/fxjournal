@@ -248,8 +248,8 @@ a.admin-stat-tile:hover {
 }
 
 .admin-stat-tile--alert {
-    border-color: color-mix(in srgb, #f59e0b 42%, var(--border));
-    background: color-mix(in srgb, #f59e0b 10%, var(--surface));
+    border-color: color-mix(in srgb, var(--warn) 32%, var(--border));
+    background: color-mix(in srgb, var(--warn) 6%, var(--surface));
 }
 
 .admin-stat-tile--warn {
@@ -942,6 +942,59 @@ a.admin-stat-tile:hover {
     justify-content: space-between;
     gap: 0.5rem;
     margin-bottom: 0.15rem;
+}
+
+.mt5-debug-tools-form {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.mt5-debug-tools-grid {
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.mt5-debug-field {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.mt5-debug-field select,
+.mt5-debug-field input[type="text"] {
+    width: 100%;
+}
+
+.mt5-debug-field--checkbox {
+    align-content: end;
+    grid-auto-flow: column;
+    justify-content: start;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.mt5-debug-preview {
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+
+.mt5-debug-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.mt5-debug-result-pre {
+    margin: 0.5rem 0 0;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    background: rgba(0, 0, 0, 0.28);
+    overflow: auto;
+    max-height: 24rem;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .mt5-vm-orphans {
