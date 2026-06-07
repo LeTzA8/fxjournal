@@ -396,20 +396,115 @@ def _open_account_dialog_from_main(app, pid: int, *, timeout_seconds: float):
     raise RuntimeError("could not open Open an Account dialog for launched PID")
 
 
+def _control_label(control) -> str:
+    try:
+        text = (control.window_text() or "").strip()
+        if text:
+            return text
+    except Exception:
+        pass
+    try:
+        name = (control.element_info.name or "").strip()
+        if name:
+            return name
+    except Exception:
+        pass
+    return ""
+
+
+def _company_search_label_score(label: str) -> int:
+    normalized = str(label or "").strip().casefold()
+    if not normalized:
+        # Unnamed edit controls are common once the placeholder collapses on focus.
+        return 5
+    if normalized == COMPANY_SEARCH_PLACEHOLDER.casefold():
+        return 100
+    if "add new company" in normalized:
+        return 85
+    if "companyname" in normalized or "company.com" in normalized:
+        return 75
+    if "company" in normalized and ("address" in normalized or " like " in f" {normalized} "):
+        return 70
+    if "company" in normalized:
+        return 35
+    return 0
+
+
+def _iter_search_field_candidates(dialog):
+    for control_type in ("Edit", "ComboBox"):
+        try:
+            for control in dialog.descendants(control_type=control_type):
+                try:
+                    if control.exists(timeout=0):
+                        yield control
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+
 def _find_company_search_input(dialog):
-    candidates = [
+    for kwargs in (
         {"title": COMPANY_SEARCH_PLACEHOLDER},
-        {"title_re": ".*company.*", "control_type": "Edit"},
-        {"control_type": "Edit"},
-    ]
-    for kwargs in candidates:
+        {"title_re": r".*add new company.*", "control_type": "Edit"},
+        {"title_re": r".*companyname.*", "control_type": "Edit"},
+        {"title_re": r".*company\.com.*", "control_type": "Edit"},
+        {"title_re": r".*company.*", "control_type": "Edit"},
+    ):
         try:
             control = dialog.child_window(**kwargs)
             if control.exists(timeout=1):
                 return control
         except Exception:
             continue
+
+    best_control = None
+    best_score = 0
+    for control in _iter_search_field_candidates(dialog):
+        score = _company_search_label_score(_control_label(control))
+        if score > best_score:
+            best_score = score
+            best_control = control
+
+    if best_control is not None and best_score >= 5:
+        return best_control
     return None
+
+
+def _fill_company_search_input(search_input, term: str) -> None:
+    term = str(term or "").strip()
+    if not term:
+        raise ValueError("broker search term is required")
+
+    try:
+        search_input.wait("visible", timeout=5)
+    except Exception:
+        pass
+
+    # Physical click is required for many MT5 builds; set_focus alone leaves the
+    # dialog window as the keyboard target so type_keys hits the shell.
+    try:
+        search_input.click_input()
+    except Exception:
+        search_input.set_focus()
+
+    time.sleep(0.25)
+
+    try:
+        search_input.set_edit_text(term)
+        return
+    except Exception:
+        logger.debug("broker refresh set_edit_text failed; falling back to type_keys", exc_info=True)
+
+    try:
+        search_input.click_input()
+    except Exception:
+        search_input.set_focus()
+    try:
+        search_input.type_keys("^a{BACKSPACE}", set_foreground=True)
+    except Exception:
+        pass
+    search_input.type_keys(term, with_spaces=True, set_foreground=True)
 
 
 def _click_find_company(dialog):
@@ -508,12 +603,7 @@ def refresh_broker_server_cache(
         search_input = _find_company_search_input(dialog)
         if search_input is None:
             raise RuntimeError("company search input not found in Open an Account dialog")
-        search_input.set_focus()
-        try:
-            search_input.set_edit_text("")
-        except Exception:
-            pass
-        search_input.type_keys(term, with_spaces=True, set_foreground=True)
+        _fill_company_search_input(search_input, term)
 
         _click_find_company(dialog)
         wait_seconds = min(max(timeout_seconds / 4, 10), 20)
@@ -534,7 +624,7 @@ def refresh_broker_server_cache(
             result.window_titles_seen = titles_fn(pid)
             result.screenshot_path = _capture_pid_screenshot(pid, failed_step=result.failed_step or "error")
     finally:
-        terminate_fn(pid, result.terminal_path)
+        terminate_fn(pid, terminal_path=result.terminal_path)
         result.finished_at = _iso(_utc_now())
 
     return result

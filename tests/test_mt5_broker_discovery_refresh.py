@@ -7,8 +7,12 @@ import pytest
 
 from helpers.app_settings import MT5_BROKER_DISCOVERY_REFRESH_ENABLED_KEY, set_bool_app_setting
 from helpers.mt5_broker_discovery_refresh import (
+    COMPANY_SEARCH_PLACEHOLDER,
     DEFAULT_BROKER_SEARCH_TERM,
     RefreshResult,
+    _company_search_label_score,
+    _fill_company_search_input,
+    _find_company_search_input,
     diff_terminal_snapshots,
     refresh_broker_server_cache,
     snapshot_terminal_data_dir,
@@ -102,6 +106,67 @@ def test_snapshot_ignores_logs_and_history(tmp_path):
     assert not any("history/" in key for key in snapshot)
 
 
+def test_company_search_label_score_prefers_placeholder():
+    assert _company_search_label_score(COMPANY_SEARCH_PLACEHOLDER) == 100
+    assert _company_search_label_score("add new company like 'Foo'") == 85
+    assert _company_search_label_score("random field") == 0
+    assert _company_search_label_score("") == 5
+
+
+def test_find_company_search_input_prefers_placeholder_edit():
+    class _Edit:
+        def __init__(self, label):
+            self.label = label
+
+        def exists(self, timeout=0):
+            return True
+
+        def window_text(self):
+            return self.label
+
+    class _Dialog:
+        def child_window(self, **kwargs):
+            raise RuntimeError("no direct child match")
+
+        def descendants(self, control_type="Edit"):
+            if control_type != "Edit":
+                return []
+            return [
+                _Edit("Account name"),
+                _Edit(COMPANY_SEARCH_PLACEHOLDER),
+            ]
+
+    found = _find_company_search_input(_Dialog())
+    assert found is not None
+    assert found.label == COMPANY_SEARCH_PLACEHOLDER
+
+
+def test_fill_company_search_input_clicks_before_set_edit_text():
+    calls = []
+
+    class _FakeInput:
+        def wait(self, *args, **kwargs):
+            calls.append("wait")
+
+        def click_input(self):
+            calls.append("click")
+
+        def set_focus(self):
+            calls.append("focus")
+
+        def set_edit_text(self, value):
+            calls.append(("set_edit_text", value))
+
+        def type_keys(self, *args, **kwargs):
+            calls.append("type_keys")
+
+    _fill_company_search_input(_FakeInput(), "Exness")
+    assert calls[0] == "wait"
+    assert calls[1] == "click"
+    assert ("set_edit_text", "Exness") in calls
+    assert "type_keys" not in calls
+
+
 def test_refresh_dry_run_does_not_launch_terminal():
     launched = {"called": False}
 
@@ -131,6 +196,9 @@ def test_refresh_automation_mocked_pid_scoped(monkeypatch):
 
         def child_window(self, **kwargs):
             return self
+
+        def wait(self, *args, **kwargs):
+            return None
 
         def set_focus(self):
             return None
