@@ -122,6 +122,9 @@
                             {% if mt5.status_one_liner %}
                             <p class="account-mt5-oneliner{% if mt5.is_failed %} account-mt5-oneliner--error{% endif %}">{{ mt5.status_one_liner }}</p>
                             {% endif %}
+                            {% if mt5.exness_note %}
+                            <p class="account-mt5-oneliner account-mt5-oneliner--exness">{{ mt5.exness_note }}</p>
+                            {% endif %}
                             {% if mt5.waitlist_lock %}
                             {{ mt5_waitlist_lock_card(mt5.waitlist_lock) }}
                             {% elif mt5.dashboard_cta_label %}
@@ -367,7 +370,7 @@
             <span class="soft">Danger Zone</span>
         </div>
         <p id="deleteTradeAccountLead" class="helper-note danger-note">
-            This permanently deletes the selected trade account and everything linked to it.
+            This permanently deletes the selected trade account, its trades, and linked AI reviews. If MT5 was connected, saved MT5 credentials are removed and limited VM cleanup metadata may remain until terminal cleanup finishes.
         </p>
         <form
             id="deleteTradeAccountForm"
@@ -397,7 +400,7 @@
                     type="checkbox"
                     required
                 >
-                <span>I understand this permanently removes this trade account and everything inside it.</span>
+                <span>I understand this permanently removes this trade account and its linked journal data.</span>
             </label>
             <p id="deleteTradeAccountStatus" class="account-alert error" role="alert" hidden></p>
             <div class="dialog-actions inline-actions">
@@ -415,7 +418,7 @@
             <span class="soft">Danger Zone</span>
         </div>
         <p class="helper-note danger-note">
-            This deletes all {{ account_rows|length }} trade account{% if account_rows|length != 1 %}s{% endif %}, all {{ total_trade_count }} trade{% if total_trade_count != 1 %}s{% endif %}, and all {{ total_ai_review_count }} linked AI review{% if total_ai_review_count != 1 %}s{% endif %}. A fresh Main Account will be created immediately after.
+            This deletes all {{ account_rows|length }} trade account{% if account_rows|length != 1 %}s{% endif %}, all {{ total_trade_count }} trade{% if total_trade_count != 1 %}s{% endif %}, and all {{ total_ai_review_count }} linked AI review{% if total_ai_review_count != 1 %}s{% endif %}. If MT5 was connected, saved MT5 credentials are removed and limited VM cleanup metadata may remain until terminal cleanup finishes. A fresh Main Account will be created immediately after.
         </p>
         <form action="{{ url_for('trade_accounts.delete_all_trade_accounts') }}" method="post" class="danger-form" data-themed-validation>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -26,6 +26,11 @@ from helpers.core import (
     unlink_mt5_sync_for_trade_account,
 )
 from helpers.legal import LEGAL_LAST_UPDATED
+from helpers.mt5_copy import (
+    EXNESS_MT5_SETUP_EMAIL_NOTE_PARAGRAPHS,
+    EXNESS_MT5_SETUP_EMAIL_NOTE_TEXT,
+    is_exness_mt5_submission,
+)
 from models import AccountCashFlow, AIGeneratedResponse, CASH_FLOW_TYPES, MT5AccessRequest, MT5Account, Trade, TradeAccount, User, db
 from helpers.settings_workbench import (
     build_trade_account_card_views,
@@ -91,7 +96,7 @@ def _send_mt5_submission_admin_email(*, request_row, account, mt5_account, setup
         f"Consent Accepted At: {mt5_account.mt5_consent_accepted_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
     )
     if request_row.request_note:
-        email_body += f"Submitted Note: {request_row.request_note}\n"
+        email_body += "Submitted Note: provided in app; omitted from email for credential safety\n"
 
     try:
         send_email_placeholder(
@@ -107,9 +112,16 @@ def _send_mt5_submission_admin_email(*, request_row, account, mt5_account, setup
         )
 
 
-def _send_mt5_submission_user_email(*, user, account, setup_queued):
+def _send_mt5_submission_user_email(*, user, account, mt5_account, setup_queued, request_note=None):
     try:
         dashboard_url = build_external_url(url_for("dashboard.home"))
+        show_exness_note = (
+            not setup_queued
+            and is_exness_mt5_submission(
+                getattr(mt5_account, "server", None),
+                request_note,
+            )
+        )
         if setup_queued:
             subject = "Your MT5 sync setup has started"
             text_body = (
@@ -122,6 +134,8 @@ def _send_mt5_submission_user_email(*, user, account, setup_queued):
                 f"Hi {user.username}, we saved your MT5 sync details, but setup could not be queued right away. "
                 "Please contact support or check back from your dashboard."
             )
+        if show_exness_note:
+            text_body = f"{text_body}\n\n{EXNESS_MT5_SETUP_EMAIL_NOTE_TEXT}"
         send_email_placeholder(
             user.email,
             subject,
@@ -133,6 +147,9 @@ def _send_mt5_submission_user_email(*, user, account, setup_queued):
                 dashboard_url=dashboard_url,
                 logo_url=build_external_url("/static/site-logo.png"),
                 setup_queued=setup_queued,
+                exness_note_paragraphs=(
+                    EXNESS_MT5_SETUP_EMAIL_NOTE_PARAGRAPHS if show_exness_note else ()
+                ),
             ),
         )
     except Exception as exc:
@@ -288,8 +305,7 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
             request_row.reviewed_at = None
             request_row.reviewed_by_user_id = None
 
-        if request_note:
-            request_row.request_note = request_note
+        request_row.request_note = request_note or None
 
         mt5_account = MT5Account(
             user_id=user_id,
@@ -364,7 +380,9 @@ def _submit_mt5_sync_request(trade_account_pubkey=None):
     _send_mt5_submission_user_email(
         user=user,
         account=account,
+        mt5_account=mt5_account,
         setup_queued=setup_queued,
+        request_note=getattr(request_row, "request_note", None),
     )
 
     status_label = "Setup Queued" if setup_queued else "Saved"
@@ -722,6 +740,13 @@ def retry_mt5_setup():
         return _build_mt5_request_response(
             ok=False,
             message="This MT5 account is not in a failed state. No retry needed.",
+            status="error",
+            status_code=409,
+        )
+    if mt5_account.cleanup_marked_at is not None or mt5_account.is_orphaned:
+        return _build_mt5_request_response(
+            ok=False,
+            message="This MT5 connection has been disconnected. Use the setup form to reconnect.",
             status="error",
             status_code=409,
         )

@@ -4,7 +4,7 @@ from cryptography.fernet import Fernet
 
 import celery_workers.mt5_sync_tasks as mt5_sync_module
 from helpers.core import delete_users_with_related_data
-from helpers.utils import encrypt_password
+from helpers.utils import encrypt_password, utcnow_naive
 from models import MT5Account, TradeAccount, User, db
 
 
@@ -38,6 +38,7 @@ def _create_mt5_account(*, user_id, trade_account_id, account_number):
         investor_password_encrypted=encrypt_password("investor-pass"),
         server="Broker-Server",
         is_active=True,
+        vm_id="MYFXJOURNAL-SG",
     )
     db.session.add(mt5_account)
     db.session.commit()
@@ -89,6 +90,7 @@ def test_mt5_account_remains_orphaned_after_trade_account_delete(app_ctx, monkey
     assert orphaned_account.account_number == "cleanup-0001"
     assert orphaned_account.investor_password_encrypted is None
     assert orphaned_account.is_active is False
+    assert orphaned_account.vm_id == "MYFXJOURNAL-SG"
     assert orphaned_account.cleanup_marked_at is not None
 
 
@@ -120,6 +122,7 @@ def test_mt5_account_remains_orphaned_after_user_delete(app_ctx, monkeypatch):
     assert orphaned_account.account_number == "cleanup-0002"
     assert orphaned_account.investor_password_encrypted is None
     assert orphaned_account.is_active is False
+    assert orphaned_account.vm_id == "MYFXJOURNAL-SG"
     assert orphaned_account.cleanup_marked_at is not None
 
 
@@ -145,6 +148,7 @@ def test_admin_mt5_panel_marks_orphaned_accounts_and_blocks_actions(app_ctx, cli
     db.session.commit()
 
     list_response = client.get("/dashboard/admin/access/mt5")
+    cleanup_response = client.get("/dashboard/admin/access/mt5?view=cleanup")
     setup_response = client.post(
         f"/dashboard/admin/access/mt5/{mt5_account.id}/setup",
         data={},
@@ -157,9 +161,12 @@ def test_admin_mt5_panel_marks_orphaned_accounts_and_blocks_actions(app_ctx, cli
     )
 
     assert list_response.status_code == 200
-    assert b"cleanup-0003" in list_response.data
-    assert b"Cleanup Pending" in list_response.data
-    assert b"Cleanup-only record awaiting manual delete" in list_response.data
+    assert b"cleanup-0003" not in list_response.data
+    assert b"Cleanup Records" in list_response.data
+    assert cleanup_response.status_code == 200
+    assert b"cleanup-0003" in cleanup_response.data
+    assert b"Cleanup Pending" in cleanup_response.data
+    assert b"Cleanup-only record with saved credentials removed" in cleanup_response.data
     assert setup_response.status_code == 200
     assert b"That MT5 record is cleanup-only now." in setup_response.data
     assert sync_response.status_code == 200
@@ -168,6 +175,9 @@ def test_admin_mt5_panel_marks_orphaned_accounts_and_blocks_actions(app_ctx, cli
 
 def test_sync_all_active_mt5_accounts_skips_orphaned_accounts(app_ctx, monkeypatch):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    for existing_account in MT5Account.query.all():
+        existing_account.is_active = False
+    db.session.commit()
 
     active_user, active_trade_account = _create_user_with_account(
         username="sync-active-user",
@@ -189,23 +199,46 @@ def test_sync_all_active_mt5_accounts_skips_orphaned_accounts(app_ctx, monkeypat
         account_number="77110005",
     )
 
+    credential_free_user, credential_free_trade_account = _create_user_with_account(
+        username="sync-credential-free-user",
+        email="sync-credential-free-user@example.com",
+    )
+    credential_free_account = _create_mt5_account(
+        user_id=credential_free_user.id,
+        trade_account_id=credential_free_trade_account.id,
+        account_number="77110006",
+    )
+    credential_free_account.investor_password_encrypted = None
+    credential_free_account.cleanup_marked_at = utcnow_naive()
+
     db.session.delete(orphan_trade_account)
     db.session.commit()
     db.session.expire_all()
 
     captured_ids = []
 
-    def _fake_apply_async(*, args, queue, kwargs=None, **extra):
-        captured_ids.append((args[0], queue))
+    def _fake_dispatch_sync(
+        task,
+        mt5_account_id,
+        *,
+        account_vm_id=None,
+        kwargs=None,
+        expires=None,
+        label=None,
+        extra=None,
+        log=None,
+    ):
+        captured_ids.append((mt5_account_id, account_vm_id))
 
-    monkeypatch.setattr(mt5_sync_module.sync_mt5_account, "apply_async", _fake_apply_async)
+    monkeypatch.setattr("helpers.mt5_dispatch.dispatch_mt5_sync", _fake_dispatch_sync)
     monkeypatch.setattr("celery_workers.cache.get_queue_depth", lambda queue_name: 0)
     monkeypatch.setattr("celery_workers.cache.peek_lock_holder", lambda lock_key: None)
 
     mt5_sync_module.sync_all_active_mt5_accounts.run()
-    enqueued_mt5_ids = [args_id for args_id, q in captured_ids if q == "mt5_sync"]
+    enqueued_mt5_ids = [args_id for args_id, vm_id in captured_ids if vm_id == "MYFXJOURNAL-SG"]
     assert active_account.id in enqueued_mt5_ids
     assert orphan_account.id not in enqueued_mt5_ids
+    assert credential_free_account.id not in enqueued_mt5_ids
     scrubbed_account = db.session.get(MT5Account, orphan_account.id)
     assert scrubbed_account.is_orphaned is True
     assert scrubbed_account.is_cleanup_only is True

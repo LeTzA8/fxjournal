@@ -297,6 +297,8 @@ def sync_mt5_trades():
         return jsonify({"error": "mt5 account not found"}), 404
     if not account.is_active:
         return jsonify({"error": "mt5 account is inactive"}), 409
+    if account.cleanup_marked_at is not None or not account.has_saved_credentials:
+        return jsonify({"error": "mt5 credentials unavailable"}), 409
     if not account.trade_account or str(account.trade_account.account_type).strip().upper() != "CFD":
         return jsonify({"error": "mt5 sync requires a CFD trade account"}), 400
 
@@ -799,6 +801,8 @@ def ingest_trade_bars():
     account = MT5Account.query.filter_by(id=mt5_account_id).first()
     if account is None:
         return jsonify({"error": "mt5 account not found"}), 404
+    if account.cleanup_marked_at is not None or not account.has_saved_credentials:
+        return jsonify({"error": "mt5 credentials unavailable"}), 409
 
     trade = Trade.query.filter_by(id=trade_id).first()
     if trade is None:
@@ -868,6 +872,8 @@ def ingest_trade_bars_batch():
     account = MT5Account.query.filter_by(id=mt5_account_id).first()
     if account is None:
         return jsonify({"error": "mt5 account not found"}), 404
+    if account.cleanup_marked_at is not None or not account.has_saved_credentials:
+        return jsonify({"error": "mt5 credentials unavailable"}), 409
 
     trade_ids = []
     normalized_items = []

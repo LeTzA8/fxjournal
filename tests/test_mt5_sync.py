@@ -20,7 +20,7 @@ from celery_workers.mt5_sync_tasks import (
 from celery_app import celery
 from helpers.app_settings import MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, set_bool_app_setting
 from helpers.core import delete_users_with_related_data
-from helpers.utils import decrypt_password, encrypt_password
+from helpers.utils import decrypt_password, encrypt_password, utcnow_naive
 from models import MT5Account, MT5BrokerServerOffset, Trade, TradeAccount, TradeBars, User, db
 
 
@@ -530,6 +530,30 @@ def test_sync_mt5_account_per_account_lock_skip_does_not_require_global_lock(mon
     result = sync_mt5_account.run(123)
 
     assert result == {"skipped": "sync already running"}
+
+
+def test_sync_mt5_account_skips_when_credentials_are_removed(app_ctx, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-credential-free-sync",
+        email="mt5-credential-free-sync@example.com",
+    )
+    mt5_account = _create_mt5_account(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        account_number="43434343",
+    )
+    mt5_account.investor_password_encrypted = None
+    mt5_account.cleanup_marked_at = utcnow_naive()
+    db.session.commit()
+
+    monkeypatch.setattr("celery_workers.cache.claim_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr("celery_workers.cache.release_lock", lambda *args, **kwargs: True)
+
+    result = sync_mt5_account.run(mt5_account.id)
+
+    assert result == {"error": "MT5 credentials unavailable"}
 
 
 def test_sync_mt5_account_logs_task_context(app_ctx, monkeypatch, caplog):
@@ -1757,6 +1781,29 @@ def test_internal_mt5_sync_requires_shared_secret(app_ctx, client, monkeypatch):
 
     assert missing_secret.status_code == 403
     assert wrong_secret.status_code == 403
+
+
+def test_internal_mt5_sync_rejects_credential_free_account(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("MT5_SYNC_SECRET", "sync-secret")
+
+    user, trade_account = _create_user_with_account(
+        username="sync-credential-free",
+        email="sync-credential-free@example.com",
+    )
+    mt5_account = _create_mt5_account(user_id=user.id, trade_account_id=trade_account.id)
+    mt5_account.investor_password_encrypted = None
+    mt5_account.cleanup_marked_at = utcnow_naive()
+    db.session.commit()
+
+    response = client.post(
+        "/api/internal/mt5/sync",
+        json={"mt5_account_id": mt5_account.id, "trades": []},
+        headers={"X-Sync-Secret": "sync-secret"},
+    )
+
+    assert response.status_code == 409
+    assert response.get_json() == {"error": "mt5 credentials unavailable"}
 
 
 def test_internal_mt5_sync_updates_trade_account_size_from_broker_equity(app_ctx, client, monkeypatch):

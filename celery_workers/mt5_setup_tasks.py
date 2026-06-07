@@ -16,6 +16,11 @@ from celery_workers.mt5_market_watch import (
     MT5_MARKET_WATCH_CRYPTO_SEED_SYMBOLS,
     MT5_MARKET_WATCH_FALLBACK_SYMBOLS,
 )
+from helpers.mt5_copy import (
+    EXNESS_MT5_SETUP_EMAIL_NOTE_PARAGRAPHS,
+    EXNESS_MT5_SETUP_EMAIL_NOTE_TEXT,
+    is_exness_mt5_account,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -434,21 +439,36 @@ def _send_mt5_setup_failed_email(account, user_message: str):
 
     try:
         base_url = get_public_base_url()
+        show_exness_note = is_exness_mt5_account(account)
         html_body = render_app_template(
             "emails/mt5-setup-failed.html",
             name=user.username,
             error_message=user_message,
             dashboard_url=f"{base_url}/dashboard",
             logo_url=f"{base_url}/static/site-logo.png",
+            exness_note_paragraphs=(
+                EXNESS_MT5_SETUP_EMAIL_NOTE_PARAGRAPHS if show_exness_note else ()
+            ),
         )
-        send_email_placeholder(
-            user.email,
-            "MT5 connection setup failed — fix & retry",
-            (
+        if show_exness_note:
+            subject = "MT5 connection setup needs attention"
+            text_body = (
+                f"Hi {user.username}, we weren't able to connect to your MT5 account. "
+                f"{user_message}\n\n"
+                f"{EXNESS_MT5_SETUP_EMAIL_NOTE_TEXT}\n\n"
+                "Open the dashboard to review the status."
+            )
+        else:
+            subject = "MT5 connection setup failed - fix & retry"
+            text_body = (
                 f"Hi {user.username}, we weren't able to connect to your MT5 account. "
                 f"{user_message} "
                 "Open the dashboard to fix your details and retry."
-            ),
+            )
+        send_email_placeholder(
+            user.email,
+            subject,
+            text_body,
             html_body=html_body,
         )
     except Exception as exc:
@@ -695,6 +715,10 @@ def setup_mt5_terminal(
             return {"error": "MT5Account not found"}
         if account.is_orphaned:
             raise PermanentSetupError("setup_mt5_terminal cannot run for an orphaned MT5 account")
+        if getattr(account, "cleanup_marked_at", None) is not None:
+            raise PermanentSetupError("setup_mt5_terminal cannot run while MT5 cleanup is pending")
+        if not account.has_saved_credentials:
+            raise PermanentSetupError("setup_mt5_terminal cannot run without saved MT5 credentials")
 
         from helpers.mt5_dispatch import (
             guard_wrong_vm_task,
@@ -725,11 +749,18 @@ def setup_mt5_terminal(
         investor_password = decrypt_password(account.investor_password_encrypted)
         server = account.server
 
-        terminal_dir = os.path.join(
-            MT5_TERMINALS_ROOT,
-            f"mt5_{user_id}_{trade_account_id}",
+        from helpers.mt5_terminal_paths import (
+            build_mt5_terminal_exe_path,
+            resolve_mt5_terminal_dir,
         )
-        terminal_exe = os.path.join(terminal_dir, "terminal64.exe")
+
+        terminal_dir = resolve_mt5_terminal_dir(
+            terminals_root=MT5_TERMINALS_ROOT,
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            terminal_path=account.terminal_path,
+        )
+        terminal_exe = build_mt5_terminal_exe_path(terminal_dir)
         log_ascii_table(
             logger,
             "MT5 Setup Context",
@@ -742,6 +773,7 @@ def setup_mt5_terminal(
                 ("Account", _mask_account_number_for_log(login)),
                 ("Server", server),
                 ("Base Path", MT5_BASE_PATH),
+                ("Terminal Folder", os.path.basename(terminal_dir)),
                 ("Terminal Dir", terminal_dir),
                 ("Was Active", was_active),
             ],
@@ -1397,6 +1429,9 @@ def cleanup_mt5_terminal(
                         else:
                             requested_token = str(cleanup_marked_at or "").strip()
                         if current_mark is not None and requested_token and current_token == requested_token:
+                            account.terminal_path = None
+                            account.appdata_hash = None
+                            account.is_active = False
                             account.cleanup_marked_at = None
                             db.session.commit()
                             cleanup_mark_cleared = True

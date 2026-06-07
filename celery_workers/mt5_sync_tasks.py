@@ -804,11 +804,6 @@ def sync_mt5_account(
             )
             return {"skipped": "sync already running"}
 
-        try:
-            import MetaTrader5 as mt5
-        except ImportError as exc:
-            raise RuntimeError("MetaTrader5 not installed on this worker.") from exc
-
         from helpers.utils import decrypt_password
         from models import MT5Account, Trade, db
 
@@ -859,6 +854,20 @@ def sync_mt5_account(
                 level=logging.WARNING,
             )
             return {"error": "MT5Account is orphaned"}
+        if account.cleanup_marked_at is not None or not account.has_saved_credentials:
+            log_ascii_table(
+                logger,
+                "MT5 Sync Skipped",
+                [
+                    ("Task ID", task_id),
+                    ("MT5 Account ID", mt5_account_id),
+                    ("User ID", account.user_id),
+                    ("Trade Account ID", account.trade_account_id),
+                    ("Reason", "credentials removed or cleanup pending"),
+                ],
+                level=logging.WARNING,
+            )
+            return {"error": "MT5 credentials unavailable"}
 
         from helpers.entitlements import can_use_mt5_sync
         sync_permission = can_use_mt5_sync(account.user, account)
@@ -907,6 +916,11 @@ def sync_mt5_account(
         user_id = account.user_id
         trade_account_id = account.trade_account_id
         trade_account_name = getattr(account.trade_account, "name", None)
+        try:
+            import MetaTrader5 as mt5
+        except ImportError as exc:
+            raise RuntimeError("MetaTrader5 not installed on this worker.") from exc
+
         investor_password = decrypt_password(account.investor_password_encrypted)
         account_number = account.account_number
         account_suffix = _mask_account_number_for_log(account_number)
@@ -1309,7 +1323,13 @@ def fetch_trade_bars(self, mt5_account_id, trade_id, target_vm_id=None, _wrong_v
     fetch_started_at = datetime.now(timezone.utc)
 
     account = db.session.get(MT5Account, mt5_account_id)
-    if account is None or not account.is_active or account.is_orphaned:
+    if (
+        account is None
+        or not account.is_active
+        or account.is_orphaned
+        or account.cleanup_marked_at is not None
+        or not account.has_saved_credentials
+    ):
         log_ascii_table(
             logger,
             "Bar Fetch Skipped",
@@ -1317,7 +1337,7 @@ def fetch_trade_bars(self, mt5_account_id, trade_id, target_vm_id=None, _wrong_v
                 ("Task ID", task_id),
                 ("MT5 Account ID", mt5_account_id),
                 ("Trade ID", trade_id),
-                ("Reason", "account missing, inactive, or orphaned"),
+                ("Reason", "account missing, inactive, orphaned, or credential-free"),
             ],
             level=logging.WARNING,
         )
@@ -1536,14 +1556,20 @@ def fetch_trade_bars_batch(self, mt5_account_id, trade_ids, target_vm_id=None, _
     from trading import cfd_mt5_symbol_name_candidates, mt5_timeframe_constant
 
     account = db.session.get(MT5Account, mt5_account_id)
-    if account is None or not account.is_active or account.is_orphaned:
+    if (
+        account is None
+        or not account.is_active
+        or account.is_orphaned
+        or account.cleanup_marked_at is not None
+        or not account.has_saved_credentials
+    ):
         log_ascii_table(
             logger,
             "Bar Fetch Batch Skipped",
             [
                 ("Task ID", task_id),
                 ("MT5 Account ID", mt5_account_id),
-                ("Reason", "account missing, inactive, or orphaned"),
+                ("Reason", "account missing, inactive, orphaned, or credential-free"),
             ],
             level=logging.WARNING,
         )
@@ -1774,6 +1800,8 @@ def sync_all_active_mt5_accounts():
         MT5Account.is_active.is_(True),
         MT5Account.user_id.isnot(None),
         MT5Account.trade_account_id.isnot(None),
+        MT5Account.investor_password_encrypted.isnot(None),
+        MT5Account.cleanup_marked_at.is_(None),
     ]
     if mt5_trial_columns_available():
         filters.append(MT5Account.sync_paused_at.is_(None))

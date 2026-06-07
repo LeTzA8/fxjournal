@@ -156,8 +156,8 @@ def test_cleanup_mt5_terminal_clears_cleanup_mark_without_deleting_row(app_ctx, 
         trade_account_id=None,
         account_number="CLEANUP_88888888",
         server="TestServer",
-        terminal_path=None,
-        appdata_hash=None,
+        terminal_path=str(terminal_exe),
+        appdata_hash=appdata_hash,
         is_active=False,
         cleanup_marked_at=utcnow_naive(),
     )
@@ -180,6 +180,9 @@ def test_cleanup_mt5_terminal_clears_cleanup_mark_without_deleting_row(app_ctx, 
     assert result["db_deleted"] is False
     assert result["cleanup_mark_cleared"] is True
     assert refreshed is not None
+    assert refreshed.terminal_path is None
+    assert refreshed.appdata_hash is None
+    assert refreshed.is_active is False
     assert refreshed.cleanup_marked_at is None
 
 

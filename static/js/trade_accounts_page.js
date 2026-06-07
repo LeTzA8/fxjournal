@@ -287,7 +287,7 @@
             const accountName = trigger.dataset.deleteAccountName || "this trade account";
             const tradeCount = Number(trigger.dataset.deleteTradeCount || "0");
             const reviewCount = Number(trigger.dataset.deleteReviewCount || "0");
-            lead.textContent = `This permanently deletes ${accountName}, ${pluralize(tradeCount, "linked trade", "linked trades")}, and ${pluralize(reviewCount, "linked AI review", "linked AI reviews")}.`;
+            lead.textContent = `This permanently deletes ${accountName}, ${pluralize(tradeCount, "linked trade", "linked trades")}, and ${pluralize(reviewCount, "linked AI review", "linked AI reviews")}. If MT5 was connected, saved MT5 credentials are removed and limited VM cleanup metadata may remain until terminal cleanup finishes.`;
             form.action = actionTemplate.replace("__TRADE_ACCOUNT_PUBKEY__", encodeURIComponent(activePubkey));
             dialog.showModal();
             requestAnimationFrame(() => confirmationInput.focus());

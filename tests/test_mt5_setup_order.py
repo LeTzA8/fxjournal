@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from cryptography.fernet import Fernet
 
 import celery_workers.mt5_setup_tasks as mt5_setup_module
+from helpers.mt5_terminal_paths import build_mt5_terminal_exe_path, build_mt5_terminal_folder_name
 from helpers.utils import encrypt_password
 from models import MT5Account, TradeAccount, User, db
 
@@ -152,6 +153,10 @@ class DummyPopen:
 
 def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monkeypatch, tmp_path):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setattr(
+        "helpers.mt5_dispatch.guard_wrong_vm_task",
+        lambda *args, **kwargs: None,
+    )
 
     user, trade_account = _create_user_with_account()
     mt5_account = _create_mt5_account(user.id, trade_account.id)
@@ -172,10 +177,12 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
     monkeypatch.setattr(mt5_setup_module.time, "sleep", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(mt5_setup_module.subprocess, "Popen", lambda *args, **kwargs: DummyPopen(*args, **kwargs))
 
+    expected_terminal_dir = terminals_root / build_mt5_terminal_folder_name(user.id, trade_account.id)
+
     def _fake_find_base_appdata(path):
         if path == str(base_dir):
             return str(base_appdata)
-        if path == str(terminals_root / f"mt5_{user.id}_{trade_account.id}"):
+        if path == str(expected_terminal_dir):
             return str(new_appdata)
         return None
 
@@ -212,14 +219,14 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
 
     result = mt5_setup_module.setup_mt5_terminal.run(mt5_account.id)
 
-    terminal_exe = terminals_root / f"mt5_{user.id}_{trade_account.id}" / "terminal64.exe"
+    terminal_exe = build_mt5_terminal_exe_path(str(expected_terminal_dir))
 
     assert result["status"] == "setup complete"
 
     # Bootstrap: initialize → shutdown; then charts; ensure: initialize → login; final shutdown
     assert events == [
         ("clear_charts", str(new_appdata)),
-        ("initialize", str(terminal_exe)),
+        ("initialize", terminal_exe),
         ("shutdown",),
         ("clear_market_watch", str(new_appdata), mt5_account.server),
         ("seed_market_watch",),
@@ -228,6 +235,10 @@ def test_setup_mt5_terminal_clears_charts_before_python_api_login(app_ctx, monke
 
 def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, monkeypatch, tmp_path):
     monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setattr(
+        "helpers.mt5_dispatch.guard_wrong_vm_task",
+        lambda *args, **kwargs: None,
+    )
 
     user, trade_account = _create_user_with_account()
     mt5_account = _create_mt5_account(user.id, trade_account.id, account_number="87654321")
@@ -250,10 +261,12 @@ def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, m
     sleep_calls = []
     monkeypatch.setattr(mt5_setup_module.time, "sleep", lambda seconds: sleep_calls.append(seconds))
 
+    expected_terminal_dir = terminals_root / build_mt5_terminal_folder_name(user.id, trade_account.id)
+
     def _fake_find_base_appdata(path):
         if path == str(base_dir):
             return str(base_appdata)
-        if path == str(terminals_root / f"mt5_{user.id}_{trade_account.id}"):
+        if path == str(expected_terminal_dir):
             return str(new_appdata)
         return None
 
@@ -275,13 +288,13 @@ def test_setup_mt5_terminal_retries_mt5_verification_within_same_task(app_ctx, m
 
     result = mt5_setup_module.setup_mt5_terminal.run(mt5_account.id)
 
-    terminal_exe = terminals_root / f"mt5_{user.id}_{trade_account.id}" / "terminal64.exe"
+    terminal_exe = build_mt5_terminal_exe_path(str(expected_terminal_dir))
 
     assert result["status"] == "setup complete"
 
     assert fake_mt5.initialize_calls == [
-        {"path": str(terminal_exe)},
-        {"path": str(terminal_exe)},
+        {"path": terminal_exe},
+        {"path": terminal_exe},
     ]
     assert len(fake_mt5.login_calls) == 0
     assert fake_mt5.account_info_calls == 1

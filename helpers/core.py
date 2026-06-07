@@ -807,6 +807,8 @@ def queue_mt5_account_cleanup(
     log_context,
     delete_row_on_success=False,
     target_vm_id=None,
+    clear_cleanup_mark=False,
+    cleanup_marked_at=None,
 ):
     """
     Queue VM cleanup for an MT5 account's terminal/AppData pair when present.
@@ -817,6 +819,10 @@ def queue_mt5_account_cleanup(
 
     *target_vm_id* overrides the account's stored ``vm_id`` when routing cleanup
     to a specific worker VM (admin multi-VM operations).
+
+    When *clear_cleanup_mark* is ``True`` the cleanup task keeps the DB row as a
+    credential-free tombstone and clears its runtime cleanup metadata after the
+    VM files are removed.
 
     Returns a short warning string when cleanup could not be queued, otherwise
     ``None``. Missing terminal metadata is treated as a no-op.
@@ -846,8 +852,14 @@ def queue_mt5_account_cleanup(
         cleanup_kwargs = {
             "mt5_account_id": mt5_account_id,
             "delete_account_row": bool(delete_row_on_success),
-            "clear_cleanup_mark": False,
+            "clear_cleanup_mark": bool(clear_cleanup_mark),
         }
+        if cleanup_marked_at is not None:
+            cleanup_kwargs["cleanup_marked_at"] = (
+                cleanup_marked_at.isoformat()
+                if hasattr(cleanup_marked_at, "isoformat")
+                else str(cleanup_marked_at).strip()
+            )
         if cleanup_vm_id:
             cleanup_kwargs["target_vm_id"] = cleanup_vm_id
 
@@ -1174,9 +1186,9 @@ def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
     """
     Remove MT5 sync for a trade account: mark MT5Account for cleanup, clear
     MT5AccessRequest rows, release batch slot counters, queue worker terminal
-    cleanup.  The MT5Account DB row is deleted by the cleanup task after VM
-    files are removed successfully.  If cleanup fails the row stays as a
-    cleanup-only orphan visible in admin.
+    cleanup.  Saved credentials are removed before cleanup is queued.  If
+    cleanup fails the credential-free row stays as a cleanup-only orphan visible
+    in admin.
 
     Returns (success, message) for user-facing flash text.
     """
@@ -1192,13 +1204,6 @@ def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
         return False, "This trade account does not have MT5 sync configured."
     if mt5_account.is_orphaned:
         return False, "MT5 sync is not available for this account."
-
-    # Queue cleanup BEFORE marking — paths are read from the account at queue time.
-    cleanup_warning = queue_mt5_account_cleanup(
-        mt5_account=mt5_account,
-        log_context="user unlink",
-        delete_row_on_success=True,
-    )
 
     try:
         request_rows = MT5AccessRequest.query.filter_by(
@@ -1220,12 +1225,24 @@ def unlink_mt5_sync_for_trade_account(*, user_id, trade_account_id):
                     )
             db.session.delete(row)
         mt5_account.mark_for_cleanup()
+        cleanup_marked_at = mt5_account.cleanup_marked_at
         db.session.commit()
     except (OperationalError, IntegrityError):
         db.session.rollback()
         return False, "Could not disconnect MT5 right now. Please try again."
 
-    message = "MT5 sync disconnected for this trade account. Your trades stay in the journal."
+    cleanup_warning = queue_mt5_account_cleanup(
+        mt5_account=mt5_account,
+        log_context="user unlink",
+        delete_row_on_success=False,
+        clear_cleanup_mark=True,
+        cleanup_marked_at=cleanup_marked_at,
+    )
+
+    message = (
+        "MT5 sync disconnected for this trade account. Saved MT5 credentials were removed; "
+        "your trades stay in the journal."
+    )
     if cleanup_warning:
         message = f"{message} {cleanup_warning}"
     return True, message

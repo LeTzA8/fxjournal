@@ -230,6 +230,60 @@ def test_user_can_submit_mt5_sync_request_and_send_confirmation_emails(app_ctx, 
     assert "Request Account" in user_email["html_body"]
     response_text = html.unescape(response.get_data(as_text=True))
     assert "MT5 setup started right away. We'll email you when your sync is ready." in response_text
+    assert "Exness note:" not in user_email["html_body"]
+
+
+def test_delayed_exness_mt5_submission_email_says_details_are_saved(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("FEEDBACK_TO_EMAIL", "support@example.com")
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-exness-delay-user",
+        email="mt5-exness-delay-user@example.com",
+        account_name="Exness Delay Account",
+    )
+    _log_in_user(client, user, trade_account)
+
+    captured = []
+
+    def _fake_send_email(to_email, subject, text_body, html_body=None):
+        captured.append(
+            {
+                "to_email": to_email,
+                "subject": subject,
+                "text_body": text_body,
+                "html_body": html_body,
+            }
+        )
+        return {"sent": True, "mode": "test"}
+
+    monkeypatch.setattr(trade_accounts_module, "send_email_placeholder", _fake_send_email)
+    _stub_mt5_setup_queue(monkeypatch, should_raise=True)
+
+    response = client.post(
+        "/dashboard/mt5/request-access",
+        data=_single_step_mt5_payload(
+            trade_account,
+            account_number="70018882",
+            server="Broker-Live",
+            broker_name="Exness",
+        ),
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    request_row = MT5AccessRequest.query.filter_by(trade_account_id=trade_account.id).one()
+    assert request_row.request_note == "Exness"
+
+    user_email = next(email for email in captured if email["to_email"] == user.email)
+    admin_email = next(email for email in captured if email["to_email"] == "support@example.com")
+    assert "Submitted Note: provided in app; omitted from email for credential safety" in admin_email["text_body"]
+    assert "Submitted Note: Exness" not in admin_email["text_body"]
+    assert user_email["subject"] == "We saved your MT5 sync details"
+    assert "Note for Exness users" in user_email["text_body"]
+    assert "you do not need to resubmit them right now" in user_email["text_body"]
+    assert "The issue may be on the connection/setup side" in user_email["html_body"]
+    assert "Setup still needs a retry from our side" not in user_email["html_body"]
 
 
 def test_mt5_sync_request_returns_json_without_redirect(app_ctx, client, monkeypatch):
@@ -474,7 +528,7 @@ def test_existing_pending_request_can_be_completed_with_full_details(app_ctx, cl
     request_row = MT5AccessRequest.query.filter_by(trade_account_id=trade_account.id).one()
     mt5_account = MT5Account.query.filter_by(trade_account_id=trade_account.id).one()
     assert request_row.status == MT5AccessRequest.STATUS_PENDING
-    assert request_row.request_note == "Already waiting."
+    assert request_row.request_note is None
     assert mt5_account.account_number == "70015555"
     assert b"MT5 setup started right away. We&#39;ll email you when your sync is ready." in response.data
 
@@ -1057,6 +1111,7 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
     assert b"Manage MT5" in response.data
     assert b"Fix on Dashboard" in response.data
     assert b"Invalid investor password." in response.data
+    assert b"Exness note:" not in response.data
     assert b"Manage MT5 sync from the dashboard card instead of per-account forms." not in response.data
     assert b"Open Dashboard MT5 Access" not in response.data
     assert b"Finish the full MT5 sync form from the dashboard card" not in response.data
@@ -1064,6 +1119,50 @@ def test_trade_accounts_page_shows_mt5_status_only(app_ctx, client, monkeypatch)
     assert b"Beta access:" not in response.data
     assert b"Reactivate MT5 sync" in response.data
     assert b"Request MT5 Sync Access" not in response.data
+
+
+def test_failed_exness_mt5_dashboard_and_trade_accounts_copy_avoids_default_resubmit(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _stub_weekly_ai_state(monkeypatch)
+
+    user, trade_account = _create_user_with_account(
+        username="mt5-exness-failed-user",
+        email="mt5-exness-failed-user@example.com",
+        account_name="Exness Failed Account",
+    )
+    db.session.add(
+        MT5Account(
+            user_id=user.id,
+            trade_account_id=trade_account.id,
+            account_number="99118800",
+            investor_password_encrypted=encrypt_password("investor-pass"),
+            server="Exness-MT5Real",
+            is_active=False,
+            connection_status=MT5Account.CONNECTION_STATUS_FAILED,
+            connection_error_message="Connection timeout.",
+        )
+    )
+    db.session.commit()
+    _log_in_user(client, user, trade_account)
+
+    dashboard_response = client.get("/dashboard")
+    dashboard_text = html.unescape(dashboard_response.get_data(as_text=True))
+
+    assert dashboard_response.status_code == 200
+    assert "Connection timeout." in dashboard_text
+    assert "Exness note: if you already submitted your MT5 details" in dashboard_text
+    assert "Your details are saved." in dashboard_text
+    assert "Details Saved" in dashboard_text
+    assert "No need to resubmit unless we ask for updated details" in dashboard_text
+    assert "Submit Updated Details" in dashboard_text
+    assert "Correct the details below and click Retry Connection." not in dashboard_text
+
+    trade_accounts_response = client.get("/dashboard/trade-accounts")
+    trade_accounts_text = html.unescape(trade_accounts_response.get_data(as_text=True))
+
+    assert trade_accounts_response.status_code == 200
+    assert "MT5 Connection Failed" in trade_accounts_text
+    assert "Exness note: if you already submitted your MT5 details" in trade_accounts_text
 
 
 def test_admin_mt5_page_shows_submitted_accounts_without_legacy_request_panels(app_ctx, client):
@@ -1136,6 +1235,60 @@ def test_admin_mt5_page_shows_submitted_accounts_without_legacy_request_panels(a
     assert b"Broker-Server-One" in list_response.data
     assert MT5Account.query.filter_by(trade_account_id=first_account.id).count() == 1
     assert MT5Account.query.filter_by(trade_account_id=second_account.id).count() == 1
+
+
+def test_admin_mt5_page_shows_exness_hint_for_failed_exness_accounts(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-exness-admin-root@example.com",
+        username="mt5-exness-admin-root",
+    )
+
+    exness_user, exness_account = _create_user_with_account(
+        username="mt5-exness-admin-user",
+        email="mt5-exness-admin-user@example.com",
+        account_name="Admin Exness Failed",
+    )
+    broker_user, broker_account = _create_user_with_account(
+        username="mt5-broker-admin-user",
+        email="mt5-broker-admin-user@example.com",
+        account_name="Admin Broker Failed",
+    )
+    db.session.add_all(
+        [
+            MT5Account(
+                user_id=exness_user.id,
+                trade_account_id=exness_account.id,
+                account_number="77118801",
+                investor_password_encrypted=encrypt_password("investor-pass"),
+                server="EXNESS-MT5Real",
+                is_active=False,
+                connection_status=MT5Account.CONNECTION_STATUS_FAILED,
+                connection_error_message="Connection timeout.",
+            ),
+            MT5Account(
+                user_id=broker_user.id,
+                trade_account_id=broker_account.id,
+                account_number="77118802",
+                investor_password_encrypted=encrypt_password("investor-pass"),
+                server="Broker-Live",
+                is_active=False,
+                connection_status=MT5Account.CONNECTION_STATUS_FAILED,
+                connection_error_message="Connection timeout.",
+            ),
+        ]
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard/admin/access/mt5")
+    response_text = html.unescape(response.get_data(as_text=True))
+
+    assert response.status_code == 200
+    assert "Admin Exness Failed" in response_text
+    assert "Admin Broker Failed" in response_text
+    assert "EXNESS-MT5Real" in response_text
+    assert "Exness note: if you already submitted your MT5 details" in response_text
 
 
 def test_admin_mt5_page_shows_requested_setting_up_active_inactive_and_archived_statuses(app_ctx, client):
@@ -1326,17 +1479,20 @@ def test_admin_mt5_delete_actions_render_submit_ready_buttons(app_ctx, client, m
     cleanup_only.mark_for_cleanup()
     db.session.commit()
 
-    response = client.get("/dashboard/admin/access/mt5")
-    html = response.get_data(as_text=True)
+    main_response = client.get("/dashboard/admin/access/mt5")
+    html = main_response.get_data(as_text=True)
+    cleanup_response = client.get("/dashboard/admin/access/mt5?view=cleanup")
+    cleanup_html = cleanup_response.get_data(as_text=True)
 
-    assert response.status_code == 200
+    assert main_response.status_code == 200
     assert 'return confirm("Delete this account\\u0027s MT5 terminal folder' in html
     assert "return confirm('Delete this account" not in html
 
     delete_action = f'action="/dashboard/admin/access/mt5/{cleanup_only_id}/delete"'
-    start = html.index(delete_action)
-    delete_form = html[start : html.index("</form>", start)]
-    assert "Cleanup-only records: delete removes the DB row only." in delete_form
+    assert delete_action not in html
+    start = cleanup_html.index(delete_action)
+    delete_form = cleanup_html[start : cleanup_html.index("</form>", start)]
+    assert "Cleanup-only records without VM metadata can be deleted." in delete_form
     assert "disabled" not in delete_form
     assert "aria-disabled" not in delete_form
 
@@ -2268,6 +2424,10 @@ def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, m
     assert orphan is not None
     assert orphan.is_orphaned
     assert orphan.cleanup_marked_at is not None
+    assert orphan.investor_password_encrypted is None
+    assert orphan.vm_id == "MYFXJOURNAL-SG"
+    assert orphan.terminal_path == r"C:\fake\terminal"
+    assert orphan.appdata_hash == "abc123hash"
     assert MT5AccessRequest.query.filter_by(trade_account_id=trade_account.id).count() == 0
     db.session.refresh(batch)
     assert batch.total_slots_claimed == 0
@@ -2276,14 +2436,16 @@ def test_user_unlink_mt5_clears_requests_and_decrements_batch(app_ctx, client, m
             "args": [r"C:\fake\terminal", "abc123hash"],
             "kwargs": {
                 "mt5_account_id": mt5_account_id,
-                "delete_account_row": True,
-                "clear_cleanup_mark": False,
+                "delete_account_row": False,
+                "clear_cleanup_mark": True,
+                "cleanup_marked_at": orphan.cleanup_marked_at.isoformat(),
                 "target_vm_id": "MYFXJOURNAL-SG",
             },
             "queue": "mt5_setup.myfxjournal-sg",
         },
     ]
     assert b"MT5 sync disconnected for this trade account." in response.data
+    assert b"Saved MT5 credentials were removed" in response.data
 
 
 def test_user_unlink_mt5_without_terminal_skips_cleanup_queue(app_ctx, client, monkeypatch):
@@ -2445,7 +2607,8 @@ def test_root_admin_delete_mt5_without_vm_files_does_not_require_target_vm(app_c
     assert response.status_code == 200
     assert refreshed is not None
     assert refreshed.is_cleanup_only is True
-    assert b"marked for cleanup" in response.data
+    assert refreshed.investor_password_encrypted is None
+    assert b"marked cleanup-only" in response.data
     assert b"Choose a target VM" not in response.data
 
 
@@ -2489,7 +2652,71 @@ def test_root_admin_delete_mt5_passes_target_vm_id(app_ctx, client, monkeypatch)
     assert response.status_code == 200
     assert cleanup_calls
     assert cleanup_calls[0]["account_vm_id"] == "VM-TARGET"
-    assert b"marked for cleanup" in response.data
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert refreshed is not None
+    assert refreshed.vm_id == "VM-TARGET"
+    assert refreshed.investor_password_encrypted is None
+    assert cleanup_calls[0]["kwargs"]["delete_account_row"] is False
+    assert cleanup_calls[0]["kwargs"]["clear_cleanup_mark"] is True
+    assert cleanup_calls[0]["kwargs"]["cleanup_marked_at"] == refreshed.cleanup_marked_at.isoformat()
+    assert cleanup_calls[0]["kwargs"]["target_vm_id"] == "VM-TARGET"
+    assert b"credentials removed and VM cleanup queued" in response.data
+
+
+def test_root_admin_delete_cleanup_only_mt5_with_vm_artifacts_queues_cleanup(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ENCRYPTION_KEY", Fernet.generate_key().decode("utf-8"))
+    monkeypatch.setenv("FXJ_MT5_SETUP_VM_IDS", "VM-TARGET,VM-OTHER")
+    _root_user, _ = _log_in_root_admin(
+        client,
+        email="mt5-delete-cleanup-only-root@example.com",
+        username="mt5-delete-cleanup-only-root",
+    )
+
+    mt5_account = MT5Account(
+        user_id=None,
+        trade_account_id=None,
+        account_number="cleanup-70129994",
+        investor_password_encrypted=None,
+        server="Broker-Delete-Cleanup-Only",
+        terminal_path=r"C:\MT5 User Terminals\cleanup-only\terminal64.exe",
+        appdata_hash="CLEANUPONLYHASH",
+        is_active=False,
+        vm_id="VM-TARGET",
+        cleanup_marked_at=utcnow_naive(),
+    )
+    db.session.add(mt5_account)
+    db.session.commit()
+
+    cleanup_calls = []
+    _stub_mt5_cleanup_queue(monkeypatch, cleanup_calls)
+
+    response = client.post(
+        f"/dashboard/admin/access/mt5/{mt5_account.id}/delete",
+        data={"target_vm_id": "VM-TARGET"},
+        follow_redirects=True,
+    )
+
+    refreshed = db.session.get(MT5Account, mt5_account.id)
+    assert response.status_code == 200
+    assert refreshed is not None
+    assert refreshed.is_cleanup_only is True
+    assert refreshed.terminal_path == r"C:\MT5 User Terminals\cleanup-only\terminal64.exe"
+    assert refreshed.appdata_hash == "CLEANUPONLYHASH"
+    assert cleanup_calls == [
+        {
+            "args": [r"C:\MT5 User Terminals\cleanup-only\terminal64.exe", "CLEANUPONLYHASH"],
+            "kwargs": {
+                "mt5_account_id": mt5_account.id,
+                "delete_account_row": False,
+                "clear_cleanup_mark": True,
+                "cleanup_marked_at": refreshed.cleanup_marked_at.isoformat(),
+                "target_vm_id": "VM-TARGET",
+            },
+            "account_vm_id": "VM-TARGET",
+            "queue": "mt5_setup.myfxjournal-sg",
+        }
+    ]
+    assert b"Queued VM cleanup for cleanup-only MT5 record" in response.data
 
 
 def test_root_admin_vm_delete_files_clears_runtime_fields(app_ctx, client, monkeypatch):

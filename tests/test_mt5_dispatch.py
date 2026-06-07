@@ -272,6 +272,7 @@ def test_queue_mt5_account_cleanup_reports_missing_vm_skip(app_ctx, monkeypatch)
 
 def test_queue_mt5_account_cleanup_uses_target_vm_override(app_ctx, monkeypatch):
     from helpers.core import queue_mt5_account_cleanup
+    from helpers.utils import utcnow_naive
     from models import MT5Account, TradeAccount, User, db
 
     captured = {}
@@ -310,18 +311,22 @@ def test_queue_mt5_account_cleanup_uses_target_vm_override(app_ctx, monkeypatch)
     )
     db.session.add(mt5_account)
     db.session.commit()
+    cleanup_marked_at = utcnow_naive()
 
     warning = queue_mt5_account_cleanup(
         mt5_account=mt5_account,
         log_context="test",
         target_vm_id="VM-TARGET",
+        clear_cleanup_mark=True,
+        cleanup_marked_at=cleanup_marked_at,
     )
     assert warning is None
     assert captured["queue"] == "mt5_setup.vm-target"
     assert captured["kwargs"]["target_vm_id"] == "VM-TARGET"
     assert captured["kwargs"]["mt5_account_id"] == mt5_account.id
     assert captured["kwargs"]["delete_account_row"] is False
-    assert captured["kwargs"]["clear_cleanup_mark"] is False
+    assert captured["kwargs"]["clear_cleanup_mark"] is True
+    assert captured["kwargs"]["cleanup_marked_at"] == cleanup_marked_at.isoformat()
 
 
 def test_queue_mt5_accounts_cleanup_for_vm_queues_matching_accounts(app_ctx, monkeypatch):

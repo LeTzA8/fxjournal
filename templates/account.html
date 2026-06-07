@@ -167,7 +167,7 @@
                 <hr class="section-divider">
                 <h3 class="section-title danger-title">Delete Account</h3>
                 <p class="helper-note danger-note">
-                    This permanently deletes your user profile, all trade accounts, all trades, and all linked AI reviews. This action cannot be undone.
+                    This permanently deletes your user profile, trade accounts, trades, and linked AI reviews. If MT5 was connected, saved MT5 credentials are removed and limited VM cleanup metadata may remain until terminal cleanup finishes. This action cannot be undone.
                 </p>
                 <button
                     type="button"
@@ -290,7 +290,7 @@
             <span class="soft">Danger Zone</span>
         </div>
         <p class="helper-note danger-note">
-            This permanently deletes your user profile, all trade accounts, all trades, and all linked AI reviews. This action cannot be undone.
+            This permanently deletes your user profile, trade accounts, trades, and linked AI reviews. If MT5 was connected, saved MT5 credentials are removed and limited VM cleanup metadata may remain until terminal cleanup finishes. This action cannot be undone.
         </p>
         <form action="{{ url_for('account.delete_account') }}" method="post" class="delete-account-form" data-themed-validation>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

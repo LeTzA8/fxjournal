@@ -711,6 +711,18 @@ class MT5Account(db.Model):
         return self.is_orphaned and not self.investor_password_encrypted
 
     @property
+    def has_saved_credentials(self):
+        return bool(str(self.investor_password_encrypted or "").strip())
+
+    @property
+    def can_run_mt5_login(self):
+        return (
+            self.has_saved_credentials
+            and not self.is_orphaned
+            and self.cleanup_marked_at is None
+        )
+
+    @property
     def is_archived(self):
         return self.archived_at is not None
 
@@ -720,7 +732,6 @@ class MT5Account(db.Model):
         self.account_number = mask_mt5_account_number_for_cleanup(self.account_number)
         self.investor_password_encrypted = None
         self.is_active = False
-        self.vm_id = None
         self.cleanup_marked_at = marked_at or self.cleanup_marked_at or utcnow_naive()
         self.archived_at = None
         self.archive_reason = None
@@ -728,6 +739,8 @@ class MT5Account(db.Model):
         self.mt5_consent_version = None
         self.connection_status = self.CONNECTION_STATUS_PENDING
         self.connection_error_message = None
+        self.sync_paused_at = None
+        self.sync_pause_reason = None
 
 
 class MT5SyncVMState(db.Model):
