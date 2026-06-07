@@ -28,6 +28,14 @@ FIND_COMPANY_BUTTON_TEXT = "Find your company"
 DEFAULT_BROKER_SEARCH_TERM = "Exness"
 DEFAULT_DISCOVERY_WAIT_SECONDS = 15
 
+# Characters that pywinauto's send_keys / type_keys treat as control sequences.
+_SEND_KEYS_SPECIAL = re.compile(r"([{}()+^%~])")
+
+
+def _escape_send_keys_text(text: str) -> str:
+    """Wrap each send_keys special character in braces so it is typed literally."""
+    return _SEND_KEYS_SPECIAL.sub(r"{\1}", text)
+
 IGNORED_FILE_PATTERNS = (
     re.compile(r"(^|[\\/])logs([\\/]|$)", re.IGNORECASE),
     re.compile(r"(^|[\\/])history([\\/]|$)", re.IGNORECASE),
@@ -82,6 +90,8 @@ class RefreshResult:
     job_id: str | None = None
     mt5_account_id: int | None = None
     admin_user_id: int | None = None
+    dialog_already_open: bool | None = None
+    dialog_controls_debug: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -336,26 +346,103 @@ def _connect_application_for_pid(pid: int):
     return Application(backend="uia").connect(process=pid, timeout=20)
 
 
+def _window_looks_like_open_account_dialog(window) -> bool:
+    """
+    Return True if the window contains controls typical of the Open an Account dialog.
+    Used as a content-based fallback when the window title does not match exactly.
+    """
+    indicators = (
+        {"title": FIND_COMPANY_BUTTON_TEXT, "control_type": "Button"},
+        {"title": "Find Your Company", "control_type": "Button"},
+        {"title_re": r"(?i)find your company", "control_type": "Button"},
+        {"title_re": r"(?i)list of companies"},
+        {"title_re": r"(?i)select a company"},
+        {"title": COMPANY_SEARCH_PLACEHOLDER},
+        {"title_re": r"(?i)add new company", "control_type": "Edit"},
+    )
+    for kwargs in indicators:
+        try:
+            if window.child_window(**kwargs).exists(timeout=0.3):
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def _find_open_account_dialog(app, pid: int):
+    """
+    Return a pywinauto window handle for the Open an Account dialog owned by pid,
+    or None if not found. Matches by title first, then by dialog content.
+    """
     titles = _collect_window_titles_for_pid(pid)
+
+    # Pass 1: title contains "Open an Account"
     for title in titles:
         if OPEN_ACCOUNT_DIALOG_TITLE.casefold() in title.casefold():
-            return app.window(title_re=re.escape(title))
-    return app.window(title_re=f".*{re.escape(OPEN_ACCOUNT_DIALOG_TITLE)}.*")
+            try:
+                win = app.window(title_re=re.escape(title))
+                if win.exists(timeout=0.5):
+                    logger.debug(
+                        "broker refresh: dialog matched by title '%s' pid=%s", title, pid
+                    )
+                    return win
+            except Exception:
+                pass
 
+    # Pass 2: pywinauto regex fallback (catches partial-title edge cases)
+    try:
+        win = app.window(title_re=f".*{re.escape(OPEN_ACCOUNT_DIALOG_TITLE)}.*")
+        if win.exists(timeout=0.5):
+            return win
+    except Exception:
+        pass
 
-def _open_account_dialog_from_main(app, pid: int, *, timeout_seconds: float):
-    existing = None
-    deadline = time.monotonic() + min(timeout_seconds, 10)
-    while time.monotonic() < deadline:
+    # Pass 3: content-based detection — look for "Find your company" button etc.
+    for title in titles:
+        if not title:
+            continue
         try:
-            existing = _find_open_account_dialog(app, pid)
-            if existing.exists(timeout=0.2):
-                return existing
+            win = app.window(title_re=f".*{re.escape(title)}.*")
+            if not win.exists(timeout=0.3):
+                continue
+            if _window_looks_like_open_account_dialog(win):
+                logger.debug(
+                    "broker refresh: dialog matched by content in window '%s' pid=%s", title, pid
+                )
+                return win
         except Exception:
-            pass
+            continue
+
+    return None
+
+
+def _open_account_dialog_from_main(
+    app, pid: int, *, timeout_seconds: float
+) -> tuple[Any, bool]:
+    """
+    Return ``(dialog, already_open)``.
+
+    Checks whether the Open an Account dialog is already visible first (some MT5
+    builds open it automatically on launch).  If not, tries to open it via UI
+    controls and keyboard.  Raises RuntimeError if the dialog cannot be found
+    after all attempts, including the titles seen for debugging.
+    """
+    # Phase 1: immediate check – already open?
+    dialog = _find_open_account_dialog(app, pid)
+    if dialog is not None:
+        logger.debug("broker refresh: dialog was already open pid=%s", pid)
+        return dialog, True
+
+    # Phase 2: short wait for auto-popup (some builds show it after splash)
+    early_deadline = time.monotonic() + min(timeout_seconds * 0.15, 5)
+    while time.monotonic() < early_deadline:
+        dialog = _find_open_account_dialog(app, pid)
+        if dialog is not None:
+            logger.debug("broker refresh: dialog appeared automatically pid=%s", pid)
+            return dialog, True
         time.sleep(0.4)
 
+    # Phase 3: active UI attempts to open the dialog
     titles = _collect_window_titles_for_pid(pid)
     for title in titles:
         if not title:
@@ -364,21 +451,24 @@ def _open_account_dialog_from_main(app, pid: int, *, timeout_seconds: float):
             window = app.window(title_re=f".*{re.escape(title)}.*")
             if not window.exists(timeout=0.5):
                 continue
-            for label in ("Open an Account", "Open An Account", "open an account"):
-                try:
-                    window.child_window(title=label, control_type="Hyperlink").click_input()
-                    dialog = _find_open_account_dialog(app, pid)
-                    if dialog.exists(timeout=5):
-                        return dialog
-                except Exception:
-                    pass
-                try:
-                    window.child_window(title=label, control_type="Button").click_input()
-                    dialog = _find_open_account_dialog(app, pid)
-                    if dialog.exists(timeout=5):
-                        return dialog
-                except Exception:
-                    pass
+
+            # Try "Open an Account" hyperlink or button on the main window
+            for label in ("Open an Account", "Open An Account"):
+                for ctl_type in ("Hyperlink", "Button"):
+                    try:
+                        window.child_window(title=label, control_type=ctl_type).click_input()
+                        time.sleep(0.5)
+                        dialog = _find_open_account_dialog(app, pid)
+                        if dialog is not None:
+                            logger.debug(
+                                "broker refresh: opened dialog via %s '%s' pid=%s",
+                                ctl_type, label, pid,
+                            )
+                            return dialog, False
+                    except Exception:
+                        pass
+
+            # Keyboard fallback: Alt+F → O (File → Open an Account)
             try:
                 window.set_focus()
                 from pywinauto.keyboard import send_keys
@@ -386,14 +476,63 @@ def _open_account_dialog_from_main(app, pid: int, *, timeout_seconds: float):
                 send_keys("%f")
                 time.sleep(0.4)
                 send_keys("o")
+                time.sleep(0.5)
                 dialog = _find_open_account_dialog(app, pid)
-                if dialog.exists(timeout=5):
-                    return dialog
+                if dialog is not None:
+                    logger.debug("broker refresh: opened dialog via Alt+F,O pid=%s", pid)
+                    return dialog, False
             except Exception:
                 pass
         except Exception:
             continue
-    raise RuntimeError("could not open Open an Account dialog for launched PID")
+
+    # Phase 4: last-chance re-check after all UI attempts
+    late_deadline = time.monotonic() + min(timeout_seconds * 0.2, 8)
+    while time.monotonic() < late_deadline:
+        dialog = _find_open_account_dialog(app, pid)
+        if dialog is not None:
+            return dialog, False
+        time.sleep(0.5)
+
+    titles_seen = _collect_window_titles_for_pid(pid)
+    logger.warning(
+        "broker refresh: Open an Account dialog not found pid=%s titles_seen=%s",
+        pid,
+        titles_seen,
+    )
+    raise RuntimeError(
+        f"could not open Open an Account dialog for launched PID {pid}. "
+        f"Window titles seen: {titles_seen}"
+    )
+
+
+def _collect_dialog_controls_debug(dialog) -> list[dict]:
+    """Enumerate controls in the dialog for failure diagnostics (capped at 60)."""
+    controls: list[dict] = []
+    try:
+        for control in dialog.descendants():
+            try:
+                entry: dict[str, Any] = {"name": _control_label(control)}
+                try:
+                    entry["control_type"] = control.friendly_class_name()
+                except Exception:
+                    pass
+                try:
+                    entry["enabled"] = control.is_enabled()
+                except Exception:
+                    pass
+                try:
+                    entry["visible"] = control.is_visible()
+                except Exception:
+                    pass
+                controls.append(entry)
+                if len(controls) >= 60:
+                    break
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return controls
 
 
 def _control_label(control) -> str:
@@ -472,6 +611,18 @@ def _find_company_search_input(dialog):
 
 
 def _fill_company_search_input(search_input, term: str) -> None:
+    """
+    Focus the search input and fill it with *term*.
+
+    Strategy (in order):
+    1. ``click_input()`` to give the control physical focus.
+    2. ``set_edit_text()`` via UIA ValuePattern — the safest approach (no
+       special-character escaping needed, no foreground dependency).
+    3. If that fails, click again, clear with Ctrl+A/Backspace, then
+       ``type_keys()`` with special characters escaped.
+
+    After filling, log whether the value could be verified.
+    """
     term = str(term or "").strip()
     if not term:
         raise ValueError("broker search term is required")
@@ -481,8 +632,7 @@ def _fill_company_search_input(search_input, term: str) -> None:
     except Exception:
         pass
 
-    # Physical click is required for many MT5 builds; set_focus alone leaves the
-    # dialog window as the keyboard target so type_keys hits the shell.
+    # Physical click so the control — not the dialog frame — owns keyboard focus.
     try:
         search_input.click_input()
     except Exception:
@@ -490,12 +640,18 @@ def _fill_company_search_input(search_input, term: str) -> None:
 
     time.sleep(0.25)
 
+    # Preferred: UIA ValuePattern set — works regardless of foreground window.
     try:
         search_input.set_edit_text(term)
+        _verify_search_input_value(search_input, term)
         return
     except Exception:
-        logger.debug("broker refresh set_edit_text failed; falling back to type_keys", exc_info=True)
+        logger.debug(
+            "broker refresh: set_edit_text failed, falling back to type_keys",
+            exc_info=True,
+        )
 
+    # Fallback: physical click + clear + type_keys with escaped text.
     try:
         search_input.click_input()
     except Exception:
@@ -504,7 +660,29 @@ def _fill_company_search_input(search_input, term: str) -> None:
         search_input.type_keys("^a{BACKSPACE}", set_foreground=True)
     except Exception:
         pass
-    search_input.type_keys(term, with_spaces=True, set_foreground=True)
+    escaped = _escape_send_keys_text(term)
+    search_input.type_keys(escaped, with_spaces=True, set_foreground=True)
+    _verify_search_input_value(search_input, term)
+
+
+def _verify_search_input_value(search_input, expected: str) -> None:
+    """Log a warning if the edit control value does not contain the expected term."""
+    try:
+        current = ""
+        try:
+            current = search_input.get_value() or ""
+        except Exception:
+            current = search_input.window_text() or ""
+        if expected.lower() in current.lower():
+            logger.debug("broker refresh: search field verified, value='%s'", current)
+        else:
+            logger.warning(
+                "broker refresh: search field value '%s' does not contain expected '%s'",
+                current,
+                expected,
+            )
+    except Exception:
+        pass
 
 
 def _click_find_company(dialog):
@@ -597,11 +775,26 @@ def refresh_broker_server_cache(
         result.window_titles_seen = titles_fn(pid)
 
         app = connect_fn(pid)
-        dialog = _open_account_dialog_from_main(app, pid, timeout_seconds=timeout_seconds)
+        dialog, dialog_already_open = _open_account_dialog_from_main(
+            app, pid, timeout_seconds=timeout_seconds
+        )
+        result.dialog_already_open = dialog_already_open
         result.window_titles_seen = titles_fn(pid)
+        logger.debug(
+            "broker refresh: dialog obtained pid=%s already_open=%s titles=%s",
+            pid,
+            dialog_already_open,
+            result.window_titles_seen,
+        )
 
         search_input = _find_company_search_input(dialog)
         if search_input is None:
+            result.dialog_controls_debug = _collect_dialog_controls_debug(dialog)
+            logger.warning(
+                "broker refresh: company search input not found pid=%s controls=%s",
+                pid,
+                result.dialog_controls_debug[:10],
+            )
             raise RuntimeError("company search input not found in Open an Account dialog")
         _fill_company_search_input(search_input, term)
 
@@ -622,7 +815,20 @@ def refresh_broker_server_cache(
         result.error_message = str(exc)
         if pid is not None:
             result.window_titles_seen = titles_fn(pid)
-            result.screenshot_path = _capture_pid_screenshot(pid, failed_step=result.failed_step or "error")
+            result.screenshot_path = _capture_pid_screenshot(
+                pid, failed_step=result.failed_step or "error"
+            )
+        logger.warning(
+            "broker refresh: failed pid=%s terminal_path=%s failed_step=%s "
+            "titles=%s dialog_already_open=%s controls_debug_count=%d error=%s",
+            pid,
+            result.terminal_path,
+            result.failed_step,
+            result.window_titles_seen,
+            result.dialog_already_open,
+            len(result.dialog_controls_debug),
+            result.error_message,
+        )
     finally:
         terminate_fn(pid, terminal_path=result.terminal_path)
         result.finished_at = _iso(_utc_now())
