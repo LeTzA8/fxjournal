@@ -405,9 +405,11 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         setup_worker = workers.get("mt5_setup") or {}
         vm_accounts = accounts_by_vm.get(vm_id, [])
         is_unknown_bucket = vm_id == "unknown"
+        if is_unknown_bucket:
+            # Accounts with no stamped vm_id are still listed in the MT5 accounts table.
+            continue
         if (
-            not is_unknown_bucket
-            and vm_id not in configured_vm_ids
+            vm_id not in configured_vm_ids
             and not vm_accounts
             and not _worker_is_online(sync_worker, now=now)
             and not _worker_is_online(setup_worker, now=now)
@@ -431,8 +433,7 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
         active_count = sum(1 for row in vm_accounts if getattr(row, "is_active", False))
         vm_scoped_depths = scoped_queue_depths.get(vm_id, {})
         worker_missing = (
-            not is_unknown_bucket
-            and active_count > 0
+            active_count > 0
             and not _worker_is_online(sync_worker, now=now)
             and not _worker_is_online(setup_worker, now=now)
         )
@@ -478,13 +479,13 @@ def build_admin_mt5_vm_overview(*, mt5_accounts, mt5_statuses_by_account_id):
                 ),
                 "scoped_queue_depths": vm_scoped_depths,
                 "worker_missing_warning": worker_missing,
-                "is_unknown_bucket": is_unknown_bucket,
+                "is_unknown_bucket": False,
             }
         )
 
     vm_rows.sort(
         key=lambda row: (
-            row["is_unknown_bucket"],
+            -(row["active_account_count"] or 0),
             -(row["account_count"] or 0),
             row["vm_id"],
         )

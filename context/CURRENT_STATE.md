@@ -12,6 +12,11 @@ How to use:
 
 ## Recent Changes
 
+### 2026-06-07 — MT5 admin VM cards: hide unknown bucket
+
+- MT5 Worker VMs panel now omits the `unknown` vm_id bucket; accounts without a stamped `vm_id` remain in the MT5 accounts table.
+- Known VM cards sort by active account count first.
+
 ### 2026-06-07 — Futures dashboard: metrics in left column
 
 - Futures dashboards move the six account metric cards into the left column (`metric-grid-side`) below week-on-week trends and latest closed trade; CFD layout unchanged.

@@ -97,14 +97,13 @@ def test_build_admin_mt5_vm_overview_groups_accounts_by_vm(app_ctx, monkeypatch)
         mt5_statuses_by_account_id=statuses,
     )
 
-    assert overview["vm_count"] == 2
+    assert overview["vm_count"] == 1
     assert overview["scoped_queue_depths"]["vm-east"]["mt5_sync"] == 2
     vm_by_id = {row["vm_id"]: row for row in overview["vms"]}
     assert vm_by_id["vm-east"]["account_count"] == 1
     assert vm_by_id["vm-east"]["region"] == "US East"
     assert vm_by_id["vm-east"]["sync_worker_online"] is True
-    assert vm_by_id["unknown"]["account_count"] == 1
-    assert vm_by_id["unknown"]["accounts"][0]["account_number"] == "222222"
+    assert "unknown" not in vm_by_id
     assert "vm-east" in overview["selectable_vm_ids"]
     assert overview["show_vm_target_selector"] is bool(overview["selectable_vm_ids"])
 
