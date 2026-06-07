@@ -164,6 +164,21 @@ def _create_celery():
         "broker_connection_retry": True,
         "broker_connection_max_retries": None,
         "worker_prefetch_multiplier": 1,
+        # Keep the broker TCP connection alive through NAT/firewall idle-timeout
+        # windows. Without keepalive the connection silently drops (especially on
+        # cross-network workers like the Hyonix VM -> Render Redis), and the
+        # acks_late ACK between tasks then blocks for the full Windows TCP
+        # retransmit timeout (~3-4 min) before detecting the dead socket.
+        "broker_transport_options": {
+            "socket_keepalive": True,
+            "socket_timeout": 5,
+            "socket_connect_timeout": 5,
+        },
+        "result_backend_transport_options": {
+            "socket_keepalive": True,
+            "socket_timeout": 5,
+            "socket_connect_timeout": 5,
+        },
         "beat_schedule": {
             "cleanup-weekly-checkins": {
                 "task": "celery_workers.weekly_tasks.cleanup_weekly_checkins_task",

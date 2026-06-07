@@ -70,7 +70,16 @@ def _client():
     if _redis_client is None:
         try:
             _redis_client = Redis.from_url(
-                _normalize_redis_url(_get_redis_url()), decode_responses=True
+                _normalize_redis_url(_get_redis_url()),
+                decode_responses=True,
+                # Keep the TCP connection alive through NAT/firewall idle-timeout
+                # windows (cross-network from VM -> Render Redis). Without keepalive
+                # the connection silently drops and the default infinite socket_timeout
+                # causes every post-task Redis write to block for ~3-4 minutes waiting
+                # for the Windows TCP retransmit sequence to give up.
+                socket_keepalive=True,
+                socket_timeout=5,
+                socket_connect_timeout=5,
             )
         except RedisError as exc:
             raise CacheUnavailableError(f"Redis unavailable: {exc}") from exc
