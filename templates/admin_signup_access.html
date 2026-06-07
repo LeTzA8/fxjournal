@@ -452,9 +452,21 @@
                             This does not run automatically during setup or sync.
                         </p>
                     </div>
-                    <span class="chip {{ 'success-chip' if mt5_broker_discovery_refresh_enabled else 'default' }}">
-                        Feature {{ "enabled" if mt5_broker_discovery_refresh_enabled else "disabled" }}
-                    </span>
+                    <div class="mt5-debug-feature-toggle">
+                        <span class="chip {{ 'success-chip' if mt5_broker_discovery_refresh_enabled else 'default' }}">
+                            Real runs {{ "enabled" if mt5_broker_discovery_refresh_enabled else "disabled" }}
+                        </span>
+                        <form
+                            action="{{ url_for('admin_mt5_broker_discovery_refresh_feature') }}"
+                            method="post"
+                            class="mt5-broker-refresh-feature-form"
+                            onsubmit="return confirm({{ ('Enable real MT5 broker discovery refresh? This allows non-dry-run jobs that launch MT5 UI automation on the selected VM.' if not mt5_broker_discovery_refresh_enabled else 'Disable real MT5 broker discovery refresh? Dry-run routing tests will still work.')|tojson }});"
+                        >
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="enabled" value="{{ '0' if mt5_broker_discovery_refresh_enabled else '1' }}">
+                            <button type="submit" class="ghost-btn">{{ "Disable" if mt5_broker_discovery_refresh_enabled else "Enable" }} real broker refresh</button>
+                        </form>
+                    </div>
                 </div>
                 <form
                     id="mt5BrokerRefreshForm"

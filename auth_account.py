@@ -5297,6 +5297,48 @@ def register_public_auth_routes(
             "success",
         )
 
+    @app.route("/dashboard/admin/access/mt5/broker-discovery-refresh/feature", methods=["POST"])
+    @root_admin_required
+    def admin_mt5_broker_discovery_refresh_feature():
+        admin_user = get_current_root_admin_user()
+        enabled = str(request.form.get("enabled") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        try:
+            set_bool_app_setting(
+                MT5_BROKER_DISCOVERY_REFRESH_ENABLED_KEY,
+                enabled,
+                updated_by_user_id=admin_user.id if admin_user else None,
+            )
+            db.session.commit()
+        except Exception as exc:
+            db.session.rollback()
+            current_app.logger.warning(
+                "Admin MT5 broker discovery refresh setting update failed: %s",
+                sanitize_error_message(exc),
+            )
+            return build_admin_redirect(
+                "mt5",
+                "Could not update broker discovery refresh right now.",
+                "error",
+            )
+        current_app.logger.info(
+            "Admin set MT5 broker discovery refresh enabled=%s admin_user_id=%s",
+            enabled,
+            session.get("user_id"),
+        )
+        return build_admin_redirect(
+            "mt5",
+            (
+                "Real MT5 broker discovery refresh is now "
+                f"{'enabled' if enabled else 'disabled'}. Dry-run remains available either way."
+            ),
+            "success",
+        )
+
     @app.route("/dashboard/admin/users/<int:target_user_id>/view-dashboard")
     @root_admin_required
     def admin_view_user_dashboard(target_user_id):

@@ -949,6 +949,13 @@ a.admin-stat-tile:hover {
     gap: 0.85rem;
 }
 
+.mt5-debug-feature-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+}
+
 .mt5-debug-tools-grid {
     display: grid;
     gap: 0.75rem;

@@ -9,7 +9,11 @@ import pytest
 import app as app_module
 from helpers.core import SUPPORT_VIEW_ADMIN_USER_SESSION_KEY, SUPPORT_VIEW_TARGET_USER_SESSION_KEY
 from models import UpgradeWaitlistEntry, User, db
-from helpers.app_settings import MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, get_bool_app_setting
+from helpers.app_settings import (
+    MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY,
+    MT5_BROKER_DISCOVERY_REFRESH_ENABLED_KEY,
+    get_bool_app_setting,
+)
 
 
 ALL_ADMIN_ROUTES = [
@@ -62,6 +66,7 @@ ALL_ADMIN_ROUTES = [
     ("post", "/dashboard/admin/access/mt5/1/archive"),
     ("post", "/dashboard/admin/access/mt5/1/reactivate"),
     ("post", "/dashboard/admin/access/mt5/broker-discovery-refresh"),
+    ("post", "/dashboard/admin/access/mt5/broker-discovery-refresh/feature"),
     ("get", "/dashboard/admin/access/mt5/broker-discovery-refresh/test-job"),
     ("post", "/dashboard/admin/access/mt5/vm-delete-files"),
     ("post", "/dashboard/admin/access/codes/create"),
@@ -111,6 +116,7 @@ ROOT_ONLY_ADMIN_ROUTES = [
     ("post", "/dashboard/admin/access/mt5/1/archive"),
     ("post", "/dashboard/admin/access/mt5/1/reactivate"),
     ("post", "/dashboard/admin/access/mt5/broker-discovery-refresh"),
+    ("post", "/dashboard/admin/access/mt5/broker-discovery-refresh/feature"),
     ("get", "/dashboard/admin/access/mt5/broker-discovery-refresh/test-job"),
     ("post", "/dashboard/admin/access/mt5/vm-delete-files"),
     ("post", "/dashboard/admin/access/codes/create"),
@@ -330,6 +336,26 @@ def test_root_admin_can_toggle_mt5_auto_bar_sync(app_ctx, client, monkeypatch):
 
     assert response.status_code == 302
     assert get_bool_app_setting(MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY, False) is True
+
+
+def test_root_admin_can_toggle_mt5_broker_discovery_refresh_feature(app_ctx, client, monkeypatch):
+    monkeypatch.setenv("ADMIN_USER_EMAILS", "root-broker-refresh@example.com")
+    root = _create_user(
+        username="root-broker-refresh",
+        email="root-broker-refresh@example.com",
+        is_admin=True,
+    )
+    db.session.commit()
+    _login_as(client, root)
+
+    response = client.post(
+        "/dashboard/admin/access/mt5/broker-discovery-refresh/feature",
+        data={"enabled": "1"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert get_bool_app_setting(MT5_BROKER_DISCOVERY_REFRESH_ENABLED_KEY, False) is True
 
 
 def test_admin_users_export_returns_csv_for_all_users(app_ctx, client, monkeypatch):
