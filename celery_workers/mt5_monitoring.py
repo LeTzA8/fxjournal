@@ -324,14 +324,18 @@ def check_mt5_sync_health():
     now_naive = now_utc.replace(tzinfo=None)
     threshold = timedelta(minutes=_alert_threshold_minutes())
 
-    accounts = (
-        MT5Account.query.filter(
-            MT5Account.is_active.is_(True),
-            MT5Account.user_id.isnot(None),
-            MT5Account.trade_account_id.isnot(None),
-            MT5Account.archived_at.is_(None),
-        ).all()
-    )
+    from helpers.schema_compat import mt5_trial_columns_available
+
+    alert_filters = [
+        MT5Account.is_active.is_(True),
+        MT5Account.user_id.isnot(None),
+        MT5Account.trade_account_id.isnot(None),
+        MT5Account.archived_at.is_(None),
+    ]
+    if mt5_trial_columns_available():
+        alert_filters.append(MT5Account.sync_paused_at.is_(None))
+
+    accounts = MT5Account.query.filter(*alert_filters).all()
 
     active_vm_ids = set()
     stale_by_vm = {}
