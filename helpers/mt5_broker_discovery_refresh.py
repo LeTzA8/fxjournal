@@ -94,6 +94,14 @@ class RefreshResult:
     dialog_controls_debug: list[dict] = field(default_factory=list)
     search_input_strategy: str | None = None
     dialog_rect: dict | None = None
+    search_input_help_text: str | None = None
+    search_input_rect: dict | None = None
+    search_input_keyboard_focusable: bool | None = None
+    search_input_verified: bool | None = None
+    search_input_value_after_type: str | None = None
+    search_button_strategy: str | None = None
+    meaningful_cache_changed: bool | None = None
+    success_uncertain: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -589,6 +597,68 @@ def _fill_search_via_coordinates(dialog, term: str) -> None:
     )
 
 
+def _get_help_text(control) -> str:
+    """Return the UIA HelpText property value, or empty string if unavailable."""
+    for _fn in (
+        lambda: control.element_info.help_text,
+        lambda: control.element_info.element.CurrentHelpText,
+    ):
+        try:
+            val = _fn()
+            if val:
+                return str(val).strip()
+        except Exception:
+            continue
+    return ""
+
+
+def _is_keyboard_focusable(control) -> bool | None:
+    """Return the UIA IsKeyboardFocusable property, or None if unavailable."""
+    for _fn in (
+        lambda: bool(control.element_info.is_keyboard_focusable),
+        lambda: bool(control.element_info.element.CurrentIsKeyboardFocusable),
+    ):
+        try:
+            return _fn()
+        except Exception:
+            continue
+    return None
+
+
+def _is_usable_edit(ctrl) -> bool:
+    """Return True when the control exists, is visible, and is enabled (best-effort)."""
+    try:
+        if not ctrl.exists(timeout=0):
+            return False
+    except Exception:
+        pass
+    try:
+        if not ctrl.is_visible():
+            return False
+    except Exception:
+        pass
+    try:
+        if not ctrl.is_enabled():
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def _get_control_rect(control) -> dict | None:
+    """Return {left, top, width, height} for *control*, or None on failure."""
+    try:
+        rect = control.rectangle()
+        return {
+            "left": int(rect.left),
+            "top": int(rect.top),
+            "width": int(rect.width()),
+            "height": int(rect.height()),
+        }
+    except Exception:
+        return None
+
+
 def _control_label(control) -> str:
     try:
         text = (control.window_text() or "").strip()
@@ -636,46 +706,78 @@ def _iter_search_field_candidates(dialog):
             continue
 
 
-def _find_company_search_input(dialog):
-    for kwargs in (
-        {"title": COMPANY_SEARCH_PLACEHOLDER},
-        {"title_re": r".*add new company.*", "control_type": "Edit"},
-        {"title_re": r".*companyname.*", "control_type": "Edit"},
-        {"title_re": r".*company\.com.*", "control_type": "Edit"},
-        {"title_re": r".*company.*", "control_type": "Edit"},
-    ):
+def _find_company_search_input(dialog) -> tuple[Any | None, str | None]:
+    """
+    Locate the company search Edit inside the Open an Account dialog.
+
+    Returns ``(control, strategy)`` where *strategy* is one of:
+
+    * ``"helptext_edit"``      — found via UIA HelpText keyword match
+    * ``"first_visible_edit"`` — found as the first visible, enabled Edit
+    * ``(None, None)``         — not found; caller should use coordinate fallback
+
+    The MT5 Open an Account dialog exposes the search input as an Edit with a
+    *blank Name* but a descriptive HelpText
+    ``"add new company like 'CompanyName' or address 'company.com'"``.
+    Title/Name-based UIA searches always fail for this control; HelpText is
+    the primary discriminator.  ``friendly_class_name`` is checked manually
+    after ``dialog.descendants()`` to avoid relying on pywinauto's control-type
+    filter, which has been observed to return empty results in some backends.
+    """
+    _HT_KEYWORDS = ("add new company", "companyname", "company.com")
+
+    try:
+        all_descendants = list(dialog.descendants())
+    except Exception:
+        all_descendants = []
+
+    edit_controls: list[Any] = []
+    for ctrl in all_descendants:
         try:
-            control = dialog.child_window(**kwargs)
-            if control.exists(timeout=1):
-                return control
+            if ctrl.friendly_class_name() in ("Edit", "ComboBox"):
+                edit_controls.append(ctrl)
         except Exception:
             continue
 
-    best_control = None
-    best_score = 0
-    for control in _iter_search_field_candidates(dialog):
-        score = _company_search_label_score(_control_label(control))
-        if score > best_score:
-            best_score = score
-            best_control = control
+    # Pass 1: HelpText keyword match — primary discriminator for MT5 search input.
+    for ctrl in edit_controls:
+        try:
+            ht = _get_help_text(ctrl).casefold()
+            if any(kw in ht for kw in _HT_KEYWORDS) and _is_usable_edit(ctrl):
+                logger.debug(
+                    "broker refresh: search input found via HelpText '%s'", ht[:60]
+                )
+                return ctrl, "helptext_edit"
+        except Exception:
+            continue
 
-    if best_control is not None and best_score >= 5:
-        return best_control
-    return None
+    # Pass 2: first visible enabled Edit — the dialog has only one text input,
+    # so the first match is the search field.
+    for ctrl in edit_controls:
+        try:
+            if _is_usable_edit(ctrl):
+                logger.debug("broker refresh: search input found as first visible Edit")
+                return ctrl, "first_visible_edit"
+        except Exception:
+            continue
+
+    return None, None
 
 
-def _fill_company_search_input(search_input, term: str) -> None:
+def _fill_company_search_input(search_input, term: str) -> tuple[bool, str | None]:
     """
     Focus the search input and fill it with *term*.
 
-    Strategy (in order):
-    1. ``click_input()`` to give the control physical focus.
-    2. ``set_edit_text()`` via UIA ValuePattern — the safest approach (no
-       special-character escaping needed, no foreground dependency).
-    3. If that fails, click again, clear with Ctrl+A/Backspace, then
-       ``type_keys()`` with special characters escaped.
+    Returns ``(verified, value_after_type)``.
 
-    After filling, log whether the value could be verified.
+    Strategy (in order):
+    1. ``set_focus()`` then ``set_edit_text()`` via UIA ValuePattern — safest
+       (no special-character escaping, no foreground dependency).
+    2. If that fails, click, Ctrl+A/Backspace, then ``type_keys()`` with
+       special characters escaped.
+
+    After filling, attempt to read back the value via ValuePattern, then
+    window_text, then legacy properties.
     """
     term = str(term or "").strip()
     if not term:
@@ -697,8 +799,8 @@ def _fill_company_search_input(search_input, term: str) -> None:
     # Preferred: UIA ValuePattern set — works regardless of foreground window.
     try:
         search_input.set_edit_text(term)
-        _verify_search_input_value(search_input, term)
-        return
+        verified, value_after = _verify_search_input_value(search_input, term)
+        return verified, value_after
     except Exception:
         logger.debug(
             "broker refresh: set_edit_text failed, falling back to type_keys",
@@ -716,39 +818,63 @@ def _fill_company_search_input(search_input, term: str) -> None:
         pass
     escaped = _escape_send_keys_text(term)
     search_input.type_keys(escaped, with_spaces=True, set_foreground=True)
-    _verify_search_input_value(search_input, term)
+    verified, value_after = _verify_search_input_value(search_input, term)
+    return verified, value_after
 
 
-def _verify_search_input_value(search_input, expected: str) -> None:
-    """Log a warning if the edit control value does not contain the expected term."""
+def _verify_search_input_value(search_input, expected: str) -> tuple[bool, str]:
+    """
+    Try to read the current value of the search input.
+
+    Attempts three sources in order: ValuePattern (``get_value``), window_text,
+    legacy properties.  Returns ``(verified, value)`` where *verified* is True
+    when *expected* is found inside *value*.
+    """
     try:
         current = ""
         try:
             current = search_input.get_value() or ""
         except Exception:
-            current = search_input.window_text() or ""
+            pass
+        if not current:
+            try:
+                current = search_input.window_text() or ""
+            except Exception:
+                pass
+        if not current:
+            try:
+                current = search_input.legacy_properties().get("Value", "") or ""
+            except Exception:
+                pass
+
         if expected.lower() in current.lower():
             logger.debug("broker refresh: search field verified, value='%s'", current)
+            return True, current
         else:
             logger.warning(
                 "broker refresh: search field value '%s' does not contain expected '%s'",
                 current,
                 expected,
             )
+            return False, current
     except Exception:
-        pass
+        return False, ""
 
 
-def _click_find_company(dialog, *, search_input=None) -> None:
+def _click_find_company(dialog, *, search_input=None) -> str:
     """
-    Click the Find your company button.  Three strategies in priority order:
+    Click the Find your company button.  Returns a strategy label string.
 
-    1. UIA button by name — most reliable.
-    2. Dialog-relative coordinate click at (0.88, 0.22) — matches the button
-       position observed in MT5 Open an Account dialog screenshots.
-    3. Tab+Enter keyboard fallback — only attempted when *search_input* is not
-       None, i.e. UIA found and focused the search Edit, so it is likely still
-       focused and Tab reaches the button.
+    Priority order:
+    1. ``"uia_button"``              — UIA Button by name (most reliable;
+                                       Accessibility Insights confirms the button
+                                       has Name = "Find your company").
+    2. ``"relative_coordinate_button"`` — dialog-relative click at (0.88, 0.22).
+    3. ``"keyboard_tab_enter"``      — Tab+Enter; only when *search_input* is not
+                                       None (UIA edit was found and is likely
+                                       still focused).
+
+    Raises RuntimeError if all three strategies fail.
     """
     # 1. UIA button
     for label in (FIND_COMPANY_BUTTON_TEXT, "Find Your Company"):
@@ -757,7 +883,7 @@ def _click_find_company(dialog, *, search_input=None) -> None:
             if button.exists(timeout=1):
                 button.click_input()
                 logger.debug("broker refresh: Find your company clicked via UIA button")
-                return
+                return "uia_button"
         except Exception:
             continue
 
@@ -767,11 +893,9 @@ def _click_find_company(dialog, *, search_input=None) -> None:
         logger.debug(
             "broker refresh: Find your company clicked via relative coordinates (0.88, 0.22)"
         )
-        return
+        return "relative_coordinate_button"
     except Exception as coord_exc:
-        logger.debug(
-            "broker refresh: coordinate button click failed: %s", coord_exc
-        )
+        logger.debug("broker refresh: coordinate button click failed: %s", coord_exc)
 
     # 3. Tab+Enter — only when UIA search input was found (still likely focused)
     if search_input is not None:
@@ -780,13 +904,35 @@ def _click_find_company(dialog, *, search_input=None) -> None:
             dialog.set_focus()
             send_keys("{TAB}{ENTER}")
             logger.debug("broker refresh: Find your company submitted via Tab+Enter")
-            return
+            return "keyboard_tab_enter"
         except Exception:
             pass
 
     raise RuntimeError(
         "Find your company: UIA button, coordinate, and keyboard fallbacks all failed"
     )
+
+
+def _is_meaningful_cache_change(files_changed: list) -> bool:
+    """
+    Return True when *files_changed* contains at least one path that is not
+    ``config/terminal.ini``.
+
+    MT5 always rewrites ``config/terminal.ini`` during a session regardless of
+    whether broker discovery succeeded, so a diff limited only to that file is
+    not evidence of a successful cache update.
+    """
+    for fc in files_changed:
+        if hasattr(fc, "path"):
+            path = fc.path
+        elif isinstance(fc, dict):
+            path = fc.get("path", "")
+        else:
+            path = str(fc)
+        path_norm = path.replace("\\", "/").lower()
+        if "config/terminal.ini" not in path_norm:
+            return True
+    return False
 
 
 def _close_open_account_dialog(dialog):
@@ -877,25 +1023,36 @@ def refresh_broker_server_cache(
             result.window_titles_seen,
         )
 
-        search_input = _find_company_search_input(dialog)
+        search_input, strategy = _find_company_search_input(dialog)
+        result.search_input_strategy = strategy
+
         if search_input is not None:
-            result.search_input_strategy = "uia_edit"
-            _fill_company_search_input(search_input, term)
+            # Collect control-level debug info before we touch it.
+            result.search_input_help_text = _get_help_text(search_input) or None
+            result.search_input_rect = _get_control_rect(search_input)
+            result.search_input_keyboard_focusable = _is_keyboard_focusable(search_input)
+
+            verified, value_after = _fill_company_search_input(search_input, term)
+            result.search_input_verified = verified
+            result.search_input_value_after_type = value_after or None
         else:
-            # UIA could not expose the Edit control — collect controls for debug,
-            # then fall back to dialog-relative coordinate click.
+            # UIA exposed no Edit control — collect descendants for debug, then
+            # fall back to dialog-relative coordinate click.
             result.dialog_controls_debug = _collect_dialog_controls_debug(dialog)
             result.search_input_strategy = "relative_coordinate_input"
             logger.warning(
-                "broker refresh: UIA edit not found, using coordinate fallback. "
+                "broker refresh: no Edit found via UIA, using coordinate fallback. "
                 "pid=%s dialog_rect=%s controls=%s",
                 pid,
                 dialog_rect,
                 result.dialog_controls_debug[:10],
             )
             _fill_search_via_coordinates(dialog, term)
+            result.search_input_verified = False
 
-        _click_find_company(dialog, search_input=search_input)
+        result.search_button_strategy = _click_find_company(
+            dialog, search_input=search_input
+        )
         wait_seconds = min(max(timeout_seconds / 4, 10), 20)
         time.sleep(wait_seconds)
         result.window_titles_seen = titles_fn(pid)
@@ -903,7 +1060,27 @@ def refresh_broker_server_cache(
         _close_open_account_dialog(dialog)
         after_snapshot = snapshot_terminal_data_dir(result.terminal_data_dir)
         result.files_changed = diff_terminal_snapshots(before_snapshot, after_snapshot)
-        result.success = True
+        result.meaningful_cache_changed = _is_meaningful_cache_change(result.files_changed)
+
+        input_verified = result.search_input_verified or False
+        meaningful_change = result.meaningful_cache_changed or False
+
+        if input_verified or meaningful_change:
+            result.success = True
+        else:
+            # Flow completed but neither input verification nor a meaningful file
+            # change can confirm success.
+            result.success = False
+            result.success_uncertain = True
+            result.failed_step = "success_verification"
+            logger.warning(
+                "broker refresh: flow completed but success uncertain — "
+                "input_verified=%s meaningful_cache_changed=%s files=%s pid=%s",
+                input_verified,
+                meaningful_change,
+                [f.path for f in result.files_changed],
+                pid,
+            )
     except Exception as exc:
         result.success = False
         if result.failed_step is None:
@@ -918,6 +1095,7 @@ def refresh_broker_server_cache(
         logger.warning(
             "broker refresh: failed pid=%s terminal_path=%s failed_step=%s "
             "titles=%s dialog_already_open=%s dialog_rect=%s strategy=%s "
+            "input_verified=%s meaningful_cache_changed=%s "
             "controls_debug_count=%d error=%s",
             pid,
             result.terminal_path,
@@ -926,6 +1104,8 @@ def refresh_broker_server_cache(
             result.dialog_already_open,
             dialog_rect,
             result.search_input_strategy,
+            result.search_input_verified,
+            result.meaningful_cache_changed,
             len(result.dialog_controls_debug),
             result.error_message,
         )

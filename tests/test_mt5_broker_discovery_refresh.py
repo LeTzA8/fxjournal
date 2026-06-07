@@ -17,7 +17,10 @@ from helpers.mt5_broker_discovery_refresh import (
     _fill_company_search_input,
     _find_company_search_input,
     _find_open_account_dialog,
+    _get_control_rect,
     _get_dialog_rect,
+    _get_help_text,
+    _is_meaningful_cache_change,
     _terminate_pid,
     _window_looks_like_open_account_dialog,
     diff_terminal_snapshots,
@@ -183,7 +186,7 @@ class _FakeFullDialog:
         return self
 
     def descendants(self, control_type=None):
-        return []
+        return [self]
 
     def wait(self, *args, **kwargs):
         return None
@@ -217,6 +220,13 @@ class _FakeFullDialog:
 
     def is_visible(self):
         return True
+
+    # element_info stub: help_text and is_keyboard_focusable are empty/True
+    class _FakeElemInfo:
+        help_text = ""
+        is_keyboard_focusable = True
+
+    element_info = _FakeElemInfo()
 
 
 class _FakeApp:
@@ -367,58 +377,87 @@ def test_company_search_label_score_prefers_placeholder():
     assert _company_search_label_score("") == 5
 
 
-def test_find_company_search_input_prefers_placeholder_edit():
-    class _Edit:
-        def __init__(self, label):
-            self.label = label
+def test_find_company_search_input_prefers_helptext_edit():
+    """Edit whose HelpText contains 'add new company' is returned as helptext_edit."""
+
+    class _ElemInfo:
+        help_text = COMPANY_SEARCH_PLACEHOLDER
+
+    class _PlaceholderEdit:
+        def friendly_class_name(self):
+            return "Edit"
 
         def exists(self, timeout=0):
             return True
 
-        def window_text(self):
-            return self.label
+        def is_visible(self):
+            return True
+
+        def is_enabled(self):
+            return True
+
+        element_info = _ElemInfo()
+
+    class _OtherEdit:
+        def friendly_class_name(self):
+            return "Edit"
+
+        def exists(self, timeout=0):
+            return True
+
+        def is_visible(self):
+            return True
+
+        def is_enabled(self):
+            return True
+
+        class _Empty:
+            help_text = ""
+
+        element_info = _Empty()
+
+    placeholder_edit = _PlaceholderEdit()
 
     class _Dialog:
-        def child_window(self, **kwargs):
-            raise RuntimeError("no direct child match")
+        def descendants(self):
+            # Other edit listed first — placeholder must still win via HelpText.
+            return [_OtherEdit(), placeholder_edit]
 
-        def descendants(self, control_type="Edit"):
-            if control_type not in ("Edit", "ComboBox"):
-                return []
-            return [
-                _Edit("Account name"),
-                _Edit(COMPANY_SEARCH_PLACEHOLDER),
-            ]
-
-    found = _find_company_search_input(_Dialog())
-    assert found is not None
-    assert found.label == COMPANY_SEARCH_PLACEHOLDER
+    ctrl, strategy = _find_company_search_input(_Dialog())
+    assert ctrl is placeholder_edit
+    assert strategy == "helptext_edit"
 
 
 def test_find_company_search_input_falls_back_to_first_visible_edit():
-    """When no label matches the placeholder, the first existing Edit is returned."""
-    class _Edit:
-        def __init__(self, label):
-            self.label = label
+    """When no HelpText matches, the first visible enabled Edit is returned."""
+
+    class _ElemInfo:
+        help_text = ""
+
+    class _UnnamedEdit:
+        def friendly_class_name(self):
+            return "Edit"
 
         def exists(self, timeout=0):
             return True
 
-        def window_text(self):
-            return self.label
+        def is_visible(self):
+            return True
+
+        def is_enabled(self):
+            return True
+
+        element_info = _ElemInfo()
+
+    edit = _UnnamedEdit()
 
     class _Dialog:
-        def child_window(self, **kwargs):
-            raise RuntimeError("no direct child match")
+        def descendants(self):
+            return [edit]
 
-        def descendants(self, control_type="Edit"):
-            if control_type not in ("Edit", "ComboBox"):
-                return []
-            # Unnamed edit — gets score 5 (unnamed fallback)
-            return [_Edit("")]
-
-    found = _find_company_search_input(_Dialog())
-    assert found is not None
+    ctrl, strategy = _find_company_search_input(_Dialog())
+    assert ctrl is edit
+    assert strategy == "first_visible_edit"
 
 
 def test_fill_company_search_input_clicks_before_set_edit_text():
@@ -480,6 +519,184 @@ def test_fill_company_search_input_falls_back_to_type_keys_when_set_edit_text_fa
 
     _fill_company_search_input(_FakeInput(), "Exness")
     assert any(k[0] == "type_keys" for k in calls if isinstance(k, tuple))
+
+
+# ---------------------------------------------------------------------------
+# _get_help_text / _get_control_rect / _is_meaningful_cache_change
+# ---------------------------------------------------------------------------
+
+def test_get_help_text_reads_element_info_help_text():
+    class _ElemInfo:
+        help_text = "add new company like 'CompanyName'"
+
+    class _Ctrl:
+        element_info = _ElemInfo()
+
+    assert "add new company" in _get_help_text(_Ctrl())
+
+
+def test_get_help_text_returns_empty_on_failure():
+    class _Ctrl:
+        pass  # no element_info
+
+    assert _get_help_text(_Ctrl()) == ""
+
+
+def test_get_control_rect_returns_dict_from_rectangle():
+    rect = _get_control_rect(_FakeFullDialog())
+    assert rect is not None
+    assert rect["left"] == 100
+    assert rect["width"] == 600
+
+
+def test_get_control_rect_returns_none_on_failure():
+    class _NoRect:
+        def rectangle(self):
+            raise RuntimeError("not available")
+
+    assert _get_control_rect(_NoRect()) is None
+
+
+def test_is_meaningful_cache_change_returns_false_for_terminal_ini_only():
+    from helpers.mt5_broker_discovery_refresh import FileChange
+
+    changes = [FileChange(path="config/terminal.ini", change_type="modified")]
+    assert _is_meaningful_cache_change(changes) is False
+
+
+def test_is_meaningful_cache_change_returns_true_for_servers_dat():
+    from helpers.mt5_broker_discovery_refresh import FileChange
+
+    changes = [
+        FileChange(path="config/terminal.ini", change_type="modified"),
+        FileChange(path="bases/servers.dat", change_type="modified"),
+    ]
+    assert _is_meaningful_cache_change(changes) is True
+
+
+def test_is_meaningful_cache_change_returns_false_for_empty():
+    assert _is_meaningful_cache_change([]) is False
+
+
+def test_fill_company_search_input_returns_verified_true_when_value_matches():
+    class _FakeInput:
+        def wait(self, *args, **kwargs):
+            pass
+
+        def click_input(self):
+            pass
+
+        def set_focus(self):
+            pass
+
+        def set_edit_text(self, value):
+            pass
+
+        def type_keys(self, *args, **kwargs):
+            pass
+
+        def get_value(self):
+            return "Exness"
+
+        def window_text(self):
+            return ""
+
+    verified, value_after = _fill_company_search_input(_FakeInput(), "Exness")
+    assert verified is True
+    assert "Exness" in (value_after or "")
+
+
+def test_fill_company_search_input_returns_verified_false_when_value_empty():
+    class _FakeInput:
+        def wait(self, *args, **kwargs):
+            pass
+
+        def click_input(self):
+            pass
+
+        def set_focus(self):
+            pass
+
+        def set_edit_text(self, value):
+            pass
+
+        def type_keys(self, *args, **kwargs):
+            pass
+
+        def get_value(self):
+            return ""
+
+        def window_text(self):
+            return ""
+
+    verified, value_after = _fill_company_search_input(_FakeInput(), "Exness")
+    assert verified is False
+
+
+def test_click_find_company_returns_strategy_string():
+    """_click_find_company returns 'uia_button' when button found via UIA."""
+    class _Button:
+        def exists(self, timeout=0):
+            return True
+
+        def click_input(self):
+            pass
+
+    class _Dialog:
+        def child_window(self, **kwargs):
+            return _Button()
+
+        def rectangle(self):
+            return _FakeRect()
+
+        def click_input(self, coords=None):
+            pass
+
+        def set_focus(self):
+            pass
+
+    strategy = _click_find_company(_Dialog())
+    assert strategy == "uia_button"
+
+
+def test_refresh_success_uncertain_when_no_verification_and_no_meaningful_change(monkeypatch):
+    """When input is not verified and no meaningful file changed, success_uncertain=True."""
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._wait_for_pid_window",
+        lambda pid, timeout_seconds=0: None,
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
+        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), False),
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._find_company_search_input",
+        lambda dialog: (None, None),
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._fill_search_via_coordinates",
+        lambda dialog, term: None,
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._click_find_company",
+        lambda dialog, search_input=None: "uia_button",
+    )
+    monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
+
+    result = refresh_broker_server_cache(
+        terminal_path=r"C:\MT5Terminals\mt5_1_1\terminal64.exe",
+        terminal_data_dir=None,
+        broker_search_term="Exness",
+        dry_run=False,
+        launch_process=lambda _: 5555,
+        connect_application=lambda _: _FakeApp(),
+        collect_window_titles=lambda pid: ["Open an Account"],
+        terminate_process=lambda pid, *, terminal_path=None: None,
+    )
+    assert result.success is False
+    assert result.success_uncertain is True
+    assert result.failed_step == "success_verification"
+    assert result.meaningful_cache_changed is False
 
 
 # ---------------------------------------------------------------------------
@@ -597,8 +814,9 @@ def test_click_find_company_enter_fallback_requires_search_input():
 
 
 def test_refresh_uses_coordinate_fallback_when_uia_edit_not_found(monkeypatch):
-    """When _find_company_search_input returns None, result.search_input_strategy
-    should be 'relative_coordinate_input' and the run should not raise."""
+    """When _find_company_search_input returns (None, None), coordinate fallback is
+    used, strategy is set, and success_uncertain=True (no verification or meaningful
+    file change)."""
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._wait_for_pid_window",
         lambda pid, timeout_seconds=0: None,
@@ -609,7 +827,7 @@ def test_refresh_uses_coordinate_fallback_when_uia_edit_not_found(monkeypatch):
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._find_company_search_input",
-        lambda dialog: None,
+        lambda dialog: (None, None),
     )
     coord_fill_called = []
     monkeypatch.setattr(
@@ -618,7 +836,7 @@ def test_refresh_uses_coordinate_fallback_when_uia_edit_not_found(monkeypatch):
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._click_find_company",
-        lambda dialog, search_input=None: None,
+        lambda dialog, search_input=None: "uia_button",
     )
     monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
 
@@ -632,12 +850,15 @@ def test_refresh_uses_coordinate_fallback_when_uia_edit_not_found(monkeypatch):
         collect_window_titles=lambda pid: ["Open an Account"],
         terminate_process=lambda pid, *, terminal_path=None: None,
     )
-    assert result.success is True
+    assert result.success is False
+    assert result.success_uncertain is True
     assert result.search_input_strategy == "relative_coordinate_input"
     assert coord_fill_called == ["Exness"]
 
 
 def test_refresh_sets_uia_edit_strategy_when_input_found(monkeypatch):
+    """When UIA finds the Edit control, strategy is helptext_edit or first_visible_edit
+    (never relative_coordinate_input) and success=True when input is verified."""
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._wait_for_pid_window",
         lambda pid, timeout_seconds=0: None,
@@ -659,7 +880,7 @@ def test_refresh_sets_uia_edit_strategy_when_input_found(monkeypatch):
         terminate_process=lambda pid, *, terminal_path=None: None,
     )
     assert result.success is True
-    assert result.search_input_strategy == "uia_edit"
+    assert result.search_input_strategy in ("helptext_edit", "first_visible_edit")
 
 
 def test_refresh_result_includes_dialog_rect(monkeypatch):
@@ -781,7 +1002,7 @@ def test_refresh_records_failed_step_and_window_titles(monkeypatch):
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._find_company_search_input",
-        lambda dialog: None,
+        lambda dialog: (None, None),
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._fill_search_via_coordinates",
