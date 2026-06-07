@@ -53,9 +53,17 @@ from helpers.core import (
     sanitize_error_message,
 )
 from helpers.admin_mt5_ops import (
+    ADMIN_MT5_VIEW_ACCOUNTS,
+    ADMIN_MT5_VIEW_CLEANUP,
+    build_admin_mt5_cleanup_status,
     build_admin_mt5_vm_overview,
     collect_admin_selectable_vm_ids,
+    is_admin_mt5_cleanup_record,
     load_admin_mt5_monitor_snapshot,
+    normalize_admin_mt5_view,
+    partition_admin_mt5_accounts,
+    admin_mt5_operational_record_expr,
+    admin_mt5_cleanup_record_expr,
     resolve_admin_target_vm_id,
 )
 from helpers.celery_dispatch import describe_celery_broker, dispatch_celery_task
@@ -67,6 +75,7 @@ from helpers.mt5_dispatch import (
     mt5_dispatch_was_skipped,
     mt5_setup_queue,
 )
+from helpers.mt5_copy import EXNESS_MT5_SETUP_UI_NOTE, is_exness_mt5_account
 from helpers.trade_bars import has_complete_m5_chart_coverage
 from helpers.app_settings import (
     MT5_AUTO_BAR_SYNC_PUBLIC_USERS_KEY,
@@ -2710,7 +2719,14 @@ def register_public_auth_routes(
             "suspended_users": int(totals[4] or 0),
             "admin_users": int(totals[5] or 0),
             "signup_codes": db.session.query(func.count(SignupCode.id)).scalar() or 0,
-            "mt5_accounts": db.session.query(func.count(MT5Account.id)).scalar() or 0,
+            "mt5_accounts": db.session.query(func.count(MT5Account.id))
+            .filter(*admin_mt5_operational_record_expr())
+            .scalar()
+            or 0,
+            "mt5_cleanup_records": db.session.query(func.count(MT5Account.id))
+            .filter(admin_mt5_cleanup_record_expr())
+            .scalar()
+            or 0,
             "waitlist_people": db.session.query(
                 func.count(func.distinct(UpgradeWaitlistEntry.email))
             ).scalar()
@@ -2752,6 +2768,8 @@ def register_public_auth_routes(
                 MT5_BROKER_DISCOVERY_REFRESH_ENABLED_KEY,
                 False,
             ),
+            "exness_mt5_failed_note": EXNESS_MT5_SETUP_UI_NOTE,
+            "is_exness_mt5_account": is_exness_mt5_account,
         }
 
     def render_admin_page(*, admin_user, section, **extra_context):
@@ -5099,13 +5117,22 @@ def register_public_auth_routes(
     def admin_mt5_accounts():
         admin_user = get_current_root_admin_user()
         mt5_sort = normalize_admin_mt5_sort(request.args.get("sort"))
-        mt5_accounts = apply_admin_mt5_sort(
+        mt5_view = normalize_admin_mt5_view(request.args.get("view"))
+        all_mt5_accounts = apply_admin_mt5_sort(
             MT5Account.query.options(
                 joinedload(MT5Account.user),
                 joinedload(MT5Account.trade_account),
             ),
             mt5_sort,
         ).all()
+        operational_accounts, cleanup_records = partition_admin_mt5_accounts(all_mt5_accounts)
+        mt5_accounts = (
+            cleanup_records
+            if mt5_view == ADMIN_MT5_VIEW_CLEANUP
+            else operational_accounts
+        )
+        mt5_operational_count = len(operational_accounts)
+        mt5_cleanup_count = len(cleanup_records)
         mt5_trade_counts_by_account = {}
         trade_account_ids = sorted(
             {
@@ -5154,20 +5181,29 @@ def register_public_auth_routes(
             request_row = None
             if account.trade_account_id is not None:
                 request_row = latest_request_by_trade_account_id.get(account.trade_account_id)
-            mt5_statuses_by_account_id[account.id] = _build_admin_mt5_status(
-                account=account,
-                request_row=request_row,
-            )
-        orphaned_mt5_count = sum(1 for account in mt5_accounts if account.is_orphaned)
+            if mt5_view == ADMIN_MT5_VIEW_CLEANUP:
+                mt5_statuses_by_account_id[account.id] = build_admin_mt5_cleanup_status(account)
+            else:
+                mt5_statuses_by_account_id[account.id] = _build_admin_mt5_status(
+                    account=account,
+                    request_row=request_row,
+                )
         failed_mt5_count = sum(
             1
-            for account in mt5_accounts
+            for account in operational_accounts
             if getattr(account, "connection_status", None) == "failed"
-            and not account.is_orphaned
         )
         mt5_vm_overview = build_admin_mt5_vm_overview(
-            mt5_accounts=mt5_accounts,
-            mt5_statuses_by_account_id=mt5_statuses_by_account_id,
+            mt5_accounts=operational_accounts,
+            mt5_statuses_by_account_id={
+                account.id: _build_admin_mt5_status(
+                    account=account,
+                    request_row=latest_request_by_trade_account_id.get(account.trade_account_id)
+                    if account.trade_account_id is not None
+                    else None,
+                )
+                for account in operational_accounts
+            },
         )
         from helpers.mt5_server_seed_shortlist import list_active_mt5_server_seed_shortlist
 
@@ -5176,7 +5212,7 @@ def register_public_auth_routes(
             1 for row in mt5_server_seed_shortlist if row.status == MT5ServerSeedShortlist.STATUS_OPEN
         )
         mt5_debug_account_options = []
-        for account in mt5_accounts:
+        for account in operational_accounts:
             terminal_path = str(getattr(account, "terminal_path", "") or "").strip()
             if not terminal_path:
                 continue
@@ -5199,10 +5235,12 @@ def register_public_auth_routes(
             admin_user=admin_user,
             section="mt5",
             mt5_accounts=mt5_accounts,
+            mt5_view=mt5_view,
             mt5_sort=mt5_sort,
             mt5_trade_counts_by_account=mt5_trade_counts_by_account,
             mt5_statuses_by_account_id=mt5_statuses_by_account_id,
-            orphaned_mt5_count=orphaned_mt5_count,
+            mt5_operational_count=mt5_operational_count,
+            mt5_cleanup_count=mt5_cleanup_count,
             failed_mt5_count=failed_mt5_count,
             mt5_vm_overview=mt5_vm_overview,
             mt5_server_seed_shortlist=mt5_server_seed_shortlist,
@@ -5704,6 +5742,12 @@ def register_public_auth_routes(
                 "That MT5 account is still waiting for VM cleanup to finish. Try Setup Terminal again after cleanup completes.",
                 "error",
             )
+        if not account.has_saved_credentials:
+            return build_admin_redirect(
+                "mt5",
+                "Saved MT5 credentials are no longer available for that account. Ask the user to reconnect MT5.",
+                "error",
+            )
 
         setup_broker = "unknown"
         target_vm_id, target_vm_error = _parse_admin_target_vm_id()
@@ -6071,6 +6115,12 @@ def register_public_auth_routes(
                 "That MT5 record is cleanup-only now. Delete it manually from admin when you're ready.",
                 "error",
             )
+        if account.cleanup_marked_at is not None or not account.has_saved_credentials:
+            return build_admin_redirect(
+                "mt5",
+                "That MT5 account no longer has saved credentials available for sync.",
+                "error",
+            )
         if not account.is_active:
             return build_admin_redirect("mt5", "That MT5 account is inactive.", "error")
 
@@ -6248,6 +6298,12 @@ def register_public_auth_routes(
                 "That MT5 record is cleanup-only. Cannot recalibrate.",
                 "error",
             )
+        if account.cleanup_marked_at is not None or not account.has_saved_credentials:
+            return build_admin_redirect(
+                "mt5",
+                "That MT5 account no longer has saved credentials available for recalibration.",
+                "error",
+            )
         if not account.is_active:
             return build_admin_redirect("mt5", "That MT5 account is inactive.", "error")
         if not account.trade_account or str(account.trade_account.account_type or "").strip().upper() != "CFD":
@@ -6312,6 +6368,12 @@ def register_public_auth_routes(
         account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
         if account.is_orphaned:
             return build_admin_redirect("mt5", "That MT5 record is cleanup-only. Cannot backfill bars.", "error")
+        if account.cleanup_marked_at is not None or not account.has_saved_credentials:
+            return build_admin_redirect(
+                "mt5",
+                "That MT5 account no longer has saved credentials available for bar backfill.",
+                "error",
+            )
         if not account.is_active:
             return build_admin_redirect("mt5", "That MT5 account is inactive. Cannot backfill bars.", "error")
         force_backfill = str(request.form.get("force_backfill_bars") or "").strip().lower() in {
@@ -6530,6 +6592,7 @@ def register_public_auth_routes(
         try:
             mt5_account = MT5Account.query.filter_by(trade_account_id=request_row.trade_account_id).first()
             request_row.status = MT5AccessRequest.STATUS_REJECTED
+            request_row.request_note = None
             request_row.reviewed_at = utcnow_naive()
             request_row.reviewed_by_user_id = admin_user.id if admin_user else None
             if (
@@ -6558,10 +6621,60 @@ def register_public_auth_routes(
     @root_admin_required
     def admin_mt5_delete_account(mt5_account_id):
         account = MT5Account.query.filter_by(id=mt5_account_id).first_or_404()
+        had_runtime_artifacts = bool(
+            str(account.terminal_path or "").strip() or str(account.appdata_hash or "").strip()
+        )
 
         if account.is_cleanup_only:
-            # Already an orphan with no credentials — safe to delete immediately.
             account_number = account.account_number
+            if had_runtime_artifacts:
+                target_vm_id, target_vm_error = _parse_admin_target_vm_id()
+                if target_vm_error:
+                    return build_admin_redirect("mt5", target_vm_error, "error")
+
+                from helpers.core import resolve_mt5_cleanup_target_vm
+
+                resolved_vm_id, cleanup_vm_error = resolve_mt5_cleanup_target_vm(
+                    mt5_account=account,
+                    target_vm_id=target_vm_id,
+                )
+                if cleanup_vm_error:
+                    return build_admin_redirect("mt5", cleanup_vm_error, "error")
+
+                if account.cleanup_marked_at is None or (resolved_vm_id and account.vm_id != resolved_vm_id):
+                    try:
+                        if resolved_vm_id:
+                            account.vm_id = resolved_vm_id
+                        account.cleanup_marked_at = utcnow_naive()
+                        db.session.commit()
+                    except (OperationalError, IntegrityError):
+                        db.session.rollback()
+                        return build_admin_redirect(
+                            "mt5",
+                            "Could not stamp cleanup state for that MT5 account. Please try again.",
+                            "error",
+                        )
+
+                cleanup_warning = queue_mt5_account_cleanup(
+                    mt5_account=account,
+                    log_context="admin cleanup-only delete",
+                    delete_row_on_success=False,
+                    clear_cleanup_mark=True,
+                    cleanup_marked_at=account.cleanup_marked_at,
+                    target_vm_id=resolved_vm_id,
+                )
+                if cleanup_warning:
+                    return build_admin_redirect("mt5", cleanup_warning, "error")
+
+                return build_admin_redirect(
+                    "mt5",
+                    (
+                        f"Queued VM cleanup for cleanup-only MT5 record {account_number}. "
+                        "Credentials are already removed; runtime metadata will clear after cleanup succeeds."
+                    ),
+                    "success",
+                )
+
             try:
                 db.session.delete(account)
                 db.session.commit()
@@ -6578,11 +6691,7 @@ def register_public_auth_routes(
                 "success",
             )
 
-        # Queue cleanup BEFORE marking — paths are read from the account at queue time.
-        had_runtime_artifacts = bool(
-            str(account.terminal_path or "").strip() or str(account.appdata_hash or "").strip()
-        )
-
+        resolved_vm_id = None
         if had_runtime_artifacts:
             target_vm_id, target_vm_error = _parse_admin_target_vm_id()
             if target_vm_error:
@@ -6597,19 +6706,13 @@ def register_public_auth_routes(
             if cleanup_vm_error:
                 return build_admin_redirect("mt5", cleanup_vm_error, "error")
 
-            cleanup_warning = queue_mt5_account_cleanup(
-                mt5_account=account,
-                log_context="admin delete",
-                delete_row_on_success=True,
-                target_vm_id=resolved_vm_id,
-            )
-            if cleanup_warning:
-                return build_admin_redirect("mt5", cleanup_warning, "error")
-
         account_number = account.account_number
 
         try:
+            if had_runtime_artifacts and resolved_vm_id:
+                account.vm_id = resolved_vm_id
             account.mark_for_cleanup()
+            cleanup_marked_at = account.cleanup_marked_at
             db.session.commit()
         except (OperationalError, IntegrityError):
             db.session.rollback()
@@ -6620,12 +6723,26 @@ def register_public_auth_routes(
             )
 
         if had_runtime_artifacts:
+            cleanup_warning = queue_mt5_account_cleanup(
+                mt5_account=account,
+                log_context="admin delete",
+                delete_row_on_success=False,
+                clear_cleanup_mark=True,
+                cleanup_marked_at=cleanup_marked_at,
+                target_vm_id=resolved_vm_id,
+            )
+            if cleanup_warning:
+                return build_admin_redirect(
+                    "mt5",
+                    f"MT5 account {account_number} credentials were removed, but {cleanup_warning}",
+                    "error",
+                )
             success_message = (
-                f"MT5 account {account_number} marked for cleanup. "
-                "DB row will be removed after terminal cleanup succeeds."
+                f"MT5 account {account_number} credentials removed and VM cleanup queued. "
+                "Runtime metadata will be cleared after terminal cleanup succeeds."
             )
         else:
-            success_message = f"MT5 account {account_number} marked for cleanup."
+            success_message = f"MT5 account {account_number} credentials removed and marked cleanup-only."
 
         return build_admin_redirect(
             "mt5",

@@ -22,6 +22,69 @@ from helpers.mt5_dispatch import (
 
 _CELERY_VM_ID_PREFIX = re.compile(r"^mt5-(?:sync|setup)@(.+)$", re.IGNORECASE)
 
+ADMIN_MT5_VIEW_ACCOUNTS = "accounts"
+ADMIN_MT5_VIEW_CLEANUP = "cleanup"
+ADMIN_MT5_VIEW_CHOICES = frozenset({ADMIN_MT5_VIEW_ACCOUNTS, ADMIN_MT5_VIEW_CLEANUP})
+
+
+def normalize_admin_mt5_view(raw_value):
+    key = str(raw_value or "").strip().lower()
+    return ADMIN_MT5_VIEW_CLEANUP if key == ADMIN_MT5_VIEW_CLEANUP else ADMIN_MT5_VIEW_ACCOUNTS
+
+
+def is_admin_mt5_cleanup_record(account) -> bool:
+    """Rows retained for VM cleanup/audit rather than normal admin operations."""
+    if getattr(account, "is_orphaned", False):
+        return True
+    if getattr(account, "cleanup_marked_at", None) is not None:
+        return True
+    return not bool(getattr(account, "has_saved_credentials", False))
+
+
+def admin_mt5_operational_record_expr():
+    from models import MT5Account
+
+    return (
+        MT5Account.user_id.isnot(None),
+        MT5Account.trade_account_id.isnot(None),
+        MT5Account.cleanup_marked_at.is_(None),
+        MT5Account.investor_password_encrypted.isnot(None),
+        MT5Account.investor_password_encrypted != "",
+    )
+
+
+def admin_mt5_cleanup_record_expr():
+    from sqlalchemy import not_, and_
+
+    return not_(and_(*admin_mt5_operational_record_expr()))
+
+
+def build_admin_mt5_cleanup_status(account):
+    has_vm_artifacts = bool(
+        str(getattr(account, "terminal_path", "") or "").strip()
+        or str(getattr(account, "appdata_hash", "") or "").strip()
+    )
+    if has_vm_artifacts:
+        return {
+            "label": "Cleanup Pending",
+            "chip_class": "warning-chip",
+        }
+    return {
+        "label": "Credentials Removed",
+        "chip_class": "default",
+    }
+
+
+def partition_admin_mt5_accounts(accounts):
+    operational = []
+    cleanup_records = []
+    for account in accounts or ():
+        if is_admin_mt5_cleanup_record(account):
+            cleanup_records.append(account)
+        else:
+            operational.append(account)
+    return operational, cleanup_records
+
 
 def _normalize_admin_vm_id(value):
     text_value = str(value or "").strip()

@@ -113,6 +113,17 @@
             <span class="admin-stat-label">MT5 accounts</span>
             <span class="admin-stat-value">{{ overview.mt5_accounts }}</span>
           </span>
+          {% if mt5_cleanup_count is defined and mt5_cleanup_count %}
+          <a href="{{ url_for('admin_mt5_accounts', view='cleanup') }}" class="admin-stat-tile admin-stat-tile--warn">
+            <span class="admin-stat-label">Cleanup records</span>
+            <span class="admin-stat-value">{{ mt5_cleanup_count }}</span>
+          </a>
+          {% elif overview.mt5_cleanup_records is defined and overview.mt5_cleanup_records %}
+          <a href="{{ url_for('admin_mt5_accounts', view='cleanup') }}" class="admin-stat-tile admin-stat-tile--warn">
+            <span class="admin-stat-label">Cleanup records</span>
+            <span class="admin-stat-value">{{ overview.mt5_cleanup_records }}</span>
+          </a>
+          {% endif %}
           <span class="admin-stat-tile admin-stat-tile--static">
             <span class="admin-stat-label">VMs seen</span>
             <span class="admin-stat-value">{{ vm_overview.get('vm_count', 0) }}</span>
@@ -127,12 +138,6 @@
           <span class="admin-stat-tile admin-stat-tile--alert">
             <span class="admin-stat-label">Servers to seed</span>
             <span class="admin-stat-value">{{ mt5_server_seed_open_count }}</span>
-          </span>
-          {% endif %}
-          {% if orphaned_mt5_count is defined and orphaned_mt5_count %}
-          <span class="admin-stat-tile admin-stat-tile--static admin-stat-tile--warn">
-            <span class="admin-stat-label">Cleanup-only</span>
-            <span class="admin-stat-value">{{ orphaned_mt5_count }}</span>
           </span>
           {% endif %}
           <span class="admin-stat-tile admin-stat-tile--static">
