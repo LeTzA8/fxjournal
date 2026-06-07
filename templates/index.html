@@ -1226,7 +1226,7 @@
                                 aria-label="What disconnect does while setup is queued"
                                 aria-describedby="mt5-queued-disconnect-tooltip"
                             >?</button>
-                            <span id="mt5-queued-disconnect-tooltip" class="help-tooltip-bubble" role="tooltip">Disconnect cancels setup and removes saved MT5 credentials for this account. Your trades stay in the journal.</span>
+                            <span id="mt5-queued-disconnect-tooltip" class="help-tooltip-bubble" role="tooltip">Disconnect cancels setup and removes saved MT5 credentials for this account. Limited VM cleanup metadata may remain until terminal cleanup finishes. Your trades stay in the journal.</span>
                         </span>
                     </p>
                     {% elif mt5_selected_status == "setting_up" and mt5_selected_account %}
@@ -1260,7 +1260,7 @@
                                 aria-label="What disconnect does during setup"
                                 aria-describedby="mt5-setting-up-disconnect-tooltip"
                             >?</button>
-                            <span id="mt5-setting-up-disconnect-tooltip" class="help-tooltip-bubble" role="tooltip">Disconnect stops setup and removes MT5 credentials for this account. Trades already in the journal are kept.</span>
+                            <span id="mt5-setting-up-disconnect-tooltip" class="help-tooltip-bubble" role="tooltip">Disconnect stops setup and removes MT5 credentials for this account. Limited VM cleanup metadata may remain until terminal cleanup finishes. Trades already in the journal are kept.</span>
                         </span>
                     </p>
                     {% elif mt5_selected_status == "failed" and mt5_selected_account %}
@@ -1268,6 +1268,11 @@
                     <div class="mt5-connection-error" role="alert">
                         <p class="mt5-connection-error__message">{{ mt5_selected_row.note }}</p>
                     </div>
+                    {% if mt5_selected_row.exness_note %}
+                    <div class="mt5-exness-note" role="note">
+                        <p class="mt5-exness-note__message">{{ mt5_selected_row.exness_note }}</p>
+                    </div>
+                    {% endif %}
                     <div class="mt5-form-shell" data-mt5-form-shell>
                         <form
                             action="{{ url_for('trade_accounts.retry_mt5_setup') }}"
@@ -1282,9 +1287,9 @@
                             <input type="hidden" name="trade_account_pubkey" value="{{ mt5_selected_account.pubkey }}">
 
                             <div class="mt5-selected-account-card">
-                                <span class="mt5-selected-account-label mt5-selected-account-label--failed">Fix &amp; Retry</span>
+                                <span class="mt5-selected-account-label{% if not mt5_selected_row.exness_note %} mt5-selected-account-label--failed{% endif %}">{% if mt5_selected_row.exness_note %}Details Saved{% else %}Fix &amp; Retry{% endif %}</span>
                                 <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                                <span class="mt5-selected-account-meta">Correct the details below and click Retry Connection.</span>
+                                <span class="mt5-selected-account-meta">{% if mt5_selected_row.exness_note %}No need to resubmit unless we ask for updated details or you know something changed.{% else %}Correct the details below and click Retry Connection.{% endif %}</span>
                             </div>
 
                             <div class="mt5-request-form-alert" data-mt5-form-alert role="status" hidden></div>
@@ -1365,7 +1370,7 @@
                                 </div>
                             </div>
 
-                            <button type="submit" class="submit-btn" data-mt5-submit>Retry Connection</button>
+                            <button type="submit" class="submit-btn" data-mt5-submit>{% if mt5_selected_row.exness_note %}Submit Updated Details{% else %}Retry Connection{% endif %}</button>
                         </form>
                     </div>
                     <form
@@ -1427,7 +1432,7 @@
                         <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
                         <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
                     </form>
-                    <p class="mt5-card-footnote">Reactivation keeps your saved read-only credentials. Disconnect if you want to remove them completely.</p>
+                    <p class="mt5-card-footnote">Reactivation keeps your saved read-only credentials. Disconnect if you want to remove credentials; limited VM cleanup metadata may remain until terminal cleanup finishes.</p>
                     {% elif mt5_selected_status == "paused" and mt5_selected_account %}
                     <p class="mt5-card-empty">MT5 sync is paused for this account. Your trade history is safe.</p>
                     <div class="mt5-selected-account-card">
@@ -1489,7 +1494,7 @@
                                 aria-label="What disconnecting MT5 sync does"
                                 aria-describedby="mt5-linked-disconnect-tooltip"
                             >?</button>
-                            <span id="mt5-linked-disconnect-tooltip" class="help-tooltip-bubble" role="tooltip">Stops automated sync and removes stored MT5 credentials. Your trades stay in the journal; you can reconnect later.</span>
+                            <span id="mt5-linked-disconnect-tooltip" class="help-tooltip-bubble" role="tooltip">Stops automated sync and removes stored MT5 credentials. Limited VM cleanup metadata may remain until terminal cleanup finishes. Your trades stay in the journal; you can reconnect later.</span>
                         </span>
                     </p>
                     {% elif mt5_cfd_accounts and not mt5_selected_account %}
@@ -1677,9 +1682,9 @@
                         </div>
                         <p class="latest-trade-chart-status soft" data-latest-trade-chart-status>Loading chart data&hellip;</p>
                     </div>
-                    {% else %}
+                    {% elif not is_active_futures %}
                     <div class="latest-trade-chart-shell latest-trade-chart-shell--empty">
-                        <p class="latest-trade-chart-status soft">{% if is_active_futures %}Currently bar replay is not available for futures accounts.{% else %}Price chart appears here for closed MT5 trades once bars are synced.{% endif %}</p>
+                        <p class="latest-trade-chart-status soft">Price chart appears here for closed MT5 trades once bars are synced.</p>
                     </div>
                     {% endif %}
                     {% else %}
@@ -1690,6 +1695,9 @@
                     </div>
                     {% endif %}
                 </article>
+                {% if is_active_futures %}
+                {% include "_dashboard_metric_grid.html" %}
+                {% endif %}
                 {% endif %}
             </div>
 
@@ -2017,182 +2025,8 @@
                     {% endif %}
                 </div>
             </article>
-            {% if not is_state_one %}
-            <section class="metric-grid dashboard-metric-grid">
-                <article class="metric">
-                    <p class="metric-label">
-                        <span class="help-label">
-                            <span class="help-label-text">Account PnL</span>
-                            <span class="help-tooltip">
-                                <button
-                                    type="button"
-                                    class="help-tooltip-button"
-                                    aria-label="Explain Account PnL"
-                                    aria-describedby="dashboard-account-pnl-tooltip"
-                                >?</button>
-                                <span id="dashboard-account-pnl-tooltip" class="help-tooltip-bubble" role="tooltip">Net realized PnL across all closed trades on this account, after logged fees, commission, and swap.</span>
-                            </span>
-                        </span>
-                    </p>
-                    <p class="metric-value{% if not has_closed_trades %} muted-value{% elif account_pnl_total > 0 %} good{% elif account_pnl_total < 0 %} bad{% endif %}">
-                        {% if has_closed_trades %}
-                            {% if account_pnl_total > 0 %}+{% endif %}${{ '%.2f'|format(account_pnl_total) }}
-                        {% else %}
-                        -
-                        {% endif %}
-                    </p>
-                    <p class="metric-note">
-                        {% if has_closed_trades %}
-                        After fees, commission &amp; swap · {{ closed_trade_count }} closed trade{{ 's' if closed_trade_count != 1 else '' }}
-                        {% elif has_any_trades %}
-                        Account PnL appears after your first closed trade.
-                        {% else %}
-                        Your headline PnL tracks here once trades are logged.
-                        {% endif %}
-                    </p>
-                </article>
-                <article class="metric">
-                    <p class="metric-label">
-                        <span class="help-label">
-                            <span class="help-label-text">Win Rate</span>
-                            <span class="help-tooltip">
-                                <button
-                                    type="button"
-                                    class="help-tooltip-button"
-                                    aria-label="Explain Win Rate"
-                                    aria-describedby="dashboard-win-rate-tooltip"
-                                >?</button>
-                                <span id="dashboard-win-rate-tooltip" class="help-tooltip-bubble" role="tooltip">The percentage of your closed trades that finished with a positive result.</span>
-                            </span>
-                        </span>
-                    </p>
-                    <p class="metric-value{% if not has_closed_trades %} muted-value{% endif %}">
-                        {% if has_closed_trades %}{{ '%.1f'|format(win_rate) }}%{% else %}-{% endif %}
-                    </p>
-                    <p class="metric-note">
-                        {% if has_closed_trades %}
-                        Based on {{ closed_trade_count }} closed trade{% if closed_trade_count != 1 %}s{% endif %}
-                        {% if win_rate_is_limited_sample %}
-                        — win rate is most reliable with around {{ small_sample_min_trades }}+ closed trades.
-                        {% endif %}
-                        {% elif has_any_trades %}
-                        Unlocks after your first closed trade with realized PnL.
-                        {% else %}
-                        Add or import trades to start tracking hit rate.
-                        {% endif %}
-                    </p>
-                </article>
-                <article class="metric">
-                    <p class="metric-label">Realized This Week</p>
-                    <p class="metric-value{% if not has_closed_trades %} muted-value{% endif %}">
-                        {% if has_closed_trades %}
-                            {% if net_pnl_week > 0 %}+{% endif %}${{ '%.2f'|format(net_pnl_week) }}
-                        {% else %}
-                        -
-                        {% endif %}
-                    </p>
-                    <p class="metric-note {% if has_closed_trades and net_pnl_week > 0 %}good{% elif has_closed_trades and net_pnl_week < 0 %}bad{% endif %}">
-                        {% if has_closed_trades %}
-                            {% if net_pnl_week > 0 %}Profitable week{% elif net_pnl_week < 0 %}Negative week{% else %}Flat week{% endif %}
-                            · {{ net_pnl_week_trade_count }} trade{{ 's' if net_pnl_week_trade_count != 1 else '' }} since {{ current_week_start.strftime('%d %b') }}
-                        {% elif has_any_trades %}
-                        Weekly realized PnL appears after closed trades come in.
-                        {% else %}
-                        Weekly PnL appears once trades start flowing into the journal.
-                        {% endif %}
-                    </p>
-                </article>
-                <article class="metric">
-                    <p class="metric-label">Trades This Month</p>
-                    <p class="metric-value{% if not has_any_trades %} muted-value{% endif %}">
-                        {% if has_any_trades %}{{ trades_this_month }}{% else %}-{% endif %}
-                    </p>
-                    <p class="metric-note">
-                        {% if has_any_trades %}
-                        Based on opened date
-                        {% else %}
-                        Activity volume starts tracking after your first import or manual trade.
-                        {% endif %}
-                    </p>
-                </article>
-                <article class="metric">
-                    <p class="metric-label">
-                        <span class="help-label">
-                            <span class="help-label-text">Average Winner vs Loser</span>
-                            <span class="help-tooltip">
-                                <button
-                                    type="button"
-                                    class="help-tooltip-button"
-                                    aria-label="Explain Average Winner vs Loser"
-                                    aria-describedby="dashboard-avg-winner-loser-tooltip"
-                                >?</button>
-                                <span id="dashboard-avg-winner-loser-tooltip" class="help-tooltip-bubble" role="tooltip">Compares the average PnL of your winning trades against your losing trades.</span>
-                            </span>
-                        </span>
-                    </p>
-                    <div class="metric-split">
-                        <div class="metric-chip good">
-                            <span class="metric-chip-label">Winner</span>
-                            <span class="metric-chip-value">
-                                {% if has_closed_trades and avg_win is not none %}+${{ '%.2f'|format(avg_win) }}{% else %}-{% endif %}
-                            </span>
-                        </div>
-                        <div class="metric-chip bad">
-                            <span class="metric-chip-label">Loser</span>
-                            <span class="metric-chip-value">
-                                {% if has_closed_trades and avg_loss_abs is not none %}-${{ '%.2f'|format(avg_loss_abs) }}{% else %}-{% endif %}
-                            </span>
-                        </div>
-                    </div>
-                    <p class="metric-note">
-                        {% if has_closed_trades and avg_win is not none and avg_loss_abs is not none %}
-                        Average realized winner and loser across closed trades.
-                        {% elif has_any_trades %}
-                        Needs at least one closed winner and one closed loser to become useful.
-                        {% else %}
-                        Closed win/loss averages appear after you log completed winners and losers.
-                        {% endif %}
-                    </p>
-                </article>
-                <article class="metric">
-                    <p class="metric-label">
-                        <span class="help-label">
-                            <span class="help-label-text">Trading Costs</span>
-                            <span class="help-tooltip">
-                                <button
-                                    type="button"
-                                    class="help-tooltip-button"
-                                    aria-label="Explain Trading Costs"
-                                    aria-describedby="dashboard-trading-costs-tooltip"
-                                >?</button>
-                                <span id="dashboard-trading-costs-tooltip" class="help-tooltip-bubble" role="tooltip">Total cost drag from logged fees, commission, and swap deducted from gross PnL. Already included in Account PnL.</span>
-                            </span>
-                        </span>
-                    </p>
-                    <p class="metric-value{% if not has_cost_data %} muted-value{% elif trading_costs and trading_costs > 0 %} bad{% endif %}">
-                        {% if has_cost_data and trading_costs is not none %}
-                            ${{ '%.2f'|format(trading_costs if trading_costs > 0 else 0) }}
-                        {% else %}
-                        -
-                        {% endif %}
-                    </p>
-                    <p class="metric-note">
-                        {% if has_cost_data and closed_trade_count %}
-                            {% if trading_costs_coverage < closed_trade_count %}
-                            Based on {{ trading_costs_coverage }} of {{ closed_trade_count }} closed trades with fee data.
-                            {% else %}
-                            Fees, commission &amp; swap · All closed trades with fee data
-                            {% endif %}
-                        {% elif has_closed_trades %}
-                        Appears once fees, commission, or swap data is logged.
-                        {% elif has_any_trades %}
-                        Trading costs track when fee fields are present on closed trades.
-                        {% else %}
-                        Cost drag appears after you log trades with fees, commission, or swap.
-                        {% endif %}
-                    </p>
-                </article>
-            </section>
+            {% if not is_state_one and not is_active_futures %}
+            {% include "_dashboard_metric_grid.html" %}
             {% endif %}
             </div>
         </section>
@@ -4402,6 +4236,21 @@
         color: color-mix(in srgb, var(--danger, #c0392b) 85%, var(--ink));
         margin: 0;
         line-height: 1.4;
+    }
+
+    .mt5-exness-note {
+        padding: 0.65rem 0.85rem;
+        border-radius: 6px;
+        background: color-mix(in srgb, var(--accent) 9%, transparent);
+        border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+        margin-bottom: 0.75rem;
+    }
+
+    .mt5-exness-note__message {
+        font-size: 0.83rem;
+        color: color-mix(in srgb, var(--accent) 46%, var(--ink));
+        margin: 0;
+        line-height: 1.45;
     }
 
     .mt5-selected-account-name {
