@@ -1823,7 +1823,7 @@
 
                     {% if weekly_ai_review or not is_state_one %}
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-improvement ai-review-action-card">
-                        <p class="insight-title">Actionable Improvement</p>
+                        <p class="insight-title"><span class="ai-review-title-emoji" aria-hidden="true">🎯</span>Actionable Improvement</p>
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.improvement.text %}
                         <p class="insight-body ai-review-copy ai-review-improvement ai-review-action">{{ render_ai_review_segments(weekly_ai_review_display.improvement.segments) }}</p>
                         {% elif weekly_ai_is_generating %}
@@ -1839,7 +1839,7 @@
                     </div>
 
                     <div class="insight-content session-ai-card ai-hero-card ai-review-panel-strength">
-                        <p class="insight-title">Strength to Reinforce</p>
+                        <p class="insight-title"><span class="ai-review-title-emoji" aria-hidden="true">💪</span>Strength to Reinforce</p>
                         {% if weekly_ai_review and weekly_ai_review_display and weekly_ai_review_display.strength.text %}
                         <p class="insight-body ai-review-copy ai-review-strength">{{ render_ai_review_segments(weekly_ai_review_display.strength.segments) }}</p>
                         {% elif weekly_ai_is_generating %}
@@ -3935,9 +3935,20 @@
         letter-spacing: 0.06em;
     }
 
-    .ai-review-panel-improvement .insight-title,
+    .ai-review-panel-improvement .insight-title {
+        color: #fbbf24;
+    }
+
     .ai-review-panel-strength .insight-title {
-        color: color-mix(in srgb, var(--muted) 45%, var(--ink));
+        color: #4ade80;
+    }
+
+    .ai-review-title-emoji {
+        display: inline-block;
+        flex: 0 0 auto;
+        font-size: 0.96rem;
+        line-height: 1;
+        text-transform: none;
     }
 
     .ai-review-panel-improvement:hover,

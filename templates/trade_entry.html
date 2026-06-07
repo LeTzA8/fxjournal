@@ -1550,7 +1550,20 @@
         color: color-mix(in srgb, var(--muted) 55%, var(--ink));
         transition: color 160ms ease; }
 
-    .trade-section-emoji { display: none; }
+    .trade-form-collapsible > summary .trade-form-section-title {
+        color: #fff;
+    }
+
+    .trade-form-collapsible > summary.trade-form-section-summary:hover .trade-form-section-title,
+    .trade-form-collapsible[open] > summary .trade-form-section-title {
+        color: #fff;
+    }
+
+    .trade-section-emoji { display: inline-block;
+        flex: 0 0 auto;
+        font-size: 0.95rem;
+        line-height: 1;
+        text-transform: none; }
 
     .field-help--tight { margin: -0.12rem 0 0.35rem !important; }
 
