@@ -11,16 +11,20 @@ from helpers.mt5_broker_discovery_refresh import (
     DEFAULT_BROKER_SEARCH_TERM,
     FIND_COMPANY_BUTTON_TEXT,
     RefreshResult,
+    _OpenDialogResult,
     _click_find_company,
     _company_search_label_score,
     _escape_send_keys_text,
     _fill_company_search_input,
     _find_company_search_input,
     _find_open_account_dialog,
+    _find_pid_main_window,
     _get_control_rect,
     _get_dialog_rect,
     _get_help_text,
     _is_meaningful_cache_change,
+    _open_account_dialog_from_main,
+    _probe_open_account_menu_item,
     _terminate_pid,
     _window_looks_like_open_account_dialog,
     diff_terminal_snapshots,
@@ -142,7 +146,7 @@ def test_refresh_terminate_called_with_keyword_terminal_path(monkeypatch):
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
-        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), False),
+        lambda app, pid, timeout_seconds=0: _fake_open_result(already_open=False),
     )
     monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
 
@@ -232,6 +236,18 @@ class _FakeFullDialog:
 class _FakeApp:
     def window(self, **kwargs):
         return _FakeFullDialog()
+
+    def windows(self):
+        return []
+
+
+def _fake_open_result(dialog=None, *, already_open=False):
+    """Return an _OpenDialogResult suitable for monkeypatching."""
+    return _OpenDialogResult(
+        dialog=dialog if dialog is not None else _FakeFullDialog(),
+        already_open=already_open,
+        strategy="already_open" if already_open else "uia_menu_item_invoke",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -342,8 +358,6 @@ def test_find_open_account_dialog_returns_none_when_nothing_matches(monkeypatch)
 def test_dialog_reused_when_already_open(monkeypatch):
     """If the dialog is already open, _open_account_dialog_from_main returns it
     immediately with already_open=True and does not attempt to open it again."""
-    from helpers.mt5_broker_discovery_refresh import _open_account_dialog_from_main
-
     open_attempts = {"count": 0}
 
     class _AlreadyOpenDialog:
@@ -359,11 +373,223 @@ def test_dialog_reused_when_already_open(monkeypatch):
         lambda app, pid: _AlreadyOpenDialog(),
     )
 
-    dialog, already_open = _open_account_dialog_from_main(
-        _FakeApp(), pid=99, timeout_seconds=5
-    )
-    assert already_open is True
+    result = _open_account_dialog_from_main(_FakeApp(), pid=99, timeout_seconds=5)
+    assert result.already_open is True
+    assert result.strategy == "already_open"
     assert open_attempts["count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# _find_pid_main_window / _probe_open_account_menu_item / open-dialog flow
+# ---------------------------------------------------------------------------
+
+def test_find_pid_main_window_skips_open_account_dialog(monkeypatch):
+    """Main window selection ignores any window titled 'Open an Account'."""
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._collect_window_titles_for_pid",
+        lambda pid: ["Open an Account", "MetaTrader 5 - Exness"],
+    )
+
+    main_wins = []
+
+    class _Win:
+        def __init__(self, title):
+            self._title = title
+
+        def exists(self, timeout=0):
+            return True
+
+        def window_text(self):
+            return self._title
+
+        def is_visible(self):
+            return True
+
+    class _App:
+        def window(self, title_re=""):
+            title = title_re.replace("\\", "")
+            win = _Win(title)
+            main_wins.append(win)
+            return win
+
+    win = _find_pid_main_window(_App(), pid=1)
+    # Should have skipped "Open an Account" and returned "MetaTrader 5 - Exness"
+    assert win is not None
+    assert "Open an Account" not in win.window_text()
+
+
+def test_probe_open_account_menu_item_finds_by_direct_child():
+    """_probe_open_account_menu_item finds a direct-child MenuItem by name."""
+    class _Item:
+        def exists(self, timeout=0):
+            return True
+
+        class _ElemInfo:
+            class _Element:
+                def CurrentAccessKey(self):
+                    return "a"
+                def GetCurrentPattern(self, _):
+                    return object()
+            element = _Element()
+        element_info = _ElemInfo()
+
+    class _NoMenu:
+        def exists(self, timeout=0):
+            return False
+
+    class _MainWin:
+        def child_window(self, title="", control_type=""):
+            if control_type == "MenuItem" and "Open" in title:
+                return _Item()
+            return _NoMenu()
+
+    file_menu_found, item, _key, _invoke = _probe_open_account_menu_item(_MainWin())
+    assert item is not None
+
+
+def test_probe_open_account_menu_item_returns_none_when_absent():
+    class _NoCtrl:
+        def exists(self, timeout=0):
+            return False
+
+    class _MainWin:
+        def child_window(self, **kwargs):
+            return _NoCtrl()
+
+    _, item, _, _ = _probe_open_account_menu_item(_MainWin())
+    assert item is None
+
+
+def test_open_account_dialog_from_main_uses_uia_invoke(monkeypatch):
+    """When UIA MenuItem.invoke() succeeds, strategy=uia_menu_item_invoke."""
+    dialog_stub = _FakeFullDialog()
+    invoke_called = {"done": False}
+
+    # Phase 1/2 return None; after invoke() is called the dialog appears.
+    def _mock_find_dialog(app, pid):
+        return dialog_stub if invoke_called["done"] else None
+
+    class _MenuItem:
+        def invoke(self):
+            invoke_called["done"] = True
+
+        def click_input(self): pass
+        def rectangle(self): return _FakeRect()
+
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._collect_window_titles_for_pid",
+        lambda pid: ["MetaTrader 5"],
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._find_open_account_dialog",
+        _mock_find_dialog,
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._find_pid_main_window",
+        lambda app, pid: _FakeFullDialog(),
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._probe_open_account_menu_item",
+        lambda win: (True, _MenuItem(), "a", True),
+    )
+    monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
+
+    # Small timeout so Phase 2 loop expires almost immediately.
+    result = _open_account_dialog_from_main(_FakeApp(), pid=1234, timeout_seconds=0.01)
+    assert result.strategy == "uia_menu_item_invoke"
+    assert result.already_open is False
+    assert result.file_menu_found is True
+    assert result.open_account_item_found is True
+
+
+def test_open_account_dialog_from_main_falls_back_to_keyboard(monkeypatch):
+    """When UIA invoke fails, strategy falls back to keyboard_alt_f_a."""
+    import sys
+    import types
+
+    dialog_stub = _FakeFullDialog()
+    keys_sent = []
+    dialog_ready = {"done": False}
+
+    def _mock_find_dialog(app, pid):
+        return dialog_stub if dialog_ready["done"] else None
+
+    class _FailingItem:
+        def invoke(self): raise RuntimeError("no invoke")
+        def click_input(self): raise RuntimeError("no click")
+        def rectangle(self): raise RuntimeError("no rect")
+
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._collect_window_titles_for_pid",
+        lambda pid: ["MetaTrader 5"],
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._find_open_account_dialog",
+        _mock_find_dialog,
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._find_pid_main_window",
+        lambda app, pid: _FakeFullDialog(),
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._probe_open_account_menu_item",
+        lambda win: (True, _FailingItem(), "a", False),
+    )
+    monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
+
+    fake_kb = types.ModuleType("pywinauto.keyboard")
+    def _fake_send_keys(s):
+        keys_sent.append(s)
+        if s == "a":
+            dialog_ready["done"] = True
+    fake_kb.send_keys = _fake_send_keys
+    monkeypatch.setitem(sys.modules, "pywinauto.keyboard", fake_kb)
+
+    result = _open_account_dialog_from_main(_FakeApp(), pid=9999, timeout_seconds=0.01)
+    assert result.strategy == "keyboard_alt_f_a"
+    assert "%f" in keys_sent
+    assert "a" in keys_sent
+
+
+def test_open_dialog_strategy_recorded_in_refresh_result(monkeypatch):
+    """open_dialog_strategy and related fields appear in the refresh result."""
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._wait_for_pid_window",
+        lambda pid, timeout_seconds=0: None,
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
+        lambda app, pid, timeout_seconds=0: _OpenDialogResult(
+            dialog=_FakeFullDialog(),
+            already_open=False,
+            strategy="uia_menu_item_invoke",
+            file_menu_found=True,
+            open_account_item_found=True,
+            open_account_item_access_key="a",
+            open_account_item_invoke_available=True,
+            titles_before=["MetaTrader 5"],
+            titles_after=["MetaTrader 5", "Open an Account"],
+        ),
+    )
+    monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
+
+    result = refresh_broker_server_cache(
+        terminal_path=r"C:\MT5Terminals\mt5_1_1\terminal64.exe",
+        terminal_data_dir=None,
+        broker_search_term="Exness",
+        dry_run=False,
+        launch_process=lambda _: 6060,
+        connect_application=lambda _: _FakeApp(),
+        collect_window_titles=lambda pid: ["Open an Account"],
+        terminate_process=lambda pid, *, terminal_path=None: None,
+    )
+    assert result.open_dialog_strategy == "uia_menu_item_invoke"
+    assert result.file_menu_found is True
+    assert result.open_account_menu_item_found is True
+    assert result.open_account_menu_item_access_key == "a"
+    assert result.open_account_menu_item_invoke_available is True
+    assert result.window_titles_before_open == ["MetaTrader 5"]
+    assert result.window_titles_after_open == ["MetaTrader 5", "Open an Account"]
 
 
 # ---------------------------------------------------------------------------
@@ -667,7 +893,7 @@ def test_refresh_success_uncertain_when_no_verification_and_no_meaningful_change
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
-        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), False),
+        lambda app, pid, timeout_seconds=0: _fake_open_result(already_open=False),
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._find_company_search_input",
@@ -823,7 +1049,7 @@ def test_refresh_uses_coordinate_fallback_when_uia_edit_not_found(monkeypatch):
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
-        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), False),
+        lambda app, pid, timeout_seconds=0: _fake_open_result(already_open=False),
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._find_company_search_input",
@@ -865,7 +1091,7 @@ def test_refresh_sets_uia_edit_strategy_when_input_found(monkeypatch):
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
-        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), False),
+        lambda app, pid, timeout_seconds=0: _fake_open_result(already_open=False),
     )
     monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
 
@@ -890,7 +1116,7 @@ def test_refresh_result_includes_dialog_rect(monkeypatch):
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
-        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), False),
+        lambda app, pid, timeout_seconds=0: _fake_open_result(already_open=False),
     )
     monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
 
@@ -940,7 +1166,7 @@ def test_refresh_automation_mocked_pid_scoped(monkeypatch):
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
-        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), False),
+        lambda app, pid, timeout_seconds=0: _fake_open_result(already_open=False),
     )
     monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
 
@@ -967,7 +1193,7 @@ def test_refresh_result_includes_dialog_already_open_flag(monkeypatch):
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
-        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), True),
+        lambda app, pid, timeout_seconds=0: _fake_open_result(already_open=True),
     )
     monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
 
@@ -998,7 +1224,7 @@ def test_refresh_records_failed_step_and_window_titles(monkeypatch):
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
-        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), False),
+        lambda app, pid, timeout_seconds=0: _fake_open_result(already_open=False),
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._find_company_search_input",

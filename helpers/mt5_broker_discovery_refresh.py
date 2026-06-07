@@ -102,6 +102,13 @@ class RefreshResult:
     search_button_strategy: str | None = None
     meaningful_cache_changed: bool | None = None
     success_uncertain: bool = False
+    open_dialog_strategy: str | None = None
+    file_menu_found: bool | None = None
+    open_account_menu_item_found: bool | None = None
+    open_account_menu_item_access_key: str | None = None
+    open_account_menu_item_invoke_available: bool | None = None
+    window_titles_before_open: list[str] = field(default_factory=list)
+    window_titles_after_open: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -426,92 +433,309 @@ def _find_open_account_dialog(app, pid: int):
     return None
 
 
+@dataclass
+class _OpenDialogResult:
+    """Carries the dialog handle plus all open-dialog debug metadata."""
+    dialog: Any
+    already_open: bool
+    strategy: str
+    file_menu_found: bool | None = None
+    open_account_item_found: bool | None = None
+    open_account_item_access_key: str | None = None
+    open_account_item_invoke_available: bool | None = None
+    titles_before: list[str] = field(default_factory=list)
+    titles_after: list[str] = field(default_factory=list)
+
+
+def _find_pid_main_window(app, pid: int):
+    """
+    Return the MT5 main window from among the PID-owned top-level windows.
+
+    Uses ``_collect_window_titles_for_pid`` (win32gui-based, PID-filtered) to
+    get the candidate titles, then resolves each title through *app* (already
+    connected to *pid* only).  Skips the Open an Account dialog and any
+    invisible windows.  Falls back to ``app.windows()`` if title enumeration
+    yields nothing.
+    """
+    for title in _collect_window_titles_for_pid(pid):
+        if not title:
+            continue
+        if OPEN_ACCOUNT_DIALOG_TITLE.casefold() in title.casefold():
+            continue
+        try:
+            win = app.window(title_re=re.escape(title))
+            if win.exists(timeout=0.3):
+                return win
+        except Exception:
+            continue
+
+    # Fallback: iterate app.windows() — already scoped to the connected PID.
+    try:
+        for win in app.windows():
+            try:
+                if not win.is_visible():
+                    continue
+                title = (win.window_text() or "").strip()
+                if OPEN_ACCOUNT_DIALOG_TITLE.casefold() not in title.casefold():
+                    return win
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    return None
+
+
+def _probe_open_account_menu_item(main_window):
+    """
+    Probe for the Open an Account MenuItem inside *main_window* without
+    clicking anything.
+
+    Returns ``(file_menu_found, menu_item, access_key, invoke_available)``.
+    *menu_item* is a pywinauto wrapper or None.  *invoke_available* is True
+    when the UIA InvokePattern was detected on the element.
+
+    The item is searched two ways:
+    1. Direct descendant search — UIA exposes menu items in the tree even
+       when the File menu is collapsed (confirmed by Accessibility Insights).
+    2. Via the "File" Menu child — used when the direct search fails.
+    """
+    file_menu_found: bool = False
+    menu_item = None
+    access_key: str | None = None
+    invoke_available: bool = False
+
+    # Helper: check InvokePattern availability without invoking.
+    def _check_invoke(ctrl) -> bool:
+        for _fn in (
+            lambda: (ctrl.iface_invoke, True)[1],
+            lambda: bool(ctrl.element_info.element.GetCurrentPattern(10000)),
+        ):
+            try:
+                return bool(_fn())
+            except Exception:
+                continue
+        return False
+
+    def _read_access_key(ctrl) -> str | None:
+        for _fn in (
+            lambda: (ctrl.element_info.element.CurrentAccessKey or "").strip() or None,
+            lambda: (ctrl.element_info.access_key or "").strip() or None,
+        ):
+            try:
+                return _fn()
+            except Exception:
+                continue
+        return None
+
+    # Pass 1: direct descendant search (works for UIA-exposed menu items)
+    for name in ("Open an Account", "Open An Account"):
+        try:
+            candidate = main_window.child_window(title=name, control_type="MenuItem")
+            if candidate.exists(timeout=1):
+                menu_item = candidate
+                access_key = _read_access_key(candidate)
+                invoke_available = _check_invoke(candidate)
+                # Best-effort check for File menu
+                try:
+                    file_menu_found = main_window.child_window(
+                        title="File", control_type="Menu"
+                    ).exists(timeout=0.3)
+                except Exception:
+                    pass
+                return file_menu_found, menu_item, access_key, invoke_available
+        except Exception:
+            continue
+
+    # Pass 2: via File menu
+    for file_label in ("File", "&File"):
+        try:
+            fm = main_window.child_window(title=file_label, control_type="Menu")
+            if not fm.exists(timeout=0.5):
+                continue
+            file_menu_found = True
+            for name in ("Open an Account", "Open An Account"):
+                try:
+                    candidate = fm.child_window(title=name, control_type="MenuItem")
+                    if candidate.exists(timeout=0.5):
+                        menu_item = candidate
+                        access_key = _read_access_key(candidate)
+                        invoke_available = _check_invoke(candidate)
+                        return file_menu_found, menu_item, access_key, invoke_available
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    return file_menu_found, menu_item, access_key, invoke_available
+
+
 def _open_account_dialog_from_main(
     app, pid: int, *, timeout_seconds: float
-) -> tuple[Any, bool]:
+) -> _OpenDialogResult:
     """
-    Return ``(dialog, already_open)``.
+    Return an ``_OpenDialogResult`` carrying the dialog handle and open-dialog
+    debug metadata.
 
-    Checks whether the Open an Account dialog is already visible first (some MT5
-    builds open it automatically on launch).  If not, tries to open it via UI
-    controls and keyboard.  Raises RuntimeError if the dialog cannot be found
-    after all attempts, including the titles seen for debugging.
+    PID contract:
+    * *app* is ``Application(backend="uia").connect(process=pid)`` — all window
+      lookups go through this object, never through a global Desktop() search.
+    * ``_collect_window_titles_for_pid`` uses win32gui with a PID filter.
+    * ``_find_pid_main_window`` returns only a window reachable through *app*.
+
+    Opening priority:
+    1. Dialog already present (immediate + auto-popup wait).
+    2. UIA MenuItem ``invoke()`` / ``click_input()`` on the accessible
+       "Open an Account" menu item (InvokePattern confirmed by Accessibility
+       Insights).
+    3. Keyboard ``Alt+F, A`` — "A" is the confirmed AccessKey for the item.
+    4. Bounding-rect click on the menu item (screen coords from UIA; not
+       guessed — only used when the item rect was obtained in step 2).
     """
-    # Phase 1: immediate check – already open?
+    titles_before = _collect_window_titles_for_pid(pid)
+
+    # ── Phase 1: immediate check ──────────────────────────────────────────────
     dialog = _find_open_account_dialog(app, pid)
     if dialog is not None:
         logger.debug("broker refresh: dialog was already open pid=%s", pid)
-        return dialog, True
+        return _OpenDialogResult(
+            dialog=dialog,
+            already_open=True,
+            strategy="already_open",
+            titles_before=titles_before,
+            titles_after=titles_before,
+        )
 
-    # Phase 2: short wait for auto-popup (some builds show it after splash)
+    # ── Phase 2: short wait for auto-popup ───────────────────────────────────
     early_deadline = time.monotonic() + min(timeout_seconds * 0.15, 5)
     while time.monotonic() < early_deadline:
         dialog = _find_open_account_dialog(app, pid)
         if dialog is not None:
             logger.debug("broker refresh: dialog appeared automatically pid=%s", pid)
-            return dialog, True
+            return _OpenDialogResult(
+                dialog=dialog,
+                already_open=True,
+                strategy="already_open",
+                titles_before=titles_before,
+                titles_after=_collect_window_titles_for_pid(pid),
+            )
         time.sleep(0.4)
 
-    # Phase 3: active UI attempts to open the dialog
-    titles = _collect_window_titles_for_pid(pid)
-    for title in titles:
-        if not title:
-            continue
-        try:
-            window = app.window(title_re=f".*{re.escape(title)}.*")
-            if not window.exists(timeout=0.5):
-                continue
+    # ── Phase 3: active UI attempts ───────────────────────────────────────────
+    # Find the MT5 main window through the PID-scoped app object.
+    main_window = _find_pid_main_window(app, pid)
 
-            # Try "Open an Account" hyperlink or button on the main window
-            for label in ("Open an Account", "Open An Account"):
-                for ctl_type in ("Hyperlink", "Button"):
-                    try:
-                        window.child_window(title=label, control_type=ctl_type).click_input()
-                        time.sleep(0.5)
-                        dialog = _find_open_account_dialog(app, pid)
-                        if dialog is not None:
-                            logger.debug(
-                                "broker refresh: opened dialog via %s '%s' pid=%s",
-                                ctl_type, label, pid,
-                            )
-                            return dialog, False
-                    except Exception:
-                        pass
+    file_menu_found: bool | None = None
+    item_found: bool | None = None
+    item_access_key: str | None = None
+    item_invoke_available: bool | None = None
+    menu_item = None
+    last_strategy: str = "failed"
 
-            # Keyboard fallback: Alt+F → O (File → Open an Account)
+    if main_window is not None:
+        # Probe: enumerate File menu / menu item (does NOT click anything).
+        file_menu_found, menu_item, item_access_key, item_invoke_available = (
+            _probe_open_account_menu_item(main_window)
+        )
+        item_found = menu_item is not None
+
+        def _make_result(strategy: str) -> _OpenDialogResult:
+            return _OpenDialogResult(
+                dialog=_find_open_account_dialog(app, pid),
+                already_open=False,
+                strategy=strategy,
+                file_menu_found=file_menu_found,
+                open_account_item_found=item_found,
+                open_account_item_access_key=item_access_key,
+                open_account_item_invoke_available=item_invoke_available,
+                titles_before=titles_before,
+                titles_after=_collect_window_titles_for_pid(pid),
+            )
+
+        # Strategy A: UIA MenuItem invoke / click_input
+        if menu_item is not None:
+            last_strategy = "uia_menu_item_invoke"
+            invoked = False
             try:
-                window.set_focus()
-                from pywinauto.keyboard import send_keys
-
-                send_keys("%f")
-                time.sleep(0.4)
-                send_keys("o")
-                time.sleep(0.5)
-                dialog = _find_open_account_dialog(app, pid)
-                if dialog is not None:
-                    logger.debug("broker refresh: opened dialog via Alt+F,O pid=%s", pid)
-                    return dialog, False
+                menu_item.invoke()
+                invoked = True
             except Exception:
-                pass
-        except Exception:
-            continue
+                try:
+                    menu_item.click_input()
+                    invoked = True
+                except Exception:
+                    pass
+            if invoked:
+                time.sleep(0.6)
+                if _find_open_account_dialog(app, pid) is not None:
+                    logger.debug(
+                        "broker refresh: opened dialog via UIA MenuItem invoke pid=%s", pid
+                    )
+                    return _make_result("uia_menu_item_invoke")
 
-    # Phase 4: last-chance re-check after all UI attempts
+        # Strategy B: keyboard Alt+F, A  (AccessKey confirmed by Accessibility Insights)
+        last_strategy = "keyboard_alt_f_a"
+        try:
+            main_window.set_focus()
+            from pywinauto.keyboard import send_keys
+            send_keys("%f")      # Alt+F opens File menu
+            time.sleep(0.35)
+            send_keys("a")       # access key "a" → Open an Account
+            time.sleep(0.6)
+            if _find_open_account_dialog(app, pid) is not None:
+                logger.debug(
+                    "broker refresh: opened dialog via keyboard Alt+F,A pid=%s", pid
+                )
+                return _make_result("keyboard_alt_f_a")
+        except Exception as exc:
+            logger.debug("broker refresh: keyboard Alt+F,A failed: %s", exc)
+
+        # Strategy C: bounding-rect click on the menu item (only if rect is
+        # available from the UIA probe — not a guessed coordinate).
+        if menu_item is not None:
+            last_strategy = "menu_item_rect_click"
+            try:
+                rect = menu_item.rectangle()
+                cx = int((rect.left + rect.right) / 2)
+                cy = int((rect.top + rect.bottom) / 2)
+                from pywinauto.mouse import click as _mouse_click
+                _mouse_click(button="left", coords=(cx, cy))
+                time.sleep(0.6)
+                if _find_open_account_dialog(app, pid) is not None:
+                    logger.debug(
+                        "broker refresh: opened dialog via menu item rect click pid=%s", pid
+                    )
+                    return _make_result("menu_item_rect_click")
+            except Exception as exc:
+                logger.debug("broker refresh: menu rect click failed: %s", exc)
+
+    # ── Phase 4: last-chance re-check ─────────────────────────────────────────
     late_deadline = time.monotonic() + min(timeout_seconds * 0.2, 8)
     while time.monotonic() < late_deadline:
         dialog = _find_open_account_dialog(app, pid)
         if dialog is not None:
-            return dialog, False
+            return _OpenDialogResult(
+                dialog=dialog,
+                already_open=False,
+                strategy=last_strategy,
+                file_menu_found=file_menu_found,
+                open_account_item_found=item_found,
+                open_account_item_access_key=item_access_key,
+                open_account_item_invoke_available=item_invoke_available,
+                titles_before=titles_before,
+                titles_after=_collect_window_titles_for_pid(pid),
+            )
         time.sleep(0.5)
 
     titles_seen = _collect_window_titles_for_pid(pid)
     logger.warning(
-        "broker refresh: Open an Account dialog not found pid=%s titles_seen=%s",
-        pid,
-        titles_seen,
+        "broker refresh: Open an Account dialog not found pid=%s "
+        "file_menu_found=%s item_found=%s titles=%s",
+        pid, file_menu_found, item_found, titles_seen,
     )
     raise RuntimeError(
         f"could not open Open an Account dialog for launched PID {pid}. "
+        f"file_menu_found={file_menu_found} item_found={item_found} "
         f"Window titles seen: {titles_seen}"
     )
 
@@ -1008,17 +1232,26 @@ def refresh_broker_server_cache(
         result.window_titles_seen = titles_fn(pid)
 
         app = connect_fn(pid)
-        dialog, dialog_already_open = _open_account_dialog_from_main(
+        open_result = _open_account_dialog_from_main(
             app, pid, timeout_seconds=timeout_seconds
         )
-        result.dialog_already_open = dialog_already_open
+        dialog = open_result.dialog
+        result.dialog_already_open = open_result.already_open
+        result.open_dialog_strategy = open_result.strategy
+        result.file_menu_found = open_result.file_menu_found
+        result.open_account_menu_item_found = open_result.open_account_item_found
+        result.open_account_menu_item_access_key = open_result.open_account_item_access_key
+        result.open_account_menu_item_invoke_available = open_result.open_account_item_invoke_available
+        result.window_titles_before_open = open_result.titles_before
+        result.window_titles_after_open = open_result.titles_after
         result.window_titles_seen = titles_fn(pid)
         dialog_rect = _get_dialog_rect(dialog)
         result.dialog_rect = dialog_rect
         logger.debug(
-            "broker refresh: dialog obtained pid=%s already_open=%s rect=%s titles=%s",
+            "broker refresh: dialog obtained pid=%s already_open=%s strategy=%s rect=%s titles=%s",
             pid,
-            dialog_already_open,
+            open_result.already_open,
+            open_result.strategy,
             dialog_rect,
             result.window_titles_seen,
         )
