@@ -11,11 +11,13 @@ from helpers.mt5_broker_discovery_refresh import (
     DEFAULT_BROKER_SEARCH_TERM,
     FIND_COMPANY_BUTTON_TEXT,
     RefreshResult,
+    _click_find_company,
     _company_search_label_score,
     _escape_send_keys_text,
     _fill_company_search_input,
     _find_company_search_input,
     _find_open_account_dialog,
+    _get_dialog_rect,
     _terminate_pid,
     _window_looks_like_open_account_dialog,
     diff_terminal_snapshots,
@@ -159,6 +161,18 @@ def test_refresh_terminate_called_with_keyword_terminal_path(monkeypatch):
 # Shared fake helpers
 # ---------------------------------------------------------------------------
 
+class _FakeRect:
+    """Minimal RECT stub matching pywinauto's rectangle() return value."""
+    left = 100
+    top = 200
+
+    def width(self):
+        return 600
+
+    def height(self):
+        return 400
+
+
 class _FakeFullDialog:
     """A dialog stub that satisfies all calls made during a successful run."""
 
@@ -183,8 +197,11 @@ class _FakeFullDialog:
     def type_keys(self, *args, **kwargs):
         return None
 
-    def click_input(self):
+    def click_input(self, coords=None):
         return None
+
+    def rectangle(self):
+        return _FakeRect()
 
     def get_value(self):
         return "Exness"
@@ -477,6 +494,201 @@ def test_escape_send_keys_text_wraps_special_chars():
 
 
 # ---------------------------------------------------------------------------
+# Fix 3 (coordinate fallback): _get_dialog_rect + _click_find_company + flow
+# ---------------------------------------------------------------------------
+
+def test_get_dialog_rect_returns_dict():
+    rect = _get_dialog_rect(_FakeFullDialog())
+    assert rect is not None
+    assert rect["left"] == 100
+    assert rect["top"] == 200
+    assert rect["width"] == 600
+    assert rect["height"] == 400
+
+
+def test_get_dialog_rect_returns_none_on_failure():
+    class _NoBounds:
+        def rectangle(self):
+            raise RuntimeError("not available")
+
+    assert _get_dialog_rect(_NoBounds()) is None
+
+
+def test_click_find_company_uia_button_preferred():
+    """_click_find_company uses the UIA button when it exists."""
+    clicks = []
+
+    class _Button:
+        def exists(self, timeout=0):
+            return True
+
+        def click_input(self):
+            clicks.append("uia")
+
+    class _Dialog:
+        def child_window(self, **kwargs):
+            return _Button()
+
+        def rectangle(self):
+            return _FakeRect()
+
+        def click_input(self, coords=None):
+            clicks.append(("coord", coords))
+
+        def set_focus(self):
+            pass
+
+    _click_find_company(_Dialog())
+    assert clicks == ["uia"]
+
+
+def test_click_find_company_falls_back_to_coordinates(monkeypatch):
+    """When UIA button not found, click_find_company falls back to (0.88, 0.22)."""
+    coords_clicked = []
+
+    class _NoButton:
+        def exists(self, timeout=0):
+            return False
+
+    class _Dialog:
+        def child_window(self, **kwargs):
+            return _NoButton()
+
+        def rectangle(self):
+            return _FakeRect()
+
+        def click_input(self, coords=None):
+            coords_clicked.append(coords)
+
+        def set_focus(self):
+            pass
+
+    _click_find_company(_Dialog())
+    assert len(coords_clicked) == 1
+    x, y = coords_clicked[0]
+    # 0.88 * 600 = 528, 0.22 * 400 = 88
+    assert x == int(0.88 * 600)
+    assert y == int(0.22 * 400)
+
+
+def test_click_find_company_enter_fallback_requires_search_input():
+    """When UIA button and coordinate both fail, Tab+Enter is NOT tried without
+    search_input — the function raises instead."""
+
+    class _NoButton:
+        def exists(self, timeout=0):
+            return False
+
+    class _Dialog:
+        def child_window(self, **kwargs):
+            return _NoButton()
+
+        def rectangle(self):
+            raise RuntimeError("no rect")  # forces coordinate fallback to fail
+
+        def click_input(self, coords=None):
+            pass
+
+        def set_focus(self):
+            pass
+
+    with pytest.raises(RuntimeError):
+        _click_find_company(_Dialog(), search_input=None)
+
+
+def test_refresh_uses_coordinate_fallback_when_uia_edit_not_found(monkeypatch):
+    """When _find_company_search_input returns None, result.search_input_strategy
+    should be 'relative_coordinate_input' and the run should not raise."""
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._wait_for_pid_window",
+        lambda pid, timeout_seconds=0: None,
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
+        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), False),
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._find_company_search_input",
+        lambda dialog: None,
+    )
+    coord_fill_called = []
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._fill_search_via_coordinates",
+        lambda dialog, term: coord_fill_called.append(term),
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._click_find_company",
+        lambda dialog, search_input=None: None,
+    )
+    monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
+
+    result = refresh_broker_server_cache(
+        terminal_path=r"C:\MT5Terminals\mt5_1_1\terminal64.exe",
+        terminal_data_dir=None,
+        broker_search_term="Exness",
+        dry_run=False,
+        launch_process=lambda _: 5500,
+        connect_application=lambda _: _FakeApp(),
+        collect_window_titles=lambda pid: ["Open an Account"],
+        terminate_process=lambda pid, *, terminal_path=None: None,
+    )
+    assert result.success is True
+    assert result.search_input_strategy == "relative_coordinate_input"
+    assert coord_fill_called == ["Exness"]
+
+
+def test_refresh_sets_uia_edit_strategy_when_input_found(monkeypatch):
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._wait_for_pid_window",
+        lambda pid, timeout_seconds=0: None,
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
+        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), False),
+    )
+    monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
+
+    result = refresh_broker_server_cache(
+        terminal_path=r"C:\MT5Terminals\mt5_1_1\terminal64.exe",
+        terminal_data_dir=None,
+        broker_search_term="Exness",
+        dry_run=False,
+        launch_process=lambda _: 5501,
+        connect_application=lambda _: _FakeApp(),
+        collect_window_titles=lambda pid: ["Open an Account"],
+        terminate_process=lambda pid, *, terminal_path=None: None,
+    )
+    assert result.success is True
+    assert result.search_input_strategy == "uia_edit"
+
+
+def test_refresh_result_includes_dialog_rect(monkeypatch):
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._wait_for_pid_window",
+        lambda pid, timeout_seconds=0: None,
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
+        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), False),
+    )
+    monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
+
+    result = refresh_broker_server_cache(
+        terminal_path=r"C:\MT5Terminals\mt5_1_1\terminal64.exe",
+        terminal_data_dir=None,
+        broker_search_term="Exness",
+        dry_run=False,
+        launch_process=lambda _: 5502,
+        connect_application=lambda _: _FakeApp(),
+        collect_window_titles=lambda pid: ["Open an Account"],
+        terminate_process=lambda pid, *, terminal_path=None: None,
+    )
+    assert result.dialog_rect is not None
+    assert result.dialog_rect["width"] == 600
+    assert result.dialog_rect["height"] == 400
+
+
+# ---------------------------------------------------------------------------
 # Fix 5 + integration: full automation flow
 # ---------------------------------------------------------------------------
 
@@ -553,29 +765,11 @@ def test_refresh_result_includes_dialog_already_open_flag(monkeypatch):
 
 
 def test_refresh_records_failed_step_and_window_titles(monkeypatch):
-    class _BrokenDialog:
-        def exists(self, timeout=0):
-            return True
-
-        def child_window(self, **kwargs):
-            raise RuntimeError("company search input not found in Open an Account dialog")
-
-        def descendants(self, control_type=None):
-            return []
-
-    def _launch(_path):
-        return 5151
-
-    def _connect(_pid):
-        return type("App", (), {"window": lambda self, **kwargs: _BrokenDialog()})()
-
-    def _titles(pid):
-        return ["MetaTrader 5", "Open an Account"]
-
+    """When all input strategies fail, result captures window_titles_seen,
+    failed_step, and calls terminate."""
+    # UIA will find no Edit; coordinate fallback is patched to raise so there is a
+    # real failure to capture.
     terminated = []
-
-    def _terminate(pid, *, terminal_path=None):
-        terminated.append(pid)
 
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._wait_for_pid_window",
@@ -583,22 +777,34 @@ def test_refresh_records_failed_step_and_window_titles(monkeypatch):
     )
     monkeypatch.setattr(
         "helpers.mt5_broker_discovery_refresh._open_account_dialog_from_main",
-        lambda app, pid, timeout_seconds=0: (_BrokenDialog(), False),
+        lambda app, pid, timeout_seconds=0: (_FakeFullDialog(), False),
     )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._find_company_search_input",
+        lambda dialog: None,
+    )
+    monkeypatch.setattr(
+        "helpers.mt5_broker_discovery_refresh._fill_search_via_coordinates",
+        lambda dialog, term: (_ for _ in ()).throw(
+            RuntimeError("coordinate fill failed in test")
+        ),
+    )
+    monkeypatch.setattr("helpers.mt5_broker_discovery_refresh.time.sleep", lambda *a, **k: None)
 
     result = refresh_broker_server_cache(
         terminal_path=r"C:\MT5Terminals\mt5_1_1\terminal64.exe",
         terminal_data_dir=None,
         broker_search_term="Exness",
         dry_run=False,
-        launch_process=_launch,
-        connect_application=_connect,
-        collect_window_titles=_titles,
-        terminate_process=_terminate,
+        launch_process=lambda _: 5151,
+        connect_application=lambda _: _FakeApp(),
+        collect_window_titles=lambda pid: ["MetaTrader 5", "Open an Account"],
+        terminate_process=lambda pid, *, terminal_path=None: terminated.append(pid),
     )
     assert result.success is False
-    assert result.failed_step == "company_search_input"
-    assert result.window_titles_seen
+    assert result.failed_step is not None
+    assert result.window_titles_seen == ["MetaTrader 5", "Open an Account"]
+    assert result.search_input_strategy == "relative_coordinate_input"
     assert terminated == [5151]
 
 

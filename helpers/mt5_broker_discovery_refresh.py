@@ -92,6 +92,8 @@ class RefreshResult:
     admin_user_id: int | None = None
     dialog_already_open: bool | None = None
     dialog_controls_debug: list[dict] = field(default_factory=list)
+    search_input_strategy: str | None = None
+    dialog_rect: dict | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -535,6 +537,58 @@ def _collect_dialog_controls_debug(dialog) -> list[dict]:
     return controls
 
 
+def _get_dialog_rect(dialog) -> dict | None:
+    """Return a dict with left/top/width/height for the dialog, or None on failure."""
+    try:
+        rect = dialog.rectangle()
+        return {
+            "left": int(rect.left),
+            "top": int(rect.top),
+            "width": int(rect.width()),
+            "height": int(rect.height()),
+        }
+    except Exception:
+        return None
+
+
+def _click_dialog_relative(dialog, rx: float, ry: float) -> None:
+    """
+    Click inside the dialog at a position expressed as fractions of its width/height.
+    Uses dialog.click_input(coords=...) which pywinauto interprets relative to the
+    control's client-area top-left, so this is PID-scoped and safe.
+    """
+    rect = dialog.rectangle()
+    x = int(rx * rect.width())
+    y = int(ry * rect.height())
+    dialog.click_input(coords=(x, y))
+
+
+def _fill_search_via_coordinates(dialog, term: str) -> None:
+    """
+    Coordinate-based search-input fallback when UIA cannot expose the Edit control.
+
+    Based on the observed MT5 Open an Account dialog layout the search input sits at
+    roughly 37 % across / 22 % down the dialog rectangle.  All coordinates are
+    relative to the dialog, never the screen.
+    """
+    from pywinauto.keyboard import send_keys
+
+    escaped = _escape_send_keys_text(term)
+    try:
+        dialog.set_focus()
+    except Exception:
+        pass
+    _click_dialog_relative(dialog, 0.37, 0.22)
+    time.sleep(0.25)
+    send_keys("^a{BACKSPACE}")
+    time.sleep(0.05)
+    send_keys(escaped)
+    time.sleep(0.1)
+    logger.debug(
+        "broker refresh: typed '%s' via coordinate fallback at (0.37, 0.22)", term
+    )
+
+
 def _control_label(control) -> str:
     try:
         text = (control.window_text() or "").strip()
@@ -685,22 +739,54 @@ def _verify_search_input_value(search_input, expected: str) -> None:
         pass
 
 
-def _click_find_company(dialog):
+def _click_find_company(dialog, *, search_input=None) -> None:
+    """
+    Click the Find your company button.  Three strategies in priority order:
+
+    1. UIA button by name — most reliable.
+    2. Dialog-relative coordinate click at (0.88, 0.22) — matches the button
+       position observed in MT5 Open an Account dialog screenshots.
+    3. Tab+Enter keyboard fallback — only attempted when *search_input* is not
+       None, i.e. UIA found and focused the search Edit, so it is likely still
+       focused and Tab reaches the button.
+    """
+    # 1. UIA button
     for label in (FIND_COMPANY_BUTTON_TEXT, "Find Your Company"):
         try:
             button = dialog.child_window(title=label, control_type="Button")
             if button.exists(timeout=1):
                 button.click_input()
+                logger.debug("broker refresh: Find your company clicked via UIA button")
                 return
         except Exception:
             continue
-    try:
-        from pywinauto.keyboard import send_keys
 
-        dialog.set_focus()
-        send_keys("{TAB}{ENTER}")
-    except Exception as exc:
-        raise RuntimeError("Find your company button not found") from exc
+    # 2. Coordinate fallback
+    try:
+        _click_dialog_relative(dialog, 0.88, 0.22)
+        logger.debug(
+            "broker refresh: Find your company clicked via relative coordinates (0.88, 0.22)"
+        )
+        return
+    except Exception as coord_exc:
+        logger.debug(
+            "broker refresh: coordinate button click failed: %s", coord_exc
+        )
+
+    # 3. Tab+Enter — only when UIA search input was found (still likely focused)
+    if search_input is not None:
+        try:
+            from pywinauto.keyboard import send_keys
+            dialog.set_focus()
+            send_keys("{TAB}{ENTER}")
+            logger.debug("broker refresh: Find your company submitted via Tab+Enter")
+            return
+        except Exception:
+            pass
+
+    raise RuntimeError(
+        "Find your company: UIA button, coordinate, and keyboard fallbacks all failed"
+    )
 
 
 def _close_open_account_dialog(dialog):
@@ -764,6 +850,7 @@ def refresh_broker_server_cache(
 
     pid: int | None = None
     before_snapshot: dict[str, dict[str, Any]] = {}
+    dialog_rect: dict | None = None
     try:
         if not result.terminal_path:
             raise ValueError("terminal_path is required for broker discovery refresh")
@@ -780,25 +867,35 @@ def refresh_broker_server_cache(
         )
         result.dialog_already_open = dialog_already_open
         result.window_titles_seen = titles_fn(pid)
+        dialog_rect = _get_dialog_rect(dialog)
+        result.dialog_rect = dialog_rect
         logger.debug(
-            "broker refresh: dialog obtained pid=%s already_open=%s titles=%s",
+            "broker refresh: dialog obtained pid=%s already_open=%s rect=%s titles=%s",
             pid,
             dialog_already_open,
+            dialog_rect,
             result.window_titles_seen,
         )
 
         search_input = _find_company_search_input(dialog)
-        if search_input is None:
+        if search_input is not None:
+            result.search_input_strategy = "uia_edit"
+            _fill_company_search_input(search_input, term)
+        else:
+            # UIA could not expose the Edit control — collect controls for debug,
+            # then fall back to dialog-relative coordinate click.
             result.dialog_controls_debug = _collect_dialog_controls_debug(dialog)
+            result.search_input_strategy = "relative_coordinate_input"
             logger.warning(
-                "broker refresh: company search input not found pid=%s controls=%s",
+                "broker refresh: UIA edit not found, using coordinate fallback. "
+                "pid=%s dialog_rect=%s controls=%s",
                 pid,
+                dialog_rect,
                 result.dialog_controls_debug[:10],
             )
-            raise RuntimeError("company search input not found in Open an Account dialog")
-        _fill_company_search_input(search_input, term)
+            _fill_search_via_coordinates(dialog, term)
 
-        _click_find_company(dialog)
+        _click_find_company(dialog, search_input=search_input)
         wait_seconds = min(max(timeout_seconds / 4, 10), 20)
         time.sleep(wait_seconds)
         result.window_titles_seen = titles_fn(pid)
@@ -820,12 +917,15 @@ def refresh_broker_server_cache(
             )
         logger.warning(
             "broker refresh: failed pid=%s terminal_path=%s failed_step=%s "
-            "titles=%s dialog_already_open=%s controls_debug_count=%d error=%s",
+            "titles=%s dialog_already_open=%s dialog_rect=%s strategy=%s "
+            "controls_debug_count=%d error=%s",
             pid,
             result.terminal_path,
             result.failed_step,
             result.window_titles_seen,
             result.dialog_already_open,
+            dialog_rect,
+            result.search_input_strategy,
             len(result.dialog_controls_debug),
             result.error_message,
         )
