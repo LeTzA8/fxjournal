@@ -1,6 +1,7 @@
 {% extends "emails/_base.html" %}
 {% set title = "MT5 connection setup failed" %}
-{% set preheader = "Your MT5 setup hit a problem — fix your details and retry from the dashboard." %}
+{% set has_exness_note = exness_note_paragraphs|default([])|length > 0 %}
+{% set preheader = "Your MT5 setup hit a problem. Your Exness details are saved while we check the connection/setup side." if has_exness_note else "Your MT5 setup hit a problem — fix your details and retry from the dashboard." %}
 
 {% block card_content %}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
@@ -11,7 +12,7 @@
   </tr>
 </table>
 <p class="email-text" style="margin:0 0 8px 0;font-size:24px;font-weight:700;color:#182538;letter-spacing:-0.3px;text-align:center;">Your MT5 setup hit a problem.</p>
-<p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#66758f;line-height:1.7;text-align:center;">Hi {{ name }}, we weren't able to connect to your MT5 account. Fix your details on the dashboard and retry — it only takes a moment.</p>
+<p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#66758f;line-height:1.7;text-align:center;">Hi {{ name }}, we weren't able to connect to your MT5 account. {% if has_exness_note %}Your submitted details are saved while we check the connection/setup side.{% else %}Fix your details on the dashboard and retry — it only takes a moment.{% endif %}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
   <tr>
     <td style="border-radius:14px;background-color:#fff8f8;border:1px solid #fad4d4;padding:18px 20px;">
@@ -20,12 +21,23 @@
     </td>
   </tr>
 </table>
+{% if has_exness_note %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+  <tr>
+    <td class="email-surface" style="border-radius:14px;background-color:#eef4ff;border:1px solid #dce4f0;padding:18px 20px;">
+      {% for paragraph in exness_note_paragraphs %}
+      <p class="{% if loop.first %}email-text{% else %}email-muted{% endif %}" style="margin:0{% if not loop.last %} 0 10px 0{% endif %};font-size:14px;{% if loop.first %}font-weight:700;color:#182538;{% else %}color:#66758f;{% endif %}line-height:1.6;">{{ paragraph }}</p>
+      {% endfor %}
+    </td>
+  </tr>
+</table>
+{% endif %}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
   <tr>
     <td style="border-radius:14px;background-color:#eef4ff;border:1px solid #dce4f0;padding:18px 20px;">
-      <p class="email-accent" style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#3658e8;letter-spacing:0.7px;text-transform:uppercase;">How to fix it</p>
-      <p class="email-text" style="margin:0 0 6px 0;font-size:14px;font-weight:700;color:#182538;">Open the dashboard and use the retry form.</p>
-      <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">Your previous details are pre-filled. Correct the server name, account number, or investor password — whichever needs fixing — and hit retry. No need to start from scratch.</p>
+      <p class="email-accent" style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#3658e8;letter-spacing:0.7px;text-transform:uppercase;">{% if has_exness_note %}What happens next{% else %}How to fix it{% endif %}</p>
+      <p class="email-text" style="margin:0 0 6px 0;font-size:14px;font-weight:700;color:#182538;">{% if has_exness_note %}We will try to resolve this from our side first.{% else %}Open the dashboard and use the retry form.{% endif %}</p>
+      <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">{% if has_exness_note %}You can open the dashboard to review the status, but you do not need to resubmit your saved MT5 details right now.{% else %}Your previous details are pre-filled. Correct the server name, account number, or investor password — whichever needs fixing — and hit retry. No need to start from scratch.{% endif %}</p>
     </td>
   </tr>
 </table>
@@ -35,7 +47,7 @@
       <table role="presentation" cellpadding="0" cellspacing="0" border="0">
         <tr>
           <td class="email-button-cell" bgcolor="#3658e8" align="center" style="background-color:#3658e8;border-radius:10px;">
-            <a href="{{ dashboard_url }}" class="email-button-link" style="display:block;padding:14px 36px;border:1px solid #3658e8;border-radius:10px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">Fix &amp; Retry on Dashboard</a>
+            <a href="{{ dashboard_url }}" class="email-button-link" style="display:block;padding:14px 36px;border:1px solid #3658e8;border-radius:10px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">{% if has_exness_note %}Open Dashboard{% else %}Fix &amp; Retry on Dashboard{% endif %}</a>
           </td>
         </tr>
       </table>

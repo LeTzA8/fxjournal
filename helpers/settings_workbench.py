@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import func
 
+from helpers.mt5_copy import EXNESS_MT5_SETUP_UI_NOTE, is_exness_mt5_account
 from helpers.utils import utcnow_naive
 from models import Trade, db
 from trading import normalize_account_type
@@ -45,6 +46,7 @@ def _resolve_account_mt5_state(
             "disconnect_action": None,
             "show_reactivate_form": False,
             "waitlist_lock": None,
+            "exness_note": None,
         }
 
     is_archived = bool(mt5_account and mt5_account.is_archived)
@@ -83,6 +85,7 @@ def _resolve_account_mt5_state(
     chip_tone = "default"
     status_key = None
     status_one_liner = None
+    exness_note = None
     needs_attention = False
     show_mt5_block = False
     dashboard_cta_label = None
@@ -115,6 +118,8 @@ def _resolve_account_mt5_state(
             getattr(mt5_account, "connection_error_message", None)
             or "MT5 connection failed. Fix your details and retry."
         )
+        if is_exness_mt5_account(mt5_account):
+            exness_note = EXNESS_MT5_SETUP_UI_NOTE
         needs_attention = True
         show_mt5_block = True
         dashboard_cta_label = "Fix on Dashboard"
@@ -177,6 +182,7 @@ def _resolve_account_mt5_state(
         "is_paused": is_paused,
         "is_active_linked": is_active_linked,
         "waitlist_lock": waitlist_lock,
+        "exness_note": exness_note,
     }
 
 

@@ -846,6 +846,11 @@ body.app-layout .trade-accounts-page .account-mt5-oneliner--error {
     font-weight: 650;
 }
 
+body.app-layout .trade-accounts-page .account-mt5-oneliner--exness {
+    color: color-mix(in srgb, var(--accent) 48%, var(--ink));
+    font-weight: 650;
+}
+
 body.app-layout .trade-accounts-page .account-mt5-cta {
     font-size: 0.78rem;
     font-weight: 700;

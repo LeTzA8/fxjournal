@@ -1,6 +1,7 @@
 {% extends "emails/_base.html" %}
 {% set title = "Your MT5 sync setup update" %}
-{% set preheader = "Your MT5 sync details were saved." %}
+{% set has_exness_note = exness_note_paragraphs|default([])|length > 0 %}
+{% set preheader = "Your MT5 sync details were saved. You do not need to resubmit your Exness details right now." if has_exness_note else "Your MT5 sync details were saved." %}
 
 {% block card_content %}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
@@ -11,16 +12,27 @@
   </tr>
 </table>
 <p class="email-text" style="margin:0 0 8px 0;font-size:24px;font-weight:700;color:#182538;letter-spacing:-0.3px;text-align:center;">{% if setup_queued %}Your MT5 sync setup has started.{% else %}We saved your MT5 sync details.{% endif %}</p>
-<p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#66758f;line-height:1.7;text-align:center;">Hi {{ name }}, {% if setup_queued %}your read-only MT5 setup for <strong class="email-text" style="color:#182538;">{{ account_name }}</strong> started right away. We will notify you by email when sync is ready.{% else %}we saved the read-only MT5 details for <strong class="email-text" style="color:#182538;">{{ account_name }}</strong>, but setup could not be queued right away. Please check the dashboard or contact support if you need help.{% endif %}</p>
+<p class="email-muted" style="margin:0 0 28px 0;font-size:15px;color:#66758f;line-height:1.7;text-align:center;">Hi {{ name }}, {% if setup_queued %}your read-only MT5 setup for <strong class="email-text" style="color:#182538;">{{ account_name }}</strong> started right away. We will notify you by email when sync is ready.{% elif has_exness_note %}we saved the read-only MT5 details for <strong class="email-text" style="color:#182538;">{{ account_name }}</strong>, but setup could not be queued right away. You do not need to resubmit your Exness details right now.{% else %}we saved the read-only MT5 details for <strong class="email-text" style="color:#182538;">{{ account_name }}</strong>, but setup could not be queued right away. Please check the dashboard or contact support if you need help.{% endif %}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
   <tr>
     <td class="email-surface" style="border-radius:14px;background-color:#eef4ff;border:1px solid #dce4f0;padding:18px 20px;">
       <p class="email-accent" style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#3658e8;letter-spacing:0.7px;text-transform:uppercase;">What happens next</p>
-      <p class="email-text" style="margin:0 0 6px 0;font-size:14px;font-weight:700;color:#182538;">{% if setup_queued %}We are preparing the MT5 connection now.{% else %}Setup still needs a retry from our side.{% endif %}</p>
-      <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">{% if setup_queued %}Most setups are ready within 1-2 business days. If any account detail needs clarification, we will reach out by email.{% else %}Your details are still stored securely. If anything needs clarification, or if you want us to retry setup, email us at <a href="mailto:{{ support_email|default('support@myfxjournal.com') }}" class="email-accent" style="color:#3658e8;text-decoration:none;">{{ support_email|default("support@myfxjournal.com") }}</a>.{% endif %}</p>
+      <p class="email-text" style="margin:0 0 6px 0;font-size:14px;font-weight:700;color:#182538;">{% if setup_queued %}We are preparing the MT5 connection now.{% elif has_exness_note %}We will try to resolve this from our side first.{% else %}Setup still needs a retry from our side.{% endif %}</p>
+      <p class="email-muted" style="margin:0;font-size:14px;color:#66758f;line-height:1.6;">{% if setup_queued %}Most setups are ready within 1-2 business days. If any account detail needs clarification, we will reach out by email.{% elif has_exness_note %}Your details are still stored securely. We will contact you if we need updated details.{% else %}Your details are still stored securely. If anything needs clarification, or if you want us to retry setup, email us at <a href="mailto:{{ support_email|default('support@myfxjournal.com') }}" class="email-accent" style="color:#3658e8;text-decoration:none;">{{ support_email|default("support@myfxjournal.com") }}</a>.{% endif %}</p>
     </td>
   </tr>
 </table>
+{% if has_exness_note %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
+  <tr>
+    <td class="email-surface" style="border-radius:14px;background-color:#eef4ff;border:1px solid #dce4f0;padding:18px 20px;">
+      {% for paragraph in exness_note_paragraphs %}
+      <p class="{% if loop.first %}email-text{% else %}email-muted{% endif %}" style="margin:0{% if not loop.last %} 0 10px 0{% endif %};font-size:14px;{% if loop.first %}font-weight:700;color:#182538;{% else %}color:#66758f;{% endif %}line-height:1.6;">{{ paragraph }}</p>
+      {% endfor %}
+    </td>
+  </tr>
+</table>
+{% endif %}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
   <tr>
     <td align="center">

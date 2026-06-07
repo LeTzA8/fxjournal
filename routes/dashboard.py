@@ -59,6 +59,7 @@ from helpers.entitlements import (
     get_weekly_followup_message_usage,
     start_premium_trial_if_needed,
 )
+from helpers.mt5_copy import EXNESS_MT5_SETUP_UI_NOTE, is_exness_mt5_account
 from helpers.running_pnl import build_running_pnl_events, summarize_running_pnl
 from helpers.scoring import compute_emotional_index
 from helpers.trade_analysis import detect_outliers, get_trade_identity
@@ -1739,6 +1740,7 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
         is_archived = bool(getattr(mt5_account, "is_archived", False))
         mt5_trial_state = None
         is_paused = False
+        exness_note = None
         if mt5_account is not None:
             from helpers.entitlements import get_mt5_trial_state, is_mt5_sync_paused
             is_paused = is_mt5_sync_paused(mt5_account)
@@ -1781,6 +1783,8 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
                 getattr(mt5_account, "connection_error_message", None)
                 or "MT5 connection failed. Update your details and retry."
             )
+            if is_exness_mt5_account(mt5_account):
+                exness_note = EXNESS_MT5_SETUP_UI_NOTE
         elif has_setup_artifacts:
             status = "setting_up"
             status_label = "Setting Up"
@@ -1819,6 +1823,7 @@ def _build_dashboard_mt5_sections(*, account_rows, active_trade_account, mt5_acc
                 "has_setup_artifacts": has_setup_artifacts,
                 "is_paused": is_paused,
                 "mt5_trial_state": mt5_trial_state,
+                "exness_note": exness_note,
             }
         )
 

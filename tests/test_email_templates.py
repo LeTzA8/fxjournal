@@ -1,5 +1,7 @@
 import pytest
 
+from helpers.mt5_copy import EXNESS_MT5_SETUP_EMAIL_NOTE_PARAGRAPHS
+
 
 @pytest.mark.parametrize(
     ("template_name", "context", "expected_snippets"),
@@ -53,6 +55,16 @@ import pytest
                 "dashboard_url": "https://example.com/dashboard",
             },
             ["Your MT5 sync is ready.", "77112233", "support@myfxjournal.com"],
+        ),
+        (
+            "emails/mt5-setup-failed.html",
+            {
+                "name": "Template Tester",
+                "error_message": "Connection timeout.",
+                "dashboard_url": "https://example.com/dashboard",
+                "exness_note_paragraphs": (),
+            },
+            ["MT5 setup failed", "Connection timeout.", "Fix &amp; Retry on Dashboard"],
         ),
         (
             "emails/welcome.html",
@@ -115,3 +127,19 @@ def test_user_email_templates_render_with_shared_shell(app_ctx, template_name, c
         assert snippet in html
     assert "reply to this email" not in html.lower()
     assert "open beta" not in html.lower()
+
+
+def test_mt5_setup_failed_email_template_uses_exness_note(app_ctx):
+    html = app_ctx.jinja_env.get_template("emails/mt5-setup-failed.html").render(
+        logo_url="https://example.com/static/site-logo.png",
+        name="Template Tester",
+        error_message="Connection timeout.",
+        dashboard_url="https://example.com/dashboard",
+        exness_note_paragraphs=EXNESS_MT5_SETUP_EMAIL_NOTE_PARAGRAPHS,
+    )
+
+    assert "Note for Exness users" in html
+    assert "you do not need to resubmit them right now" in html
+    assert "The issue may be on the connection/setup side" in html
+    assert "Open Dashboard" in html
+    assert "Fix &amp; Retry on Dashboard" not in html
