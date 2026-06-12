@@ -108,6 +108,15 @@ def test_risk_authority_falls_back_to_dollars_then_lots():
     # R1: judgment forbidden when only lot sizes are available
     assert out_lots["risk_judgment_allowed"] is False
 
+    out_contracts = build_risk_authority(
+        trades_no_dollars,
+        median_risk_pct_of_account=None,
+        median_planned_risk_dollars=None,
+        median_lot_size=0.1,
+        account_type="FUTURES",
+    )
+    assert out_contracts["basis"] == "contracts"
+
 
 def test_risk_authority_judgment_allowed_when_pct_present():
     trades = [_trade(ref="T1", seq=1, pnl=10.0, risk_pct=0.5)]

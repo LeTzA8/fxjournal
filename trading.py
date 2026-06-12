@@ -1097,6 +1097,44 @@ def format_trade_size(value, account_type):
     return _trim_decimal_text(f"{float(value):.{decimals}f}")
 
 
+def get_trade_size_unit(account_type, *, value=None, plural=True):
+    is_futures = normalize_account_type(account_type) == "FUTURES"
+    if value is not None:
+        try:
+            plural = abs(float(value) - 1.0) > 1e-9
+        except (TypeError, ValueError):
+            pass
+    if is_futures:
+        return "contracts" if plural else "contract"
+    return "lots" if plural else "lot"
+
+
+def format_trade_size_with_unit(value, account_type):
+    formatted = format_trade_size(value, account_type)
+    if formatted == "-":
+        return "-"
+    unit = get_trade_size_unit(account_type, value=value)
+    return f"{formatted} {unit}"
+
+
+def trade_size_must_be_positive_message(account_type):
+    if normalize_account_type(account_type) == "FUTURES":
+        return "Contract count must be greater than zero."
+    return "Lot size must be greater than zero."
+
+
+def risk_size_claim_phrase(account_type):
+    if normalize_account_type(account_type) == "FUTURES":
+        return "contract count"
+    return "lot size"
+
+
+def outlier_size_reason(account_type):
+    if normalize_account_type(account_type) == "FUTURES":
+        return "unusually many contracts vs your typical risk on the account"
+    return "unusually large lot vs your typical risk on the account"
+
+
 def get_trade_price_tolerance(symbol, instrument_type="CFD", contract_code=None):
     account_type = normalize_account_type(instrument_type)
     if account_type == "FUTURES":

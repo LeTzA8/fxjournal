@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-Last Updated: 2026-06-07
+Last Updated: 2026-06-12
 
 Rolling work log of recent, non-trivial changes and in-flight work. Durable architecture, capabilities, file ownership, env/config, and operational facts now live in [`PROJECT_MAP.md`](PROJECT_MAP.md) — keep this file short.
 
@@ -11,6 +11,12 @@ How to use:
 > **2026-06-07 — Consolidation.** All prior entries (≈2026-04-17 → 2026-06-07) were folded into `PROJECT_MAP.md` and removed from this file. The full original chronological log remains in git history.
 
 ## Recent Changes
+
+### 2026-06-12 — Futures sizing terminology: contracts not lots
+
+- Futures accounts now use **contracts** / **contract count** in UI copy, validation, behavior badges, weekly AI constraints, and prompt injections; CFD accounts keep **lots**.
+- Shared helpers in `trading.py`: `get_trade_size_unit`, `format_trade_size_with_unit`, `trade_size_must_be_positive_message`, `risk_size_claim_phrase`, `outlier_size_reason`.
+- Templates updated: trades table size display, check-in, bundle review.
 
 ### 2026-06-07 — MT5 admin VM cards: hide unknown bucket
 

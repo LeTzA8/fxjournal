@@ -1,6 +1,6 @@
 from helpers.scoring import build_trade_behavior_signal_map
 from helpers.trade_analysis import get_trade_identity
-from trading import format_trade_symbol, resolve_net_pnl, to_display_timezone
+from trading import format_trade_symbol, outlier_size_reason, resolve_net_pnl, to_display_timezone
 
 BEHAVIOR_ORDER = ("revenge", "reactive", "corrective")
 BEHAVIOR_LABELS = {
@@ -35,7 +35,14 @@ def _has_larger_size(context):
     )
 
 
-def _build_reason_snippets(key, signal):
+def _trade_account_type(trade):
+    account = getattr(trade, "trade_account", None)
+    if account is None:
+        return None
+    return getattr(account, "account_type", None)
+
+
+def _build_reason_snippets(key, signal, *, account_type=None):
     context = signal.get("context") or {}
     reasons = []
 
@@ -77,7 +84,7 @@ def _build_reason_snippets(key, signal):
             reasons.append("short holding time")
         if context.get("outlier_size"):
             if context.get("outlier_lot_spike"):
-                reasons.append("unusually large lot vs your typical risk on the account")
+                reasons.append(outlier_size_reason(account_type))
             else:
                 reasons.append("unusually high risk on the account vs your recent trades")
         if context.get("is_post_loss_trade") or context.get("same_trade_idea_reentry"):
@@ -97,15 +104,15 @@ def _build_confirmed_title(key):
     return f"{BEHAVIOR_LABELS[key]} Trade"
 
 
-def _build_possible_title(key, signal):
+def _build_possible_title(key, signal, *, account_type=None):
     label = BEHAVIOR_LABELS[key]
-    reasons = _build_reason_snippets(key, signal)
+    reasons = _build_reason_snippets(key, signal, account_type=account_type)
     if not reasons:
         return f"Possible {label.lower()} signal"
     return f"Possible {label.lower()} signal: {'; '.join(reasons)}"
 
 
-def _build_badges_for_signal(signal):
+def _build_badges_for_signal(signal, *, account_type=None):
     badges = []
     confirmed = signal.get("confirmed") or {}
     possible = signal.get("possible") or {}
@@ -128,7 +135,7 @@ def _build_badges_for_signal(signal):
                     "key": key,
                     "state": "possible",
                     "label": f"Possible {BEHAVIOR_LABELS[key]}",
-                    "title": _build_possible_title(key, signal),
+                    "title": _build_possible_title(key, signal, account_type=account_type),
                 }
             )
 
@@ -140,7 +147,10 @@ def build_trade_behavior_badge_map(trades, *, signal_map=None):
     badge_map = {}
     for trade in trades:
         identity = get_trade_identity(trade)
-        badge_map[identity] = _build_badges_for_signal(signals.get(identity, {}))
+        badge_map[identity] = _build_badges_for_signal(
+            signals.get(identity, {}),
+            account_type=_trade_account_type(trade),
+        )
     return badge_map
 
 

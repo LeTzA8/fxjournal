@@ -329,7 +329,7 @@
                         {% for trade in candidate.trades %}
                         <li class="outlier-trade-row">
                             <div class="outlier-trade-copy">
-                                <strong>{{ "%.2f"|format(trade.lot_size or 0) }} lot</strong>
+                                <strong>{{ format_trade_size_with_unit(trade.lot_size, active_trade_account.account_type) }}</strong>
                                 <span class="outlier-trade-meta">
                                     Entry {{ "%.5f"|format(trade.entry_price or 0) }}
                                     {% set opened_local = to_display_timezone(trade.opened_at, display_timezone_name) %}

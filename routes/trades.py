@@ -48,6 +48,8 @@ from trading import (
     format_duration_minutes,
     format_trade_price,
     format_trade_size,
+    format_trade_size_with_unit,
+    trade_size_must_be_positive_message,
     format_trade_symbol,
     get_trade_level_validation_issues,
     get_symbol_options,
@@ -137,7 +139,7 @@ def _validate_trade_submission(
     closed_at,
 ):
     if lot_size is None or lot_size <= 0:
-        return "Lot size must be greater than zero."
+        return trade_size_must_be_positive_message(account_type)
     if exit_price is not None and exit_price <= 0:
         return "Exit price must be greater than zero."
     if closed_at is not None and opened_at is not None and closed_at < opened_at:
@@ -370,7 +372,9 @@ def render_trades_page(*, manage_mode=False):
                     contract_code=trade.contract_code,
                 ),
                 "lot_size": trade.lot_size,
-                "size_display": format_trade_size(trade.lot_size, trade_account_type),
+                "size_display": format_trade_size_with_unit(
+                    trade.lot_size, trade_account_type
+                ),
                 "pnl": resolve_pnl(trade),
                 "pips": resolve_pips(trade),
                 "ticks": resolve_ticks(trade),
@@ -1366,6 +1370,7 @@ def bundle_review():
         "bundle_review.html",
         title="MyFXJournal | Bundle Review",
         username=get_effective_username(),
+        active_trade_account=active_trade_account,
         bundle_candidates=bundle_candidates,
         complete_action=url_for("trades.bundle_review_complete") if review_pending else None,
         complete_label="Done Reviewing",

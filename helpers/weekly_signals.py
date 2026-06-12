@@ -9,6 +9,7 @@ sequencing, and dominance flags are stable across runs.
 from __future__ import annotations
 
 from helpers.weekly_coaching_hypotheses import build_coaching_hypotheses
+from trading import normalize_account_type
 
 
 _RISK_STABLE_TOLERANCE = 0.15
@@ -125,18 +126,19 @@ def build_risk_authority(
     median_risk_pct_of_account=None,
     median_planned_risk_dollars=None,
     median_lot_size=None,
+    account_type=None,
 ):
     """Decide which risk basis is authoritative and whether weekly risk was stable.
 
     Output keys:
-    - basis: one of pct_of_account, dollars, lots, or None
+    - basis: one of pct_of_account, dollars, lots, contracts, or None
     - value: the median used as the anchor
     - stable: True when per-trade risk stays inside +/-15% of median
     - dispersion_pct: max relative deviation from median (None if not enough data)
     - single_sample: True when only one closed trade exists
     - risk_judgment_allowed: True only when basis is pct_of_account or
       dollars. The prompt's R1 forbids any risk claim when this is False
-      (basis is lots or no risk data exists).
+      (basis is lots/contracts or no risk data exists).
     """
     closed = _closed_trades(serialized_trades)
     if median_risk_pct_of_account is not None:
@@ -152,7 +154,11 @@ def build_risk_authority(
             _safe_float(t.get("planned_risk_dollars")) for t in closed
         ]
     elif median_lot_size is not None:
-        basis = "lots"
+        basis = (
+            "contracts"
+            if normalize_account_type(account_type) == "FUTURES"
+            else "lots"
+        )
         value = float(median_lot_size)
         per_trade_values = [_safe_float(t.get("lot_size")) for t in closed]
     else:
@@ -197,7 +203,7 @@ def _per_trade_risk_value(trade, basis):
         return _safe_float(trade.get("trade_risk_pct"))
     if basis == "dollars":
         return _safe_float(trade.get("planned_risk_dollars"))
-    if basis == "lots":
+    if basis in ("lots", "contracts"):
         return _safe_float(trade.get("lot_size"))
     return None
 
@@ -731,6 +737,7 @@ def build_weekly_signals(
     median_risk_pct_of_account,
     median_planned_risk_dollars,
     median_lot_size,
+    account_type=None,
     account_age_days,
     notes_confidence,
 ):
@@ -741,6 +748,7 @@ def build_weekly_signals(
         median_risk_pct_of_account=median_risk_pct_of_account,
         median_planned_risk_dollars=median_planned_risk_dollars,
         median_lot_size=median_lot_size,
+        account_type=account_type,
     )
     largest_ref = None
     largest_symbol = (summary or {}).get("largest_trade_symbol")

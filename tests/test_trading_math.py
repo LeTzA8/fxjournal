@@ -10,8 +10,11 @@ from trading import (
     build_trade_analytics,
     calc_pnl_values,
     derive_exit_price,
+    format_trade_size_with_unit,
+    get_trade_size_unit,
     resolve_pips,
     resolve_ticks,
+    trade_size_must_be_positive_message,
 )
 
 
@@ -584,3 +587,15 @@ def test_aggregate_ohlc_bars_merges_m5_into_m15_bucket():
     assert out[0]["high"] == pytest.approx(1.04)
     assert out[0]["low"] == pytest.approx(0.99)
     assert out[0]["close"] == pytest.approx(1.03)
+
+
+def test_trade_size_terminology_uses_contracts_for_futures():
+    assert get_trade_size_unit("FUTURES", value=1) == "contract"
+    assert get_trade_size_unit("FUTURES", value=2) == "contracts"
+    assert get_trade_size_unit("CFD", value=1) == "lot"
+    assert get_trade_size_unit("CFD", value=2) == "lots"
+    assert format_trade_size_with_unit(2, "FUTURES") == "2 contracts"
+    assert format_trade_size_with_unit(1, "CFD") == "1 lot"
+    assert trade_size_must_be_positive_message("FUTURES") == (
+        "Contract count must be greater than zero."
+    )

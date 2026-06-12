@@ -251,6 +251,18 @@ def test_universal_payload_lot_only_risk_constraint():
     assert any("lot size" in item.lower() for item in claims)
 
 
+def test_universal_payload_futures_uses_contract_count_constraint():
+    internal = _nas100_two_trade_internal_payload()
+    internal["account_type"] = "FUTURES"
+    internal["current_week_breakdowns"]["risk_authority"] = {
+        "basis": "contracts",
+        "risk_judgment_allowed": False,
+    }
+    payload = build_universal_weekly_payload(internal)
+    claims = payload["constraints"]["do_not_claim"]
+    assert any("contract count" in item.lower() for item in claims)
+
+
 def test_nas100_scenario_reward_cost_frame():
     payload = build_universal_weekly_payload(_nas100_two_trade_internal_payload())
     frames = [t.get("frame") for t in payload.get("coaching_frame_triggers") or []]

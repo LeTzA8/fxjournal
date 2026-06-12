@@ -35,6 +35,7 @@ from models import (
     AIGeneratedResponse,
     AIPromptHistory,
     Trade,
+    TradeAccount,
     TradeBars,
     User,
     UserProfile,
@@ -49,6 +50,8 @@ from trading import (
     format_trade_symbol,
     get_trade_account_type,
     get_trade_level_validation_issues,
+    normalize_account_type,
+    risk_size_claim_phrase,
     is_extremely_long_duration_minutes,
     merge_bundled_trades,
     resolve_net_pnl,
@@ -1702,6 +1705,11 @@ def build_trade_payload(
         closed_trades_only=closed_trades_only,
     )
     trades = merge_bundled_trades(raw_trades)
+    account_type = get_trade_account_type(trades[0]) if trades else "CFD"
+    if not trades and trade_account_id is not None:
+        account = TradeAccount.query.get(trade_account_id)
+        if account is not None:
+            account_type = account.account_type
     if max_trades is not None and max_trades > 0:
         trades = trades[:max_trades]
 
@@ -1971,6 +1979,7 @@ def build_trade_payload(
         median_risk_pct_of_account=med_risk_pct,
         median_planned_risk_dollars=med_planned_risk_d,
         median_lot_size=median_lot_size,
+        account_type=account_type,
         account_age_days=account_age_days,
         notes_confidence=notes_confidence,
     )
@@ -2001,6 +2010,7 @@ def build_trade_payload(
     )
 
     payload = {
+        "account_type": account_type,
         "generated_at": format_utc_timestamp(utcnow_naive()),
         "period_start_utc": format_utc_timestamp(period_start_utc),
         "period_end_utc": format_utc_timestamp(period_end_utc),
@@ -2197,7 +2207,32 @@ def _format_notes_coverage(value, notes_with_content=None, notes_missing=None):
     )
 
 
+def _trade_size_field_label(account_type):
+    if normalize_account_type(account_type) == "FUTURES":
+        return "contract_count"
+    return "lot_size"
+
+
+def _futures_terminology_adjustments(payload):
+    account_type = (payload or {}).get("account_type")
+    if normalize_account_type(account_type) != "FUTURES":
+        return ""
+    return (
+        "\n\nFUTURES TERMINOLOGY\n"
+        "- This is a futures account. Position size is measured in contracts.\n"
+        '- Say "contracts" or "contract count" in review text. Never say "lots" or "lot size".\n'
+        "- Trade field lot_size and sizing.median_lot_size mean contract count.\n"
+    )
+
+
 def format_payload_for_prompt(payload):
+    account_type = payload.get("account_type") or "CFD"
+    size_field_label = _trade_size_field_label(account_type)
+    median_size_field_label = (
+        "median_contract_count"
+        if normalize_account_type(account_type) == "FUTURES"
+        else "median_lot_size"
+    )
     summary = payload.get("summary", {})
     user_profile = payload.get("user_profile") or {}
     weekly_checkin = payload.get("weekly_checkin") or {}
@@ -2423,7 +2458,7 @@ def format_payload_for_prompt(payload):
             [
                 f"- sizing.median_planned_risk_dollars: {_format_currency_magnitude(sizing.get('median_planned_risk_dollars'))}",
                 f"- sizing.median_risk_pct_of_account: {_format_percent(sizing.get('median_risk_pct_of_account'))}",
-                f"- sizing.median_lot_size: {_format_number(sizing.get('median_lot_size'))}",
+                f"- sizing.{median_size_field_label}: {_format_number(sizing.get('median_lot_size'))}",
                 f"- sizing.outlier_size_count: {sizing.get('outlier_size_count', 0)}",
                 f"- sizing.outlier_size_share_pct: {_format_percent(sizing.get('outlier_size_share_pct'))}",
                 f"- frequency.trade_idea_count: {frequency.get('trade_idea_count', 0)}",
@@ -2759,7 +2794,7 @@ def format_payload_for_prompt(payload):
                 f"   exit_price: {_format_number(trade.get('exit_price'), digits=5)}",
                 f"   stop_loss: {_format_number(trade.get('stop_loss'), digits=5)}",
                 f"   take_profit: {_format_number(trade.get('take_profit'), digits=5)}",
-                f"   lot_size: {_format_number(trade.get('lot_size'))}",
+                f"   {size_field_label}: {_format_number(trade.get('lot_size'))}",
                 f"   planned_risk_dollars: {_format_currency_magnitude(trade.get('planned_risk_dollars'))}",
                 f"   trade_risk_pct: {_format_percent(trade.get('trade_risk_pct'))}",
                 f"   pnl: {_format_signed_currency(trade.get('pnl'))}",
@@ -2841,8 +2876,10 @@ def build_dashboard_advice_messages(payload, prompt_filename=None, profile_adjus
     prompt_history = get_or_create_prompt_history(prompt_filename)
     payload_json = serialize_payload(payload)
     prompt_input = format_universal_weekly_payload(payload)
-    if profile_adjustments:
-        prompt_input = f"{prompt_input}{profile_adjustments}"
+    futures_adjustments = _futures_terminology_adjustments(payload)
+    combined_adjustments = f"{profile_adjustments}{futures_adjustments}".strip()
+    if combined_adjustments:
+        prompt_input = f"{prompt_input}\n{combined_adjustments}"
     return prompt_history, [
         {
             "role": "system",

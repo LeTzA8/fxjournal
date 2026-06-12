@@ -42,7 +42,12 @@ from helpers.runtime_env import load_runtime_env
 from extensions import limiter, oauth
 from routes import all_blueprints, mt5_internal_bp
 from helpers.utils import env_bool, env_int, utcnow_naive
-from trading import format_trade_price, format_trade_size, trim_decimal_string
+from trading import (
+    format_trade_price,
+    format_trade_size,
+    format_trade_size_with_unit,
+    trim_decimal_string,
+)
 
 load_runtime_env()
 
@@ -179,6 +184,7 @@ limiter.init_app(app)
 
 app.add_template_global(format_trade_price, "format_trade_price")
 app.add_template_global(format_trade_size, "format_trade_size")
+app.add_template_global(format_trade_size_with_unit, "format_trade_size_with_unit")
 app.add_template_global(trim_decimal_string, "trim_decimal")
 
 from helpers.mt5_dispatch import canonical_monitor_vm_id

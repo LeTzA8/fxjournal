@@ -155,7 +155,10 @@ def sanitize_error_message(message):
 
 
 def get_trade_size_label(account_type):
-    return "Contracts" if normalize_account_type(account_type) == "FUTURES" else "Lots"
+    from trading import get_trade_size_unit
+
+    unit = get_trade_size_unit(account_type, plural=True)
+    return unit[:1].upper() + unit[1:]
 
 
 def trade_has_close_signal(

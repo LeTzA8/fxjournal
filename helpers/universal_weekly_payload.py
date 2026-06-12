@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+from trading import risk_size_claim_phrase
+
 _STRATEGY_DESCRIPTION_MAX_LEN = 1200
 _STRATEGY_PRESERVE_SECTION_KEYWORDS = (
     "re-entry",
@@ -585,6 +587,7 @@ def _build_constraints(
     summary,
     execution_outcome,
     risk_authority,
+    account_type=None,
 ):
     do_not_claim = []
     confirmed_count = _confirmed_revenge_count(summary)
@@ -592,7 +595,9 @@ def _build_constraints(
         do_not_claim.append("Do not call this confirmed revenge.")
     risk_authority = risk_authority or {}
     if not risk_authority.get("risk_judgment_allowed"):
-        do_not_claim.append("Do not make account-risk claims from lot size.")
+        do_not_claim.append(
+            f"Do not make account-risk claims from {risk_size_claim_phrase(account_type)}."
+        )
     elif risk_authority.get("stable") is True:
         do_not_claim.append("Do not claim risk escalation.")
     if closed_trades < 3:
@@ -815,7 +820,9 @@ def build_universal_weekly_payload(full_payload: dict) -> dict:
     if issue_scope:
         week_summary["issue_scope"] = issue_scope
 
+    account_type = full_payload.get("account_type")
     payload = {
+        "account_type": account_type,
         "evidence_boundary": _evidence_boundary(claim_scope),
         "week_summary": week_summary,
         "strategy_context": {"strategies_used": strategies_used},
@@ -826,6 +833,7 @@ def build_universal_weekly_payload(full_payload: dict) -> dict:
             summary=summary,
             execution_outcome=execution_outcome,
             risk_authority=risk_authority,
+            account_type=full_payload.get("account_type"),
         ),
         "coaching_frame_triggers": coaching_frame_triggers,
     }
