@@ -1,7 +1,10 @@
+import csv
 import hashlib
-from datetime import datetime
+import io
+import re
+from datetime import datetime, timedelta
 
-from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, Response, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import load_only, selectinload
 
@@ -33,6 +36,7 @@ from helpers.core import (
 )
 from helpers.weekly_ai_queue import queue_weekly_ai_review_after_ingest
 from helpers.trade_analysis import detect_outliers, get_trade_identity
+from helpers.trade_state import trade_is_closed
 from helpers.trade_interpretation import apply_interpretation
 from models import Trade, TradeBars, db
 from trading import (
@@ -54,12 +58,14 @@ from trading import (
     get_trade_level_validation_issues,
     get_symbol_options,
     get_trade_account_type,
+    get_trade_size_unit,
     normalize_account_type,
     parse_futures_contract_code,
     parse_import_signature_datetime,
     parse_mt5_xlsx_stream,
     parse_topstep_csv_stream,
     parse_tradovate_csv_stream,
+    resolve_net_pnl,
     resolve_pips,
     resolve_pnl,
     resolve_ticks,
@@ -431,6 +437,226 @@ def render_trades_page(*, manage_mode=False):
         import_batches=import_batches,
         manage_mode=manage_mode,
         trade_profile_options=get_user_trade_profiles(user_id),
+    )
+
+
+def _sanitize_export_filename_part(value):
+    cleaned = re.sub(r"[^\w\-]+", "-", str(value or "").strip(), flags=re.UNICODE)
+    cleaned = cleaned.strip("-")
+    return cleaned or "account"
+
+
+def _parse_trade_export_date_param(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def _format_trade_export_timestamp(value):
+    if value is None:
+        return ""
+    return f"{value.strftime('%Y-%m-%d %H:%M:%S')} UTC"
+
+
+def _infer_trade_export_source(trade):
+    if (getattr(trade, "mt5_position", None) or "").strip():
+        return "mt5_sync"
+    if (getattr(trade, "import_signature", None) or "").strip():
+        return "import"
+    return "manual"
+
+
+def _trade_export_strategy_label(trade):
+    trade_profile_version = getattr(trade, "trade_profile_version", None)
+    trade_profile = getattr(trade, "trade_profile", None)
+    if trade_profile_version is not None:
+        return trade_profile_version.name
+    if trade_profile is not None:
+        return trade_profile.name
+    return ""
+
+
+def _build_trade_export_bundle_map(trades):
+    bundle_members = {}
+    for trade in trades:
+        bundle_pubkey = getattr(trade, "bundle_pubkey", None)
+        if not bundle_pubkey:
+            continue
+        bundle_members.setdefault(bundle_pubkey, []).append(trade.pubkey)
+    return {
+        bundle_pubkey: "; ".join(sorted(pubkeys))
+        for bundle_pubkey, pubkeys in bundle_members.items()
+    }
+
+
+def _build_trade_export_strategy_reference(trades):
+    strategies = {}
+    for trade in trades:
+        trade_profile = getattr(trade, "trade_profile", None)
+        if trade_profile is None:
+            continue
+        profile_id = trade_profile.id
+        if profile_id in strategies:
+            continue
+        description = ""
+        trade_profile_version = getattr(trade, "trade_profile_version", None)
+        if trade_profile_version is not None:
+            description = (trade_profile_version.short_description or "").strip()
+        strategies[profile_id] = {
+            "name": trade_profile.name,
+            "description": description,
+        }
+    return sorted(strategies.values(), key=lambda item: item["name"].lower())
+
+
+def _build_trade_export_csv(trades, *, account_type, account_name):
+    output = io.StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+    strategy_reference = _build_trade_export_strategy_reference(trades)
+    if strategy_reference:
+        writer.writerow(["# Strategies used in this export"])
+        writer.writerow(["strategy_name", "description"])
+        for strategy in strategy_reference:
+            writer.writerow([strategy["name"], strategy["description"]])
+        writer.writerow([])
+
+    size_column = f"size_{get_trade_size_unit(account_type, plural=True)}"
+    writer.writerow(
+        [
+            "opened_at_utc",
+            "closed_at_utc",
+            "duration_minutes",
+            "symbol",
+            "side",
+            size_column,
+            "entry_price",
+            "exit_price",
+            "stop_loss",
+            "take_profit",
+            "pnl_net",
+            "commission",
+            "swap",
+            "strategy",
+            "note",
+            "bundle_group",
+            "bundle_trades",
+            "is_revenge",
+            "is_reactive",
+            "is_corrective",
+            "source",
+        ]
+    )
+
+    bundle_map = _build_trade_export_bundle_map(trades)
+    for trade in trades:
+        bundle_pubkey = getattr(trade, "bundle_pubkey", None) or ""
+        duration_minutes = ""
+        if trade.opened_at is not None and trade.closed_at is not None:
+            if trade.closed_at >= trade.opened_at:
+                duration_minutes = int(
+                    round((trade.closed_at - trade.opened_at).total_seconds() / 60.0)
+                )
+        net_pnl = resolve_net_pnl(trade)
+        writer.writerow(
+            [
+                _format_trade_export_timestamp(trade.opened_at),
+                _format_trade_export_timestamp(trade.closed_at),
+                duration_minutes,
+                format_trade_symbol(trade),
+                trade.side,
+                trade.lot_size,
+                trade.entry_price,
+                trade.exit_price if trade.exit_price is not None else "",
+                trade.stop_loss if trade.stop_loss is not None else "",
+                trade.take_profit if trade.take_profit is not None else "",
+                net_pnl if net_pnl is not None else "",
+                trade.commission if trade.commission is not None else "",
+                trade.swap if trade.swap is not None else "",
+                _trade_export_strategy_label(trade),
+                (trade.trade_note or "").strip(),
+                bundle_pubkey,
+                bundle_map.get(bundle_pubkey, "") if bundle_pubkey else "",
+                "TRUE" if getattr(trade, "is_revenge", False) else "",
+                "TRUE" if getattr(trade, "is_reactive", False) else "",
+                "TRUE" if getattr(trade, "is_corrective", False) else "",
+                _infer_trade_export_source(trade),
+            ]
+        )
+
+    account_slug = _sanitize_export_filename_part(account_name)
+    filename = (
+        f"trades_{account_slug}_{utcnow_naive().strftime('%Y%m%d')}.csv"
+    )
+    return output.getvalue(), filename
+
+
+def _query_closed_trades_for_export(user_id, trade_account_id, *, from_date=None, to_date=None):
+    query = (
+        Trade.query.filter_by(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+        )
+        .options(
+            selectinload(Trade.trade_profile),
+            selectinload(Trade.trade_profile_version),
+            selectinload(Trade.interpretation),
+        )
+        .filter(Trade.closed_at.isnot(None))
+        .order_by(Trade.opened_at.asc(), Trade.id.asc())
+    )
+    if from_date is not None:
+        query = query.filter(Trade.opened_at >= from_date)
+    if to_date is not None:
+        query = query.filter(Trade.opened_at < to_date + timedelta(days=1))
+    trades = query.all()
+    return [trade for trade in trades if trade_is_closed(trade)]
+
+
+@bp.route("/dashboard/trades/export")
+@limiter.limit("12 per minute", methods=["GET"])
+@login_required
+def export_trades():
+    export_format = (request.args.get("format") or "csv").strip().lower()
+    if export_format != "csv":
+        flash("Only CSV export is available right now.", "error")
+        return redirect(url_for("trades.trades"))
+
+    user_id = get_effective_user_id()
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    from_date = _parse_trade_export_date_param(request.args.get("from"))
+    to_date = _parse_trade_export_date_param(request.args.get("to"))
+    if request.args.get("from") and from_date is None:
+        flash("Invalid export start date. Use YYYY-MM-DD.", "error")
+        return redirect(url_for("trades.trades"))
+    if request.args.get("to") and to_date is None:
+        flash("Invalid export end date. Use YYYY-MM-DD.", "error")
+        return redirect(url_for("trades.trades"))
+
+    try:
+        closed_trades = _query_closed_trades_for_export(
+            user_id,
+            active_trade_account.id,
+            from_date=from_date,
+            to_date=to_date,
+        )
+    except OperationalError:
+        db.session.rollback()
+        flash("Could not export trades right now. Please try again.", "error")
+        return redirect(url_for("trades.trades"))
+
+    csv_body, filename = _build_trade_export_csv(
+        closed_trades,
+        account_type=active_trade_account.account_type,
+        account_name=active_trade_account.name,
+    )
+    return Response(
+        csv_body,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

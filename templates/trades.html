@@ -31,6 +31,9 @@
                     <h2>📋 All Trades</h2>
                     <div class="table-actions">
                         <a href="{{ url_for('trades.new_trade') }}" class="new-trade-btn">New Trade</a>
+                        {% if not manage_mode %}
+                        <a href="{{ url_for('trades.export_trades', format='csv') }}" class="ghost-btn">Export CSV</a>
+                        {% endif %}
                         {% if manage_mode %}
                         <a href="{{ url_for('trades.trades') }}" class="manage-trades-btn is-active">Done</a>
                         {% else %}

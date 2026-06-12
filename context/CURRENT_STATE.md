@@ -12,6 +12,13 @@ How to use:
 
 ## Recent Changes
 
+### 2026-06-13 — Closed-trade CSV export
+
+- Added `GET /dashboard/trades/export?format=csv` for the active trade account: closed trades only, UTC timestamps with explicit `UTC` suffix, optional `from`/`to` opened-at date filters.
+- CSV includes a one-time strategy reference block (name + description) when strategies are attached, net PnL via `resolve_net_pnl`, and bundle columns (`bundle_group`, `bundle_trades`).
+- Trades page shows an **Export CSV** button (hidden in manage mode).
+- Tests: `tests/test_trades_routes.py` (`export` cases).
+
 ### 2026-06-12 — Futures sizing terminology: contracts not lots
 
 - Futures accounts now use **contracts** / **contract count** in UI copy, validation, behavior badges, weekly AI constraints, and prompt injections; CFD accounts keep **lots**.

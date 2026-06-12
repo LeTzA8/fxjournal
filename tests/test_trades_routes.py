@@ -1,10 +1,11 @@
+import csv
 from datetime import datetime, timedelta
-from io import BytesIO
+from io import BytesIO, StringIO
 
 import pytest
 import routes.trades as trades_routes
 from helpers.trade_interpretation import apply_interpretation
-from models import FuturesSymbol, Trade, TradeAccount, TradeBars, User, db
+from models import FuturesSymbol, Trade, TradeAccount, TradeBars, TradeProfile, TradeProfileVersion, User, db
 from trading import clear_cfd_symbol_cache
 
 
@@ -1175,3 +1176,212 @@ def test_trade_chart_data_returns_not_implemented_for_paid_tier_m1(app_ctx, clie
     assert payload["available_timeframes"] == ["M5", "M15"]
     assert "timeframe" not in payload
     assert payload["cta"]["source"] == "replay_lock"
+
+
+def test_export_trades_returns_closed_trade_csv(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-export-user",
+        email="trade-export@example.com",
+    )
+    profile = TradeProfile(
+        user_id=user.id,
+        name="London Breakout",
+        current_version_number=1,
+    )
+    db.session.add(profile)
+    db.session.flush()
+    profile_version = TradeProfileVersion(
+        trade_profile_id=profile.id,
+        version_number=1,
+        name="London Breakout v1",
+        short_description="Enter on London open break of Asian range.",
+    )
+    db.session.add(profile_version)
+    db.session.flush()
+
+    closed_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=1.10120,
+        lot_size=0.50,
+        pnl=60.0,
+        commission=-1.20,
+        swap=0.25,
+        stop_loss=1.09900,
+        take_profit=1.10200,
+        trade_note="Held through pullback",
+        opened_at=datetime(2026, 3, 10, 9, 0, 0),
+        closed_at=datetime(2026, 3, 10, 9, 15, 0),
+        trade_profile_id=profile.id,
+        trade_profile_version_id=profile_version.id,
+        mt5_position="123456",
+    )
+    open_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="GBPUSD",
+        side="SELL",
+        entry_price=1.25000,
+        lot_size=0.20,
+        opened_at=datetime(2026, 3, 11, 9, 0, 0),
+    )
+    db.session.add_all([closed_trade, open_trade])
+    db.session.flush()
+    apply_interpretation(
+        closed_trade,
+        bundle_pubkey="bundle-export-test",
+        is_revenge=True,
+        source="test",
+        user_id=user.id,
+    )
+    db.session.commit()
+
+    response = client.get("/dashboard/trades/export?format=csv")
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/csv"
+    assert 'attachment; filename="trades_Main-Account_' in response.headers.get(
+        "Content-Disposition", ""
+    )
+    rows = list(csv.reader(StringIO(response.get_data(as_text=True))))
+    assert rows[0] == ["# Strategies used in this export"]
+    assert rows[1] == ["strategy_name", "description"]
+    assert rows[2] == [
+        "London Breakout",
+        "Enter on London open break of Asian range.",
+    ]
+    assert rows[3] == []
+    assert rows[4][0] == "opened_at_utc"
+    assert "size_lots" in rows[4]
+    assert "bundle_group" in rows[4]
+    assert "bundle_trades" in rows[4]
+    assert len(rows) == 6
+    trade_row = rows[5]
+    assert trade_row[0] == "2026-03-10 09:00:00 UTC"
+    assert trade_row[1] == "2026-03-10 09:15:00 UTC"
+    assert trade_row[2] == "15"
+    assert trade_row[3] == "EURUSD"
+    assert trade_row[4] == "BUY"
+    assert trade_row[5] == "0.5"
+    assert trade_row[13] == "London Breakout v1"
+    assert trade_row[14] == "Held through pullback"
+    assert trade_row[15] == "bundle-export-test"
+    assert trade_row[16] == closed_trade.pubkey
+    assert trade_row[17] == "TRUE"
+    assert trade_row[20] == "mt5_sync"
+
+
+def test_export_trades_respects_opened_at_date_range(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-export-range-user",
+        email="trade-export-range@example.com",
+    )
+    early_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=1.10100,
+        lot_size=0.10,
+        pnl=10.0,
+        opened_at=datetime(2026, 3, 1, 9, 0, 0),
+        closed_at=datetime(2026, 3, 1, 9, 30, 0),
+    )
+    late_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="GBPUSD",
+        side="SELL",
+        entry_price=1.25000,
+        exit_price=1.24900,
+        lot_size=0.10,
+        pnl=10.0,
+        opened_at=datetime(2026, 3, 20, 9, 0, 0),
+        closed_at=datetime(2026, 3, 20, 9, 30, 0),
+    )
+    db.session.add_all([early_trade, late_trade])
+    db.session.commit()
+
+    response = client.get(
+        "/dashboard/trades/export?format=csv&from=2026-03-15&to=2026-03-31"
+    )
+
+    assert response.status_code == 200
+    rows = list(csv.reader(StringIO(response.get_data(as_text=True))))
+    data_rows = [
+        row
+        for row in rows
+        if row and row[0] != "opened_at_utc" and not row[0].startswith("#")
+    ]
+    assert len(data_rows) == 1
+    assert data_rows[0][3] == "GBPUSD"
+
+
+def test_export_trades_scoped_to_active_account(app_ctx, client):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="trade-export-scope-user",
+        email="trade-export-scope@example.com",
+    )
+    other_account = TradeAccount(
+        user_id=user.id,
+        name="Secondary",
+        account_type="CFD",
+        is_default=False,
+    )
+    db.session.add(other_account)
+    db.session.flush()
+
+    active_trade = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.10000,
+        exit_price=1.10100,
+        lot_size=0.10,
+        pnl=10.0,
+        opened_at=datetime(2026, 3, 10, 9, 0, 0),
+        closed_at=datetime(2026, 3, 10, 9, 30, 0),
+    )
+    other_trade = Trade(
+        user_id=user.id,
+        trade_account_id=other_account.id,
+        symbol="USDJPY",
+        side="SELL",
+        entry_price=150.0,
+        exit_price=149.5,
+        lot_size=0.10,
+        pnl=10.0,
+        opened_at=datetime(2026, 3, 10, 10, 0, 0),
+        closed_at=datetime(2026, 3, 10, 10, 30, 0),
+    )
+    db.session.add_all([active_trade, other_trade])
+    db.session.commit()
+
+    response = client.get("/dashboard/trades/export?format=csv")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "EURUSD" in body
+    assert "USDJPY" not in body
+
+
+def test_trades_page_includes_export_link(app_ctx, client):
+    _create_logged_in_user(
+        client,
+        username="trade-export-link-user",
+        email="trade-export-link@example.com",
+    )
+
+    response = client.get("/dashboard/trades")
+
+    assert response.status_code == 200
+    assert b"/dashboard/trades/export?format=csv" in response.data
+    assert b"Export CSV" in response.data
