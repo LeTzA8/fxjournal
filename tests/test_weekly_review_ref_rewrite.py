@@ -1,6 +1,9 @@
 import json
 
-from helpers.weekly_review_ref_rewrite import build_weekly_review_citation_lookup
+from helpers.weekly_review_ref_rewrite import (
+    build_weekly_review_citation_lookup,
+    unwrap_bracketed_citation_labels,
+)
 
 
 def test_citation_lookup_uses_trade_date_label():
@@ -55,3 +58,27 @@ def test_citation_lookup_carries_row_resolution_metadata():
     assert lookup["B1"]["trade_id"] == 202
     assert lookup["B1"]["trade_pubkey"] == "trade-pubkey-202"
     assert lookup["B1"]["bundle_key"] == "bundle-xyz"
+
+
+def test_unwrap_bracketed_citation_labels_strips_known_labels():
+    lookup = build_weekly_review_citation_lookup(
+        json.dumps(
+            {
+                "trades": [
+                    {
+                        "ref": "B1",
+                        "symbol": "MES",
+                        "trade_date_label": "08 Jun 2026 (Mon)",
+                        "is_bundle": True,
+                        "pnl": -1.0,
+                    }
+                ]
+            }
+        ),
+        "UTC",
+    )
+    out = unwrap_bracketed_citation_labels(
+        "The loss on [MES bundle | 08 Jun 2026 (Mon)] was costly.",
+        lookup,
+    )
+    assert out == "The loss on MES bundle | 08 Jun 2026 (Mon) was costly."

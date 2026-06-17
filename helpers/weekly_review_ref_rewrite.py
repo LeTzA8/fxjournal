@@ -138,6 +138,38 @@ def _strip_stray_possessive_after_review_labels(text, citation_lookup):
     return normalized
 
 
+def unwrap_bracketed_citation_labels(text, citation_lookup):
+    normalized = str(text or "")
+    if not normalized or not citation_lookup:
+        return normalized
+
+    labels = []
+    seen = set()
+    for citation in citation_lookup.values():
+        if not isinstance(citation, dict):
+            continue
+        for raw in (
+            str(citation.get("label") or "").strip(),
+            str(citation.get("inline_label") or "").strip(),
+        ):
+            if not raw:
+                continue
+            key = raw.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            labels.append(raw)
+
+    for label in sorted(labels, key=len, reverse=True):
+        normalized = re.sub(
+            rf"\[\s*{re.escape(label)}\s*\]",
+            label,
+            normalized,
+            flags=re.IGNORECASE,
+        )
+    return normalized
+
+
 def rewrite_review_text_refs(text, citation_lookup):
     normalized = str(text or "").strip()
     if not normalized or not citation_lookup:

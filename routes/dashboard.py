@@ -69,6 +69,7 @@ from helpers.weekly_review_ref_rewrite import (
     deserialize_datetime_iso as _deserialize_datetime,
     parse_json_blob as _parse_json_blob,
     rewrite_review_text_refs as _rewrite_review_text_refs,
+    unwrap_bracketed_citation_labels as _unwrap_bracketed_citation_labels,
 )
 from auth_account import build_external_url, user_has_admin_access
 from extensions import limiter
@@ -154,6 +155,10 @@ _WEEKLY_REVIEW_CHAT_DUPLICATE_SYMBOL_PAIR_RE = re.compile(
 )
 _WEEKLY_REVIEW_CHAT_REDUNDANT_DATE_SUFFIX_RE = re.compile(
     r"(\d{1,2}\s+[A-Za-z]{3})\s*$",
+    re.IGNORECASE,
+)
+_WEEKLY_REVIEW_CHAT_REDUNDANT_DATE_AFTER_CITATION_RE = re.compile(
+    r"^\s*(?:retry\s+)?on\s+(\d{1,2}\s+[A-Za-z]{3})\b",
     re.IGNORECASE,
 )
 
@@ -486,6 +491,7 @@ def _rewrite_weekly_review_chat_reply_text(text, citation_lookup):
         return f" {', '.join(labels)} "
 
     normalized = bracketed_ref_pattern.sub(replace_bracket_group, normalized)
+    normalized = _unwrap_bracketed_citation_labels(normalized, citation_lookup)
     return _rewrite_review_text_refs(normalized, citation_lookup)
 
 
@@ -494,11 +500,15 @@ def _trim_redundant_date_prefix_before_chat_citations(segments):
         return segments
 
     trimmed = []
-    for segment in segments:
+    index = 0
+    while index < len(segments):
+        segment = segments[index]
         if not isinstance(segment, dict):
+            index += 1
             continue
         if segment.get("type") != "citation":
             trimmed.append(segment)
+            index += 1
             continue
 
         label = str(segment.get("label") or segment.get("inline_label") or "").strip()
@@ -513,7 +523,28 @@ def _trim_redundant_date_prefix_before_chat_citations(segments):
                         trimmed[-1] = {"type": "text", "text": f"{leading} "}
                     else:
                         trimmed.pop()
+
         trimmed.append(segment)
+
+        if index + 1 < len(segments):
+            next_segment = segments[index + 1]
+            if (
+                label
+                and isinstance(next_segment, dict)
+                and next_segment.get("type") == "text"
+            ):
+                next_text = str(next_segment.get("text") or "")
+                date_match = _WEEKLY_REVIEW_CHAT_REDUNDANT_DATE_AFTER_CITATION_RE.match(next_text)
+                if date_match:
+                    date_token = date_match.group(1)
+                    if re.search(re.escape(date_token), label, flags=re.IGNORECASE):
+                        remainder = next_text[date_match.end() :]
+                        if remainder:
+                            trimmed.append({"type": "text", "text": remainder})
+                        index += 2
+                        continue
+
+        index += 1
     return trimmed
 
 

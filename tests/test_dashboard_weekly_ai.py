@@ -2863,6 +2863,75 @@ def test_weekly_review_chat_reply_display_trims_redundant_date_before_citation()
     ]
 
 
+def test_weekly_review_chat_reply_display_unwraps_bracketed_full_labels():
+    review = type(
+        "Review",
+        (),
+        {
+            "payload_json": json.dumps(
+                {
+                    "trades": [
+                        {
+                            "ref": "B1",
+                            "trade_id": 1,
+                            "symbol": "MES",
+                            "trade_date_label": "08 Jun 2026 (Mon)",
+                            "opened_at": "2026-06-08T14:30:00Z",
+                            "pnl": -50.0,
+                            "is_bundle": True,
+                            "bundle_pubkey": "bundle-mes",
+                        },
+                        {
+                            "ref": "T2",
+                            "trade_id": 2,
+                            "symbol": "MNQ",
+                            "trade_date_label": "12 Jun 2026 (Fri)",
+                            "opened_at": "2026-06-12T14:30:00Z",
+                            "pnl": -30.0,
+                            "is_bundle": False,
+                        },
+                    ]
+                }
+            ),
+        },
+    )()
+    display = dashboard_routes._build_weekly_review_chat_reply_display(
+        review,
+        (
+            "The MES revenge trade on [MES bundle | 08 Jun 2026 (Mon)] and the "
+            "[MNQ | 12 Jun 2026 (Fri)] retry on 12 Jun both happened there."
+        ),
+        "UTC",
+    )
+    assert "[" not in display["text"]
+    assert "]" not in display["text"]
+    assert display["segments"] == [
+        {"type": "text", "text": "The MES revenge trade on "},
+        {
+            "type": "citation",
+            "label": "MES bundle | 08 Jun 2026 (Mon)",
+            "citation_type": "bundle",
+            "ref": "B1",
+            "trade_id": 1,
+            "trade_pubkey": None,
+            "bundle_key": "bundle-mes",
+            "tone": "bad",
+        },
+        {"type": "text", "text": " and the "},
+        {
+            "type": "citation",
+            "label": "MNQ | 12 Jun 2026 (Fri)",
+            "citation_type": "trade",
+            "ref": "T2",
+            "trade_id": 2,
+            "trade_pubkey": None,
+            "bundle_key": None,
+            "tone": "bad",
+        },
+        {"type": "text", "text": " both happened there."},
+    ]
+
+
 def test_rewrite_weekly_review_chat_reply_text_expands_bracketed_refs():
     lookup = {
         "T1": {
