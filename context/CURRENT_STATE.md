@@ -12,6 +12,13 @@ How to use:
 
 ## Recent Changes
 
+### 2026-06-17 — Weekly Review: bold lead pattern sentence
+
+- `What mattered this week` (`summary.text`) now requires a leading `**...**` behavioral-pattern sentence in pass-1 prompt + JSON constraints; pass-2 rewrite preserves it.
+- Summary segments parse `**...**` into a `strong` segment (`parse_bold=True` on summary only); template renders `<strong>` with scoped `.ai-review-summary strong` block styling.
+- Fixed `_normalize_review_item_text` so leading `**` is not stripped as a bullet marker.
+- Onboarding sample updated to match. Tests: `tests/test_ai_service.py`, `tests/test_dashboard_weekly_ai.py`.
+
 ### 2026-06-13 — Closed-trade CSV export
 
 - Added `GET /dashboard/trades/export?format=csv` for the active trade account: closed trades only, UTC timestamps with explicit `UTC` suffix, optional `from`/`to` opened-at date filters.

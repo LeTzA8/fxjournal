@@ -1141,6 +1141,33 @@ def test_build_dashboard_review_display_dedupes_structured_strength_prefix_body(
     assert display["strength"]["text"] == "You're already strong at: letting winners breathe."
 
 
+def test_normalize_review_item_text_preserves_leading_bold_markers():
+    text = "**Post-loss re-entries were treated like repairs, not fresh decisions.** One MNQ retry won."
+
+    assert ai_service._normalize_review_item_text(text) == text
+
+
+def test_normalize_review_item_text_still_strips_bullet_prefix():
+    assert ai_service._normalize_review_item_text("- First takeaway point") == "First takeaway point"
+    assert ai_service._normalize_review_item_text("* First takeaway point") == "First takeaway point"
+
+
+def test_build_dashboard_review_display_preserves_summary_bold_markers():
+    meta = {
+        "summary": {
+            "text": "**Post-loss re-entries were treated like repairs.** One retry won.",
+            "refs": [],
+        },
+        "takeaways": [{"text": "The habit still needs testing.", "refs": []}],
+        "improvement": {"text": "Improve this week: wait after losses.", "refs": []},
+        "strength": {"text": "", "refs": []},
+    }
+
+    display = build_dashboard_review_display("", json.dumps(meta))
+
+    assert display["summary"]["text"].startswith("**Post-loss")
+
+
 def test_build_trade_payload_adds_weekly_flags_and_account_metadata(app_ctx, monkeypatch):
     monkeypatch.setattr(ai_service, "utcnow_naive", lambda: datetime(2026, 3, 20, 0, 0, 0))
     user, trade_account = _create_user_and_account(

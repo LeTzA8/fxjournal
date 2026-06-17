@@ -8,6 +8,8 @@
 {%- for segment in segments -%}
 {%- if segment.type == "text" -%}
 {{ segment.text }}
+{%- elif segment.type == "strong" -%}
+<strong>{{ segment.text }}</strong>
 {%- elif segment.type == "citation" -%}
 <span class="ai-citation-btn" role="button" tabindex="0" data-citation-label="{{ segment.label or '' }}" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type or '' }}"{% if segment.ref %} data-citation-ref="{{ segment.ref }}"{% endif %}{% if segment.trade_id is defined and segment.trade_id is not none and segment.trade_id != '' %} data-citation-trade-id="{{ segment.trade_id }}"{% endif %}{% if segment.trade_pubkey %} data-citation-trade-pubkey="{{ segment.trade_pubkey }}"{% endif %}{% if segment.bundle_key %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>
 {%- endif -%}
@@ -3738,6 +3740,12 @@
         font-weight: 650;
         line-height: 1.78;
         color: color-mix(in srgb, var(--ink) 94%, white);
+    }
+
+    .ai-review-summary strong {
+        display: block;
+        margin-bottom: 0.4rem;
+        font-weight: 700;
     }
 
     .ai-review-confidence-note {

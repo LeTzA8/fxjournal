@@ -303,7 +303,43 @@ def _augment_citations_from_mentions(text, citations, citation_lookup):
     return deduped
 
 
-def _build_review_text_segments(text, citations):
+_BOLD_SEGMENT_RE = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _expand_bold_segments(segments):
+    expanded = []
+    for segment in segments:
+        if segment.get("type") != "text":
+            expanded.append(segment)
+            continue
+        text = str(segment.get("text") or "")
+        if "**" not in text:
+            if text:
+                expanded.append(segment)
+            continue
+        cursor = 0
+        matched = False
+        for match in _BOLD_SEGMENT_RE.finditer(text):
+            matched = True
+            if match.start() > cursor:
+                prefix = text[cursor:match.start()]
+                if prefix:
+                    expanded.append({"type": "text", "text": prefix})
+            bold_text = match.group(1)
+            if bold_text:
+                expanded.append({"type": "strong", "text": bold_text})
+            cursor = match.end()
+        if not matched:
+            expanded.append(segment)
+            continue
+        if cursor < len(text):
+            suffix = text[cursor:]
+            if suffix:
+                expanded.append({"type": "text", "text": suffix})
+    return expanded
+
+
+def _build_review_text_segments(text, citations, *, parse_bold=False):
     normalized = str(text or "").strip()
     deduped_citations = _dedupe_review_citations(citations, set())
     if not normalized:
@@ -396,6 +432,8 @@ def _build_review_text_segments(text, citations):
     if cursor < len(normalized):
         segments.append({"type": "text", "text": normalized[cursor:]})
 
+    if parse_bold:
+        segments = _expand_bold_segments(segments)
     return segments
 
 
@@ -868,7 +906,11 @@ def _build_weekly_ai_review_display(review_record, timezone_name):
         _resolve_weekly_review_citations(summary.get("refs"), citation_lookup),
         citation_lookup,
     )
-    summary["segments"] = _build_review_text_segments(summary.get("text"), summary.get("citations"))
+    summary["segments"] = _build_review_text_segments(
+        summary.get("text"),
+        summary.get("citations"),
+        parse_bold=True,
+    )
 
     takeaways = []
     for item in display.get("takeaways") or []:

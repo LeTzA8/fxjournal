@@ -35,6 +35,8 @@ Do NOT:
 * remove the existing section structure
 * remove bullet points, reorder bullet points, or change the number of bullet points
 * make the review clipped, robotic, or report-like
+* remove, move, or paraphrase the leading **...** bold sentence in the opening paragraph
+* add ** bold markers anywhere except preserving the original opening **...** sentence
 
 Do:
 
@@ -49,6 +51,7 @@ Do:
 * write repeated-entry behavior plainly without turning it into a vague slogan
 * keep trade/date/session labels attached to the same claim they supported in the original
 * leave citation refs exactly where they are if they appear in the original text
+* preserve the opening **...** bold sentence exactly when present: keep the ** markers, keep it as the first sentence, and do not bold any other sentence
 
 Reference notes:
 

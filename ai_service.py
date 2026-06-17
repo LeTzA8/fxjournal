@@ -154,6 +154,7 @@ Rules for text fields:
 - Obey risk_authority.risk_judgment_allowed when it blocks account-risk escalation claims.
 - Never mention internal labels such as week_archetype, execution_class, coaching_stance, primary_issue, ranked_issues, issue_evidence_level, or do_not_lead_with.
 - A profitable week with leaky or bad execution should acknowledge the good result without endorsing the leak; a losing week with good execution should protect confidence and avoid overhauling the process.
+- summary.text must BEGIN with exactly one bold behavioral-pattern sentence wrapped in **...** that states the actual habit or decision pattern (not a generic label such as "Main issue" or "Revenge trading happened"). The remaining 1-2 sentences stay normal text: evidence second, meaning third. Only summary.text may contain ** markers; no other text field may use **.
 - summary.text must start with the human conclusion, then support it with data.
 - summary.text must include a count or concrete trade example and, when available, combine at least two signals such as timing, range location, session, volatility, sequence, exit handling, or explicit size/risk context.
 - Prefer making summary.text or the first takeaway name the representative trade that proves the diagnosis, so the review has at least one visible trade citation.
@@ -342,7 +343,9 @@ def _load_response_json_object(value):
 
 def _normalize_review_item_text(value):
     text = re.sub(r"\s+", " ", str(value or "").strip())
-    text = re.sub(r"^[\-\*\u2022]\s*", "", text)
+    if not text.startswith("**"):
+        text = re.sub(r"^[\-\u2022]\s+", "", text)
+        text = re.sub(r"^\*\s+", "", text)
     return text.strip()
 
 
@@ -3131,6 +3134,57 @@ def _extract_weekly_review_chat_json_candidate(raw_text):
     return text
 
 
+_WEEKLY_REVIEW_CHAT_REPLY_FIELD_RE = re.compile(
+    r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)',
+    re.DOTALL,
+)
+_WEEKLY_REVIEW_CHAT_PROMPTS_FIELD_RE = re.compile(
+    r'"suggested_prompts"\s*:\s*(\[[\s\S]*?\])',
+)
+
+
+def _looks_like_weekly_review_chat_json_wrapper(raw_text):
+    normalized = str(raw_text or "").lstrip()
+    return normalized.startswith("{") and '"reply"' in normalized[:48]
+
+
+def _decode_json_string_fragment(fragment):
+    value = str(fragment or "")
+    if not value:
+        return ""
+    try:
+        return json.loads(f'"{value}"')
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return (
+            value.replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace('\\"', '"')
+            .replace("\\\\", "\\")
+        )
+
+
+def _extract_weekly_review_chat_reply_from_wrapper(raw_text):
+    text = str(raw_text or "").strip()
+    if not text:
+        return "", []
+
+    reply_match = _WEEKLY_REVIEW_CHAT_REPLY_FIELD_RE.search(text)
+    if not reply_match:
+        return "", []
+
+    reply = _decode_json_string_fragment(reply_match.group(1)).strip()
+    suggested_prompts = []
+    prompts_match = _WEEKLY_REVIEW_CHAT_PROMPTS_FIELD_RE.search(text)
+    if prompts_match:
+        try:
+            parsed_prompts = json.loads(prompts_match.group(1))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            parsed_prompts = None
+        if isinstance(parsed_prompts, list):
+            suggested_prompts = normalize_weekly_review_chat_suggested_prompts(parsed_prompts)
+    return reply, suggested_prompts
+
+
 def parse_weekly_review_chat_model_output(raw_text):
     text = str(raw_text or "").strip()
     if not text:
@@ -3149,6 +3203,11 @@ def parse_weekly_review_chat_model_output(raw_text):
         suggested_prompts = normalize_weekly_review_chat_suggested_prompts(
             parsed.get("suggested_prompts"),
         )
+        if reply:
+            return reply, suggested_prompts
+
+    if _looks_like_weekly_review_chat_json_wrapper(text):
+        reply, suggested_prompts = _extract_weekly_review_chat_reply_from_wrapper(text)
         if reply:
             return reply, suggested_prompts
 
@@ -3171,16 +3230,26 @@ def pack_weekly_review_chat_assistant_content(reply, suggested_prompts):
 
 def unpack_weekly_review_chat_assistant_content(content):
     text = str(content or "")
-    if WEEKLY_REVIEW_CHAT_SUGGESTIONS_MARKER not in text:
-        return text.strip(), []
-    reply, _, raw_json = text.partition(WEEKLY_REVIEW_CHAT_SUGGESTIONS_MARKER)
-    try:
-        parsed = json.loads(str(raw_json or "").strip())
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return reply.strip(), []
-    if isinstance(parsed, list):
-        return reply.strip(), normalize_weekly_review_chat_suggested_prompts(parsed)
-    return reply.strip(), []
+    suggested_prompts = []
+    if WEEKLY_REVIEW_CHAT_SUGGESTIONS_MARKER in text:
+        reply, _, raw_json = text.partition(WEEKLY_REVIEW_CHAT_SUGGESTIONS_MARKER)
+        reply = reply.strip()
+        try:
+            parsed = json.loads(str(raw_json or "").strip())
+        except (TypeError, ValueError, json.JSONDecodeError):
+            parsed = None
+        if isinstance(parsed, list):
+            suggested_prompts = normalize_weekly_review_chat_suggested_prompts(parsed)
+    else:
+        reply = text.strip()
+
+    if _looks_like_weekly_review_chat_json_wrapper(reply):
+        coerced_reply, coerced_prompts = _extract_weekly_review_chat_reply_from_wrapper(reply)
+        if coerced_reply:
+            reply = coerced_reply
+            if not suggested_prompts:
+                suggested_prompts = coerced_prompts
+    return reply, suggested_prompts
 
 
 def build_weekly_review_chat_messages(

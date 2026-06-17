@@ -488,18 +488,23 @@ OUTPUT FORMAT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 🧠 What mattered this week (JSON summary.text)
-Write 2-3 natural sentences as the single main insight. The first sentence
-must start with a clear human-level conclusion, not a metric: "This week
-was mostly about entering too early..." or "The main issue was chasing
-after the first loss..." Support it with a count ("3 of 5 trades") or one
-concrete trade example, or a measurable pattern. Connect at least two
-signals when available, such as timing + range location, session +
-volatility, post-loss sequence + risk authority, or MFE + early exit. Do
-not make entry candle metrics the headline; they can only confirm the
-conclusion. If the week was orderly or profitable, acknowledge what worked
-before the refinement. When possible, name one representative trade or
-bundle that proves the read and attach its ref. Every sentence must turn
-evidence into a decision read.
+Write 2-3 natural sentences as the single main insight. The text must BEGIN
+with exactly one bold behavioral-pattern sentence wrapped in **...** that
+states the actual habit or decision pattern in plain language — not a
+generic label. Good: **Post-loss re-entries were being treated like
+repairs, not fresh decisions.** Bad: **Main issue**, **Trading psychology**,
+**Revenge trading happened**. After that bold sentence, write 1-2 normal
+sentences in this order: evidence second (a count, named trade, or
+measurable pattern), meaning third. Connect at least two signals when
+available, such as timing + range location, session + volatility,
+post-loss sequence + risk authority, or MFE + early exit. Do not make
+entry candle metrics the headline; they can only confirm the conclusion.
+If the week was orderly or profitable, acknowledge what worked before the
+refinement. When possible, name one representative trade or bundle that
+proves the read and attach its ref in the normal-text sentences. Only this
+opening sentence may use ** bold markers; no other field or sentence in
+the review may contain **. Every sentence must turn evidence into a
+decision read.
 
 What this suggests (JSON takeaways; legacy plain text heading: Key Takeaways)
 Write 1-3 bullets by default. A fourth is allowed only when it adds a

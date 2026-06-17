@@ -374,6 +374,31 @@ def test_parse_weekly_review_chat_model_output_json():
     ]
 
 
+def test_parse_weekly_review_chat_model_output_extracts_truncated_json_reply():
+    raw = (
+        '{"reply":"Session looks bigger than range here: the review keeps pointing to the '
+        "London/New York overlap, while there isn't enough range data to prove range was the "
+        "driver. The MES revenge trade on MES bundle | 08 Jun 2026 (Mon) and the "
+        "MNQ | 12 Jun 2026 (Fri) both happened there, so the habit seems to flare up in that "
+        "window. What's clear is the"
+    )
+    reply, prompts = parse_weekly_review_chat_model_output(raw)
+    assert reply.startswith("Session looks bigger than range here:")
+    assert reply.endswith("What's clear is the")
+    assert '{"reply"' not in reply
+    assert prompts == []
+
+
+def test_unpack_weekly_review_chat_assistant_content_coerces_json_wrapper():
+    raw = (
+        '{"reply":"Plain answer about the overlap window.",'
+        '"suggested_prompts":["Which trade mattered most?","What should I watch next?"]}'
+    )
+    reply, prompts = unpack_weekly_review_chat_assistant_content(raw)
+    assert reply == "Plain answer about the overlap window."
+    assert prompts == ["Which trade mattered most?", "What should I watch next?"]
+
+
 def test_pack_and_unpack_weekly_review_chat_assistant_content():
     packed = pack_weekly_review_chat_assistant_content(
         "Short answer.",
@@ -3071,6 +3096,119 @@ def test_weekly_ai_review_display_segments_span_full_label_when_present():
     assert after["type"] == "text"
     assert "| 06 Apr" not in after["text"]
     assert after["text"].startswith(" when risk")
+
+
+def test_build_review_text_segments_parses_bold_summary_only():
+    text = "**Post-loss re-entries were treated like repairs, not fresh decisions.** One MNQ retry won."
+
+    segments = dashboard_routes._build_review_text_segments(text, [], parse_bold=True)
+
+    assert segments == [
+        {
+            "type": "strong",
+            "text": "Post-loss re-entries were treated like repairs, not fresh decisions.",
+        },
+        {"type": "text", "text": " One MNQ retry won."},
+    ]
+
+
+def test_build_review_text_segments_skips_bold_parsing_by_default():
+    text = "**Hidden bold** regular text"
+
+    segments = dashboard_routes._build_review_text_segments(text, [])
+
+    assert segments == [{"type": "text", "text": text}]
+
+
+def test_weekly_ai_review_display_summary_segments_include_strong_lead():
+    review = type(
+        "Review",
+        (),
+        {
+            "response_text": "Unused",
+            "response_meta_json": json.dumps(
+                {
+                    "summary": {
+                        "text": (
+                            "**Post-loss re-entries were treated like repairs, not fresh decisions.** "
+                            "One MNQ retry on 12 Jun won."
+                        ),
+                        "refs": [],
+                    },
+                    "takeaways": [{"text": "The week gave the habit one win.", "refs": []}],
+                    "improvement": {"text": "Improve this week: wait after losses.", "refs": []},
+                    "strength": {"text": "You're already strong at: staying calm.", "refs": []},
+                }
+            ),
+            "payload_json": json.dumps({"trades": []}),
+        },
+    )()
+
+    display = dashboard_routes._build_weekly_ai_review_display(review, "UTC")
+
+    assert display["summary"]["segments"][0]["type"] == "strong"
+    assert "Post-loss re-entries" in display["summary"]["segments"][0]["text"]
+    assert display["summary"]["segments"][1]["type"] == "text"
+    assert all(segment["type"] != "strong" for segment in display["takeaways"][0]["segments"])
+    assert all(segment["type"] != "strong" for segment in display["improvement"]["segments"])
+    assert all(segment["type"] != "strong" for segment in display["strength"]["segments"])
+
+
+def test_dashboard_home_renders_summary_strong_lead(app_ctx, client, monkeypatch):
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-summary-strong-user",
+        email="dashboard-summary-strong@example.com",
+    )
+    review = _create_weekly_review(user, trade_account, prompt_id="weekly-summary-strong")
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": review,
+            "weekly_ai_review_display": {
+                "summary": {
+                    "text": "**Post-loss re-entries were treated like repairs.** One retry won.",
+                    "segments": [
+                        {
+                            "type": "strong",
+                            "text": "Post-loss re-entries were treated like repairs.",
+                        },
+                        {"type": "text", "text": " One retry won."},
+                    ],
+                    "refs": [],
+                    "citations": [],
+                },
+                "takeaways": [],
+                "improvement": {
+                    "text": "Improve this week: Keep risk fixed.",
+                    "segments": [{"type": "text", "text": "Improve this week: Keep risk fixed."}],
+                    "refs": [],
+                    "citations": [],
+                },
+                "strength": {
+                    "text": "You're already strong at: Waiting.",
+                    "segments": [{"type": "text", "text": "You're already strong at: Waiting."}],
+                    "refs": [],
+                    "citations": [],
+                },
+                "experiment": {},
+                "has_citations": False,
+            },
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "",
+            "weekly_ai_is_generating": False,
+        },
+    )
+
+    response = client.get("/dashboard")
+    response_text = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "<strong>Post-loss re-entries were treated like repairs.</strong>" in response_text
+    assert "What mattered this week" in response_text
+    assert "Actionable Improvement" in response_text
 
 
 def test_weekly_ai_review_display_autocites_unique_symbol_mentions():
