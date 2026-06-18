@@ -2132,6 +2132,7 @@
                                     <th>Opened</th>
                                     <th>Symbol</th>
                                     <th>Strategy</th>
+                                    <th>{{ size_label }}</th>
                                     <th>Side</th>
                                     <th>PnL</th>
                                     <th>Session</th>
@@ -2155,6 +2156,7 @@
                                     data-trade-pubkey="{{ trade.trade_pubkey or '' }}"
                                     data-symbol="{{ trade.symbol }}"
                                     data-strategy="{{ trade.trade_profile_label }}"
+                                    data-lot="{{ trade.lot_size }}"
                                     data-side="{{ trade.side }}"
                                     data-date-label="{{ trade.date_label }}"
                                     data-date="{{ trade.date_value }}"
@@ -2183,6 +2185,7 @@
                                         </div>
                                     </td>
                                     <td>{{ trade.trade_profile_label }}</td>
+                                    <td>{{ trade.size_display }}</td>
                                     <td>
                                         {% if trade.side == "SELL" %}
                                         <span class="tag sell">Sell</span>
@@ -2227,7 +2230,7 @@
                                 {% endfor %}
                                 {% else %}
                                 <tr class="empty-row">
-                                    <td colspan="{% if support_view_session_active %}6{% else %}7{% endif %}">
+                                    <td colspan="{% if support_view_session_active %}7{% else %}8{% endif %}">
                                         <div class="empty-state-copy">
                                             <p>No trades yet.</p>
                                             <p class="empty-state-note">Add your first trade to start building dashboard stats, session breakdowns, and weekly review history.</p>
@@ -4815,7 +4818,7 @@
         border-collapse: collapse;
         min-width: 620px; }
 
-    .trade-log table { min-width: 640px; }
+    .trade-log table { min-width: 700px; }
 
     .trade-note-cell {
         width: 1%;

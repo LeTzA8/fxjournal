@@ -52,6 +52,7 @@ from helpers.core import (
     is_support_view_active,
     is_support_view_session_active,
     is_trade_running,
+    get_trade_size_label,
     normalize_timezone_name,
 )
 from helpers.entitlements import (
@@ -100,6 +101,7 @@ from trading import (
     build_trade_analytics,
     classify_trading_session,
     format_duration_minutes,
+    format_trade_size_with_unit,
     format_trade_symbol,
     normalize_account_type,
     resolve_net_pnl,
@@ -1998,6 +2000,10 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
     )
 
     now_utc = utcnow_naive()
+    trade_account_type = (
+        active_trade_account.account_type if active_trade_account is not None else "CFD"
+    )
+    size_label = get_trade_size_label(trade_account_type)
     recent_trades = []
     for trade in user_trades:
         trade_is_running = is_trade_running(trade)
@@ -2028,6 +2034,10 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
                     else (trade_profile.name if trade_profile is not None else "-")
                 ),
                 "side": trade.side,
+                "lot_size": trade.lot_size,
+                "size_display": format_trade_size_with_unit(
+                    trade.lot_size, trade_account_type
+                ),
                 "pnl": pnl_value,
                 "running_pnl": pnl_value if trade_is_running else None,
                 "running_duration_label": (
@@ -2215,6 +2225,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         avg_win=summary.get("avg_win"),
         avg_loss_abs=summary.get("avg_loss_abs"),
         recent_trades=recent_trades,
+        size_label=size_label,
         session_stats=session_stats[:4],
         current_week_stats=current_week_stats,
         previous_week_stats=previous_week_stats,

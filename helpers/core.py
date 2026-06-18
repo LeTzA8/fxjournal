@@ -26,6 +26,7 @@ from models import (
 from trading import (
     calc_pnl_values,
     canonicalize_symbol,
+    coerce_trade_prices_for_account,
     get_symbol_options,
     get_trade_level_validation_issues,
     get_timezone,
@@ -388,6 +389,18 @@ def build_normalized_trade_insert_batch(
         opened_at = row.get("opened_at")
         closed_at = row.get("closed_at")
         contract_code = row.get("contract_code")
+        stop_loss = row.get("stop_loss")
+        take_profit = row.get("take_profit")
+        if account_type == "FUTURES":
+            entry_price, exit_price, stop_loss, take_profit = coerce_trade_prices_for_account(
+                account_type=account_type,
+                symbol=symbol,
+                contract_code=contract_code,
+                entry_price=entry_price,
+                exit_price=exit_price,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+            )
         mt5_position = row.get("mt5_position")
         mt5_position = str(mt5_position).strip() if mt5_position is not None else None
         mt5_position = mt5_position or None
@@ -441,8 +454,8 @@ def build_normalized_trade_insert_batch(
 
         validation_issues = get_trade_level_validation_issues(
             entry_price,
-            row.get("stop_loss"),
-            row.get("take_profit"),
+            stop_loss,
+            take_profit,
             side,
             symbol,
             instrument_type=account_type,
@@ -538,8 +551,8 @@ def build_normalized_trade_insert_batch(
                 exit_price=float(exit_price) if exit_price is not None else None,
                 lot_size=float(lot_size),
                 pnl=float(pnl) if pnl is not None else None,
-                stop_loss=float(row.get("stop_loss")) if row.get("stop_loss") is not None else None,
-                take_profit=float(row.get("take_profit")) if row.get("take_profit") is not None else None,
+                stop_loss=float(stop_loss) if stop_loss is not None else None,
+                take_profit=float(take_profit) if take_profit is not None else None,
                 commission=float(row.get("commission")) if row.get("commission") is not None else None,
                 swap=float(row.get("swap")) if row.get("swap") is not None else None,
                 opened_at=opened_at,

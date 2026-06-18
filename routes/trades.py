@@ -47,6 +47,7 @@ from trading import (
     canonicalize_symbol,
     classify_trading_session,
     chart_timeframe_bar_seconds,
+    coerce_trade_prices_for_account,
     derive_exit_price,
     detect_trade_import_profile,
     format_duration_minutes,
@@ -56,6 +57,7 @@ from trading import (
     trade_size_must_be_positive_message,
     format_trade_symbol,
     get_trade_level_validation_issues,
+    get_trade_price_step,
     get_symbol_options,
     get_trade_account_type,
     get_trade_size_unit,
@@ -117,6 +119,15 @@ def _build_trade_entry_context(user_id, trade):
         "symbol_options": get_symbol_options(trade_account.account_type, trade.symbol),
         "account_type": normalize_account_type(trade_account.account_type),
         "size_label": get_trade_size_label(trade_account.account_type),
+        "trade_price_step": (
+            get_trade_price_step(
+                trade.symbol,
+                trade_account.account_type,
+                getattr(trade, "contract_code", None),
+            )
+            if normalize_account_type(trade_account.account_type) == "FUTURES"
+            else None
+        ),
         "trade": trade,
         "opened_at_value": format_local_datetime_input(trade.opened_at),
         "closed_at_value": format_local_datetime_input(trade.closed_at),
@@ -826,6 +837,15 @@ def new_trade():
         commission = float(commission) if commission else None
         swap = request.form.get("swap", "").strip()
         swap = float(swap) if swap else None
+        entry_price, exit_price, stop_loss, take_profit = coerce_trade_prices_for_account(
+            account_type=account_type,
+            symbol=symbol,
+            contract_code=contract_code,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+        )
         opened_at = parse_local_datetime_input(request.form.get("opened_at", "").strip())
         if opened_at is None:
             opened_at = parse_local_datetime_input(
@@ -946,6 +966,11 @@ def new_trade():
         symbol_options=get_symbol_options(active_trade_account.account_type),
         account_type=normalize_account_type(active_trade_account.account_type),
         size_label=get_trade_size_label(active_trade_account.account_type),
+        trade_price_step=(
+            get_trade_price_step("", active_trade_account.account_type)
+            if normalize_account_type(active_trade_account.account_type) == "FUTURES"
+            else None
+        ),
         trade=None,
         trade_display_symbol="",
         form_action=url_for("trades.new_trade"),
@@ -1385,6 +1410,15 @@ def edit_trade(trade_pubkey):
         commission = float(commission) if commission else None
         swap = request.form.get("swap", "").strip()
         swap = float(swap) if swap else None
+        entry_price, exit_price, stop_loss, take_profit = coerce_trade_prices_for_account(
+            account_type=account_type,
+            symbol=symbol,
+            contract_code=contract_code,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+        )
         opened_at = parse_local_datetime_input(request.form.get("opened_at", "").strip())
         if opened_at is None:
             opened_at = parse_local_datetime_input(

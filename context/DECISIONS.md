@@ -2,6 +2,13 @@
 
 Major decisions with rationale only.
 
+## D-009 Futures Prices Snap To Catalog Tick Size
+
+- Decision:
+  futures entry/exit/stop/target prices display and persist on each instrument's tick grid; default unknown roots to `0.25` (2 dp) unless `futures_symbols` research specifies otherwise (e.g. YM `1.0`, CL `0.01`, RTY `0.1`)
+- Why:
+  keeps PnL/tick math, charts, and UI aligned with exchange minimum increments and avoids float garbage on axes
+
 ## D-001 Shared AI Context Lives Under `/context/`
 
 - Decision:

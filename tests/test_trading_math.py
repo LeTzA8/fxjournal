@@ -599,3 +599,71 @@ def test_trade_size_terminology_uses_contracts_for_futures():
     assert trade_size_must_be_positive_message("FUTURES") == (
         "Contract count must be greater than zero."
     )
+
+
+def test_get_trade_price_step_defaults_to_quarter_tick_for_unknown_futures():
+    assert trading.get_trade_price_step("UNKNOWN", "FUTURES") == pytest.approx(0.25)
+
+
+def test_get_trade_price_step_uses_catalog_tick_size(monkeypatch):
+    monkeypatch.setattr(
+        trading,
+        "get_futures_symbol_spec",
+        lambda symbol=None, contract_code=None: {
+            "root_symbol": "YM",
+            "tick_size": 1.0,
+            "tick_value": 5.0,
+        },
+    )
+    assert trading.get_trade_price_step("YM", "FUTURES") == pytest.approx(1.0)
+
+
+def test_snap_trade_price_to_tick_rounds_to_nearest_quarter(monkeypatch):
+    monkeypatch.setattr(
+        trading,
+        "get_futures_symbol_spec",
+        lambda symbol=None, contract_code=None: {
+            "root_symbol": "MES",
+            "tick_size": 0.25,
+            "tick_value": 1.25,
+        },
+    )
+    assert trading.snap_trade_price_to_tick(5000.30, "MES", "FUTURES") == pytest.approx(5000.25)
+    assert trading.snap_trade_price_to_tick(5000.38, "MES", "FUTURES") == pytest.approx(5000.50)
+
+
+def test_format_trade_price_snaps_futures_to_catalog_tick(monkeypatch):
+    monkeypatch.setattr(
+        trading,
+        "get_futures_symbol_spec",
+        lambda symbol=None, contract_code=None: {
+            "root_symbol": "MES",
+            "tick_size": 0.25,
+            "tick_value": 1.25,
+        },
+    )
+    assert trading.format_trade_price(5000.30, "MES", "FUTURES") == "5000.25"
+
+
+def test_coerce_trade_prices_for_account_snaps_all_futures_levels(monkeypatch):
+    monkeypatch.setattr(
+        trading,
+        "get_futures_symbol_spec",
+        lambda symbol=None, contract_code=None: {
+            "root_symbol": "MES",
+            "tick_size": 0.25,
+            "tick_value": 1.25,
+        },
+    )
+    entry, exit_price, stop_loss, take_profit = trading.coerce_trade_prices_for_account(
+        account_type="FUTURES",
+        symbol="MES",
+        entry_price=5000.30,
+        exit_price=5001.40,
+        stop_loss=4999.80,
+        take_profit=5002.60,
+    )
+    assert entry == pytest.approx(5000.25)
+    assert exit_price == pytest.approx(5001.50)
+    assert stop_loss == pytest.approx(4999.75)
+    assert take_profit == pytest.approx(5002.50)

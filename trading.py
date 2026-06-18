@@ -1037,11 +1037,77 @@ def format_trade_symbol(trade):
     return symbol
 
 
+FUTURES_DEFAULT_TICK_SIZE = 0.25
+
+
 def _decimal_places(step):
     text = f"{float(step):.8f}".rstrip("0").rstrip(".")
     if "." not in text:
         return 0
     return len(text.split(".", 1)[1])
+
+
+def get_trade_price_step(symbol, instrument_type="CFD", contract_code=None):
+    account_type = normalize_account_type(instrument_type)
+    if account_type == "FUTURES":
+        spec = get_futures_symbol_spec(symbol=symbol, contract_code=contract_code)
+        if spec is not None and spec["tick_size"] > 0:
+            return float(spec["tick_size"])
+        return FUTURES_DEFAULT_TICK_SIZE
+
+    sym = canonicalize_symbol(symbol, "CFD")
+    pip_size = get_pip_size(sym)
+    if pip_size is not None and pip_size > 0:
+        return float(pip_size)
+
+    crypto_decimals = CRYPTO_CFD_PRICE_DECIMALS.get(sym)
+    if crypto_decimals is not None:
+        return float(10 ** (-crypto_decimals))
+
+    if is_fx_pair(sym):
+        return 0.001 if sym.endswith("JPY") else 0.00001
+
+    return 0.01
+
+
+def snap_trade_price_to_tick(value, symbol, instrument_type="CFD", contract_code=None):
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return value
+
+    step = get_trade_price_step(symbol, instrument_type, contract_code)
+    if step <= 0:
+        return numeric
+
+    snapped = round(numeric / step) * step
+    return round(snapped, _decimal_places(step))
+
+
+def coerce_trade_prices_for_account(
+    *,
+    account_type,
+    symbol,
+    contract_code=None,
+    entry_price=None,
+    exit_price=None,
+    stop_loss=None,
+    take_profit=None,
+):
+    if normalize_account_type(account_type) != "FUTURES":
+        return entry_price, exit_price, stop_loss, take_profit
+
+    snap = lambda value: snap_trade_price_to_tick(
+        value, symbol, account_type, contract_code
+    )
+    return (
+        snap(entry_price),
+        snap(exit_price),
+        snap(stop_loss),
+        snap(take_profit),
+    )
 
 
 def _trim_decimal_text(text):
@@ -1066,8 +1132,11 @@ def format_trade_price(value, symbol, instrument_type="CFD", contract_code=None)
     account_type = normalize_account_type(instrument_type)
     numeric_value = float(value)
     if account_type == "FUTURES":
-        spec = get_futures_symbol_spec(symbol=symbol, contract_code=contract_code)
-        decimals = _decimal_places(spec["tick_size"]) if spec and spec["tick_size"] > 0 else 2
+        numeric_value = snap_trade_price_to_tick(
+            numeric_value, symbol, instrument_type, contract_code
+        )
+        step = get_trade_price_step(symbol, instrument_type, contract_code)
+        decimals = _decimal_places(step)
         text = f"{numeric_value:.{decimals}f}"
     else:
         sym = canonicalize_symbol(symbol, "CFD")
@@ -1138,10 +1207,7 @@ def outlier_size_reason(account_type):
 def get_trade_price_tolerance(symbol, instrument_type="CFD", contract_code=None):
     account_type = normalize_account_type(instrument_type)
     if account_type == "FUTURES":
-        spec = get_futures_symbol_spec(symbol=symbol, contract_code=contract_code)
-        if spec is not None and spec["tick_size"] > 0:
-            return float(spec["tick_size"])
-        return 0.01
+        return get_trade_price_step(symbol, instrument_type, contract_code)
 
     sym = canonicalize_symbol(symbol, "CFD")
     pip_size = get_pip_size(sym)

@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-Last Updated: 2026-06-12
+Last Updated: 2026-06-18
 
 Rolling work log of recent, non-trivial changes and in-flight work. Durable architecture, capabilities, file ownership, env/config, and operational facts now live in [`PROJECT_MAP.md`](PROJECT_MAP.md) — keep this file short.
 
@@ -11,6 +11,17 @@ How to use:
 > **2026-06-07 — Consolidation.** All prior entries (≈2026-04-17 → 2026-06-07) were folded into `PROJECT_MAP.md` and removed from this file. The full original chronological log remains in git history.
 
 ## Recent Changes
+
+### 2026-06-18 — Expanded futures symbol catalog (31 new instruments)
+
+- Added energy (NG, HO, RB, BRN), metals (SI, HG, PL, PA), FX futures (6E, M6E, 6B, 6J, 6A, 6C, 6S, 6N), bonds (ZN, ZB, ZF), grains (ZC, ZW, ZS, ZL, ZM), softs (KC, SB), volatility (VX), and crypto (BTC, MBT, ETH, MET).
+- Migration: `20260618_0064_expand_futures_catalog.py`. Tick sizes/values are exchange-verified; `format_trade_price` and snap logic uses catalog specs automatically.
+
+### 2026-06-18 — Futures price tick grid (0.25 default)
+
+- Futures prices snap to each instrument's catalog tick size on display, manual entry, and CSV import; unknown roots default to `0.25` (2 dp).
+- `format_trade_price`, trade forms, and import pipeline use `get_trade_price_step` / `snap_trade_price_to_tick`; catalog exceptions (YM `1.0`, CL `0.01`, etc.) unchanged.
+- Decision: `D-009` in `DECISIONS.md`. Tests: `tests/test_trading_math.py`.
 
 ### 2026-06-17 — Weekly Review: bold lead pattern sentence
 
