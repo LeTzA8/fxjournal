@@ -546,7 +546,7 @@
                 </form>
 
                 {% elif form_mode == 'edit' %}
-                <form action="{{ form_action }}" method="post" class="trade-form trade-form--edit" data-themed-validation>
+                <form action="{{ form_action }}" method="post" class="trade-form trade-form--edit" data-themed-validation data-account-type="{{ account_type }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                     <details class="trade-form-section trade-form-section--instrument trade-form-collapsible">
@@ -624,7 +624,7 @@
                         </summary>
                         <div class="trade-form-section-body">
                         <div class="trade-fields-grid trade-fields-grid--2">
-                            <p class="field-help field-help--tight trade-field--span-2">Derived from your stops, targets, and fills. Updates when you save.</p>
+                            <p class="field-help field-help--tight trade-field--span-2">Derived from your stops, targets, and fills. Updates as you type.</p>
                             <div class="trade-field">
                                 <label class="trade-field-label" for="planned_rr_display">Planned RR</label>
                                 <input id="planned_rr_display" class="trade-readonly-metric" type="text" tabindex="-1" value="{% if planned_rr is not none %}{{ trim_decimal(planned_rr, 4) }}R{% else %}-{% endif %}" readonly aria-readonly="true">
@@ -773,7 +773,7 @@
                 </form>
 
                 {% else %}
-                <form action="{{ form_action }}" method="post" class="trade-form trade-form--new" data-themed-validation>
+                <form action="{{ form_action }}" method="post" class="trade-form trade-form--new" data-themed-validation data-account-type="{{ account_type }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                     <div class="trade-form-section trade-form-section--instrument">
@@ -841,9 +841,14 @@
                     <div class="trade-form-section trade-form-section--performance">
                         <h3 class="trade-form-section-title trade-form-section-title--performance"><span class="trade-section-emoji" aria-hidden="true">💹</span>Outcome</h3>
                         <div class="trade-fields-grid trade-fields-grid--2">
+                            <p class="field-help field-help--tight trade-field--span-2">PnL fills in automatically when entry, exit, and size are set.</p>
                             <div class="trade-field">
                                 <label class="trade-field-label" for="pnl">PnL (gross)</label>
-                                <input id="pnl" name="pnl" type="number" step="0.01" placeholder="Optional" value="{{ trade.pnl if trade and trade.pnl is not none else '' }}">
+                                <input id="pnl" name="pnl" type="number" step="0.01" placeholder="Auto from entry and exit" value="{{ trade.pnl if trade and trade.pnl is not none else '' }}">
+                            </div>
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="net_pnl_display">Net PnL</label>
+                                <input id="net_pnl_display" class="trade-readonly-metric" type="text" tabindex="-1" value="-" readonly aria-readonly="true">
                             </div>
                             <div class="trade-field">
                                 <label class="trade-field-label" for="commission">Commission</label>
@@ -853,6 +858,17 @@
                                 <label class="trade-field-label" for="swap">Swap</label>
                                 <input id="swap" name="swap" type="number" step="0.01" placeholder="e.g. -0.80" value="{{ trade.swap if trade and trade.swap is not none else '' }}">
                             </div>
+                            {% if account_type != "FUTURES" %}
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="pips_display">Pips</label>
+                                <input id="pips_display" class="trade-readonly-metric" type="text" tabindex="-1" value="-" readonly aria-readonly="true">
+                            </div>
+                            {% else %}
+                            <div class="trade-field">
+                                <label class="trade-field-label" for="ticks_display">Ticks</label>
+                                <input id="ticks_display" class="trade-readonly-metric" type="text" tabindex="-1" value="-" readonly aria-readonly="true">
+                            </div>
+                            {% endif %}
                         </div>
                     </div>
 
@@ -1869,6 +1885,9 @@
 {% block page_scripts %}
 {% if form_mode in ('view', 'edit') %}
 <script src="{{ url_for('static', filename='js/trade_form_collapsible.js') }}"></script>
+{% endif %}
+{% if form_mode in ('new', 'edit') %}
+<script src="{{ url_for('static', filename='js/trade_form_metrics.js') }}" defer></script>
 {% endif %}
 {% if form_mode == 'new' %}
 <script src="{{ url_for('static', filename='js/trade_import.js') }}"></script>

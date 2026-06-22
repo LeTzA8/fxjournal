@@ -101,7 +101,7 @@ from trading import (
     build_trade_analytics,
     classify_trading_session,
     format_duration_minutes,
-    format_trade_size_with_unit,
+    format_trade_size,
     format_trade_symbol,
     normalize_account_type,
     resolve_net_pnl,
@@ -308,45 +308,30 @@ def _augment_citations_from_mentions(text, citations, citation_lookup):
 _BOLD_SEGMENT_RE = re.compile(r"\*\*(.+?)\*\*")
 
 
-def _expand_bold_segments(segments):
-    expanded = []
-    for segment in segments:
-        if segment.get("type") != "text":
-            expanded.append(segment)
-            continue
-        text = str(segment.get("text") or "")
-        if "**" not in text:
-            if text:
-                expanded.append(segment)
-            continue
-        cursor = 0
-        matched = False
-        for match in _BOLD_SEGMENT_RE.finditer(text):
-            matched = True
-            if match.start() > cursor:
-                prefix = text[cursor:match.start()]
-                if prefix:
-                    expanded.append({"type": "text", "text": prefix})
-            bold_text = match.group(1)
-            if bold_text:
-                expanded.append({"type": "strong", "text": bold_text})
-            cursor = match.end()
-        if not matched:
-            expanded.append(segment)
-            continue
-        if cursor < len(text):
-            suffix = text[cursor:]
-            if suffix:
-                expanded.append({"type": "text", "text": suffix})
-    return expanded
+def _split_bold_text_ranges(text):
+    normalized = str(text or "")
+    if "**" not in normalized:
+        return [{"type": "text", "text": normalized}]
+
+    ranges = []
+    cursor = 0
+    matched = False
+    for match in _BOLD_SEGMENT_RE.finditer(normalized):
+        matched = True
+        if match.start() > cursor:
+            ranges.append({"type": "text", "text": normalized[cursor:match.start()]})
+        bold_text = match.group(1)
+        if bold_text:
+            ranges.append({"type": "strong", "text": bold_text})
+        cursor = match.end()
+    if not matched:
+        return [{"type": "text", "text": normalized}]
+    if cursor < len(normalized):
+        ranges.append({"type": "text", "text": normalized[cursor:]})
+    return ranges
 
 
-def _build_review_text_segments(text, citations, *, parse_bold=False):
-    normalized = str(text or "").strip()
-    deduped_citations = _dedupe_review_citations(citations, set())
-    if not normalized:
-        return []
-
+def _build_citation_segments(normalized, deduped_citations):
     matches = []
     matched_ranges = []
     matched_keys = set()
@@ -434,8 +419,28 @@ def _build_review_text_segments(text, citations, *, parse_bold=False):
     if cursor < len(normalized):
         segments.append({"type": "text", "text": normalized[cursor:]})
 
-    if parse_bold:
-        segments = _expand_bold_segments(segments)
+    return segments
+
+
+def _build_review_text_segments(text, citations, *, parse_bold=False):
+    normalized = str(text or "").strip()
+    deduped_citations = _dedupe_review_citations(citations, set())
+    if not normalized:
+        return []
+
+    if not parse_bold:
+        return _build_citation_segments(normalized, deduped_citations)
+
+    segments = []
+    for part in _split_bold_text_ranges(normalized):
+        part_segments = _build_citation_segments(part["text"], deduped_citations)
+        if part["type"] != "strong":
+            segments.extend(part_segments)
+            continue
+        if len(part_segments) == 1 and part_segments[0].get("type") == "text":
+            segments.append({"type": "strong", "text": part_segments[0]["text"]})
+        elif part_segments:
+            segments.append({"type": "strong_group", "segments": part_segments})
     return segments
 
 
@@ -2035,7 +2040,7 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
                 ),
                 "side": trade.side,
                 "lot_size": trade.lot_size,
-                "size_display": format_trade_size_with_unit(
+                "size_display": format_trade_size(
                     trade.lot_size, trade_account_type
                 ),
                 "pnl": pnl_value,

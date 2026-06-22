@@ -25,10 +25,10 @@
     const wizardNextButton = form.querySelector("[data-mt5-wizard-next]");
     const wizardStepLabel = form.querySelector("[data-mt5-wizard-step-label]");
     const wizardStepTitles = {
-        1: "Account number",
+        1: "Investor account number",
         2: "Investor password",
         3: "MT5 server",
-        4: "Confirm & start",
+        4: "Confirm investor account",
     };
     let wizardCurrentStep = 1;
 

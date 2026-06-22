@@ -10,6 +10,8 @@
 {{ segment.text }}
 {%- elif segment.type == "strong" -%}
 <strong>{{ segment.text }}</strong>
+{%- elif segment.type == "strong_group" -%}
+<strong>{{ render_ai_review_segments(segment.segments) }}</strong>
 {%- elif segment.type == "citation" -%}
 <span class="ai-citation-btn" role="button" tabindex="0" data-citation-label="{{ segment.label or '' }}" data-citation-tone="{{ segment.tone or 'neutral' }}" data-citation-type="{{ segment.citation_type or '' }}"{% if segment.ref %} data-citation-ref="{{ segment.ref }}"{% endif %}{% if segment.trade_id is defined and segment.trade_id is not none and segment.trade_id != '' %} data-citation-trade-id="{{ segment.trade_id }}"{% endif %}{% if segment.trade_pubkey %} data-citation-trade-pubkey="{{ segment.trade_pubkey }}"{% endif %}{% if segment.bundle_key %} data-citation-bundle="{{ segment.bundle_key }}"{% endif %}>{{ segment.label }}</span>
 {%- endif -%}
@@ -713,7 +715,7 @@
                     {% if is_active_cfd and is_state_one and not has_any_trades %}
                     Connect MetaTrader 5
                     {% elif is_active_cfd and is_state_two %}
-                    Connect MT5 next
+                    Connect your MT5 investor account
                     {% elif is_active_futures and is_state_one and not has_any_trades %}
                     Import your Tradovate history
                     {% elif is_active_futures and is_state_two %}
@@ -732,7 +734,7 @@
                     {% if is_active_cfd and is_state_one and not has_any_trades %}
                     Read-only investor password. Import a report while setup runs if you want a preview.
                     {% elif is_active_cfd and is_state_two %}
-                    Nice, your report is in. Connect MT5 next so you do not have to export again.
+                    Nice, your report is in. Connect your MT5 investor account next so you do not have to export again.
                     {% elif is_active_futures and is_state_one and not has_any_trades %}
                     Upload your Tradovate performance CSV to populate the journal, or add a trade manually.
                     {% elif is_active_futures and is_state_two %}
@@ -756,8 +758,8 @@
                 {% if is_active_cfd and is_state_one and not has_any_trades %}
                 <article class="journey-step is-current">
                     <p class="journey-step-label">Step 1</p>
-                    <p class="journey-step-title">Connect MT5</p>
-                    <p class="journey-step-copy">Read-only investor password.</p>
+                    <p class="journey-step-title">Connect MT5 investor account</p>
+                    <p class="journey-step-copy">Read-only investor password for your MT5 account.</p>
                 </article>
                 <article class="journey-step">
                     <p class="journey-step-label">Step 2</p>
@@ -888,7 +890,7 @@
                             <h2>Connect MetaTrader 5</h2>
                             {% endif %}
                             {% elif is_state_two %}
-                            <h2>Connect MT5</h2>
+                            <h2>Connect your MT5 investor account</h2>
                             {% if mt5_selected_account %}
                             <p class="panel-account-note">{{ mt5_selected_account.name }}</p>
                             {% endif %}
@@ -1031,7 +1033,7 @@
                             <div class="mt5-selected-account-card">
                                 <span class="mt5-selected-account-label">Selected Account</span>
                                 <strong class="mt5-selected-account-name">{{ mt5_selected_account.name }}</strong>
-                                <span class="mt5-selected-account-meta">Credentials apply only to this account.</span>
+                                <span class="mt5-selected-account-meta">Investor credentials apply only to this journal account.</span>
                             </div>
                             {% endif %}
 
@@ -1039,22 +1041,22 @@
 
                             {% if mt5_use_setup_wizard and is_state_two %}
                             <div class="mt5-wizard-head" aria-live="polite">
-                                <p class="mt5-wizard-step-label" data-mt5-wizard-step-label>Step 1 of 4 · Account number</p>
+                                <p class="mt5-wizard-step-label" data-mt5-wizard-step-label>Step 1 of 4 · Investor account number</p>
                             </div>
                             {% elif mt5_use_setup_wizard %}
-                            <p class="mt5-wizard-step-label sr-only" data-mt5-wizard-step-label>Step 1 of 4 · Account number</p>
+                            <p class="mt5-wizard-step-label sr-only" data-mt5-wizard-step-label>Step 1 of 4 · Investor account number</p>
                             {% endif %}
 
                             <div class="mt5-form-grid{% if mt5_use_setup_wizard %} mt5-form-grid--wizard{% endif %}">
                                 <div class="mt5-form-field{% if mt5_use_setup_wizard %} mt5-wizard-step is-active{% endif %}"{% if mt5_use_setup_wizard %} data-mt5-wizard-step="1"{% endif %}>
-                                    <label for="mt5_account_number">MT5 account number</label>
+                                    <label for="mt5_account_number">MT5 investor account number</label>
                                     <input
                                         id="mt5_account_number"
                                         name="account_number"
                                         type="text"
                                         inputmode="numeric"
                                         maxlength="50"
-                                        placeholder="Enter your MT5 login"
+                                        placeholder="Enter your MT5 investor login"
                                         required
                                     >
                                 </div>
@@ -1180,17 +1182,17 @@
                                 <span>I confirm this is my MT5 <strong>investor</strong> password (read-only), not master or trading password.</span>
                             </label>
 
-                            <button type="submit" class="submit-btn" data-mt5-submit disabled>Start MT5 setup</button>
+                            <button type="submit" class="submit-btn" data-mt5-submit disabled>Start investor account setup</button>
                             {% else %}
                             <div class="mt5-wizard-nav">
                                 <button type="button" class="ghost-btn mt5-wizard-back" data-mt5-wizard-back hidden>Back</button>
                                 <button type="button" class="submit-btn mt5-wizard-next" data-mt5-wizard-next>Continue</button>
-                                <button type="submit" class="submit-btn" data-mt5-submit hidden disabled>Start MT5 setup</button>
+                                <button type="submit" class="submit-btn" data-mt5-submit hidden disabled>Start investor account setup</button>
                             </div>
                             {% endif %}
                         </form>
                     </div>
-                    <p class="mt5-card-footnote">Stored encrypted; used only to pull your trade history.</p>
+                    <p class="mt5-card-footnote">Investor credentials stored encrypted; used only to sync your investor account trade history.</p>
                     {% if is_state_one and not has_any_trades %}
                     <aside class="mt5-import-bridge" aria-label="Import while MT5 setup runs">
                         <p class="mt5-import-bridge-copy">Import a report while setup runs.</p>
@@ -1298,14 +1300,14 @@
 
                             <div class="mt5-form-grid">
                                 <div class="mt5-form-field">
-                                    <label for="mt5_retry_account_number">MT5 account number</label>
+                                    <label for="mt5_retry_account_number">MT5 investor account number</label>
                                     <input
                                         id="mt5_retry_account_number"
                                         name="account_number"
                                         type="text"
                                         inputmode="numeric"
                                         maxlength="50"
-                                        placeholder="Enter your MT5 login"
+                                        placeholder="Enter your MT5 investor login"
                                         value="{{ _failed_mt5.account_number if _failed_mt5 else '' }}"
                                         required
                                     >
@@ -1385,7 +1387,7 @@
                         <input type="hidden" name="next" value="{{ mt5_dashboard_next }}">
                         <button type="submit" class="ghost-btn danger-btn">Disconnect MT5 sync</button>
                     </form>
-                    <p class="mt5-card-footnote">Stored encrypted; used only to pull your trade history.</p>
+                    <p class="mt5-card-footnote">Investor credentials stored encrypted; used only to sync your investor account trade history.</p>
                     {% elif mt5_selected_status == "batch_unavailable" and mt5_selected_account %}
                     <p class="mt5-card-empty">{{ mt5_selected_row.note }}</p>
                     <div class="mt5-selected-account-card">
@@ -1531,7 +1533,7 @@
                         {% endif %}
                     </div>
                     {% if show_mt5_guidance and not (is_state_one and not has_any_trades) %}
-                    <p class="mt5-panel-hint">Optional: Connect MT5 for automatic sync (read-only investor password).</p>
+                    <p class="mt5-panel-hint">Optional: connect your MT5 investor account for automatic sync (read-only investor password).</p>
                     {% endif %}
                     <p class="mt5-card-empty">You will see the setup flow here as soon as you have a CFD trade account available.</p>
                     <div class="panel-empty-actions{% if show_mt5_guidance %} guided-focus-panel{% endif %}">
@@ -3740,7 +3742,7 @@
     .ai-review-summary {
         max-width: 78ch;
         font-size: clamp(1.03rem, 1.08vw, 1.12rem);
-        font-weight: 650;
+        font-weight: 400;
         line-height: 1.78;
         color: color-mix(in srgb, var(--ink) 94%, white);
     }

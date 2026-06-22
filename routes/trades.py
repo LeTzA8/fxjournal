@@ -43,7 +43,9 @@ from trading import (
     aggregate_ohlc_bars,
     calculate_trade_net_pnl,
     build_import_signature,
+    calc_pips_values,
     calc_pnl_values,
+    calc_ticks_values,
     canonicalize_symbol,
     classify_trading_session,
     chart_timeframe_bar_seconds,
@@ -53,7 +55,6 @@ from trading import (
     format_duration_minutes,
     format_trade_price,
     format_trade_size,
-    format_trade_size_with_unit,
     trade_size_must_be_positive_message,
     format_trade_symbol,
     get_trade_level_validation_issues,
@@ -105,6 +106,129 @@ def _calculate_trade_risk_reward(target_price, entry_price, stop_loss, side=None
 
 def _calculate_trade_net_pnl(trade_pnl, commission=None, swap=None):
     return calculate_trade_net_pnl(trade_pnl, commission, swap)
+
+
+def _parse_optional_form_float(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _resolve_trade_execution_fields(
+    *,
+    account_type,
+    symbol,
+    contract_code,
+    side,
+    entry_price,
+    exit_price,
+    stop_loss,
+    take_profit,
+    lot_size,
+    pnl,
+):
+    entry_price, exit_price, stop_loss, take_profit = coerce_trade_prices_for_account(
+        account_type=account_type,
+        symbol=symbol,
+        contract_code=contract_code,
+        entry_price=entry_price,
+        exit_price=exit_price,
+        stop_loss=stop_loss,
+        take_profit=take_profit,
+    )
+    if pnl is not None and exit_price is None:
+        exit_price = derive_exit_price(
+            symbol=symbol,
+            side=side,
+            entry_price=entry_price,
+            lot_size=lot_size,
+            pnl_value=pnl,
+            instrument_type=account_type,
+            contract_code=contract_code,
+        )
+    if pnl is None and exit_price is not None:
+        pnl = calc_pnl_values(
+            symbol=symbol,
+            side=side,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            lot_size=lot_size,
+            instrument_type=account_type,
+            contract_code=contract_code,
+        )
+    return entry_price, exit_price, stop_loss, take_profit, pnl
+
+
+def _build_trade_form_metrics_payload(
+    *,
+    account_type,
+    symbol,
+    contract_code,
+    side,
+    entry_price,
+    exit_price,
+    stop_loss,
+    take_profit,
+    lot_size,
+    pnl,
+    commission,
+    swap,
+):
+    entry_price, exit_price, stop_loss, take_profit, pnl = _resolve_trade_execution_fields(
+        account_type=account_type,
+        symbol=symbol,
+        contract_code=contract_code,
+        side=side,
+        entry_price=entry_price,
+        exit_price=exit_price,
+        stop_loss=stop_loss,
+        take_profit=take_profit,
+        lot_size=lot_size,
+        pnl=pnl,
+    )
+    planned_rr = _calculate_trade_risk_reward(
+        take_profit,
+        entry_price,
+        stop_loss,
+        side,
+    )
+    actual_rr = _calculate_trade_risk_reward(
+        exit_price,
+        entry_price,
+        stop_loss,
+        side,
+        signed=True,
+    )
+    net_pnl = _calculate_trade_net_pnl(pnl, commission, swap)
+    return {
+        "entry_price": entry_price,
+        "exit_price": exit_price,
+        "pnl": pnl,
+        "net_pnl": net_pnl,
+        "planned_rr": planned_rr,
+        "actual_rr": actual_rr,
+        "pips": calc_pips_values(
+            symbol,
+            side,
+            entry_price,
+            exit_price,
+            instrument_type=account_type,
+        ),
+        "ticks": calc_ticks_values(
+            symbol,
+            side,
+            entry_price,
+            exit_price,
+            instrument_type=account_type,
+            contract_code=contract_code,
+        ),
+    }
 
 
 def _build_trade_entry_context(user_id, trade):
@@ -389,7 +513,7 @@ def render_trades_page(*, manage_mode=False):
                     contract_code=trade.contract_code,
                 ),
                 "lot_size": trade.lot_size,
-                "size_display": format_trade_size_with_unit(
+                "size_display": format_trade_size(
                     trade.lot_size, trade_account_type
                 ),
                 "pnl": resolve_pnl(trade),
@@ -837,15 +961,6 @@ def new_trade():
         commission = float(commission) if commission else None
         swap = request.form.get("swap", "").strip()
         swap = float(swap) if swap else None
-        entry_price, exit_price, stop_loss, take_profit = coerce_trade_prices_for_account(
-            account_type=account_type,
-            symbol=symbol,
-            contract_code=contract_code,
-            entry_price=entry_price,
-            exit_price=exit_price,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-        )
         opened_at = parse_local_datetime_input(request.form.get("opened_at", "").strip())
         if opened_at is None:
             opened_at = parse_local_datetime_input(
@@ -860,26 +975,18 @@ def new_trade():
             flash("Close time cannot be earlier than open time.", "error")
             return redirect(url_for("trades.new_trade"))
 
-        if pnl is not None and exit_price is None:
-            exit_price = derive_exit_price(
-                symbol=symbol,
-                side=side,
-                entry_price=entry_price,
-                lot_size=lot_size,
-                pnl_value=pnl,
-                instrument_type=account_type,
-                contract_code=contract_code,
-            )
-        if pnl is None and exit_price is not None:
-            pnl = calc_pnl_values(
-                symbol=symbol,
-                side=side,
-                entry_price=entry_price,
-                exit_price=exit_price,
-                lot_size=lot_size,
-                instrument_type=account_type,
-                contract_code=contract_code,
-            )
+        entry_price, exit_price, stop_loss, take_profit, pnl = _resolve_trade_execution_fields(
+            account_type=account_type,
+            symbol=symbol,
+            contract_code=contract_code,
+            side=side,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            lot_size=lot_size,
+            pnl=pnl,
+        )
         validation_message = _validate_trade_submission(
             symbol=symbol,
             contract_code=contract_code,
@@ -1410,15 +1517,6 @@ def edit_trade(trade_pubkey):
         commission = float(commission) if commission else None
         swap = request.form.get("swap", "").strip()
         swap = float(swap) if swap else None
-        entry_price, exit_price, stop_loss, take_profit = coerce_trade_prices_for_account(
-            account_type=account_type,
-            symbol=symbol,
-            contract_code=contract_code,
-            entry_price=entry_price,
-            exit_price=exit_price,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-        )
         opened_at = parse_local_datetime_input(request.form.get("opened_at", "").strip())
         if opened_at is None:
             opened_at = parse_local_datetime_input(
@@ -1435,26 +1533,18 @@ def edit_trade(trade_pubkey):
             flash("Close time cannot be earlier than open time.", "error")
             return redirect(url_for("trades.edit_trade", trade_pubkey=trade.pubkey))
 
-        if pnl is not None and exit_price is None:
-            exit_price = derive_exit_price(
-                symbol=symbol,
-                side=side,
-                entry_price=entry_price,
-                lot_size=lot_size,
-                pnl_value=pnl,
-                instrument_type=account_type,
-                contract_code=contract_code,
-            )
-        if pnl is None and exit_price is not None:
-            pnl = calc_pnl_values(
-                symbol=symbol,
-                side=side,
-                entry_price=entry_price,
-                exit_price=exit_price,
-                lot_size=lot_size,
-                instrument_type=account_type,
-                contract_code=contract_code,
-            )
+        entry_price, exit_price, stop_loss, take_profit, pnl = _resolve_trade_execution_fields(
+            account_type=account_type,
+            symbol=symbol,
+            contract_code=contract_code,
+            side=side,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            lot_size=lot_size,
+            pnl=pnl,
+        )
         validation_message = _validate_trade_submission(
             symbol=symbol,
             contract_code=contract_code,
@@ -1748,6 +1838,58 @@ def _trade_note_payload(trade):
         "has_trade_note": bool(note_text),
         "trade_label": f"{format_trade_symbol(trade)} · {opened_label}",
     }
+
+
+@bp.route("/api/trade-form-metrics", methods=["POST"])
+@login_required
+@limiter.limit("120 per minute", methods=["POST"])
+def trade_form_metrics():
+    user_id = get_effective_user_id()
+    active_trade_account = get_active_trade_account_for_user(user_id)
+    account_type = normalize_account_type(active_trade_account.account_type)
+    allowed_symbols = set(get_symbol_options(account_type))
+    payload = request.get_json(silent=True) or {}
+
+    symbol = canonicalize_symbol(payload.get("symbol", ""), account_type)
+    if symbol not in allowed_symbols:
+        return jsonify({"error": "invalid_symbol"}), 400
+
+    contract_code = (payload.get("contract_code") or "").strip().upper() or None
+    if account_type == "FUTURES" and contract_code:
+        parsed_contract = parse_futures_contract_code(
+            contract_code, expected_root=symbol
+        )
+        if parsed_contract is None:
+            return jsonify({"error": "invalid_contract_code"}), 400
+        contract_code = parsed_contract["contract_code"]
+    elif account_type != "FUTURES":
+        contract_code = None
+
+    side = str(payload.get("side") or "BUY").strip().upper()
+    entry_price = _parse_optional_form_float(payload.get("entry_price"))
+    exit_price = _parse_optional_form_float(payload.get("exit_price"))
+    stop_loss = _parse_optional_form_float(payload.get("stop_loss"))
+    take_profit = _parse_optional_form_float(payload.get("take_profit"))
+    lot_size = _parse_optional_form_float(payload.get("lot_size"))
+    pnl = _parse_optional_form_float(payload.get("pnl"))
+    commission = _parse_optional_form_float(payload.get("commission"))
+    swap = _parse_optional_form_float(payload.get("swap"))
+
+    metrics = _build_trade_form_metrics_payload(
+        account_type=account_type,
+        symbol=symbol,
+        contract_code=contract_code,
+        side=side,
+        entry_price=entry_price,
+        exit_price=exit_price,
+        stop_loss=stop_loss,
+        take_profit=take_profit,
+        lot_size=lot_size,
+        pnl=pnl,
+        commission=commission,
+        swap=swap,
+    )
+    return jsonify(metrics)
 
 
 @bp.route("/api/trades/<string:trade_pubkey>/note", methods=["GET", "POST"])

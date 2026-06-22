@@ -1660,7 +1660,7 @@ def test_dashboard_home_uses_state_2_when_active_account_has_trades_without_acti
 
     assert response.status_code == 200
     assert b'data-dashboard-state="state-2"' in response.data
-    assert b"Connect MT5 next" in response.data
+    assert b"Connect your MT5 investor account" in response.data
     assert b"Nice, your report is in" in response.data
     assert b"Connect MT5 \xe2\x80\x94 automatic sync" in response.data
     assert b"data-mt5-setup-wizard" in response.data
@@ -3110,6 +3110,48 @@ def test_build_review_text_segments_parses_bold_summary_only():
         },
         {"type": "text", "text": " One MNQ retry won."},
     ]
+
+
+def test_build_review_text_segments_parses_bold_when_citation_inside_markers():
+    text = (
+        "**You held the XAUUSD | 18 Jun 2026 (Thu) swing long enough for the overlap to do its job.** "
+        "That shows patience and solid swing management."
+    )
+    citations = [
+        {
+            "label": "XAUUSD | 18 Jun 2026 (Thu)",
+            "inline_label": "XAUUSD",
+            "type": "trade",
+            "ref": "T1",
+            "trade_id": 1,
+            "tone": "positive",
+        }
+    ]
+
+    segments = dashboard_routes._build_review_text_segments(text, citations, parse_bold=True)
+
+    assert segments[0]["type"] == "strong_group"
+    assert segments[0]["segments"] == [
+        {"type": "text", "text": "You held the "},
+        {
+            "type": "citation",
+            "label": "XAUUSD | 18 Jun 2026 (Thu)",
+            "citation_type": "trade",
+            "ref": "T1",
+            "trade_id": 1,
+            "trade_pubkey": None,
+            "bundle_key": None,
+            "tone": "positive",
+        },
+        {
+            "type": "text",
+            "text": " swing long enough for the overlap to do its job.",
+        },
+    ]
+    assert segments[1] == {
+        "type": "text",
+        "text": " That shows patience and solid swing management.",
+    }
 
 
 def test_build_review_text_segments_skips_bold_parsing_by_default():

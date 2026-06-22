@@ -144,6 +144,7 @@ def test_manual_trade_detail_shows_rr_and_split_fees(app_ctx, client):
     assert response.status_code == 302
 
     trade = Trade.query.filter_by(user_id=user.id).one()
+    assert trade.pnl == pytest.approx(140.0)
     assert trade.swap == -0.8
     assert trade.commission == -3.5
 
@@ -165,6 +166,35 @@ def test_manual_trade_detail_shows_rr_and_split_fees(app_ctx, client):
     assert b'for="net_pnl"' in detail_response.data
     assert b"Net PnL" in detail_response.data
     assert b'value="135.7"' in detail_response.data
+
+
+def test_trade_form_metrics_derives_pnl_from_entry_and_exit(app_ctx, client):
+    _create_logged_in_user(
+        client,
+        username="trade-form-metrics-user",
+        email="trade-form-metrics@example.com",
+    )
+
+    response = client.post(
+        "/api/trade-form-metrics",
+        json={
+            "symbol": "EURUSD",
+            "side": "BUY",
+            "entry_price": 1.1,
+            "exit_price": 1.1014,
+            "lot_size": 1.0,
+            "commission": -3.5,
+            "swap": -0.8,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["pnl"] == pytest.approx(140.0)
+    assert payload["net_pnl"] == pytest.approx(135.7)
+    assert payload["planned_rr"] is None
+    assert payload["actual_rr"] is None
+    assert payload["pips"] == pytest.approx(14.0)
 
 
 def test_trade_detail_treats_closed_timestamp_trade_as_closed(app_ctx, client):

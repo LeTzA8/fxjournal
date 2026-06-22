@@ -12,6 +12,12 @@ How to use:
 
 ## Recent Changes
 
+### 2026-06-22 — Manual trade form auto-calculates PnL
+
+- Added `POST /api/trade-form-metrics` and `static/js/trade_form_metrics.js` so new/edit manual trade forms derive gross/net PnL, RR, and pips/ticks as entry, exit, and size are filled in.
+- Save path still persists derived gross PnL when exit price is provided and the PnL field is left blank.
+- Tests: `tests/test_trades_routes.py` (`test_trade_form_metrics_derives_pnl_from_entry_and_exit`, manual trade PnL assertion).
+
 ### 2026-06-18 — Expanded futures symbol catalog (31 new instruments)
 
 - Added energy (NG, HO, RB, BRN), metals (SI, HG, PL, PA), FX futures (6E, M6E, 6B, 6J, 6A, 6C, 6S, 6N), bonds (ZN, ZB, ZF), grains (ZC, ZW, ZS, ZL, ZM), softs (KC, SB), volatility (VX), and crypto (BTC, MBT, ETH, MET).
