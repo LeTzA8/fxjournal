@@ -103,6 +103,7 @@ from trading import (
     format_duration_minutes,
     format_trade_size,
     format_trade_symbol,
+    merge_bundled_trades,
     normalize_account_type,
     resolve_net_pnl,
     to_display_timezone,
@@ -985,6 +986,24 @@ def _load_user_trades(user_id, active_trade_account):
     except OperationalError:
         db.session.rollback()
         return []
+
+
+def _count_trades_opened_in_month(trades, timezone_name, now_local):
+    month = getattr(now_local, "month", None)
+    year = getattr(now_local, "year", None)
+    if month is None or year is None:
+        return 0
+
+    count = 0
+    for trade in trades or []:
+        opened_local = to_display_timezone(getattr(trade, "opened_at", None), timezone_name)
+        if (
+            opened_local is not None
+            and opened_local.month == month
+            and opened_local.year == year
+        ):
+            count += 1
+    return count
 
 
 def _get_review_workflow_banner_state(user_id, active_trade_account, user_trades):
@@ -1996,12 +2015,15 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
     behavior_badge_map = build_trade_behavior_badge_map(user_trades)
 
     now_local = to_display_timezone(utcnow_naive(), timezone_name)
-    trades_this_month = sum(
-        1
-        for trade in user_trades
-        if (opened_local := to_display_timezone(trade.opened_at, timezone_name))
-        and opened_local.month == now_local.month
-        and opened_local.year == now_local.year
+    trades_this_month_raw = _count_trades_opened_in_month(
+        user_trades,
+        timezone_name,
+        now_local,
+    )
+    trades_this_month_after_bundle = _count_trades_opened_in_month(
+        merge_bundled_trades(user_trades),
+        timezone_name,
+        now_local,
     )
 
     now_utc = utcnow_naive()
@@ -2226,7 +2248,8 @@ def _dashboard_home_authenticated(target_user_id=None, admin_viewer_username=Non
         trading_costs=summary.get("cost_drag"),
         trading_costs_coverage=summary.get("cost_drag_coverage"),
         has_cost_data=bool((summary.get("cost_drag_coverage") or 0) > 0),
-        trades_this_month=trades_this_month,
+        trades_this_month_before_bundle=trades_this_month_raw,
+        trades_this_month_after_bundle=trades_this_month_after_bundle,
         avg_win=summary.get("avg_win"),
         avg_loss_abs=summary.get("avg_loss_abs"),
         recent_trades=recent_trades,

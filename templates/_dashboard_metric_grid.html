@@ -10,7 +10,7 @@
                         aria-label="Explain Account PnL"
                         aria-describedby="dashboard-account-pnl-tooltip"
                     >?</button>
-                    <span id="dashboard-account-pnl-tooltip" class="help-tooltip-bubble" role="tooltip">Net realized PnL across all closed trades on this account, after logged fees, commission, and swap.</span>
+                    <span id="dashboard-account-pnl-tooltip" class="help-tooltip-bubble" role="tooltip">Net realized PnL across closed trade ideas on this account after bundle detection, logged fees, commission, and swap.</span>
                 </span>
             </span>
         </p>
@@ -23,7 +23,7 @@
         </p>
         <p class="metric-note">
             {% if has_closed_trades %}
-            After fees, commission &amp; swap · {{ closed_trade_count }} closed trade{{ 's' if closed_trade_count != 1 else '' }}
+            After fees, commission &amp; swap · {{ closed_trade_count }} closed trade idea{{ 's' if closed_trade_count != 1 else '' }} after bundle detection
             {% elif has_any_trades %}
             Account PnL appears after your first closed trade.
             {% else %}
@@ -42,7 +42,7 @@
                         aria-label="Explain Win Rate"
                         aria-describedby="dashboard-win-rate-tooltip"
                     >?</button>
-                    <span id="dashboard-win-rate-tooltip" class="help-tooltip-bubble" role="tooltip">The percentage of your closed trades that finished with a positive result.</span>
+                    <span id="dashboard-win-rate-tooltip" class="help-tooltip-bubble" role="tooltip">The percentage of closed trade ideas that finished with a positive result after confirmed bundle groups are merged.</span>
                 </span>
             </span>
         </p>
@@ -51,7 +51,7 @@
         </p>
         <p class="metric-note">
             {% if has_closed_trades %}
-            Based on {{ closed_trade_count }} closed trade{% if closed_trade_count != 1 %}s{% endif %}
+            Based on {{ closed_trade_count }} closed trade idea{% if closed_trade_count != 1 %}s{% endif %} after bundle detection
             {% if win_rate_is_limited_sample %}
             — win rate is most reliable with around {{ small_sample_min_trades }}+ closed trades.
             {% endif %}
@@ -84,12 +84,23 @@
     </article>
     <article class="metric">
         <p class="metric-label">Trades This Month</p>
-        <p class="metric-value{% if not has_any_trades %} muted-value{% endif %}">
-            {% if has_any_trades %}{{ trades_this_month }}{% else %}-{% endif %}
-        </p>
+        <div class="metric-split">
+            <div class="metric-chip">
+                <span class="metric-chip-label">After Bundle</span>
+                <span class="metric-chip-value">
+                    {% if has_any_trades %}{{ trades_this_month_after_bundle }}{% else %}-{% endif %}
+                </span>
+            </div>
+            <div class="metric-chip">
+                <span class="metric-chip-label">Before Bundle</span>
+                <span class="metric-chip-value">
+                    {% if has_any_trades %}{{ trades_this_month_before_bundle }}{% else %}-{% endif %}
+                </span>
+            </div>
+        </div>
         <p class="metric-note">
             {% if has_any_trades %}
-            Based on opened date
+            Based on opened date · after-bundle count is used for dashboard trade idea metrics
             {% else %}
             Activity volume starts tracking after your first import or manual trade.
             {% endif %}

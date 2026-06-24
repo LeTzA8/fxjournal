@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import json
+import re
 
 import pytest
 from sqlalchemy import inspect as sa_inspect
@@ -2032,6 +2033,86 @@ def test_dashboard_home_marks_bundled_recent_trade_rows(app_ctx, client, monkeyp
     assert response.status_code == 200
     assert b'data-bundle="bundle-dashboard-test"' in response.data
     assert b">Bundled</span>" in response.data
+
+
+def test_dashboard_metrics_show_raw_and_bundle_aware_month_counts(app_ctx, client, monkeypatch):
+    fixed_now = datetime(2026, 6, 24, 12, 0, 0)
+    monkeypatch.setattr(dashboard_routes, "utcnow_naive", lambda: fixed_now)
+    user, trade_account = _create_logged_in_user(
+        client,
+        username="dashboard-bundle-count-user",
+        email="dashboard-bundle-count@example.com",
+    )
+    monkeypatch.setattr(
+        dashboard_routes,
+        "_get_weekly_ai_state",
+        lambda *args, **kwargs: {
+            "weekly_ai_review": None,
+            "weekly_ai_generated_at_label": "",
+            "weekly_ai_period_label": "",
+            "weekly_ai_empty_message": "No trades this week. Add closed trades to generate your AI review.",
+            "weekly_ai_is_generating": False,
+        },
+    )
+    bundled_winner = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.085,
+        exit_price=1.091,
+        lot_size=0.01,
+        pnl=50.0,
+        opened_at=datetime(2026, 6, 10, 8, 0, 0),
+        closed_at=datetime(2026, 6, 10, 9, 0, 0),
+    )
+    bundled_loser = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.086,
+        exit_price=1.084,
+        lot_size=0.01,
+        pnl=-70.0,
+        opened_at=datetime(2026, 6, 10, 8, 5, 0),
+        closed_at=datetime(2026, 6, 10, 9, 5, 0),
+    )
+    standalone_winner = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="GBPUSD",
+        side="SELL",
+        entry_price=1.275,
+        exit_price=1.27,
+        lot_size=0.01,
+        pnl=100.0,
+        opened_at=datetime(2026, 6, 11, 8, 0, 0),
+        closed_at=datetime(2026, 6, 11, 10, 0, 0),
+    )
+    db.session.add_all([bundled_winner, bundled_loser, standalone_winner])
+    db.session.flush()
+    for trade in (bundled_winner, bundled_loser):
+        apply_interpretation(
+            trade,
+            bundle_pubkey="bundle-month-count",
+            source="test",
+            user_id=user.id,
+        )
+    db.session.commit()
+
+    response = client.get("/dashboard")
+    response_text = response.get_data(as_text=True)
+    compact_text = " ".join(response_text.split())
+    visible_text = re.sub(r"<[^>]+>", " ", response_text)
+    compact_visible_text = " ".join(visible_text.split())
+
+    assert response.status_code == 200
+    assert "50.0%" in response_text
+    assert "Based on 2 closed trade ideas after bundle detection" in compact_text
+    assert "After Bundle 2" in compact_visible_text
+    assert "Before Bundle 3" in compact_visible_text
+    assert "after-bundle count is used for dashboard trade idea metrics" in compact_text
 
 
 def test_dashboard_recent_trade_rows_link_to_trade_detail(app_ctx, client, monkeypatch):

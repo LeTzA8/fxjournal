@@ -12,6 +12,12 @@ How to use:
 
 ## Recent Changes
 
+### 2026-06-24 - Dashboard bundle-aware metric disclosure
+
+- Dashboard Account PnL and Win Rate copy now explicitly states the denominator is closed trade ideas after bundle detection.
+- Trades This Month now shows both after-bundle and before-bundle opened-date counts so raw order volume and dashboard trade-idea volume are visible together.
+- Tests: `tests/test_dashboard_weekly_ai.py` (`test_dashboard_metrics_show_raw_and_bundle_aware_month_counts`).
+
 ### 2026-06-22 — Manual trade form auto-calculates PnL
 
 - Added `POST /api/trade-form-metrics` and `static/js/trade_form_metrics.js` so new/edit manual trade forms derive gross/net PnL, RR, and pips/ticks as entry, exit, and size are filled in.
