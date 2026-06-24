@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 import trading
+from helpers.behavior_labels import build_trade_behavior_analytics
 from trading import (
     aggregate_ohlc_bars,
     build_rr_summary,
@@ -31,6 +32,18 @@ def make_trade(**overrides):
         "contract_code": None,
         "trade_account": trade_account,
         "pnl": None,
+        "commission": None,
+        "swap": None,
+        "id": None,
+        "pubkey": None,
+        "bundle_pubkey": None,
+        "opened_at": None,
+        "closed_at": None,
+        "is_revenge": False,
+        "is_reactive": False,
+        "is_corrective": False,
+        "trade_note": None,
+        "system_trade_note": None,
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -385,6 +398,78 @@ def test_build_rr_summary_excludes_invalid_stop_geometry():
     assert summary["avg_planned_rr"] == 2.0
     assert summary["avg_actual_rr"] == 1.8
     assert summary["rr_capture_ratio"] == 0.9
+
+
+def test_build_rr_summary_counts_confirmed_bundle_as_one_trade_idea():
+    trades = [
+        make_trade(
+            id=1,
+            pubkey="trade-1",
+            symbol="XAUUSD",
+            entry_price=100.0,
+            exit_price=106.0,
+            stop_loss=95.0,
+            take_profit=115.0,
+            pnl=60.0,
+            bundle_pubkey="bundle-rr",
+            opened_at=datetime(2026, 3, 10, 9, 0, 0),
+            closed_at=datetime(2026, 3, 10, 9, 20, 0),
+        ),
+        make_trade(
+            id=2,
+            pubkey="trade-2",
+            symbol="XAUUSD",
+            entry_price=101.0,
+            exit_price=110.0,
+            stop_loss=95.0,
+            take_profit=115.0,
+            pnl=90.0,
+            bundle_pubkey="bundle-rr",
+            opened_at=datetime(2026, 3, 10, 9, 5, 0),
+            closed_at=datetime(2026, 3, 10, 9, 25, 0),
+        ),
+    ]
+
+    summary = build_rr_summary(trades)
+
+    assert summary["trades_with_data"] == 1
+    assert summary["avg_planned_rr"] == 3.0
+    assert summary["avg_actual_rr"] == 2.0
+    assert summary["rr_capture_ratio"] == 0.67
+
+
+def test_behavior_analytics_counts_confirmed_bundle_as_one_trade_idea():
+    trades = [
+        make_trade(
+            id=1,
+            pubkey="trade-1",
+            pnl=-40.0,
+            bundle_pubkey="bundle-behavior",
+            opened_at=datetime(2026, 3, 10, 9, 0, 0),
+            closed_at=datetime(2026, 3, 10, 9, 20, 0),
+            is_revenge=True,
+        ),
+        make_trade(
+            id=2,
+            pubkey="trade-2",
+            pnl=-35.0,
+            bundle_pubkey="bundle-behavior",
+            opened_at=datetime(2026, 3, 10, 9, 5, 0),
+            closed_at=datetime(2026, 3, 10, 9, 25, 0),
+            is_revenge=True,
+        ),
+    ]
+
+    behavior = build_trade_behavior_analytics(trades, timezone_name="UTC")
+    revenge_row = next(row for row in behavior["rows"] if row["key"] == "revenge")
+
+    assert behavior["closed_trade_count"] == 1
+    assert behavior["confirmed_trade_count"] == 1
+    assert behavior["review_trade_count"] == 1
+    assert revenge_row["confirmed_count"] == 1
+    assert revenge_row["total_count"] == 1
+    assert behavior["top_focus"]["key"] == "revenge"
+    assert behavior["flagged_trades"][0]["bundle_pubkey"] == "bundle-behavior"
 
 
 def test_build_trade_analytics_uses_close_time_for_realized_curves_and_weekly_pnl():

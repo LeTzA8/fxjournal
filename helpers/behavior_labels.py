@@ -1,6 +1,12 @@
 from helpers.scoring import build_trade_behavior_signal_map
 from helpers.trade_analysis import get_trade_identity
-from trading import format_trade_symbol, outlier_size_reason, resolve_net_pnl, to_display_timezone
+from trading import (
+    format_trade_symbol,
+    merge_bundled_trades,
+    outlier_size_reason,
+    resolve_net_pnl,
+    to_display_timezone,
+)
 
 BEHAVIOR_ORDER = ("revenge", "reactive", "corrective")
 BEHAVIOR_LABELS = {
@@ -155,11 +161,12 @@ def build_trade_behavior_badge_map(trades, *, signal_map=None):
 
 
 def build_trade_behavior_analytics(trades, *, timezone_name="UTC", signal_map=None, max_flagged_trades=6):
-    signals = signal_map or build_trade_behavior_signal_map(trades)
-    badge_map = build_trade_behavior_badge_map(trades, signal_map=signals)
+    trade_rows = merge_bundled_trades(trades)
+    signals = signal_map or build_trade_behavior_signal_map(trade_rows)
+    badge_map = build_trade_behavior_badge_map(trade_rows, signal_map=signals)
     closed_trades = [
         trade
-        for trade in trades
+        for trade in trade_rows
         if getattr(trade, "closed_at", None) is not None
     ]
     closed_trade_count = len(closed_trades)

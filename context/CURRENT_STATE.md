@@ -1,6 +1,6 @@
 # CURRENT_STATE
 
-Last Updated: 2026-06-18
+Last Updated: 2026-06-25
 
 Rolling work log of recent, non-trivial changes and in-flight work. Durable architecture, capabilities, file ownership, env/config, and operational facts now live in [`PROJECT_MAP.md`](PROJECT_MAP.md) — keep this file short.
 
@@ -11,6 +11,17 @@ How to use:
 > **2026-06-07 — Consolidation.** All prior entries (≈2026-04-17 → 2026-06-07) were folded into `PROJECT_MAP.md` and removed from this file. The full original chronological log remains in git history.
 
 ## Recent Changes
+
+### 2026-06-25 - Bundle-aware secondary calculations
+
+- Planned/realized RR, behavior analytics, running PnL, AI Journal scoped payloads, and weekly AI closed-trade payloads now aggregate confirmed bundles as closed trade ideas instead of raw order rows.
+- Dashboard, analytics, running PnL, and AI Journal copy now says trade idea(s) or closed trade ideas where the denominator is bundle-aware.
+- Tests: `tests/test_trading_math.py`, `tests/test_running_pnl_routes.py`, `tests/test_admin_journal.py`, `tests/test_ai_service.py`, `tests/test_dashboard_weekly_ai.py`, `tests/test_trades_routes.py`.
+
+### 2026-06-25 - Sticky trade table headers
+
+- Trade-log table headers now stick to the top of their scroll container, covering the dashboard trades panel and the full Trades page shared table shell.
+- CSS-only change in the shared app-layout table styling.
 
 ### 2026-06-24 - Dashboard bundle-aware metric disclosure
 

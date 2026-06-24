@@ -107,9 +107,9 @@
         <aside class="panel analytics-sample-callout" role="note">
             <p class="analytics-sample-callout__kicker">Small sample</p>
             <p class="analytics-sample-callout__text">
-                You have {{ summary.closed_trades }} closed trade{% if summary.closed_trades != 1 %}s{% endif %} on this account.
+                You have {{ summary.closed_trades }} closed trade idea{% if summary.closed_trades != 1 %}s{% endif %} on this account after bundle detection.
                 The KPIs and breakdowns below are still useful for direction, but win rate, expectancy, and session or pair splits are most meaningful once you have around
-                {{ small_sample_min_trades }} or more closed trades.
+                {{ small_sample_min_trades }} or more closed trade ideas.
             </p>
         </aside>
         {% endif %}
@@ -122,7 +122,7 @@
                         <p class="kpi-value {% if summary.net_pnl > 0 %}good{% elif summary.net_pnl < 0 %}bad{% endif %}">
                             {% if summary.net_pnl > 0 %}+{% endif %}${{ '%.2f'|format(summary.net_pnl) }}
                         </p>
-                        <p class="kpi-note">All closed trades on this account</p>
+                        <p class="kpi-note">All closed trade ideas after bundle detection</p>
                     </article>
                     <article class="kpi-card panel" data-reveal-skip>
                         <p class="kpi-label">Realized This Week</p>
@@ -159,7 +159,7 @@
                                         aria-label="Explain Win Rate"
                                         aria-describedby="analytics-win-rate-tooltip"
                                     >?</button>
-                                    <span id="analytics-win-rate-tooltip" class="help-tooltip-bubble" role="tooltip">The percentage of your closed trades that finished profitable.</span>
+                                    <span id="analytics-win-rate-tooltip" class="help-tooltip-bubble" role="tooltip">The percentage of your closed trade ideas that finished profitable after bundle detection.</span>
                                 </span>
                             </span>
                         </p>
@@ -201,7 +201,7 @@
                                         aria-label="Explain Expectancy"
                                         aria-describedby="analytics-expectancy-tooltip"
                                     >?</button>
-                                    <span id="analytics-expectancy-tooltip" class="help-tooltip-bubble" role="tooltip">Calculated as (win rate &times; avg win) &minus; (loss rate &times; avg loss). A positive number means your strategy makes money on average per trade over a large sample.</span>
+                                    <span id="analytics-expectancy-tooltip" class="help-tooltip-bubble" role="tooltip">Calculated as (win rate &times; avg win) &minus; (loss rate &times; avg loss). A positive number means your strategy makes money on average per trade idea over a large sample.</span>
                                 </span>
                             </span>
                         </p>
@@ -212,7 +212,7 @@
                             -
                             {% endif %}
                         </p>
-                        <p class="kpi-note">Average result per closed trade</p>
+                        <p class="kpi-note">Average result per closed trade idea</p>
                     </article>
                     <article class="kpi-card panel" data-reveal-skip>
                         <p class="kpi-label">
@@ -312,7 +312,7 @@
                     <article class="behavior-stat-card">
                         <p class="behavior-stat-label">Trades to Review</p>
                         <p class="behavior-stat-value">{{ behavior.review_trade_count }}</p>
-                        <p class="behavior-stat-note">out of {{ behavior.closed_trade_count }} closed trades</p>
+                        <p class="behavior-stat-note">out of {{ behavior.closed_trade_count }} closed trade ideas</p>
                     </article>
                     <article class="behavior-stat-card">
                         <p class="behavior-stat-label">Confirmed</p>
@@ -329,7 +329,7 @@
                         <p class="behavior-stat-value">{% if behavior.top_focus %}{{ behavior.top_focus.label }}{% else %}-{% endif %}</p>
                         <p class="behavior-stat-note">
                             {% if behavior.top_focus %}
-                            {{ behavior.top_focus.total_count }} trade{% if behavior.top_focus.total_count != 1 %}s{% endif %}
+                            {{ behavior.top_focus.total_count }} trade idea{% if behavior.top_focus.total_count != 1 %}s{% endif %}
                             {% else %}
                             Nothing flagged
                             {% endif %}
@@ -484,7 +484,7 @@
                 </div>
                 <p class="rr-advice{% if rr_summary.trades_with_data < 3 %} muted{% endif %}">{{ rr_summary.advice }}</p>
                 <p class="context-note">
-                    Based on {{ rr_summary.trades_with_data }} trade{% if rr_summary.trades_with_data != 1 %}s{% endif %} with SL &amp; TP set.
+                    Based on {{ rr_summary.trades_with_data }} trade idea{% if rr_summary.trades_with_data != 1 %}s{% endif %} with SL &amp; TP set after bundle detection.
                     {% if rr_summary.trades_with_data < 3 %}Need 3 minimum for a reliable read.{% endif %}
                 </p>
                 {% else %}
@@ -507,17 +507,17 @@
                                         aria-label="Explain Equity Curve"
                                         aria-describedby="analytics-equity-curve-tooltip"
                                     >?</button>
-                                    <span id="analytics-equity-curve-tooltip" class="help-tooltip-bubble" role="tooltip">Your running PnL added up trade by trade in chronological order.</span>
+                                    <span id="analytics-equity-curve-tooltip" class="help-tooltip-bubble" role="tooltip">Your running PnL added up trade idea by trade idea in chronological order.</span>
                                 </span>
                             </span>
                         </h2>
-                        <p class="panel-copy">Cumulative realized PnL across closed trades.</p>
+                        <p class="panel-copy">Cumulative realized PnL across closed trade ideas after bundle detection.</p>
                     </div>
                     <div class="chart-controls">
                         <div class="chart-control-group">
                             <label for="equityMode">View</label>
                             <select id="equityMode" aria-label="Equity curve mode">
-                                <option value="trade" selected>Every Trade</option>
+                                <option value="trade" selected>Every Idea</option>
                                 <option value="day">Daily Close</option>
                             </select>
                         </div>
@@ -594,7 +594,7 @@
                                         aria-label="Explain Risk Reward"
                                         aria-describedby="analytics-risk-reward-tooltip"
                                     >?</button>
-                                    <span id="analytics-risk-reward-tooltip" class="help-tooltip-bubble" role="tooltip">Your average winning trade divided by your average losing trade, based on actual exits &mdash; not what you planned.</span>
+                                    <span id="analytics-risk-reward-tooltip" class="help-tooltip-bubble" role="tooltip">Your average winning trade idea divided by your average losing trade idea, based on actual exits after bundle detection &mdash; not what you planned.</span>
                                 </span>
                             </span>
                         </dt>
@@ -678,7 +678,7 @@
                         <p class="streak-value bad">x{{ streaks.best_loss_streak }}</p>
                     </article>
                 </div>
-                <p class="context-note">Streaks are calculated from closed trades in chronological order.</p>
+                <p class="context-note">Streaks are calculated from closed trade ideas in chronological order.</p>
             </article>
 
             <details class="analytics-breakdown-disclosure" data-analytics-breakdown>

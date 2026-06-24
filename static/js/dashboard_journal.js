@@ -100,7 +100,7 @@
         } else {
             const span = document.createElement("span");
             span.className = "soft";
-            span.textContent = "No closed trades in this scope.";
+            span.textContent = "No closed trade ideas in this scope.";
             refList.appendChild(span);
         }
         details.appendChild(refList);

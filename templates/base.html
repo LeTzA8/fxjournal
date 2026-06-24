@@ -1312,6 +1312,16 @@
             overflow-x: auto;
         }
 
+        body.app-layout .trade-log .table-shell thead th {
+            position: sticky;
+            top: 0;
+            z-index: 3;
+            background: color-mix(in srgb, var(--surface) 98%, var(--card) 2%);
+            box-shadow:
+                0 1px 0 color-mix(in srgb, var(--border) 76%, transparent),
+                0 10px 18px rgba(2, 6, 23, 0.14);
+        }
+
         .flash-alert,
         body.app-layout .account-alert,
         body.app-layout .batch-alert,

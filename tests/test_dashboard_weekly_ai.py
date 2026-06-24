@@ -2113,6 +2113,7 @@ def test_dashboard_metrics_show_raw_and_bundle_aware_month_counts(app_ctx, clien
     assert "After Bundle 2" in compact_visible_text
     assert "Before Bundle 3" in compact_visible_text
     assert "after-bundle count is used for dashboard trade idea metrics" in compact_text
+    assert "Average realized winner and loser across closed trade ideas after bundle detection" in compact_text
 
 
 def test_dashboard_recent_trade_rows_link_to_trade_detail(app_ctx, client, monkeypatch):

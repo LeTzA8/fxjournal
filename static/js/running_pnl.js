@@ -242,7 +242,8 @@
             summaryEl.hidden = false;
             const s = cachedSummary;
             const fmtS = (v) => `${v >= 0 ? "+" : ""}$${v.toFixed(2)}`;
-            if (summaryPnl) summaryPnl.innerHTML = `Trading P&L: <strong class="${s.total_realized_pnl >= 0 ? "good" : "bad"}">${fmtS(s.total_realized_pnl)}</strong> (${s.trade_close_count} trades)`;
+            const tradeIdeaLabel = s.trade_close_count === 1 ? "trade idea" : "trade ideas";
+            if (summaryPnl) summaryPnl.innerHTML = `Trading P&L: <strong class="${s.total_realized_pnl >= 0 ? "good" : "bad"}">${fmtS(s.total_realized_pnl)}</strong> (${s.trade_close_count} ${tradeIdeaLabel})`;
             if (summaryCash) summaryCash.innerHTML = `Cash Flow: <strong>${fmtS(s.total_cash_flow)}</strong> (${s.deposit_count}D / ${s.withdrawal_count}W)`;
             if (summaryNet) summaryNet.innerHTML = `Net: <strong class="${s.total_net_result >= 0 ? "good" : "bad"}">${fmtS(s.total_net_result)}</strong>`;
         }

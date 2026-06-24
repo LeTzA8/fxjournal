@@ -2584,6 +2584,7 @@ def _get_rr_capture_advice(trades_with_data, rr_capture_ratio):
 
 
 def build_rr_summary(trades):
+    trades = merge_bundled_trades(trades)
     planned_rrs = []
     actual_rrs = []
     for trade in trades:

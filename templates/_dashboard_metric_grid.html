@@ -25,7 +25,7 @@
             {% if has_closed_trades %}
             After fees, commission &amp; swap · {{ closed_trade_count }} closed trade idea{{ 's' if closed_trade_count != 1 else '' }} after bundle detection
             {% elif has_any_trades %}
-            Account PnL appears after your first closed trade.
+            Account PnL appears after your first closed trade idea.
             {% else %}
             Your headline PnL tracks here once trades are logged.
             {% endif %}
@@ -53,10 +53,10 @@
             {% if has_closed_trades %}
             Based on {{ closed_trade_count }} closed trade idea{% if closed_trade_count != 1 %}s{% endif %} after bundle detection
             {% if win_rate_is_limited_sample %}
-            — win rate is most reliable with around {{ small_sample_min_trades }}+ closed trades.
+            — win rate is most reliable with around {{ small_sample_min_trades }}+ closed trade ideas.
             {% endif %}
             {% elif has_any_trades %}
-            Unlocks after your first closed trade with realized PnL.
+            Unlocks after your first closed trade idea with realized PnL.
             {% else %}
             Add or import trades to start tracking hit rate.
             {% endif %}
@@ -74,9 +74,9 @@
         <p class="metric-note {% if has_closed_trades and net_pnl_week > 0 %}good{% elif has_closed_trades and net_pnl_week < 0 %}bad{% endif %}">
             {% if has_closed_trades %}
                 {% if net_pnl_week > 0 %}Profitable week{% elif net_pnl_week < 0 %}Negative week{% else %}Flat week{% endif %}
-                · {{ net_pnl_week_trade_count }} trade{{ 's' if net_pnl_week_trade_count != 1 else '' }} since {{ current_week_start.strftime('%d %b') }}
+                · {{ net_pnl_week_trade_count }} trade idea{{ 's' if net_pnl_week_trade_count != 1 else '' }} since {{ current_week_start.strftime('%d %b') }}
             {% elif has_any_trades %}
-            Weekly realized PnL appears after closed trades come in.
+            Weekly realized PnL appears after closed trade ideas come in.
             {% else %}
             Weekly PnL appears once trades start flowing into the journal.
             {% endif %}
@@ -117,7 +117,7 @@
                         aria-label="Explain Average Winner vs Loser"
                         aria-describedby="dashboard-avg-winner-loser-tooltip"
                     >?</button>
-                    <span id="dashboard-avg-winner-loser-tooltip" class="help-tooltip-bubble" role="tooltip">Compares the average PnL of your winning trades against your losing trades.</span>
+                    <span id="dashboard-avg-winner-loser-tooltip" class="help-tooltip-bubble" role="tooltip">Compares the average PnL of your winning trade ideas against your losing trade ideas after bundle detection.</span>
                 </span>
             </span>
         </p>
@@ -137,7 +137,7 @@
         </div>
         <p class="metric-note">
             {% if has_closed_trades and avg_win is not none and avg_loss_abs is not none %}
-            Average realized winner and loser across closed trades.
+            Average realized winner and loser across closed trade ideas after bundle detection.
             {% elif has_any_trades %}
             Needs at least one closed winner and one closed loser to become useful.
             {% else %}
@@ -170,14 +170,14 @@
         <p class="metric-note">
             {% if has_cost_data and closed_trade_count %}
                 {% if trading_costs_coverage < closed_trade_count %}
-                Based on {{ trading_costs_coverage }} of {{ closed_trade_count }} closed trades with fee data.
+                Based on {{ trading_costs_coverage }} of {{ closed_trade_count }} closed trade ideas with fee data.
                 {% else %}
-                Fees, commission &amp; swap · All closed trades with fee data
+                Fees, commission &amp; swap · All closed trade ideas with fee data
                 {% endif %}
             {% elif has_closed_trades %}
             Appears once fees, commission, or swap data is logged.
             {% elif has_any_trades %}
-            Trading costs track when fee fields are present on closed trades.
+            Trading costs track when fee fields are present on closed trade ideas.
             {% else %}
             Cost drag appears after you log trades with fees, commission, or swap.
             {% endif %}

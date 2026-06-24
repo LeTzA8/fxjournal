@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 
 from ai_service import AIRequestError, build_journal_chat_messages
 from helpers.journal_context import MAX_DAY_SCOPE_TRADES, build_journal_payload
+from helpers.trade_interpretation import apply_interpretation
 import routes.admin_journal as admin_journal_routes
 from models import JournalMessage, JournalSession, Trade, TradeAccount, User, db
 
@@ -389,6 +390,161 @@ def test_week_scope_payload_uses_active_account_new_york_market_week(app_ctx):
     assert after_week.pubkey not in trade_pubkeys
     assert payload["summary"]["market_week_start"] == "2026-05-04"
     assert payload["summary"]["trade_count"] == 2
+
+
+def test_trade_scope_payload_expands_confirmed_bundle_to_one_trade_idea(app_ctx):
+    admin = _create_user("journal-bundle-scope", "journal-bundle-scope@example.com", is_admin=True)
+    account = _create_account(admin)
+    first_leg = _create_trade(
+        admin,
+        account,
+        pnl=100.0,
+        opened_at=datetime(2026, 5, 8, 9, 0),
+        closed_at=datetime(2026, 5, 8, 9, 20),
+    )
+    second_leg = _create_trade(
+        admin,
+        account,
+        pnl=-30.0,
+        opened_at=datetime(2026, 5, 8, 9, 5),
+        closed_at=datetime(2026, 5, 8, 9, 30),
+    )
+    first_leg.commission = 2.0
+    second_leg.commission = 3.0
+    apply_interpretation(
+        first_leg,
+        bundle_pubkey="journal-bundle",
+        source="test",
+        user_id=admin.id,
+    )
+    apply_interpretation(
+        second_leg,
+        bundle_pubkey="journal-bundle",
+        source="test",
+        user_id=admin.id,
+    )
+    db.session.commit()
+
+    journal_session = JournalSession(
+        user_id=admin.id,
+        trade_account_id=account.id,
+        scope_type=JournalSession.SCOPE_TRADE,
+        scope_trade_pubkey=second_leg.pubkey,
+        started_at=datetime(2026, 5, 9, 9, 0),
+    )
+
+    payload = build_journal_payload(admin, journal_session)
+
+    assert payload["summary"]["focal_ref"] == "B1"
+    assert payload["summary"]["trade_count"] == 1
+    assert len(payload["trades"]) == 1
+    trade = payload["trades"][0]
+    assert trade["ref"] == "B1"
+    assert trade["trade_pubkey"] is None
+    assert trade["bundle_pubkey"] == "journal-bundle"
+    assert set(trade["bundle_member_pubkeys"]) == {first_leg.pubkey, second_leg.pubkey}
+    assert trade["is_bundle"] is True
+    assert trade["bundle_trade_count"] == 2
+    assert trade["pnl"] == 65.0
+
+
+def test_day_scope_payload_summarizes_confirmed_bundle_once(app_ctx):
+    admin = _create_user("journal-day-bundle", "journal-day-bundle@example.com", is_admin=True)
+    account = _create_account(admin)
+    first_leg = _create_trade(
+        admin,
+        account,
+        pnl=80.0,
+        opened_at=datetime(2026, 5, 7, 23, 40),
+        closed_at=datetime(2026, 5, 7, 23, 55),
+    )
+    second_leg = _create_trade(
+        admin,
+        account,
+        pnl=20.0,
+        opened_at=datetime(2026, 5, 8, 0, 5),
+        closed_at=datetime(2026, 5, 8, 0, 20),
+    )
+    apply_interpretation(
+        first_leg,
+        bundle_pubkey="journal-day-bundle",
+        source="test",
+        user_id=admin.id,
+    )
+    apply_interpretation(
+        second_leg,
+        bundle_pubkey="journal-day-bundle",
+        source="test",
+        user_id=admin.id,
+    )
+    db.session.commit()
+    journal_session = JournalSession(
+        user_id=admin.id,
+        trade_account_id=account.id,
+        scope_type=JournalSession.SCOPE_DAY,
+        scope_date=date(2026, 5, 8),
+        started_at=datetime(2026, 5, 9, 9, 0),
+    )
+
+    payload = build_journal_payload(admin, journal_session)
+
+    assert payload["summary"]["trade_count"] == 1
+    assert payload["summary"]["net_pnl"] == 100.0
+    assert payload["trades"][0]["ref"] == "B1"
+    assert payload["trades"][0]["is_bundle"] is True
+    assert payload["trades"][0]["bundle_trade_count"] == 2
+    assert set(payload["trades"][0]["bundle_member_pubkeys"]) == {first_leg.pubkey, second_leg.pubkey}
+
+
+def test_day_scope_payload_excludes_bundle_with_open_member(app_ctx):
+    admin = _create_user("journal-open-bundle", "journal-open-bundle@example.com", is_admin=True)
+    account = _create_account(admin)
+    closed_leg = _create_trade(
+        admin,
+        account,
+        pnl=80.0,
+        opened_at=datetime(2026, 5, 8, 9, 0),
+        closed_at=datetime(2026, 5, 8, 9, 20),
+    )
+    open_leg = Trade(
+        user_id=admin.id,
+        trade_account_id=account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.101,
+        lot_size=0.1,
+        pnl=20.0,
+        opened_at=datetime(2026, 5, 8, 9, 5),
+        closed_at=None,
+    )
+    db.session.add(open_leg)
+    db.session.flush()
+    apply_interpretation(
+        closed_leg,
+        bundle_pubkey="journal-open-bundle",
+        source="test",
+        user_id=admin.id,
+    )
+    apply_interpretation(
+        open_leg,
+        bundle_pubkey="journal-open-bundle",
+        source="test",
+        user_id=admin.id,
+    )
+    db.session.commit()
+    journal_session = JournalSession(
+        user_id=admin.id,
+        trade_account_id=account.id,
+        scope_type=JournalSession.SCOPE_DAY,
+        scope_date=date(2026, 5, 8),
+        started_at=datetime(2026, 5, 9, 9, 0),
+    )
+
+    payload = build_journal_payload(admin, journal_session)
+
+    assert payload["summary"]["trade_count"] == 0
+    assert payload["summary"]["net_pnl"] == 0.0
+    assert payload["trades"] == []
 
 
 def test_admin_a_cannot_access_admin_b_journal_session(app_ctx, client):

@@ -534,6 +534,77 @@ def test_build_trade_payload_serializes_trade_risk_fields_and_session(app_ctx):
     assert trade["trade_date_label"]
 
 
+def test_build_trade_payload_expands_bundle_members_across_period_boundary(app_ctx):
+    user, trade_account = _create_user_and_account(
+        username="ai-boundary-bundle-user",
+        email="ai-boundary-bundle@example.com",
+    )
+    first_leg = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1000,
+        exit_price=1.1010,
+        lot_size=0.5,
+        pnl=40.0,
+        opened_at=datetime(2026, 3, 9, 23, 40, 0),
+        closed_at=datetime(2026, 3, 9, 23, 55, 0),
+    )
+    second_leg = Trade(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        symbol="EURUSD",
+        side="BUY",
+        entry_price=1.1002,
+        exit_price=1.1015,
+        lot_size=0.5,
+        pnl=60.0,
+        opened_at=datetime(2026, 3, 10, 0, 5, 0),
+        closed_at=datetime(2026, 3, 10, 0, 20, 0),
+    )
+    db.session.add_all([first_leg, second_leg])
+    db.session.flush()
+    apply_interpretation(
+        first_leg,
+        bundle_pubkey="ai-boundary-bundle",
+        source="test",
+        user_id=user.id,
+    )
+    apply_interpretation(
+        second_leg,
+        bundle_pubkey="ai-boundary-bundle",
+        source="test",
+        user_id=user.id,
+    )
+    db.session.commit()
+
+    period_start = datetime(2026, 3, 10, 0, 0, 0)
+    period_end = datetime(2026, 3, 11, 0, 0, 0)
+    payload = build_trade_payload(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        period_start_utc=period_start,
+        period_end_utc=period_end,
+        closed_trades_only=True,
+    )
+
+    assert ai_service.count_closed_trade_ideas_in_period(
+        user_id=user.id,
+        trade_account_id=trade_account.id,
+        period_start_utc=period_start,
+        period_end_utc=period_end,
+    ) == 1
+    assert payload["week_summary"]["closed_trades"] == 1
+    assert len(payload["trades"]) == 1
+    trade = payload["trades"][0]
+    assert trade["ref"] == "B1"
+    assert trade["is_bundle"] is True
+    assert trade["bundle_trade_count"] == 2
+    assert trade["bundle_summary"] == "2 split entries"
+    assert trade["pnl"] == pytest.approx(100.0)
+
+
 def test_build_trade_payload_serializes_strategy_context(app_ctx):
     user, trade_account = _create_user_and_account(
         username="ai-strategy-context-user",

@@ -112,13 +112,13 @@ from trading import (
 bp = Blueprint("dashboard", __name__)
 
 DEFAULT_WEEKLY_AI_EMPTY_MESSAGE = (
-    f"Weekly review needs at least {MIN_CLOSED_TRADES_FOR_ADVICE} closed trade(s) on this account "
+    f"Weekly review needs at least {MIN_CLOSED_TRADES_FOR_ADVICE} closed trade idea(s) on this account "
     "in the active review window."
 )
 WEEKLY_AI_GENERATING_MESSAGE = (
     "Generating your weekly AI review. Check back shortly."
 )
-WEEKLY_AI_NO_TRADES_MESSAGE = "No trades this week. Add closed trades to generate a review."
+WEEKLY_AI_NO_TRADES_MESSAGE = "No trades this week. Add closed trade ideas to generate a review."
 WEEKLY_AI_TOO_FEW_TRADES_MESSAGE = (
     "Limited trade data this week, so the review will stay cautious."
 )
@@ -2605,7 +2605,7 @@ def _dashboard_journal_freeform_candidate(score=40, *, reason=None):
         "freeform:recent",
         JournalSession.SCOPE_FREEFORM,
         "Full account context",
-        reason or "Use broad active-account context. For now this uses the latest closed trades.",
+        reason or "Use broad active-account context. For now this uses the latest closed trade ideas.",
         {"scope_type": JournalSession.SCOPE_FREEFORM},
         score,
     )
@@ -2619,7 +2619,7 @@ def _dashboard_journal_recent_trade_candidates(trades, *, limit=6):
                 f"trade:{trade.pubkey}",
                 JournalSession.SCOPE_TRADE,
                 _dashboard_journal_trade_label(trade),
-                "Use only this closed trade as context.",
+                "Use this closed trade idea as context.",
                 {"scope_type": JournalSession.SCOPE_TRADE, "scope_trade_pubkey": trade.pubkey},
                 35,
             )
@@ -2685,7 +2685,7 @@ def _dashboard_journal_context_candidates(user, message):
                     f"trade:{trade.pubkey}",
                     JournalSession.SCOPE_TRADE,
                     _dashboard_journal_trade_label(trade),
-                    f"Matched the {trade.symbol} symbol and chose the latest closed trade.",
+                    f"Matched the {trade.symbol} symbol and chose the latest closed trade idea.",
                     {"scope_type": JournalSession.SCOPE_TRADE, "scope_trade_pubkey": trade.pubkey},
                     85,
                 )
@@ -2706,7 +2706,7 @@ def _dashboard_journal_context_candidates(user, message):
                         f"trade:{trade.pubkey}",
                         JournalSession.SCOPE_TRADE,
                         _dashboard_journal_trade_label(trade),
-                        f"Only one closed trade matched {parsed_date.isoformat()}.",
+                        f"Only one closed trade idea matched {parsed_date.isoformat()}.",
                         {"scope_type": JournalSession.SCOPE_TRADE, "scope_trade_pubkey": trade.pubkey},
                         82,
                     )
@@ -2717,7 +2717,7 @@ def _dashboard_journal_context_candidates(user, message):
                         f"day:{parsed_date.isoformat()}",
                         JournalSession.SCOPE_DAY,
                         f"{parsed_date.isoformat()} trading day",
-                        f"Matched {len(day_trades)} closed trades on that date.",
+                        f"Matched {len(day_trades)} closed trade ideas on that date.",
                         {"scope_type": JournalSession.SCOPE_DAY, "scope_date": parsed_date.isoformat()},
                         80,
                     )
@@ -2732,7 +2732,7 @@ def _dashboard_journal_context_candidates(user, message):
                 f"day:{parsed_date.isoformat()}",
                 JournalSession.SCOPE_DAY,
                 f"{parsed_date.isoformat()} trading day",
-                "Use the closed trades from this UTC date as context.",
+                "Use the closed trade ideas from this UTC date as context.",
                 {"scope_type": JournalSession.SCOPE_DAY, "scope_date": parsed_date.isoformat()},
                 55,
             )
@@ -2741,7 +2741,7 @@ def _dashboard_journal_context_candidates(user, message):
     fallback_candidates = [
         _dashboard_journal_week_candidate(user.id, trade_account_id),
         _dashboard_journal_freeform_candidate(
-            reason="Use broad active-account context when you want the journal to look across recent trades."
+            reason="Use broad active-account context when you want the journal to look across recent trade ideas."
             if parsed_dates or explicit_unknown_token
             else None
         ),
@@ -3027,6 +3027,7 @@ def running_pnl_api():
             .options(
                 load_only(
                     Trade.id,
+                    Trade.pubkey,
                     Trade.symbol,
                     Trade.side,
                     Trade.pnl,
@@ -3039,6 +3040,7 @@ def running_pnl_api():
                     Trade.lot_size,
                 ),
                 selectinload(Trade.trade_account),
+                selectinload(Trade.interpretation),
             )
             .all()
         )
@@ -3060,7 +3062,7 @@ def running_pnl_api():
         cash_flows = []
 
     events = build_running_pnl_events(
-        closed_trades,
+        merge_bundled_trades(closed_trades),
         cash_flows,
         resolve_trade_pnl=resolve_net_pnl,
         date_from=date_from,

@@ -37,6 +37,7 @@ from models import (
     Trade,
     TradeAccount,
     TradeBars,
+    TradeInterpretation,
     User,
     UserProfile,
     WeeklyCheckin,
@@ -826,6 +827,86 @@ def _query_trades_for_payload(
     return trade_query.order_by(Trade.opened_at.desc(), Trade.id.desc()).all()
 
 
+def _expand_trades_with_bundle_members(raw_trades, *, user_id, trade_account_id=None):
+    raw_trades = list(raw_trades or [])
+    bundle_keys = sorted(
+        {
+            str(getattr(trade, "bundle_pubkey", "") or "").strip()
+            for trade in raw_trades
+            if str(getattr(trade, "bundle_pubkey", "") or "").strip()
+        }
+    )
+    if not bundle_keys:
+        return raw_trades
+
+    bundle_query = (
+        Trade.query.filter(Trade.user_id == user_id)
+        .join(TradeInterpretation, TradeInterpretation.trade_id == Trade.id)
+        .filter(TradeInterpretation.bundle_pubkey.in_(bundle_keys))
+        .options(
+            selectinload(Trade.trade_account),
+            selectinload(Trade.interpretation),
+            selectinload(Trade.trade_profile),
+            selectinload(Trade.trade_profile_version),
+        )
+    )
+    if trade_account_id is not None:
+        bundle_query = bundle_query.filter(Trade.trade_account_id == trade_account_id)
+
+    by_id = {
+        getattr(trade, "id", None): trade
+        for trade in raw_trades
+        if getattr(trade, "id", None) is not None
+    }
+    for trade in bundle_query.all():
+        trade_id = getattr(trade, "id", None)
+        if trade_id is not None:
+            by_id[trade_id] = trade
+
+    expanded = list(by_id.values())
+    expanded.sort(
+        key=lambda trade: (
+            getattr(trade, "opened_at", None) or datetime.min,
+            getattr(trade, "id", 0) or 0,
+        ),
+        reverse=True,
+    )
+    return expanded
+
+
+def _closed_trade_ideas_for_payload(
+    *,
+    user_id,
+    trade_account_id=None,
+    period_start_utc=None,
+    period_end_utc=None,
+):
+    raw_trades = _query_trades_for_payload(
+        user_id=user_id,
+        trade_account_id=trade_account_id,
+        period_start_utc=period_start_utc,
+        period_end_utc=period_end_utc,
+        closed_trades_only=True,
+    )
+    expanded_trades = _expand_trades_with_bundle_members(
+        raw_trades,
+        user_id=user_id,
+        trade_account_id=trade_account_id,
+    )
+    trade_ideas = merge_bundled_trades(expanded_trades)
+    filtered = []
+    for trade in trade_ideas:
+        closed_at = getattr(trade, "closed_at", None)
+        if closed_at is None:
+            continue
+        if period_start_utc is not None and closed_at < period_start_utc:
+            continue
+        if period_end_utc is not None and closed_at >= period_end_utc:
+            continue
+        filtered.append(trade)
+    return filtered
+
+
 def _serialize_user_profile(user_profile):
     return {
         "trading_style": _normalize_optional_text(_get_record_value(user_profile, "trading_style")),
@@ -1362,20 +1443,18 @@ def _build_four_week_patterns(*, user_id, trade_account_id, period_start_utc, we
     for offset in range(1, weeks + 1):
         week_end = period_start_utc - timedelta(days=(offset - 1) * 7)
         week_start = week_end - timedelta(days=7)
-        raw_trades = _query_trades_for_payload(
+        trade_ideas = _closed_trade_ideas_for_payload(
             user_id=user_id,
             trade_account_id=trade_account_id,
             period_start_utc=week_start,
             period_end_utc=week_end,
-            closed_trades_only=True,
         )
-        merged_trades = merge_bundled_trades(raw_trades)
         analytics = build_trade_analytics(
-            merged_trades,
+            trade_ideas,
             display_timezone_name=get_ai_timezone_name(),
         )
         summary = analytics.get("summary", {})
-        week_behaviour = _build_week_behaviour_patterns(merged_trades)
+        week_behaviour = _build_week_behaviour_patterns(trade_ideas)
         behaviour_rows.append(week_behaviour)
 
         week_payload = {
@@ -1483,13 +1562,21 @@ def _build_historical_context(
         return None
 
     historical_start_utc = historical_end_utc - timedelta(days=max(int(lookback_days), 1))
-    historical_trades = _query_trades_for_payload(
-        user_id=user_id,
-        trade_account_id=trade_account_id,
-        period_start_utc=historical_start_utc,
-        period_end_utc=historical_end_utc,
-        closed_trades_only=closed_trades_only,
-    )
+    if closed_trades_only:
+        historical_trades = _closed_trade_ideas_for_payload(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            period_start_utc=historical_start_utc,
+            period_end_utc=historical_end_utc,
+        )
+    else:
+        historical_trades = _query_trades_for_payload(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            period_start_utc=historical_start_utc,
+            period_end_utc=historical_end_utc,
+            closed_trades_only=closed_trades_only,
+        )
     if not historical_trades:
         return None
 
@@ -1700,14 +1787,22 @@ def build_trade_payload(
     user_profile=None,
     weekly_checkin=None,
 ):
-    raw_trades = _query_trades_for_payload(
-        user_id=user_id,
-        trade_account_id=trade_account_id,
-        period_start_utc=period_start_utc,
-        period_end_utc=period_end_utc,
-        closed_trades_only=closed_trades_only,
-    )
-    trades = merge_bundled_trades(raw_trades)
+    if closed_trades_only:
+        trades = _closed_trade_ideas_for_payload(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            period_start_utc=period_start_utc,
+            period_end_utc=period_end_utc,
+        )
+    else:
+        raw_trades = _query_trades_for_payload(
+            user_id=user_id,
+            trade_account_id=trade_account_id,
+            period_start_utc=period_start_utc,
+            period_end_utc=period_end_utc,
+            closed_trades_only=closed_trades_only,
+        )
+        trades = merge_bundled_trades(raw_trades)
     account_type = get_trade_account_type(trades[0]) if trades else "CFD"
     if not trades and trade_account_id is not None:
         account = TradeAccount.query.get(trade_account_id)
@@ -1721,7 +1816,7 @@ def build_trade_payload(
         display_timezone_name=get_ai_timezone_name(),
     )
     trade_annotations = _build_trade_annotations(trades)
-    emotional_index = compute_emotional_index(trades=raw_trades, weekly_checkin=weekly_checkin)
+    emotional_index = compute_emotional_index(trades=trades, weekly_checkin=weekly_checkin)
     signals = (emotional_index or {}).get("signals", {})
 
     notes_with_content = 0
@@ -2095,14 +2190,12 @@ def has_trade_data_for_period(*, user_id, trade_account_id=None, period_start_ut
 def count_closed_trade_ideas_in_period(*, user_id, trade_account_id=None, period_start_utc=None, period_end_utc=None):
     if not user_id:
         return 0
-    raw_trades = _query_trades_for_payload(
+    merged_trades = _closed_trade_ideas_for_payload(
         user_id=user_id,
         trade_account_id=trade_account_id,
         period_start_utc=period_start_utc,
         period_end_utc=period_end_utc,
-        closed_trades_only=True,
     )
-    merged_trades = merge_bundled_trades(raw_trades)
     return sum(
         1
         for trade in merged_trades

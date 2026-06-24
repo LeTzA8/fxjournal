@@ -5,7 +5,8 @@ from datetime import datetime
 
 import pytest
 
-from models import AccountCashFlow, Trade, TradeAccount, User, db
+from helpers.trade_interpretation import apply_interpretation
+from models import AccountCashFlow, Trade, TradeAccount, TradeInterpretation, User, db
 
 
 def _login(client, user_id):
@@ -68,7 +69,7 @@ def _create_cash_flow(user, account, *, flow_type="deposit", amount=1000.0, occu
 def _clean_tables(app_ctx):
     yield
     db.session.rollback()
-    for model in (AccountCashFlow, Trade, TradeAccount, User):
+    for model in (AccountCashFlow, TradeInterpretation, Trade, TradeAccount, User):
         model.query.delete()
     db.session.commit()
 
@@ -112,6 +113,48 @@ class TestRunningPnlApi:
         assert data["events"][1]["event_type"] == "trade_close"
         assert data["summary"]["total_realized_pnl"] == pytest.approx(200.0)
         assert data["summary"]["total_cash_flow"] == pytest.approx(5000.0)
+
+    def test_bundled_trade_legs_appear_as_one_trade_idea(self, client, app_ctx):
+        user = _create_user("running-pnl-bundle")
+        account = _create_account(user)
+        first_leg = _create_trade(
+            user,
+            account,
+            pnl=120.0,
+            opened_at=datetime(2026, 4, 2, 9, 0),
+            closed_at=datetime(2026, 4, 2, 9, 20),
+        )
+        second_leg = _create_trade(
+            user,
+            account,
+            pnl=-40.0,
+            opened_at=datetime(2026, 4, 2, 9, 5),
+            closed_at=datetime(2026, 4, 2, 9, 30),
+        )
+        apply_interpretation(
+            first_leg,
+            bundle_pubkey="bundle-running-pnl",
+            source="test",
+            user_id=user.id,
+        )
+        apply_interpretation(
+            second_leg,
+            bundle_pubkey="bundle-running-pnl",
+            source="test",
+            user_id=user.id,
+        )
+        db.session.commit()
+        _login(client, user.id)
+
+        resp = client.get("/api/running-pnl")
+
+        assert resp.status_code == 200
+        data = resp.get_json()
+        trade_events = [event for event in data["events"] if event["event_type"] == "trade_close"]
+        assert len(trade_events) == 1
+        assert trade_events[0]["amount"] == pytest.approx(80.0)
+        assert data["summary"]["trade_close_count"] == 1
+        assert data["summary"]["total_realized_pnl"] == pytest.approx(80.0)
 
     def test_date_range_filter(self, client, app_ctx):
         user = _create_user()

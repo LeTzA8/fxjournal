@@ -807,7 +807,7 @@ def test_analytics_page_shows_planned_vs_real_rr_panel(app_ctx, client):
     assert b"1.83R" in response.data
     assert b"1.27R" in response.data
     assert b"69%" in response.data
-    assert b"Based on 3 trades with SL &amp; TP set." in response.data
+    assert b"Based on 3 trade ideas with SL &amp; TP set after bundle detection." in response.data
     assert b"close to your planned RR but leaving some on the table" in response.data
 
 
