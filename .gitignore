@@ -1,5 +1,6 @@
 # Database backups
 DB Backup/
+*.sql
 
 # Python bytecode/cache
 __pycache__/
@@ -45,15 +46,21 @@ htmlcov/
 # IDE/editor
 .vscode/
 .idea/
+.cursor/
 .python-version
 runtime.txt
 
 # Claude Code
 .claude/
 
+# Local AI-agent instructions and project context
+AGENTS.md
+CLAUDE.md
+AUDIT_STATE.md
+context/
+
 # OS files
 .DS_Store
 Thumbs.db
-
 
 
